@@ -1059,8 +1059,8 @@ function Dashboard({ contacts }) {
           marginBottom: 22,
         }}
       >
-        {card("Com oportunidade", withOpp, "#34D399", "")}
-        {card("Em atualização", updating, "#C084FC", "")}
+        {card("Oportunidade disponível", withOpp, "#34D399", "")}
+        {card("Atualizar contato", updating, "#C084FC", "")}
         {card("Total de clientes", total, C.atxt, "")}
         {card("Fechados", closed, "#10B981", "")}
       </div>
