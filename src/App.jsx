@@ -5625,6 +5625,23 @@ function StoriesPage({ currentUser, users }) {
     return unsub;
   }, []);
 
+  // ── Comprimir imagem antes de enviar ────────────────────────
+  const compressImage = (file, maxW = 1080, quality = 0.82) => new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxW / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => resolve(new File([blob], file.name, { type: "image/jpeg" })), "image/jpeg", quality);
+    };
+    img.src = url;
+  });
+
   const handleMedia = (e) => {
     const f = e.target.files[0]; if (!f) return;
     setMediaErr("");
@@ -5636,9 +5653,8 @@ function StoriesPage({ currentUser, users }) {
     if (isVideo && mb > 50) { setMediaErr("Vídeo máx 50 MB.");  return; }
     if (isAudio && mb > 5)  { setMediaErr("Áudio máx 5 MB.");   return; }
     if (!isImg && !isVideo && !isAudio) { setMediaErr("Formato não suportado."); return; }
-    // Create preview URL + keep File for Storage upload
     const previewUrl = URL.createObjectURL(f);
-    setNewMedia({ url: previewUrl, type: f.type, name: f.name, file: f });
+    setNewMedia({ url: previewUrl, type: f.type, name: f.name, file: f, isImg });
   };
 
   // ── Post story ───────────────────────────────────────────────
@@ -5652,10 +5668,21 @@ function StoriesPage({ currentUser, users }) {
     try {
       let mediaPayload = null;
 
-      // Upload mídia para Firebase Storage (não Firestore)
       if (newMedia?.file) {
-        const path = `stories/${myId}/${Date.now()}_${newMedia.file.name}`;
-        const url = await uploadMedia(newMedia.file, path, (pct) => setUploadProgress(pct));
+        let fileToUpload = newMedia.file;
+
+        // Comprime imagem automaticamente antes de enviar
+        if (newMedia.isImg) {
+          setUploadProgress(5);
+          fileToUpload = await compressImage(newMedia.file);
+          setUploadProgress(10);
+        }
+
+        const path = `stories/${myId}/${Date.now()}_${fileToUpload.name}`;
+        const url = await uploadMedia(fileToUpload, path, (pct) => {
+          // Pct vai de 10-100 para imagem, 0-100 para vídeo/áudio
+          setUploadProgress(newMedia.isImg ? 10 + Math.round(pct * 0.9) : pct);
+        });
         mediaPayload = { url, type: newMedia.type, name: newMedia.name, storagePath: path };
       }
 
@@ -5896,12 +5923,15 @@ function StoriesPage({ currentUser, users }) {
               Cancelar
             </button>
           </div>
-          {/* Barra de progresso do upload */}
           {loading && newMedia?.file && (
             <div style={{ marginTop:12 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
                 <span style={{ color:C.tm, fontSize:11.5 }}>
-                  {uploadProgress < 100 ? "Fazendo upload da mídia..." : "Salvando story..."}
+                  {newMedia.isImg && uploadProgress < 10
+                    ? "🗜 Comprimindo imagem..."
+                    : uploadProgress < 100
+                    ? "☁️ Enviando para a nuvem..."
+                    : "💾 Salvando story..."}
                 </span>
                 <span style={{ color:C.atxt, fontSize:11.5, fontWeight:600 }}>{uploadProgress}%</span>
               </div>
