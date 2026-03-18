@@ -5085,6 +5085,17 @@ function ChatPage({ currentUser, users, presence }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Marca mensagens como lidas quando abre a DM
+  useEffect(() => {
+    if (tab === "geral" || !tab) return;
+    const unread = messages.filter(m => m.authorId === tab && !m.readAt);
+    unread.forEach(async (m) => {
+      try {
+        await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true });
+      } catch(e) {}
+    });
+  }, [tab, messages]); // eslint-disable-line
+
   const handleFile = (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -5297,7 +5308,24 @@ function ChatPage({ currentUser, users, presence }) {
                       </div>
                     )}
                   </div>
-                  <span style={{ color: C.td, fontSize: 9.5, marginTop: 2 }}>{time}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, justifyContent: isMine ? "flex-end" : "flex-start" }}>
+                    <span style={{ color: C.td, fontSize: 9.5 }}>{time}</span>
+                    {/* Status de leitura — só em DM, só nas minhas mensagens */}
+                    {isMine && tab !== "geral" && (
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: msg.readAt ? "#38BDF8" : C.td,
+                        letterSpacing: "-1px",
+                        lineHeight: 1,
+                        title: msg.readAt ? `Visto às ${new Date(msg.readAt).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}` : "Enviado",
+                      }}
+                        title={msg.readAt ? `Visto às ${new Date(msg.readAt).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}` : "Enviado"}
+                      >
+                        {msg.readAt ? "✓✓" : "✓"}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
