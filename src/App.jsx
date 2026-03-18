@@ -5028,7 +5028,7 @@ const QUICK_MESSAGES = [
 
 const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","✅","👏","😎","🤝","💰","🏆","🎯"];
 
-function ChatPage({ currentUser, users, presence, dnd, setDnd }) {
+function ChatPage({ currentUser, users, presence }) {
   const myId = currentUser.uid || currentUser.id;
   const isMestre = currentUser.role === "mestre";
   const mestreUser = users.find(u => u.role === "mestre");
@@ -5138,16 +5138,14 @@ function ChatPage({ currentUser, users, presence, dnd, setDnd }) {
   const shakeAndSound = async () => {
     setShakeLocal(true); playNotif();
     setTimeout(() => setShakeLocal(false), 800);
-    // Envia mensagem especial com shake:true para o destinatário
-    const payload = {
+    await sendChatMessage({
       text: "🔔 Atenção!",
       authorId: myId,
       authorName: currentUser.name || currentUser.email,
       authorRole: currentUser.role,
       toId: tab,
       shake: true,
-    };
-    await sendChatMessage(payload);
+    });
   };
 
   const openCreateGroup = () => {
@@ -5254,26 +5252,6 @@ function ChatPage({ currentUser, users, presence, dnd, setDnd }) {
               <div style={{ color: C.tm, fontSize: 9.5 }}>Equipe em tempo real</div>
             </div>
           </div>
-          {/* Botão Não Perturbe — apenas para mestre e master */}
-          {(currentUser.role === "mestre" || currentUser.role === "master") && (
-            <button
-              onClick={() => {
-                const next = !dnd;
-                setDnd(next);
-                localStorage.setItem("nexp_dnd", String(next));
-              }}
-              style={{
-                marginTop: 8, width: "100%", display: "flex", alignItems: "center", gap: 6,
-                padding: "5px 8px", borderRadius: 7, border: `1px solid ${dnd ? "#F59E0B44" : C.b2}`,
-                background: dnd ? "#2B1D03" : "transparent", cursor: "pointer",
-              }}
-            >
-              <span style={{ fontSize: 13 }}>{dnd ? "🔕" : "🔔"}</span>
-              <span style={{ color: dnd ? "#FBBF24" : C.tm, fontSize: 10.5, fontWeight: dnd ? 600 : 400 }}>
-                {dnd ? "Não perturbe ativo" : "Não perturbe"}
-              </span>
-            </button>
-          )}
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
           {/* Geral */}
@@ -5503,7 +5481,6 @@ export default function App() {
   const [shake, setShake] = useState(false);
   const [presence, setPresenceData] = useState({});
   const [flashUserId, setFlashUserId] = useState(null);
-  const [dnd, setDnd] = useState(() => localStorage.getItem("nexp_dnd") === "true");
   const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar
@@ -5578,8 +5555,8 @@ export default function App() {
           if (lastMsg) {
             setFlashUserId(lastMsg.authorId);
             setTimeout(() => setFlashUserId(null), 3000);
-            // Shake + som se for mensagem de atenção para mim e não estou em DND
-            if (lastMsg.toId === myId && lastMsg.shake === true && !dnd) {
+            // Tremer + som se for shake:true direcionado a mim
+            if (lastMsg.toId === myId && lastMsg.shake === true) {
               setShake(true);
               setTimeout(() => setShake(false), 1000);
               try {
@@ -5600,7 +5577,7 @@ export default function App() {
       lastChatCount.current = relevant.length;
     });
     return () => unsub();
-  }, [currentUser, page, dnd]); // eslint-disable-line
+  }, [currentUser, page]); // eslint-disable-line
 
   // Apply accent theme to module-level C so all components pick it up on re-render
   Object.assign(C, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
@@ -5719,7 +5696,7 @@ export default function App() {
           <LedsPage contacts={contacts} userRole={currentUser.role} />
         )}
         {page === "chat" && (
-          <ChatPage currentUser={currentUser} users={users} presence={presence} dnd={dnd} setDnd={setDnd} />
+          <ChatPage currentUser={currentUser} users={users} presence={presence} />
         )}
         {page === "premium" && currentUser.role === "mestre" && (
           <PremiumNexp contacts={contacts} setContacts={setContacts} />
