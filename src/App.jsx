@@ -1867,172 +1867,139 @@ function AddClient({ setContacts, setPage }) {
 }
 
 // ── Import Page ────────────────────────────────────────────────
-function ImportPage({ contacts, setContacts, setPage }) {
+function ImportPage({ contacts, setContacts, setPage, currentUser }) {
+  const isMestre = currentUser?.role === "mestre";
   const [prev, setPrev] = useState([]);
   const [fn, setFn] = useState("");
   const [done, setDone] = useState(false);
+  const [doneInfo, setDoneInfo] = useState({ imported: 0, skipped: 0 });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState("import"); // "import" | "history"
+  const [tab, setTab] = useState("import");
   const fRef = useRef();
 
-  // Histórico de importações salvo localmente
+  // Histórico salvo no localStorage
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem("nexp_import_history") || "[]"); }
     catch { return []; }
   });
-
   const saveHistory = (h) => {
     setHistory(h);
-    localStorage.setItem("nexp_import_history", JSON.stringify(h));
+    try { localStorage.setItem("nexp_import_history", JSON.stringify(h)); } catch {}
   };
 
-  const dl = () => {
+  const dlModelo = () => {
     const b = new Blob([EXAMPLE_CSV], { type: "text/csv;charset=utf-8;" });
     const u = URL.createObjectURL(b);
     const a = document.createElement("a");
-    a.href = u;
-    a.download = "modelo_nexp.csv";
-    a.click();
+    a.href = u; a.download = "modelo_nexp.csv"; a.click();
     URL.revokeObjectURL(u);
   };
 
   const hf = (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    setFn(f.name);
-    setDone(false);
-    setErr("");
-    setPrev([]);
+    setFn(f.name); setDone(false); setErr(""); setPrev([]);
     const r = new FileReader();
     r.onload = (ev) => {
       try {
         const p = parseCSV(ev.target.result);
-        if (!p.length) {
-          setErr("Nenhum registro encontrado. Verifique se o arquivo está no formato correto.");
-          return;
-        }
+        if (!p.length) { setErr("Nenhum registro encontrado. Verifique o formato do arquivo."); return; }
         setPrev(p);
-      } catch (er) {
-        setErr("Erro ao ler arquivo: " + er.message);
-      }
+      } catch (er) { setErr("Erro ao ler arquivo: " + er.message); }
     };
-    r.onerror = () => setErr("Erro ao carregar o arquivo. Tente novamente.");
+    r.onerror = () => setErr("Erro ao carregar o arquivo.");
     r.readAsText(f, "UTF-8");
   };
 
   const conf = async () => {
     if (!prev.length) return;
-    setLoading(true);
-    setErr("");
+    setLoading(true); setErr("");
     try {
       const ts = Date.now();
-      const newContacts = prev.map((c, i) => ({
-        ...c,
-        id: String(ts + i),
-        reactions: [],
-        _importId: String(ts),
-      }));
-      for (const c of newContacts) {
-        await saveContact(c);
+      // CPFs já existentes no sistema
+      const existingCPFs = new Set(contacts.map((c) => (c.cpf || "").replace(/\D/g, "")).filter(Boolean));
+      let imported = 0, skipped = 0;
+      const importedContacts = [];
+      for (let i = 0; i < prev.length; i++) {
+        const c = prev[i];
+        const cpfClean = (c.cpf || "").replace(/\D/g, "");
+        if (cpfClean && existingCPFs.has(cpfClean)) { skipped++; continue; }
+        if (cpfClean) existingCPFs.add(cpfClean);
+        const newC = { ...c, id: String(ts + i), reactions: [], _importId: String(ts) };
+        await saveContact(newC);
+        importedContacts.push(newC);
+        imported++;
       }
-      // Salvar no histórico
-      const entry = {
-        id: String(ts),
-        name: fn,
-        count: prev.length,
-        date: new Date().toLocaleString("pt-BR"),
-        contacts: newContacts,
-      };
+      // Salvar histórico
+      const entry = { id: String(ts), name: fn, count: imported, skipped, date: new Date().toLocaleString("pt-BR"), contacts: importedContacts };
       saveHistory([entry, ...history]);
-      setDone(true);
-      setPrev([]);
-      setFn("");
+      setDoneInfo({ imported, skipped });
+      setDone(true); setPrev([]); setFn("");
       if (fRef.current) fRef.current.value = "";
-    } catch (e) {
-      setErr("Erro ao salvar no banco: " + e.message);
-    }
+    } catch (e) { setErr("Erro ao salvar: " + e.message); }
     setLoading(false);
   };
 
-  const downloadHistory = (entry) => {
-    exportCSV(entry.contacts, `nexp_${entry.name}`);
-  };
-
-  const deleteHistory = async (entry) => {
-    if (!window.confirm(`Apagar os ${entry.count} clientes importados de "${entry.name}"?`)) return;
-    // Remove do Firestore
-    for (const c of entry.contacts) {
-      try { await deleteContact(String(c.id)); } catch {}
-    }
-    saveHistory(history.filter((h) => h.id !== entry.id));
-  };
-
   const tabStyle = (active) => ({
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    padding: "9px 18px",
-    fontSize: 13,
+    background: "transparent", border: "none", cursor: "pointer",
+    padding: "9px 18px", fontSize: 13,
     fontWeight: active ? 600 : 400,
     color: active ? C.atxt : C.tm,
     borderBottom: active ? `2px solid ${C.atxt}` : "2px solid transparent",
     marginBottom: "-1px",
   });
 
+  // Tabs disponíveis
+  const tabs = [
+    { id: "import", label: "⬆ Importar" },
+    { id: "verify", label: "🔍 Verificação de Leds" },
+    ...(isMestre ? [{ id: "history", label: `📋 Histórico${history.length > 0 ? ` (${history.length})` : ""}` }] : []),
+  ];
+
   return (
-    <div style={{ padding: "30px 36px", maxWidth: 780 }}>
+    <div style={{ padding: "30px 36px", maxWidth: 820 }}>
       <div style={{ marginBottom: 16 }}>
-        <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>
-          Importar Planilha
-        </h1>
+        <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Importar Planilha</h1>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", borderBottom: `1px solid ${C.b1}`, marginBottom: 20 }}>
-        <button style={tabStyle(tab === "import")} onClick={() => setTab("import")}>
-          ⬆ Importar
-        </button>
-        <button style={tabStyle(tab === "history")} onClick={() => setTab("history")}>
-          📋 Planilhas Importadas {history.length > 0 && `(${history.length})`}
-        </button>
+      <div style={{ display: "flex", borderBottom: `1px solid ${C.b1}`, marginBottom: 22 }}>
+        {tabs.map((t) => (
+          <button key={t.id} style={tabStyle(tab === t.id)} onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
       </div>
 
-      {/* ABA IMPORTAR */}
+      {/* ── ABA IMPORTAR ── */}
       {tab === "import" && (
         <>
           {done && (
-            <div style={{ ...S.card, padding: "12px 16px", marginBottom: 16, color: "#34D399", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#091E12", border: "1px solid #34D39933" }}>
-              <span>✓ Importação realizada!</span>
+            <div style={{ ...S.card, padding: "14px 18px", marginBottom: 16, background: "#091E12", border: "1px solid #34D39933" }}>
+              <div style={{ color: "#34D399", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>✓ Importação concluída!</div>
+              <div style={{ color: C.tm, fontSize: 12, marginBottom: 10 }}>
+                <span style={{ color: "#34D399" }}>{doneInfo.imported} importados</span>
+                {doneInfo.skipped > 0 && <span> · <span style={{ color: "#FBBF24" }}>{doneInfo.skipped} pulados (CPF duplicado)</span></span>}
+              </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { setDone(false); setTab("history"); }} style={{ background: "#0D2B1A", color: "#34D399", border: "1px solid #34D39944", borderRadius: 7, padding: "5px 13px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                  Ver histórico ▶
-                </button>
-                <button onClick={() => setPage("review")} style={{ background: "#0D2B1A", color: "#34D399", border: "1px solid #34D39944", borderRadius: 7, padding: "5px 13px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                  Ver clientes ▶
-                </button>
+                {isMestre && <button onClick={() => { setDone(false); setTab("history"); }} style={{ background: "#0D2B1A", color: "#34D399", border: "1px solid #34D39944", borderRadius: 7, padding: "5px 13px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Ver histórico ▶</button>}
+                <button onClick={() => setPage("review")} style={{ background: "#0D2B1A", color: "#34D399", border: "1px solid #34D39944", borderRadius: 7, padding: "5px 13px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Ver clientes ▶</button>
               </div>
             </div>
           )}
-          {err && (
-            <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "11px 14px", marginBottom: 16, color: "#F87171", fontSize: 13 }}>
-              ⚠ {err}
-            </div>
-          )}
+          {err && <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "11px 14px", marginBottom: 16, color: "#F87171", fontSize: 13 }}>⚠ {err}</div>}
           <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
             <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Modelo de Planilha</div>
-            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>
-              Colunas: Nome*, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email, Matricula, TipoLead, Observacao
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>Colunas: Nome*, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email, Matricula, TipoLead, Observacao</div>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 14, lineHeight: 1.8 }}>
+              TipoLead: {[["FGTS","#4F8EF7"],["Empréstimo do Trabalhador","#A78BFA"],["Empréstimo do Bolsa Família","#F472B6"],["Saque Complementar","#FB923C"],["INSS","#34D399"],["Bolsa Família","#F59E0B"],["Outro","#9CA3AF"]].map(([l,c],i,a) => (
+                <span key={l}><span style={{ color: c }}>{l}</span>{i < a.length-1 ? ", " : ""}</span>
+              ))}
             </div>
-            <div style={{ color: C.tm, fontSize: 11, marginBottom: 14 }}>
-              TipoLead: <span style={{ color: "#4F8EF7" }}>FGTS</span>, <span style={{ color: "#A78BFA" }}>Empréstimo do Trabalhador</span>, <span style={{ color: "#F472B6" }}>Empréstimo do Bolsa Família</span>, <span style={{ color: "#FB923C" }}>Saque Complementar</span>, <span style={{ color: "#34D399" }}>INSS</span>, <span style={{ color: "#F59E0B" }}>Bolsa Família</span>, <span style={{ color: "#9CA3AF" }}>Outro</span>
-            </div>
-            <button onClick={dl} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>
-              ⬇ Baixar modelo CSV
-            </button>
+            <button onClick={dlModelo} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>⬇ Baixar modelo CSV</button>
           </div>
           <div style={{ ...S.card, padding: "22px" }}>
-            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Selecionar arquivo</div>
+            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Selecionar arquivo</div>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>CPFs duplicados serão pulados automaticamente.</div>
             <input ref={fRef} type="file" accept=".csv,.txt" onChange={hf} style={{ color: C.ts, fontSize: 13, marginBottom: 16, display: "block" }} />
             {prev.length > 0 && (
               <>
@@ -2042,13 +2009,13 @@ function ImportPage({ contacts, setContacts, setPage }) {
                 <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 16, borderRadius: 8, border: `1px solid ${C.b1}` }}>
                   {prev.slice(0, 50).map((c, i) => {
                     const lc = LEAD_COLOR[c.leadType] || "#9CA3AF";
+                    const cpfClean = (c.cpf || "").replace(/\D/g, "");
+                    const isDup = cpfClean && contacts.some((x) => (x.cpf || "").replace(/\D/g, "") === cpfClean);
                     return (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderBottom: i < prev.length - 1 ? `1px solid ${C.deep}` : "none" }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: lc + "18", color: lc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
-                          {ini(c.name)}
-                        </div>
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderBottom: i < prev.length - 1 ? `1px solid ${C.deep}` : "none", opacity: isDup ? 0.4 : 1 }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: lc + "18", color: lc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ini(c.name)}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ color: C.tp, fontSize: 12, fontWeight: 500 }}>{c.name}</div>
+                          <div style={{ color: C.tp, fontSize: 12, fontWeight: 500 }}>{c.name} {isDup && <span style={{ color: "#FBBF24", fontSize: 10 }}>· CPF duplicado</span>}</div>
                           <div style={{ color: C.tm, fontSize: 10.5 }}>{c.cpf}{c.phone ? " · " + c.phone : ""}</div>
                         </div>
                         <span style={{ color: lc, fontSize: 10.5, flexShrink: 0 }}>{c.leadType}</span>
@@ -2066,41 +2033,82 @@ function ImportPage({ contacts, setContacts, setPage }) {
         </>
       )}
 
-      {/* ABA HISTÓRICO */}
-      {tab === "history" && (
+      {/* ── ABA VERIFICAÇÃO DE LEDS ── */}
+      {tab === "verify" && (
+        <div>
+          <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
+            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Todos os Leads do Sistema</div>
+            <div style={{ color: C.tm, fontSize: 12, marginBottom: 16 }}>
+              {contacts.length} lead{contacts.length !== 1 ? "s" : ""} cadastrado{contacts.length !== 1 ? "s" : ""} no total.
+            </div>
+            <button
+              onClick={() => exportCSV(contacts, `nexp_todos_leads_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`)}
+              style={{ ...S.btn(C.acc, "#fff"), padding: "10px 20px", fontSize: 13 }}
+            >
+              ⬇ Baixar todos os leads ({contacts.length})
+            </button>
+          </div>
+          {/* Resumo por tipo */}
+          <div style={{ ...S.card, padding: "22px" }}>
+            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Resumo por tipo de Lead</div>
+            {LEAD_TYPES.map((t) => {
+              const n = contacts.filter((c) => c.leadType === t).length;
+              if (!n) return null;
+              const col = LEAD_COLOR[t] || "#9CA3AF";
+              const pct = Math.round((n / contacts.length) * 100);
+              return (
+                <div key={t} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                    <span style={{ color: col, fontSize: 12 }}>{t}</span>
+                    <span style={{ color: C.tm, fontSize: 11 }}>{n} · {pct}%</span>
+                  </div>
+                  <div style={{ background: C.b1, borderRadius: 4, height: 5 }}>
+                    <div style={{ width: pct + "%", height: "100%", borderRadius: 4, background: col }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── ABA HISTÓRICO (só mestre) ── */}
+      {tab === "history" && isMestre && (
         <div>
           {history.length === 0 ? (
             <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
               <div style={{ fontSize: 36, opacity: 0.3, marginBottom: 12 }}>📋</div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhuma planilha importada ainda</div>
             </div>
-          ) : (
-            history.map((entry) => (
-              <div key={entry.id} style={{ ...S.card, padding: "18px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ fontSize: 28, flexShrink: 0 }}>📄</div>
+          ) : history.map((entry) => (
+            <div key={entry.id} style={{ ...S.card, padding: "18px 20px", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ fontSize: 26, flexShrink: 0 }}>📄</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: C.tp, fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{entry.name}</div>
+                  <div style={{ color: C.tp, fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{entry.name}</div>
                   <div style={{ color: C.tm, fontSize: 11.5 }}>
-                    {entry.count} cliente{entry.count !== 1 ? "s" : ""} · {entry.date}
+                    {entry.count} importado{entry.count !== 1 ? "s" : ""}
+                    {entry.skipped > 0 && <span style={{ color: "#FBBF24" }}> · {entry.skipped} pulados</span>}
+                    {" · "}{entry.date}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                   <button
-                    onClick={() => downloadHistory(entry)}
-                    style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, padding: "7px 13px", fontSize: 12 }}
-                  >
-                    ⬇ Baixar
-                  </button>
+                    onClick={() => exportCSV(entry.contacts, `nexp_${entry.name}`)}
+                    style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, padding: "7px 12px", fontSize: 12 }}
+                  >⬇ Baixar</button>
                   <button
-                    onClick={() => deleteHistory(entry)}
-                    style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "7px 13px", fontSize: 12 }}
-                  >
-                    🗑 Apagar
-                  </button>
+                    onClick={async () => {
+                      if (!window.confirm(`Apagar os ${entry.count} leads de "${entry.name}" do sistema?`)) return;
+                      for (const c of entry.contacts) { try { await deleteContact(String(c.id)); } catch {} }
+                      saveHistory(history.filter((h) => h.id !== entry.id));
+                    }}
+                    style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "7px 12px", fontSize: 12 }}
+                  >🗑 Apagar</button>
                 </div>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -4950,7 +4958,7 @@ export default function App() {
           <AddClient setContacts={setContacts} setPage={setPage} />
         )}
         {page === "import" && (
-          <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPage} />
+          <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPage} currentUser={currentUser} />
         )}
         {page === "review" && (
           <ReviewClient contacts={contacts} setContacts={setContacts} />
