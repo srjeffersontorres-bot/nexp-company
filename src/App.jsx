@@ -5075,13 +5075,14 @@ function ChatPage({ currentUser, users, presence }) {
     return () => unsub();
   }, []);
 
-  // Filtrar mensagens por tab
-  const messages = tab === "geral"
+  // Filtrar mensagens por tab — exclui mensagens do tipo shake da exibição
+  const messages = (tab === "geral"
     ? allMessages.filter(m => !m.toId)
     : allMessages.filter(m =>
         (m.authorId === myId && m.toId === tab) ||
         (m.authorId === tab && m.toId === myId)
-      );
+      )
+  ).filter(m => m.type !== "shake");
 
   // Detectar nova mensagem para flash
   const lastMsgId = useRef(null);
@@ -5133,11 +5134,54 @@ function ChatPage({ currentUser, users, presence }) {
     if (e.key === "Escape") { setShowQuick(false); setShowEmoji(false); }
   };
 
-  const shake = () => {
+  const shakeCountRef = useRef(0);
+  const shakeTimerRef = useRef(null);
+
+  const playNotifSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Dois bipes curtos
+      [0, 0.18].forEach(offset => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        osc.type = "sine";
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.15);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime + offset + 0.15);
+      });
+    } catch(e) {}
+  };
+
+  const shake = async () => {
+    if (tab === "geral" || !tab) return;
+    if (shakeCountRef.current >= 5) return;
+
+    shakeCountRef.current += 1;
     setShakeLocal(true);
     setTimeout(() => setShakeLocal(false), 800);
-    send("🔔 Atenção!");
+    playNotifSound();
+
+    // Envia sinal especial via Firestore que o destinatário detecta
+    await sendChatMessage({
+      text: "",
+      type: "shake",
+      authorId: myId,
+      authorName: currentUser.name || currentUser.email,
+      authorRole: currentUser.role,
+      toId: tab,
+    });
+
+    // Reseta o contador após 60 segundos
+    clearTimeout(shakeTimerRef.current);
+    shakeTimerRef.current = setTimeout(() => {
+      shakeCountRef.current = 0;
+    }, 60000);
   };
+
+  const shakesLeft = 5 - (shakeCountRef.current || 0);
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
@@ -5254,9 +5298,26 @@ function ChatPage({ currentUser, users, presence }) {
               </div>
               {/* Botão chamar atenção — DM apenas */}
               <button onClick={shake}
-                title="Chamar atenção"
-                style={{ marginLeft: "auto", background: "#2D1515", border: "1px solid #EF444433", color: "#F87171", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                disabled={shakeCountRef.current >= 5}
+                title={shakeCountRef.current >= 5 ? "Limite atingido (5x por minuto)" : `Chamar atenção (${5 - shakeCountRef.current} restantes)`}
+                style={{
+                  marginLeft: "auto",
+                  background: shakeCountRef.current >= 5 ? C.deep : "#2D1515",
+                  border: shakeCountRef.current >= 5 ? `1px solid ${C.b2}` : "1px solid #EF444433",
+                  color: shakeCountRef.current >= 5 ? C.td : "#F87171",
+                  borderRadius: 8, padding: "6px 12px", cursor: shakeCountRef.current >= 5 ? "not-allowed" : "pointer",
+                  fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6,
+                  opacity: shakeCountRef.current >= 5 ? 0.5 : 1,
+                  transition: "all 0.2s",
+                }}>
                 🔔 Chamar atenção
+                <span style={{
+                  background: shakeCountRef.current >= 5 ? C.b2 : "#EF444422",
+                  color: shakeCountRef.current >= 5 ? C.td : "#F87171",
+                  fontSize: 10, padding: "1px 6px", borderRadius: 9, fontWeight: 700,
+                }}>
+                  {5 - shakeCountRef.current}/5
+                </span>
               </button>
             </>
           ) : null}
@@ -5466,6 +5527,24 @@ export default function App() {
     };
   }, [currentUser]); // eslint-disable-line
 
+  // ── Som de notificação global ─────────────────────────────────
+  const playGlobalSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.18].forEach(offset => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        osc.type = "sine";
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.15);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime + offset + 0.15);
+      });
+    } catch(e) {}
+  };
+
   // ── Ouvir chat para indicador de não lidas e shake ────────────
   useEffect(() => {
     if (!currentUser) return;
@@ -5475,14 +5554,28 @@ export default function App() {
       if (page !== "chat") {
         const newCount = relevant.length;
         if (newCount > lastChatCount.current) {
-          setUnreadChat(n => n + (newCount - lastChatCount.current));
+          const newMsgs = relevant.slice(lastChatCount.current);
+          // Conta apenas mensagens normais para badge
+          const normalNew = newMsgs.filter(m => m.type !== "shake");
+          if (normalNew.length > 0) setUnreadChat(n => n + normalNew.length);
+
           const lastMsg = relevant[relevant.length - 1];
           if (lastMsg) {
             setFlashUserId(lastMsg.authorId);
             setTimeout(() => setFlashUserId(null), 3000);
-            if (lastMsg.toId === myId && lastMsg.authorRole === "mestre") {
+          }
+
+          // Detecta mensagem de shake direcionada a mim
+          const shakeMsg = newMsgs.find(m => m.type === "shake" && m.toId === myId);
+          if (shakeMsg) {
+            setShake(true);
+            setTimeout(() => setShake(false), 1000);
+            playGlobalSound();
+          } else if (lastMsg && lastMsg.toId === myId && lastMsg.type !== "shake") {
+            // Mensagem normal recebida — shake suave apenas do mestre
+            if (lastMsg.authorRole === "mestre") {
               setShake(true);
-              setTimeout(() => setShake(false), 1000);
+              setTimeout(() => setShake(false), 600);
             }
           }
         }
