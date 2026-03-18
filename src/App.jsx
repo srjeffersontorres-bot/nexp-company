@@ -1180,99 +1180,84 @@ function CCard({ contact, onUpdate, onDelete }) {
   const [open, setOpen] = useState(false);
   const [ed, setEd] = useState(false);
   const [sc, setSc] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ ...contact });
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const save = () => {
-    onUpdate(form);
-    setEd(false);
-  };
+
+  const save = () => { onUpdate(form); setEd(false); };
+
+  // Emojis — máx 3
   const tog = (e) => {
     const r = contact.reactions || [];
-    onUpdate({
-      ...contact,
-      reactions: r.includes(e) ? r.filter((x) => x !== e) : [...r, e],
+    let newR;
+    if (r.includes(e)) {
+      newR = r.filter((x) => x !== e);
+    } else {
+      if (r.length >= 3) return; // bloqueia se já tem 3
+      newR = [...r, e];
+    }
+    onUpdate({ ...contact, reactions: newR });
+  };
+
+  // Múltiplos tipos de lead
+  const togLead = (t) => {
+    const leads = contact.extraLeads || [];
+    const newLeads = leads.includes(t) ? leads.filter(x => x !== t) : [...leads, t];
+    onUpdate({ ...contact, extraLeads: newLeads });
+  };
+
+  // Copiar CPF
+  const copyCPF = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(contact.cpf || "").then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     });
   };
+
   const lc = LEAD_COLOR[contact.leadType] || "#9CA3AF";
+  const allLeads = [contact.leadType, ...(contact.extraLeads || [])].filter(Boolean);
+
   return (
     <div style={{ ...S.card, marginBottom: 10, overflow: "hidden" }}>
       <div
-        onClick={() => {
-          setOpen((o) => !o);
-          if (ed) setEd(false);
-        }}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "12px 15px",
-          cursor: "pointer",
-          userSelect: "none",
-        }}
+        onClick={() => { setOpen((o) => !o); if (ed) setEd(false); }}
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 15px", cursor: "pointer", userSelect: "none" }}
       >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: lc + "1A",
-            color: lc,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 12,
-            fontWeight: 700,
-            flexShrink: 0,
-            border: `1.5px solid ${lc}33`,
-          }}
-        >
+        <div style={{ width: 36, height: 36, borderRadius: "50%", background: lc + "1A", color: lc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, border: `1.5px solid ${lc}33` }}>
           {ini(contact.name)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              color: C.tp,
-              fontSize: 13.5,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div style={{ color: C.tp, fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 6 }}>
             {contact.name}
+            {/* Emojis ao lado do nome */}
+            {(contact.reactions || []).length > 0 && (
+              <span style={{ fontSize: 13 }}>{(contact.reactions || []).join("")}</span>
+            )}
           </div>
-          <div style={{ color: C.tm, fontSize: 11.5, marginTop: 1 }}>
+          <div style={{ color: C.tm, fontSize: 11.5, marginTop: 1, display: "flex", alignItems: "center", gap: 6 }}>
             {contact.cpf}
+            {contact.cpf && (
+              <button
+                onClick={copyCPF}
+                style={{ background: "none", border: "none", cursor: "pointer", color: copied ? "#34D399" : C.td, fontSize: 11, padding: "0 2px", flexShrink: 0 }}
+                title="Copiar CPF"
+              >
+                {copied ? "✓" : "⎘"}
+              </button>
+            )}
             {contact.phone ? " · " + contact.phone : ""}
           </div>
         </div>
-        {(contact.reactions || []).length > 0 && (
-          <div style={{ display: "flex", gap: 2 }}>
-            {(contact.reactions || []).slice(0, 4).map((e, i) => (
-              <span key={i} style={{ fontSize: 13 }}>
-                {e}
-              </span>
-            ))}
-          </div>
-        )}
         <LeadBadge c={contact} />
         <StatusBadge status={contact.status} />
-        <span style={{ color: C.td, fontSize: 11, marginLeft: 4 }}>
-          {open ? "▲" : "▼"}
-        </span>
+        <span style={{ color: C.td, fontSize: 11, marginLeft: 4 }}>{open ? "▲" : "▼"}</span>
       </div>
       {open && (
         <div style={{ borderTop: `1px solid ${C.b1}`, padding: "16px" }}>
           {!ed ? (
             <>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3,1fr)",
-                  gap: "10px 18px",
-                  marginBottom: 14,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px 18px", marginBottom: 14 }}>
                 {[
                   ["Email", contact.email || "—"],
                   ["CNPJ", contact.cnpj || "—"],
@@ -1282,68 +1267,74 @@ function CCard({ contact, onUpdate, onDelete }) {
                   ["Tel 3", contact.phone3 || "—"],
                 ].map(([l, v]) => (
                   <div key={l}>
-                    <div
-                      style={{ color: C.tm, fontSize: 10.5, marginBottom: 2 }}
-                    >
-                      {l}
-                    </div>
+                    <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 2 }}>{l}</div>
                     <div style={{ color: C.ts, fontSize: 12.5 }}>{v}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Status */}
               <div style={{ marginBottom: 12 }}>
-                <div
-                  style={{
-                    color: C.tm,
-                    fontSize: 10.5,
-                    marginBottom: 6,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Status
-                </div>
+                <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {CLIENT_STATUS.map((s) => {
                     const st = STATUS_STYLE[s];
                     const sel = contact.status === s;
                     return (
-                      <button
-                        key={s}
-                        onClick={() => onUpdate({ ...contact, status: s })}
-                        style={{
-                          background: sel ? st.bg : C.deep,
-                          color: sel ? st.color : C.tm,
-                          border: sel
-                            ? `1px solid ${st.color}44`
-                            : `1px solid ${C.b2}`,
-                          borderRadius: 20,
-                          padding: "4px 10px",
-                          fontSize: 10.5,
-                          cursor: "pointer",
-                          fontWeight: sel ? 600 : 400,
-                          transition: "all 0.12s",
-                        }}
-                      >
+                      <button key={s} onClick={() => onUpdate({ ...contact, status: s })}
+                        style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}44` : `1px solid ${C.b2}`, borderRadius: 20, padding: "4px 10px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
                         {s}
                       </button>
                     );
                   })}
                 </div>
               </div>
+
+              {/* Tipos de Lead adicionais */}
               <div style={{ marginBottom: 12 }}>
-                <div
-                  style={{
-                    color: C.tm,
-                    fontSize: 10.5,
-                    marginBottom: 6,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Reações
+                <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Tipos de Lead
+                  <span style={{ color: C.td, fontSize: 10, marginLeft: 6, textTransform: "none" }}>Principal: <span style={{ color: lc }}>{contact.leadType}</span></span>
                 </div>
-                <EmojiBar reactions={contact.reactions || []} onToggle={tog} />
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {LEAD_TYPES.filter(t => t !== contact.leadType && t !== "Outro").map((t) => {
+                    const col = LEAD_COLOR[t] || "#9CA3AF";
+                    const sel = (contact.extraLeads || []).includes(t);
+                    return (
+                      <button key={t} onClick={() => togLead(t)}
+                        style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}44` : `1px solid ${C.b2}`, borderRadius: 20, padding: "4px 10px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+                        {sel ? "✓ " : "+ "}{t}
+                      </button>
+                    );
+                  })}
+                </div>
+                {allLeads.length > 1 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+                    {allLeads.map((t, i) => {
+                      const col = LEAD_COLOR[t] || "#9CA3AF";
+                      return <span key={i} style={{ background: col + "18", color: col, fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 700, border: `1px solid ${col}33` }}>{t}</span>;
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Emojis — máx 3 */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Reações <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>({(contact.reactions||[]).length}/3)</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {EMOJIS.map((e) => {
+                    const a = (contact.reactions || []).includes(e);
+                    const maxed = (contact.reactions || []).length >= 3 && !a;
+                    return (
+                      <button key={e} onClick={() => tog(e)} disabled={maxed}
+                        style={{ background: a ? "#1E2A45" : C.deep, border: a ? "1px solid #4F8EF766" : `1px solid ${C.b2}`, borderRadius: 8, padding: "4px 7px", cursor: maxed ? "not-allowed" : "pointer", fontSize: 15, transform: a ? "scale(1.15)" : "scale(1)", transition: "all 0.12s", opacity: maxed ? 0.3 : 1 }}>
+                        {e}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <div
@@ -4274,23 +4265,26 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         uid = await createOperator(form.email, form.password);
       } catch (e) {
         if (e.code === "auth/email-already-in-use") {
-          // Tenta fazer login para obter o UID do usuário existente
-          // Usa instância secundária para não deslogar o mestre
-          const { initializeApp, getApps } = await import("firebase/app");
-          const { getAuth: getAuth2, signInWithEmailAndPassword: signIn2 } = await import("firebase/auth");
-          const secondApp = getApps().find(a => a.name === "reauth") ||
-            initializeApp({
-              apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-              authDomain: "nexpcompany-9a7ba.firebaseapp.com",
-              projectId: "nexpcompany-9a7ba",
-              storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
-              messagingSenderId: "1043432853586",
-              appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
-            }, "reauth");
-          const auth2 = getAuth2(secondApp);
-          const cred = await signIn2(auth2, form.email, form.password);
-          uid = cred.user.uid;
-          reativado = true;
+          // Busca UID pelo email no Firestore (usuário foi excluído mas ainda existe no Auth)
+          const existing = await getUserProfile(null).catch(() => null);
+          // Procura nos usuários carregados
+          const found = users.find(u => u.email === form.email);
+          if (found) {
+            uid = found.uid || found.id;
+            reativado = true;
+          } else {
+            // Busca no Firestore diretamente
+            const { collection, query, where, getDocs } = await import("firebase/firestore");
+            const { db } = await import("./firebase");
+            const q = query(collection(db, "users"), where("email", "==", form.email));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+              uid = snap.docs[0].id;
+              reativado = true;
+            } else {
+              throw new Error("Email já existe no Auth mas o perfil não foi encontrado.");
+            }
+          }
         } else {
           throw e;
         }
