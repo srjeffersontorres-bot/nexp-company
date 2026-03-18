@@ -19,6 +19,9 @@ import {
   setPresence,
   removePresence,
   listenPresence,
+  listenGroups,
+  saveGroup,
+  deleteGroup,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -742,7 +745,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
-    { id: "chat", label: "Chat da Equipe", icon: "💬", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
       id: "config",
@@ -879,6 +881,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         })}
       </nav>
       <div style={{ padding: "0 12px" }}>
+        {/* Perfil */}
         <div
           style={{
             background: C.deep,
@@ -948,6 +951,26 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         </div>
 
         {/* WhatsApp support */}
+        <button
+          onClick={() => setPage("chat")}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 9,
+            padding: "9px 12px", borderRadius: 9, border: "none", cursor: "pointer",
+            background: page === "chat" ? "#0D1C38" : C.deep,
+            marginTop: 8, marginBottom: 0, transition: "background 0.12s",
+          }}
+        >
+          <span style={{ fontSize: 18 }}>🧑‍💻</span>
+          <div style={{ flex: 1, textAlign: "left" }}>
+            <div style={{ color: page === "chat" ? C.atxt : C.ts, fontSize: 11, fontWeight: 700 }}>CHAT CORBAN</div>
+            <div style={{ color: C.td, fontSize: 9.5 }}>Equipe em tempo real</div>
+          </div>
+          {unreadChat > 0 && (
+            <span style={{ background: "#16A34A", color: "#fff", fontSize: 9, padding: "1px 6px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>
+              {unreadChat}
+            </span>
+          )}
+        </button>
         <a
           href="https://wa.me/5584981323542"
           target="_blank"
@@ -5008,9 +5031,6 @@ const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","�
 function ChatPage({ currentUser, users, presence }) {
   const myId = currentUser.uid || currentUser.id;
   const isMestre = currentUser.role === "mestre";
-
-  // Para mestre: pode abrir DM com qualquer um
-  // Para master/operador: pode abrir DM com o mestre
   const mestreUser = users.find(u => u.role === "mestre");
   const dmList = isMestre
     ? users.filter(u => (u.uid || u.id) !== myId)
@@ -5018,6 +5038,7 @@ function ChatPage({ currentUser, users, presence }) {
 
   const [tab, setTab] = useState("geral");
   const [allMessages, setAllMessages] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [text, setText] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
@@ -5025,25 +5046,53 @@ function ChatPage({ currentUser, users, presence }) {
   const [attachment, setAttachment] = useState(null);
   const [shakeLocal, setShakeLocal] = useState(false);
   const [flashAuthor, setFlashAuthor] = useState(null);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [editGroup, setEditGroup] = useState(null);
+  const [groupName, setGroupName] = useState("");
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [groupPhoto, setGroupPhoto] = useState(null);
+  const [viewPhoto, setViewPhoto] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
+  const groupPhotoRef = useRef(null);
+  const lastMsgId = useRef(null);
+
+  const playNotif = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.setValueAtTime(880, ctx.currentTime);
+      o.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
+      g.gain.setValueAtTime(0.3, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      o.start(); o.stop(ctx.currentTime + 0.3);
+    } catch {}
+  };
 
   useEffect(() => {
     const unsub = listenChat((msgs) => setAllMessages(msgs));
     return () => unsub();
   }, []);
 
-  // Filtrar mensagens por tab
-  const messages = tab === "geral"
-    ? allMessages.filter(m => !m.toId)
-    : allMessages.filter(m =>
-        (m.authorId === myId && m.toId === tab) ||
-        (m.authorId === tab && m.toId === myId)
-      );
+  useEffect(() => {
+    const unsub = listenGroups((data) => setGroups(data));
+    return () => unsub();
+  }, []);
 
-  // Detectar nova mensagem para flash
-  const lastMsgId = useRef(null);
+  const myGroups = groups.filter(g => g.members?.includes(myId));
+
+  const messages = tab === "geral"
+    ? allMessages.filter(m => !m.toId && !m.groupId)
+    : tab.startsWith("grp_")
+      ? allMessages.filter(m => m.groupId === tab)
+      : allMessages.filter(m =>
+          (m.authorId === myId && m.toId === tab) ||
+          (m.authorId === tab && m.toId === myId)
+        );
+
   useEffect(() => {
     if (!messages.length) return;
     const last = messages[messages.length - 1];
@@ -5056,16 +5105,13 @@ function ChatPage({ currentUser, users, presence }) {
     }
   }, [messages]); // eslint-disable-line
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const handleFile = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setAttachment({ name: f.name, url: ev.target.result, type: f.type });
-    reader.readAsDataURL(f);
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = (ev) => setAttachment({ name: f.name, url: ev.target.result, type: f.type });
+    r.readAsDataURL(f);
   };
 
   const send = async (msg) => {
@@ -5073,17 +5119,14 @@ function ChatPage({ currentUser, users, presence }) {
     if (!content && !attachment) return;
     setText(""); setShowQuick(false); setShowEmoji(false);
     const payload = {
-      text: content || "",
-      authorId: myId,
-      authorName: currentUser.name || currentUser.email,
-      authorRole: currentUser.role,
-      ...(tab !== "geral" && { toId: tab }),
+      text: content || "", authorId: myId,
+      authorName: currentUser.name || currentUser.email, authorRole: currentUser.role,
+      ...(tab !== "geral" && !tab.startsWith("grp_") && { toId: tab }),
+      ...(tab.startsWith("grp_") && { groupId: tab }),
       ...(attachment && { attachment }),
     };
-    setAttachment(null);
-    if (fileRef.current) fileRef.current.value = "";
-    await sendChatMessage(payload);
-    inputRef.current?.focus();
+    setAttachment(null); if (fileRef.current) fileRef.current.value = "";
+    await sendChatMessage(payload); inputRef.current?.focus();
   };
 
   const handleKey = (e) => {
@@ -5092,53 +5135,145 @@ function ChatPage({ currentUser, users, presence }) {
     if (e.key === "Escape") { setShowQuick(false); setShowEmoji(false); }
   };
 
-  const shake = () => {
-    setShakeLocal(true);
+  const shakeAndSound = async () => {
+    setShakeLocal(true); playNotif();
     setTimeout(() => setShakeLocal(false), 800);
-    send("🔔 Atenção!");
+    await send("🔔 Atenção!");
+  };
+
+  const openCreateGroup = () => {
+    setEditGroup(null); setGroupName(""); setGroupMembers([myId]); setGroupPhoto(null); setShowGroupModal(true);
+  };
+
+  const openEditGroup = (g) => {
+    setEditGroup(g); setGroupName(g.name); setGroupMembers(g.members || []); setGroupPhoto(g.photo || null); setShowGroupModal(true);
+  };
+
+  const saveGroupModal = async () => {
+    if (!groupName.trim()) return;
+    const id = editGroup?.id || ("grp_" + Date.now());
+    const prev = editGroup;
+    await saveGroup({ id, name: groupName, members: groupMembers, photo: groupPhoto || null, adminId: editGroup?.adminId || myId });
+    if (prev && prev.photo !== groupPhoto && groupPhoto) {
+      await sendChatMessage({ groupId: id, text: "📷 " + (currentUser.name || currentUser.email) + " alterou a foto do grupo.", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, system: true });
+    }
+    if (prev && prev.name !== groupName) {
+      await sendChatMessage({ groupId: id, text: "✏️ Nome alterado para "" + groupName + "".", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, system: true });
+    }
+    setShowGroupModal(false); setTab(id);
+  };
+
+  const handleGroupPhoto = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader(); r.onload = (ev) => setGroupPhoto(ev.target.result); r.readAsDataURL(f);
   };
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
-  const filteredQuick = filter
-    ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase()))
-    : QUICK_MESSAGES;
-
-  const tabUser = tab !== "geral" ? dmList.find(u => (u.uid || u.id) === tab) : null;
-
-  // Contar não lidas por DM
-  const unreadDM = (uid) => allMessages.filter(m =>
-    m.toId === myId && m.authorId === uid && !m.read
-  ).length;
+  const filteredQuick = filter ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase())) : QUICK_MESSAGES;
+  const tabUser = !tab.startsWith("grp_") && tab !== "geral" ? [...dmList, ...users].find(u => (u.uid || u.id) === tab) : null;
+  const tabGroup = tab.startsWith("grp_") ? myGroups.find(g => g.id === tab) : null;
+  const unreadDM = (uid) => allMessages.filter(m => m.toId === myId && m.authorId === uid).length;
 
   return (
     <div style={{ display: "flex", height: "100vh", background: C.bg, animation: shakeLocal ? "shake 0.6s ease" : "none" }}>
 
-      {/* ── Sidebar de conversas ── */}
-      <div style={{ width: 220, borderRight: `1px solid ${C.b1}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        {/* Header */}
-        <div style={{ padding: "16px 14px 10px", borderBottom: `1px solid ${C.b1}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 22 }}>🧑‍💻</span>
-            <div>
-              <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>CHAT CORBAN</div>
-              <div style={{ color: C.tm, fontSize: 10 }}>Equipe em tempo real</div>
+      {/* Modal ver foto */}
+      {viewPhoto && (
+        <div onClick={() => setViewPhoto(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src={viewPhoto} alt="" style={{ maxWidth: "90vw", maxHeight: "90vh", borderRadius: 12 }} />
+        </div>
+      )}
+
+      {/* Modal criar/editar grupo */}
+      {showGroupModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.card, border: , borderRadius: 16, padding: "24px", width: "100%", maxWidth: 400 }}>
+            <div style={{ color: C.tp, fontSize: 15, fontWeight: 700, marginBottom: 16 }}>{editGroup ? "✏️ Editar Grupo" : "➕ Criar Grupo"}</div>
+            {/* Foto do grupo */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <div onClick={() => groupPhotoRef.current?.click()} style={{ width: 56, height: 56, borderRadius: "50%", background: groupPhoto ? "transparent" : C.abg, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, border:  }}>
+                {groupPhoto ? <img src={groupPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "📷"}
+              </div>
+              <div>
+                <div style={{ color: C.ts, fontSize: 12 }}>Foto do grupo</div>
+                <div style={{ color: C.td, fontSize: 10.5 }}>Clique para alterar</div>
+              </div>
+              <input ref={groupPhotoRef} type="file" accept="image/*" onChange={handleGroupPhoto} style={{ display: "none" }} />
+            </div>
+            {/* Nome */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ color: C.tm, fontSize: 11, display: "block", marginBottom: 5 }}>Nome do grupo</label>
+              <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Ex: Time de Vendas" style={{ ...S.input }} />
+            </div>
+            {/* Membros */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ color: C.tm, fontSize: 11, display: "block", marginBottom: 8 }}>Membros</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {users.map(u => {
+                  const uid = u.uid || u.id;
+                  const sel = groupMembers.includes(uid);
+                  const rc = roleColor[u.role] || C.atxt;
+                  return (
+                    <button key={uid} onClick={() => setGroupMembers(p => sel ? p.filter(x => x !== uid) : [...p, uid])}
+                      style={{ background: sel ? rc + "1A" : C.deep, color: sel ? rc : C.tm, border: sel ?  : , borderRadius: 20, padding: "5px 10px", fontSize: 11.5, cursor: uid === myId ? "not-allowed" : "pointer", fontWeight: sel ? 600 : 400 }}>
+                      {sel ? "✓ " : ""}{u.name || u.email}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowGroupModal(false)} style={{ ...S.btn("transparent", C.tm), border: , flex: 1, padding: "9px" }}>Cancelar</button>
+              {editGroup && isMestre && (
+                <button onClick={async () => { await deleteGroup(editGroup.id); setShowGroupModal(false); setTab("geral"); }}
+                  style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "9px 14px" }}>🗑</button>
+              )}
+              <button onClick={saveGroupModal} style={{ ...S.btn(C.acc, "#fff"), flex: 1, padding: "9px" }}>Salvar</button>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Lista de conversas */}
+      {/* Sidebar conversas */}
+      <div style={{ width: 210, borderRight: , display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "12px 12px 8px", borderBottom:  }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 20 }}>🧑‍💻</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: C.tp, fontSize: 12, fontWeight: 700 }}>CHAT CORBAN</div>
+              <div style={{ color: C.tm, fontSize: 9.5 }}>Equipe em tempo real</div>
+            </div>
+          </div>
+        </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {/* Grupo */}
-          <button onClick={() => setTab("geral")}
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", background: tab === "geral" ? C.abg : "transparent", border: "none", cursor: "pointer", textAlign: "left", borderBottom: `1px solid ${C.b1}` }}>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.acc + "1A", color: C.acc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🌐</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: tab === "geral" ? C.atxt : C.ts, fontSize: 12, fontWeight: 600 }}>Geral</div>
+          {/* Geral */}
+          <button onClick={() => setTab("geral")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: tab === "geral" ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.acc + "1A", color: C.acc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>🌐</div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={{ color: tab === "geral" ? C.atxt : C.ts, fontSize: 11.5, fontWeight: 600 }}>Geral</div>
               <div style={{ color: C.tm, fontSize: 10 }}>Todos os membros</div>
             </div>
           </button>
-
+          {/* Grupos */}
+          {myGroups.map(g => (
+            <button key={g.id} onClick={() => setTab(g.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: tab === g.id ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", overflow: "hidden", flexShrink: 0, background: C.abg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {g.photo ? <img src={g.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 15 }}>👥</span>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                <div style={{ color: tab === g.id ? C.atxt : C.ts, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.name}</div>
+                <div style={{ color: C.tm, fontSize: 10 }}>{g.members?.length || 0} membros</div>
+              </div>
+            </button>
+          ))}
+          {/* Criar grupo (só mestre) */}
+          {isMestre && (
+            <button onClick={openCreateGroup} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.deep, color: C.tm, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>＋</div>
+              <div style={{ color: C.tm, fontSize: 11, textAlign: "left" }}>Criar grupo</div>
+            </button>
+          )}
           {/* DMs */}
           {dmList.map(u => {
             const uid = u.uid || u.id;
@@ -5148,130 +5283,115 @@ function ChatPage({ currentUser, users, presence }) {
             const isFlashing = flashAuthor === uid;
             const isActive = tab === uid;
             return (
-              <button key={uid} onClick={() => setTab(uid)}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", background: isActive ? C.abg : "transparent", border: "none", cursor: "pointer", textAlign: "left", borderBottom: `1px solid ${C.b1}` }}>
+              <button key={uid} onClick={() => setTab(uid)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: isActive ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
                 <div style={{ position: "relative", flexShrink: 0 }}>
-                  <div style={{
-                    width: 34, height: 34, borderRadius: "50%",
-                    background: isFlashing ? "#16A34A" : rc + "1A",
-                    color: isFlashing ? "#fff" : rc,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 12, fontWeight: 700,
-                    animation: isFlashing ? "pulse 0.8s infinite" : "none",
-                    transition: "background 0.3s",
-                  }}>
-                    {ini(u.name || u.email || "?")}
-                  </div>
-                  {isOnline && (
-                    <div style={{ position: "absolute", bottom: 0, right: 0, width: 9, height: 9, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}` }} />
+                  {u.photo ? (
+                    <img src={u.photo} alt="" onClick={e => { e.stopPropagation(); setViewPhoto(u.photo); }} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", cursor: "zoom-in" }} />
+                  ) : (
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: isFlashing ? "#16A34A" : rc + "1A", color: isFlashing ? "#fff" : rc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, animation: isFlashing ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>
+                      {ini(u.name || u.email || "?")}
+                    </div>
                   )}
+                  {isOnline && <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border:  }} />}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: isActive ? C.atxt : C.ts, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {u.name || u.email}
-                  </div>
-                  <div style={{ color: isOnline ? "#16A34A" : C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 3 }}>
-                    {isOnline ? <><span>●</span> online</> : roleLabel[u.role]}
-                  </div>
+                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                  <div style={{ color: isActive ? C.atxt : C.ts, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name || u.email}</div>
+                  <div style={{ color: isOnline ? "#16A34A" : C.td, fontSize: 9.5 }}>{isOnline ? "● online" : roleLabel[u.role]}</div>
                 </div>
-                {unread > 0 && (
-                  <span style={{ background: "#16A34A", color: "#fff", fontSize: 9, padding: "1px 5px", borderRadius: 9, fontWeight: 700, animation: "pulse 1s infinite" }}>{unread}</span>
-                )}
+                {unread > 0 && <span style={{ background: "#16A34A", color: "#fff", fontSize: 9, padding: "1px 5px", borderRadius: 9, fontWeight: 700, animation: "pulse 1s infinite" }}>{unread}</span>}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* ── Área de conversa ── */}
+      {/* Área de conversa */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Header da conversa */}
-        <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          {tab === "geral" ? (
+        {/* Header */}
+        <div style={{ padding: "10px 18px", borderBottom: , display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {tab === "geral" && (
+            <><span style={{ fontSize: 18 }}>🌐</span><div><div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>Chat Geral</div><div style={{ color: C.tm, fontSize: 10 }}>{users.length} membros</div></div></>
+          )}
+          {tabGroup && (
             <>
-              <span style={{ fontSize: 20 }}>🌐</span>
-              <div>
-                <div style={{ color: C.tp, fontSize: 14, fontWeight: 700 }}>Chat Geral</div>
-                <div style={{ color: C.tm, fontSize: 11 }}>{users.length} membros</div>
+              <div style={{ position: "relative", cursor: tabGroup.photo ? "zoom-in" : "default" }} onClick={() => tabGroup.photo && setViewPhoto(tabGroup.photo)}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", background: C.abg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {tabGroup.photo ? <img src={tabGroup.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 18 }}>👥</span>}
+                </div>
               </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>{tabGroup.name}</div>
+                <div style={{ color: C.tm, fontSize: 10 }}>{tabGroup.members?.length || 0} membros</div>
+              </div>
+              {(isMestre || tabGroup.adminId === myId) && (
+                <button onClick={() => openEditGroup(tabGroup)} style={{ background: C.deep, border: , color: C.tm, borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>⚙ Editar</button>
+              )}
             </>
-          ) : tabUser ? (
+          )}
+          {tabUser && (
             <>
               <div style={{ position: "relative" }}>
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: (roleColor[tabUser.role] || C.atxt) + "1A", color: roleColor[tabUser.role] || C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>
-                  {ini(tabUser.name || "?")}
-                </div>
-                {presence[tab]?.online && (
-                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16A34A", border: `2px solid ${C.bg}` }} />
+                {tabUser.photo ? (
+                  <img src={tabUser.photo} alt="" onClick={() => setViewPhoto(tabUser.photo)} style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", cursor: "zoom-in" }} />
+                ) : (
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: (roleColor[tabUser.role] || C.atxt) + "1A", color: roleColor[tabUser.role] || C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{ini(tabUser.name || "?")}</div>
                 )}
+                {presence[tab]?.online && <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16A34A", border:  }} />}
               </div>
-              <div>
-                <div style={{ color: C.tp, fontSize: 14, fontWeight: 700 }}>{tabUser.name || tabUser.email}</div>
-                <div style={{ color: presence[tab]?.online ? "#16A34A" : C.tm, fontSize: 11 }}>
-                  {presence[tab]?.online ? "● online" : roleLabel[tabUser.role]}
-                </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>{tabUser.name || tabUser.email}</div>
+                <div style={{ color: presence[tab]?.online ? "#16A34A" : C.tm, fontSize: 10 }}>{presence[tab]?.online ? "● online" : roleLabel[tabUser.role]}</div>
               </div>
-              {/* Botão chamar atenção — DM apenas */}
-              <button onClick={shake}
-                title="Chamar atenção"
-                style={{ marginLeft: "auto", background: "#2D1515", border: "1px solid #EF444433", color: "#F87171", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                🔔 Chamar atenção
-              </button>
+              <button onClick={shakeAndSound} style={{ background: "#2D1515", border: "1px solid #EF444433", color: "#F87171", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🔔 Chamar</button>
             </>
-          ) : null}
+          )}
         </div>
 
         {/* Mensagens */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 18px", display: "flex", flexDirection: "column", gap: 5 }}>
           {messages.length === 0 && (
             <div style={{ textAlign: "center", padding: "40px 0", color: C.tm }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>💬</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{tab === "geral" ? "Seja o primeiro a falar!" : "Início da conversa privada"}</div>
-              <div style={{ fontSize: 11, marginTop: 4 }}>Digite / para mensagens de incentivo</div>
+              <div style={{ fontSize: 34, marginBottom: 10 }}>💬</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{tab === "geral" ? "Seja o primeiro a falar!" : "Início da conversa"}</div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>/ para atalhos de incentivo</div>
             </div>
           )}
           {messages.map((msg) => {
             const isMine = msg.authorId === myId;
             const rc = roleColor[msg.authorRole] || C.atxt;
-            const time = msg.createdAt?.seconds
-              ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-              : "";
+            const time = msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+            const authorUser = users.find(u => (u.uid || u.id) === msg.authorId);
+            if (msg.system) return (
+              <div key={msg.id} style={{ textAlign: "center", color: C.tm, fontSize: 10.5, padding: "4px 0" }}>— {msg.text} —</div>
+            );
             return (
               <div key={msg.id} style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 7 }}>
                 {!isMine && (
-                  <div style={{
-                    width: 28, height: 28, borderRadius: "50%",
-                    background: flashAuthor === msg.authorId ? "#16A34A" : rc + "1A",
-                    color: flashAuthor === msg.authorId ? "#fff" : rc,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 10, fontWeight: 700, flexShrink: 0,
-                    animation: flashAuthor === msg.authorId ? "pulse 0.8s infinite" : "none",
-                    transition: "background 0.3s",
-                  }}>
-                    {ini(msg.authorName || "?")}
+                  <div style={{ position: "relative", flexShrink: 0, cursor: authorUser?.photo ? "zoom-in" : "default" }} onClick={() => authorUser?.photo && setViewPhoto(authorUser.photo)}>
+                    {authorUser?.photo ? (
+                      <img src={authorUser.photo} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: flashAuthor === msg.authorId ? "#16A34A" : rc + "1A", color: flashAuthor === msg.authorId ? "#fff" : rc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, animation: flashAuthor === msg.authorId ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>
+                        {ini(msg.authorName || "?")}
+                      </div>
+                    )}
                   </div>
                 )}
-                <div style={{ maxWidth: "70%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
-                  {!isMine && (
-                    <span style={{ color: rc, fontSize: 10, fontWeight: 700, marginBottom: 2, paddingLeft: 3 }}>
-                      {msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}
-                    </span>
-                  )}
-                  <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px", padding: "8px 13px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
+                <div style={{ maxWidth: "68%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
+                  {!isMine && <span style={{ color: rc, fontSize: 9.5, fontWeight: 700, marginBottom: 2, paddingLeft: 3 }}>{msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}</span>}
+                  <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : , borderRadius: isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px", padding: "8px 12px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
                     {msg.text && <div>{msg.text}</div>}
                     {msg.attachment && (
                       <div style={{ marginTop: msg.text ? 6 : 0 }}>
                         {msg.attachment.type?.startsWith("image/") ? (
-                          <img src={msg.attachment.url} alt={msg.attachment.name} style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, display: "block" }} />
+                          <img src={msg.attachment.url} alt="" onClick={() => setViewPhoto(msg.attachment.url)} style={{ maxWidth: 160, maxHeight: 160, borderRadius: 7, display: "block", cursor: "zoom-in" }} />
                         ) : (
-                          <a href={msg.attachment.url} download={msg.attachment.name} style={{ color: isMine ? "#fff" : C.atxt, fontSize: 12, textDecoration: "underline" }}>
-                            📎 {msg.attachment.name}
-                          </a>
+                          <a href={msg.attachment.url} download={msg.attachment.name} style={{ color: isMine ? "#fff" : C.atxt, fontSize: 11.5, textDecoration: "underline" }}>📎 {msg.attachment.name}</a>
                         )}
                       </div>
                     )}
                   </div>
-                  <span style={{ color: C.td, fontSize: 9.5, marginTop: 2 }}>{time}</span>
+                  <span style={{ color: C.td, fontSize: 9, marginTop: 2 }}>{time}</span>
                 </div>
               </div>
             );
@@ -5281,18 +5401,16 @@ function ChatPage({ currentUser, users, presence }) {
 
         {/* Mensagens rápidas */}
         {showQuick && (
-          <div style={{ margin: "0 20px 6px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 10, overflow: "hidden", maxHeight: 200, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "7px 12px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: C.tm, fontSize: 11 }}>⚡ Clique para enviar</span>
-              <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "3px 8px", fontSize: 11, flex: 1 }} />
-              <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 13 }}>✕</button>
+          <div style={{ margin: "0 18px 5px", background: C.card, border: , borderRadius: 10, overflow: "hidden", maxHeight: 190, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "7px 10px", borderBottom: , display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: C.tm, fontSize: 10.5 }}>⚡ Clique para enviar</span>
+              <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "3px 7px", fontSize: 10.5, flex: 1 }} />
+              <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 12 }}>✕</button>
             </div>
             <div style={{ overflowY: "auto", flex: 1 }}>
               {filteredQuick.map((m, i) => (
-                <div key={i} onClick={() => send(m)}
-                  style={{ padding: "8px 14px", cursor: "pointer", fontSize: 12, color: C.ts, borderBottom: `1px solid ${C.b1}` }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.abg}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div key={i} onClick={() => send(m)} style={{ padding: "7px 12px", cursor: "pointer", fontSize: 11.5, color: C.ts, borderBottom:  }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.abg} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   {m}
                 </div>
               ))}
@@ -5302,10 +5420,8 @@ function ChatPage({ currentUser, users, presence }) {
 
         {/* Prévia anexo */}
         {attachment && (
-          <div style={{ margin: "0 20px 5px", padding: "7px 12px", background: C.card, borderRadius: 8, border: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10 }}>
-            {attachment.type?.startsWith("image/") ? (
-              <img src={attachment.url} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 5 }} />
-            ) : <span style={{ fontSize: 20 }}>📎</span>}
+          <div style={{ margin: "0 18px 5px", padding: "7px 10px", background: C.card, borderRadius: 8, border: , display: "flex", alignItems: "center", gap: 10 }}>
+            {attachment.type?.startsWith("image/") ? <img src={attachment.url} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5 }} /> : <span style={{ fontSize: 18 }}>📎</span>}
             <span style={{ color: C.ts, fontSize: 11, flex: 1 }}>{attachment.name}</span>
             <button onClick={() => { setAttachment(null); if (fileRef.current) fileRef.current.value = ""; }} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 13 }}>✕</button>
           </div>
@@ -5313,40 +5429,33 @@ function ChatPage({ currentUser, users, presence }) {
 
         {/* Emojis */}
         {showEmoji && (
-          <div style={{ margin: "0 20px 5px", display: "flex", flexWrap: "wrap", gap: 5, padding: "7px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}` }}>
+          <div style={{ margin: "0 18px 5px", display: "flex", flexWrap: "wrap", gap: 5, padding: "7px 10px", background: C.card, borderRadius: 9, border:  }}>
             {CHAT_EMOJIS.map((e, i) => (
-              <button key={i} onClick={() => setText(t => t + e)}
-                style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", borderRadius: 5, padding: "2px 3px" }}
-                onMouseEnter={ev => ev.currentTarget.style.background = C.b2}
-                onMouseLeave={ev => ev.currentTarget.style.background = "none"}>
-                {e}
-              </button>
+              <button key={i} onClick={() => setText(t => t + e)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", borderRadius: 5, padding: "2px" }}
+                onMouseEnter={ev => ev.currentTarget.style.background = C.b2} onMouseLeave={ev => ev.currentTarget.style.background = "none"}>{e}</button>
             ))}
           </div>
         )}
 
         {/* Input */}
-        <div style={{ padding: "8px 20px 14px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
+        <div style={{ padding: "7px 18px 12px", borderTop: , flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }}
-              style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>⚡</button>
-            <button onClick={() => setShowEmoji(p => !p)}
-              style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>😊</button>
+            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} style={{ background: showQuick ? C.abg : C.deep, border: , color: showQuick ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>⚡</button>
+            <button onClick={() => setShowEmoji(p => !p)} style={{ background: showEmoji ? C.abg : C.deep, border: , color: showEmoji ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>😊</button>
             {tab !== "geral" && (
-              <button onClick={() => fileRef.current?.click()}
-                style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>📎</button>
+              <button onClick={() => fileRef.current?.click()} style={{ background: attachment ? C.abg : C.deep, border: , color: attachment ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>📎</button>
             )}
             <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={handleFile} style={{ display: "none" }} />
             <textarea ref={inputRef} value={text}
               onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
               onKeyDown={handleKey}
-              placeholder={tab === "geral" ? "Mensagem para a equipe... (/ para atalhos)" : `Mensagem para ${tabUser?.name || "usuário"}...`}
+              placeholder={tab === "geral" ? "Mensagem para a equipe... (/)" : }
               rows={1}
-              style={{ ...S.input, flex: 1, resize: "none", borderRadius: 9, padding: "8px 12px", fontSize: 13, lineHeight: 1.5 }} />
+              style={{ ...S.input, flex: 1, resize: "none", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, lineHeight: 1.5 }} />
             <button onClick={() => send()} disabled={!text.trim() && !attachment}
-              style={{ ...S.btn(text.trim() || attachment ? C.acc : C.deep, text.trim() || attachment ? "#fff" : C.td), padding: "8px 14px", fontSize: 14, flexShrink: 0, opacity: text.trim() || attachment ? 1 : 0.5 }}>➤</button>
+              style={{ ...S.btn(text.trim() || attachment ? C.acc : C.deep, text.trim() || attachment ? "#fff" : C.td), padding: "8px 13px", fontSize: 14, flexShrink: 0, opacity: text.trim() || attachment ? 1 : 0.5 }}>➤</button>
           </div>
-          <div style={{ color: C.td, fontSize: 10, marginTop: 3 }}>Enter para enviar · Shift+Enter nova linha · / para atalhos</div>
+          <div style={{ color: C.td, fontSize: 9.5, marginTop: 3 }}>Enter enviar · Shift+Enter nova linha · / atalhos</div>
         </div>
       </div>
     </div>

@@ -129,6 +129,27 @@ export async function sendChatMessage(msg) {
   await setDoc(doc(db, "chat", id), { ...msg, id, createdAt: serverTimestamp() });
 }
 
+// ── Grupos ────────────────────────────────────────────────────────
+
+/** Ouve todos os grupos em tempo real. */
+export function listenGroups(callback) {
+  return onSnapshot(collection(db, "groups"), (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  });
+}
+
+/** Cria ou atualiza um grupo. */
+export async function saveGroup(group) {
+  const id = group.id || String(Date.now());
+  await setDoc(doc(db, "groups", id), { ...group, id, updatedAt: serverTimestamp() }, { merge: true });
+  return id;
+}
+
+/** Remove um grupo. */
+export async function deleteGroup(id) {
+  await deleteDoc(doc(db, "groups", id));
+}
+
 // ── Users (Profiles) ─────────────────────────────────────────────
 
 /** Ouve todos os perfis de usuário em tempo real. */
