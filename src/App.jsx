@@ -5188,11 +5188,11 @@ function ChatPage({ currentUser, users, presence }) {
       {/* Modal criar/editar grupo */}
       {showGroupModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: C.card, border: , borderRadius: 16, padding: "24px", width: "100%", maxWidth: 400 }}>
+          <div style={{ background: C.card, border: `1px solid ${C.b1}`, borderRadius: 16, padding: "24px", width: "100%", maxWidth: 400 }}>
             <div style={{ color: C.tp, fontSize: 15, fontWeight: 700, marginBottom: 16 }}>{editGroup ? "✏️ Editar Grupo" : "➕ Criar Grupo"}</div>
             {/* Foto do grupo */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-              <div onClick={() => groupPhotoRef.current?.click()} style={{ width: 56, height: 56, borderRadius: "50%", background: groupPhoto ? "transparent" : C.abg, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, border:  }}>
+              <div onClick={() => groupPhotoRef.current?.click()} style={{ width: 56, height: 56, borderRadius: "50%", background: groupPhoto ? "transparent" : C.abg, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, border: `2px dashed ${C.b2}` }}>
                 {groupPhoto ? <img src={groupPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "📷"}
               </div>
               <div>
@@ -5224,7 +5224,7 @@ function ChatPage({ currentUser, users, presence }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setShowGroupModal(false)} style={{ ...S.btn("transparent", C.tm), border: , flex: 1, padding: "9px" }}>Cancelar</button>
+              <button onClick={() => setShowGroupModal(false)} style={{ ...S.btn("transparent", C.tm), border: `1px solid ${C.b2}`, flex: 1, padding: "9px" }}>Cancelar</button>
               {editGroup && isMestre && (
                 <button onClick={async () => { await deleteGroup(editGroup.id); setShowGroupModal(false); setTab("geral"); }}
                   style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "9px 14px" }}>🗑</button>
@@ -5324,7 +5324,7 @@ function ChatPage({ currentUser, users, presence }) {
                 <div style={{ color: C.tm, fontSize: 10 }}>{tabGroup.members?.length || 0} membros</div>
               </div>
               {(isMestre || tabGroup.adminId === myId) && (
-                <button onClick={() => openEditGroup(tabGroup)} style={{ background: C.deep, border: , color: C.tm, borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>⚙ Editar</button>
+                <button onClick={() => openEditGroup(tabGroup)} style={{ background: C.deep, border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11 }}>⚙ Editar</button>
               )}
             </>
           )}
@@ -5401,7 +5401,7 @@ function ChatPage({ currentUser, users, presence }) {
 
         {/* Mensagens rápidas */}
         {showQuick && (
-          <div style={{ margin: "0 18px 5px", background: C.card, border: , borderRadius: 10, overflow: "hidden", maxHeight: 190, display: "flex", flexDirection: "column" }}>
+          <div style={{ margin: "0 18px 5px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 10, overflow: "hidden", maxHeight: 190, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "7px 10px", borderBottom: , display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: C.tm, fontSize: 10.5 }}>⚡ Clique para enviar</span>
               <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "3px 7px", fontSize: 10.5, flex: 1 }} />
@@ -5420,7 +5420,7 @@ function ChatPage({ currentUser, users, presence }) {
 
         {/* Prévia anexo */}
         {attachment && (
-          <div style={{ margin: "0 18px 5px", padding: "7px 10px", background: C.card, borderRadius: 8, border: , display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ margin: "0 18px 5px", padding: "7px 10px", background: C.card, borderRadius: 8, border: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10 }}>
             {attachment.type?.startsWith("image/") ? <img src={attachment.url} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5 }} /> : <span style={{ fontSize: 18 }}>📎</span>}
             <span style={{ color: C.ts, fontSize: 11, flex: 1 }}>{attachment.name}</span>
             <button onClick={() => { setAttachment(null); if (fileRef.current) fileRef.current.value = ""; }} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 13 }}>✕</button>
@@ -5440,10 +5440,10 @@ function ChatPage({ currentUser, users, presence }) {
         {/* Input */}
         <div style={{ padding: "7px 18px 12px", borderTop: , flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} style={{ background: showQuick ? C.abg : C.deep, border: , color: showQuick ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>⚡</button>
-            <button onClick={() => setShowEmoji(p => !p)} style={{ background: showEmoji ? C.abg : C.deep, border: , color: showEmoji ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>😊</button>
+            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>⚡</button>
+            <button onClick={() => setShowEmoji(p => !p)} style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>😊</button>
             {tab !== "geral" && (
-              <button onClick={() => fileRef.current?.click()} style={{ background: attachment ? C.abg : C.deep, border: , color: attachment ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>📎</button>
+              <button onClick={() => fileRef.current?.click()} style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>📎</button>
             )}
             <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={handleFile} style={{ display: "none" }} />
             <textarea ref={inputRef} value={text}
