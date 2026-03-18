@@ -5023,7 +5023,7 @@ function ChatPage({ currentUser, users, presence }) {
   const [showEmoji, setShowEmoji] = useState(false);
   const [filter, setFilter] = useState("");
   const [attachment, setAttachment] = useState(null);
-  const [shakeLocal, setShakeLocal] = useState(false);
+  const shakeLocal = false;
   const [flashAuthor, setFlashAuthor] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
