@@ -5094,8 +5094,6 @@ function ChatPage({ currentUser, users, presence }) {
 
   const shake = async () => {
     if (tab === "geral" || !tab) return;
-    setShakeLocal(true);
-    setTimeout(() => setShakeLocal(false), 800);
     // Envia sinal de shake via Firestore para o destinatário
     await sendChatMessage({
       text: "🔔",
