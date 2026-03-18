@@ -1,4 +1,19 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import {
+  auth,
+  db,
+  listenContacts,
+  saveContact,
+  deleteContact,
+  listenUsers,
+  saveUserProfile,
+  getUserProfile,
+  login as firebaseLogin,
+  logout as firebaseLogout,
+  createOperator,
+  resetUserPassword,
+} from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
 const LEAD_TYPES = [
@@ -532,24 +547,37 @@ function CommSim({ compact = false }) {
 }
 
 // ── Login ──────────────────────────────────────────────────────
-function LoginPage({ users, onLogin }) {
+function LoginPage({ onLogin }) {
   const [un, setUn] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [show, setShow] = useState(false);
-  const go = () => {
-    const u = users.find(
-      (x) => (x.username === un || x.email === un) && x.password === pw,
-    );
-    if (!u) {
+  const [loading, setLoading] = useState(false);
+  const go = async () => {
+    if (!un.trim() || !pw.trim()) {
+      setErr("Preencha e-mail e senha.");
+      return;
+    }
+    setLoading(true);
+    setErr("");
+    try {
+      const firebaseUser = await firebaseLogin(un.trim(), pw);
+      const profile = await getUserProfile(firebaseUser.uid);
+      if (!profile) {
+        setErr("Perfil não encontrado. Entre em contato com o suporte.");
+        setLoading(false);
+        return;
+      }
+      if (profile.active === false) {
+        setErr("Usuário inativo. Entre em contato com o suporte.");
+        setLoading(false);
+        return;
+      }
+      onLogin({ ...profile, uid: firebaseUser.uid });
+    } catch (e) {
       setErr("Usuário ou senha inválidos.");
-      return;
     }
-    if (u.active === false) {
-      setErr("Usuário inativo. Entre em contato com o suporte.");
-      return;
-    }
-    onLogin(u);
+    setLoading(false);
   };
   return (
     <div
@@ -680,14 +708,17 @@ function LoginPage({ users, onLogin }) {
           </div>
           <button
             onClick={go}
+            disabled={loading}
             style={{
               ...S.btn("#3B6EF5", "#fff"),
               width: "100%",
               padding: "12px",
               fontSize: 14,
+              opacity: loading ? 0.7 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            Entrar
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </div>
 
@@ -1629,9 +1660,12 @@ function ContactsPage({ contacts, setContacts }) {
           (c.matricula || "").toLowerCase().includes(q.toLowerCase()),
       )
     : [];
-  const upd = (u) =>
-    setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
-  const rem = (id) => setContacts((cs) => cs.filter((c) => c.id !== id));
+  const upd = async (u) => {
+    await saveContact(u);
+  };
+  const rem = async (id) => {
+    await deleteContact(id);
+  };
   return (
     <div style={{ padding: "30px 36px", maxWidth: 820 }}>
       <div style={{ marginBottom: 20 }}>
@@ -1726,16 +1760,21 @@ function AddClient({ setContacts, setPage }) {
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState("");
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) {
       setErr("Nome é obrigatório.");
       return;
     }
     setErr("");
-    setContacts((cs) => [...cs, { ...form, id: Date.now(), reactions: [] }]);
-    setOk(true);
-    setForm(makeBlank());
-    setTimeout(() => setOk(false), 3000);
+    const newContact = { ...form, id: Date.now(), reactions: [] };
+    try {
+      await saveContact(newContact);
+      setOk(true);
+      setForm(makeBlank());
+      setTimeout(() => setOk(false), 3000);
+    } catch (e) {
+      setErr("Erro ao salvar: " + e.message);
+    }
   };
   const inp = (l, k, t = "text", ph = "", req = false) => (
     <div>
@@ -1948,15 +1987,17 @@ function ImportPage({ setContacts, setPage }) {
     };
     r.readAsText(f, "UTF-8");
   };
-  const conf = () => {
-    setContacts((cs) => [
-      ...cs,
-      ...prev.map((c, i) => ({ ...c, id: Date.now() + i, reactions: [] })),
-    ]);
-    setDone(true);
-    setPrev([]);
-    setFn("");
-    if (fRef.current) fRef.current.value = "";
+  const conf = async () => {
+    const newContacts = prev.map((c, i) => ({ ...c, id: Date.now() + i, reactions: [] }));
+    try {
+      await Promise.all(newContacts.map((c) => saveContact(c)));
+      setDone(true);
+      setPrev([]);
+      setFn("");
+      if (fRef.current) fRef.current.value = "";
+    } catch (e) {
+      setErr("Erro ao salvar: " + e.message);
+    }
   };
   return (
     <div style={{ padding: "30px 36px", maxWidth: 780 }}>
@@ -2188,8 +2229,10 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const cur = list[si];
   const nexts = list.slice(si + 1, si + 11);
   const lc = LEAD_COLOR[cur.leadType] || "#9CA3AF";
-  const upd = (u) =>
+  const upd = async (u) => {
+    await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
+  };
   const tog = (e) => {
     const r = cur.reactions || [];
     upd({
@@ -2990,7 +3033,8 @@ function PremiumNexp({ contacts, setContacts }) {
     setEditId(null);
     setEditForm(null);
   };
-  const saveEdit = () => {
+  const saveEdit = async () => {
+    await saveContact({ ...editForm });
     setContacts((cs) => cs.map((c) => (c.id === editId ? { ...editForm } : c)));
     closeEdit();
   };
@@ -3620,9 +3664,11 @@ function PremiumNexp({ contacts, setContacts }) {
                       Cancelar
                     </button>
                     <button
-                      onClick={() => {
-                        if (window.confirm("Remover este lead?"))
+                      onClick={async () => {
+                        if (window.confirm("Remover este lead?")) {
+                          await deleteContact(String(c.id));
                           setContacts((cs) => cs.filter((x) => x.id !== c.id));
+                        }
                         closeEdit();
                       }}
                       style={{
@@ -4870,9 +4916,42 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState(null);
-  const [contacts, setContacts] = useState(SAMPLE);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [contacts, setContacts] = useState([]);
   const [page, setPage] = useState("dashboard");
   const [theme, setTheme] = useState("Padrão");
+
+  // ── Persistência de sessão Firebase ──────────────────────────
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const profile = await getUserProfile(firebaseUser.uid);
+        if (profile && profile.active !== false) {
+          setCurrentUser({ ...profile, uid: firebaseUser.uid });
+        } else {
+          setCurrentUser(null);
+        }
+      } else {
+        setCurrentUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Ouvir contatos do Firestore em tempo real ─────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = listenContacts((data) => setContacts(data));
+    return () => unsub();
+  }, [currentUser]);
+
+  // ── Ouvir usuários do Firestore em tempo real ─────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = listenUsers((data) => setUsers(data));
+    return () => unsub();
+  }, [currentUser]);
 
   // Apply accent theme to module-level C so all components pick it up on re-render
   Object.assign(C, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
@@ -4903,17 +4982,36 @@ export default function App() {
     cursor: "pointer",
   });
 
+  if (authLoading)
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#060810",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#4F8EF7",
+          fontSize: 15,
+          fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
+        }}
+      >
+        Carregando...
+      </div>
+    );
+
   if (!currentUser)
     return (
       <LoginPage
-        users={users}
         onLogin={(u) => {
           setCurrentUser(u);
           setPage("dashboard");
         }}
       />
     );
-  const logout = () => {
+
+  const logout = async () => {
+    await firebaseLogout();
     setCurrentUser(null);
     setPage("dashboard");
   };
