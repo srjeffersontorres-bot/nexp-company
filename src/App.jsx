@@ -5454,27 +5454,29 @@ export default function App() {
     const myId = currentUser.uid || currentUser.id;
     const unsub = listenChat((msgs) => {
       const relevant = msgs.filter(m => !m.toId || m.toId === myId);
-      if (page !== "chat") {
-        const newCount = relevant.length;
-        if (newCount > lastChatCount.current) {
-          const newMsgs = relevant.slice(lastChatCount.current);
+      const newCount = relevant.length;
+      if (newCount > lastChatCount.current) {
+        const newMsgs = relevant.slice(lastChatCount.current);
+
+        // ── Shake: detecta SEMPRE, em qualquer página ──
+        const shakeSignal = newMsgs.find(m => m.type === "shake" && m.toId === myId);
+        if (shakeSignal) {
+          setShake(true);
+          setTimeout(() => setShake(false), 1000);
+        }
+
+        // ── Badge e flash: só quando fora do chat ──
+        if (page !== "chat") {
           const lastMsg = relevant[relevant.length - 1];
           if (lastMsg) {
             setFlashUserId(lastMsg.authorId);
             setTimeout(() => setFlashUserId(null), 3000);
           }
-          // Shake recebido — treme a tela do destinatário
-          const shakeSignal = newMsgs.find(m => m.type === "shake" && m.toId === myId);
-          if (shakeSignal) {
-            setShake(true);
-            setTimeout(() => setShake(false), 1000);
-          }
-          // Apenas mensagens normais contam pro badge
           const normalMsgs = newMsgs.filter(m => m.type !== "shake");
           if (normalMsgs.length > 0) setUnreadChat(n => n + normalMsgs.length);
         }
       }
-      lastChatCount.current = relevant.length;
+      lastChatCount.current = newCount;
     });
     return () => unsub();
   }, [currentUser, page]); // eslint-disable-line
