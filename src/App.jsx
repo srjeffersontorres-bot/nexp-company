@@ -15,6 +15,8 @@ import {
 const LEAD_TYPES = [
   "FGTS",
   "Empréstimo do Trabalhador",
+  "Empréstimo do Bolsa Família",
+  "Saque Complementar",
   "INSS",
   "Bolsa Família",
   "Outro",
@@ -42,6 +44,8 @@ const STATUS_STYLE = {
 const LEAD_COLOR = {
   FGTS: "#4F8EF7",
   "Empréstimo do Trabalhador": "#A78BFA",
+  "Empréstimo do Bolsa Família": "#F472B6",
+  "Saque Complementar": "#FB923C",
   INSS: "#34D399",
   "Bolsa Família": "#F59E0B",
   Outro: "#9CA3AF",
@@ -688,7 +692,7 @@ function LoginPage({ onLogin }) {
             >
               {err
                 ? "Problemas para entrar? Fale com o suporte"
-                : "Suporte Nexp Company"}
+                : "Suporte WhatsApp"}
             </div>
             <div
               style={{
@@ -1123,7 +1127,7 @@ function Dashboard({ contacts }) {
               marginBottom: 16,
             }}
           >
-            Tipos de lead
+            Tipos de Leds
           </div>
           {total === 0 ? (
             <div style={{ color: C.td, fontSize: 12 }}>Nenhum cliente.</div>
@@ -1863,13 +1867,25 @@ function AddClient({ setContacts, setPage }) {
 }
 
 // ── Import Page ────────────────────────────────────────────────
-function ImportPage({ setContacts, setPage }) {
+function ImportPage({ contacts, setContacts, setPage }) {
   const [prev, setPrev] = useState([]);
   const [fn, setFn] = useState("");
   const [done, setDone] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState("import"); // "import" | "history"
   const fRef = useRef();
+
+  // Histórico de importações salvo localmente
+  const [history, setHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_import_history") || "[]"); }
+    catch { return []; }
+  });
+
+  const saveHistory = (h) => {
+    setHistory(h);
+    localStorage.setItem("nexp_import_history", JSON.stringify(h));
+  };
 
   const dl = () => {
     const b = new Blob([EXAMPLE_CSV], { type: "text/csv;charset=utf-8;" });
@@ -1910,14 +1926,25 @@ function ImportPage({ setContacts, setPage }) {
     setLoading(true);
     setErr("");
     try {
+      const ts = Date.now();
       const newContacts = prev.map((c, i) => ({
         ...c,
-        id: String(Date.now() + i),
+        id: String(ts + i),
         reactions: [],
+        _importId: String(ts),
       }));
       for (const c of newContacts) {
         await saveContact(c);
       }
+      // Salvar no histórico
+      const entry = {
+        id: String(ts),
+        name: fn,
+        count: prev.length,
+        date: new Date().toLocaleString("pt-BR"),
+        contacts: newContacts,
+      };
+      saveHistory([entry, ...history]);
       setDone(true);
       setPrev([]);
       setFn("");
@@ -1927,207 +1954,155 @@ function ImportPage({ setContacts, setPage }) {
     }
     setLoading(false);
   };
+
+  const downloadHistory = (entry) => {
+    exportCSV(entry.contacts, `nexp_${entry.name}`);
+  };
+
+  const deleteHistory = async (entry) => {
+    if (!window.confirm(`Apagar os ${entry.count} clientes importados de "${entry.name}"?`)) return;
+    // Remove do Firestore
+    for (const c of entry.contacts) {
+      try { await deleteContact(String(c.id)); } catch {}
+    }
+    saveHistory(history.filter((h) => h.id !== entry.id));
+  };
+
+  const tabStyle = (active) => ({
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "9px 18px",
+    fontSize: 13,
+    fontWeight: active ? 600 : 400,
+    color: active ? C.atxt : C.tm,
+    borderBottom: active ? `2px solid ${C.atxt}` : "2px solid transparent",
+    marginBottom: "-1px",
+  });
+
   return (
     <div style={{ padding: "30px 36px", maxWidth: 780 }}>
-      <div style={{ marginBottom: 22 }}>
+      <div style={{ marginBottom: 16 }}>
         <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>
           Importar Planilha
         </h1>
       </div>
-      {done && (
-        <div
-          style={{
-            ...S.card,
-            padding: "12px 16px",
-            marginBottom: 16,
-            color: "#34D399",
-            fontSize: 13,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            background: "#091E12",
-            border: "1px solid #34D39933",
-          }}
-        >
-          <span>✓ Importação realizada!</span>
-          <button
-            onClick={() => setPage("review")}
-            style={{
-              background: "#0D2B1A",
-              color: "#34D399",
-              border: "1px solid #34D39944",
-              borderRadius: 7,
-              padding: "5px 13px",
-              fontSize: 12,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            Ver clientes ▶
-          </button>
-        </div>
-      )}
-      {err && (
-        <div
-          style={{
-            background: "#2D1515",
-            border: "1px solid #EF444433",
-            borderRadius: 8,
-            padding: "11px 14px",
-            marginBottom: 16,
-            color: "#F87171",
-            fontSize: 13,
-          }}
-        >
-          ⚠ {err}
-        </div>
-      )}
-      <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
-        <div
-          style={{
-            color: C.ts,
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 8,
-          }}
-        >
-          Modelo de Planilha
-        </div>
-        <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>
-          Colunas: Nome*, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email,
-          Matricula, TipoLead, Observacao
-        </div>
-        <div style={{ color: C.tm, fontSize: 11, marginBottom: 14 }}>
-          TipoLead: <span style={{ color: "#4F8EF7" }}>FGTS</span>,{" "}
-          <span style={{ color: "#A78BFA" }}>Empréstimo do Trabalhador</span>,{" "}
-          <span style={{ color: "#34D399" }}>INSS</span>,{" "}
-          <span style={{ color: "#F59E0B" }}>Bolsa Família</span>,{" "}
-          <span style={{ color: "#9CA3AF" }}>Outro</span>
-        </div>
-        <button
-          onClick={dl}
-          style={{
-            ...S.btn(C.abg, C.atxt),
-            border: `1px solid ${C.atxt}33`,
-            fontSize: 12,
-            padding: "7px 14px",
-          }}
-        >
-          ⬇ Baixar modelo CSV
+
+      {/* Tabs */}
+      <div style={{ display: "flex", borderBottom: `1px solid ${C.b1}`, marginBottom: 20 }}>
+        <button style={tabStyle(tab === "import")} onClick={() => setTab("import")}>
+          ⬆ Importar
+        </button>
+        <button style={tabStyle(tab === "history")} onClick={() => setTab("history")}>
+          📋 Planilhas Importadas {history.length > 0 && `(${history.length})`}
         </button>
       </div>
-      <div style={{ ...S.card, padding: "22px" }}>
-        <div
-          style={{
-            color: C.ts,
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 12,
-          }}
-        >
-          Selecionar arquivo
-        </div>
-        <input
-          ref={fRef}
-          type="file"
-          accept=".csv,.txt"
-          onChange={hf}
-          style={{
-            color: C.ts,
-            fontSize: 13,
-            marginBottom: 16,
-            display: "block",
-          }}
-        />
-        {prev.length > 0 && (
-          <>
-            <div style={{ color: "#34D399", fontSize: 12.5, marginBottom: 12 }}>
-              {prev.length} cliente{prev.length !== 1 ? "s" : ""} em{" "}
-              <span style={{ color: C.tm }}>{fn}</span>
+
+      {/* ABA IMPORTAR */}
+      {tab === "import" && (
+        <>
+          {done && (
+            <div style={{ ...S.card, padding: "12px 16px", marginBottom: 16, color: "#34D399", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#091E12", border: "1px solid #34D39933" }}>
+              <span>✓ Importação realizada!</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { setDone(false); setTab("history"); }} style={{ background: "#0D2B1A", color: "#34D399", border: "1px solid #34D39944", borderRadius: 7, padding: "5px 13px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                  Ver histórico ▶
+                </button>
+                <button onClick={() => setPage("review")} style={{ background: "#0D2B1A", color: "#34D399", border: "1px solid #34D39944", borderRadius: 7, padding: "5px 13px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                  Ver clientes ▶
+                </button>
+              </div>
             </div>
-            <div
-              style={{
-                maxHeight: 220,
-                overflowY: "auto",
-                marginBottom: 16,
-                borderRadius: 8,
-                border: `1px solid ${C.b1}`,
-              }}
-            >
-              {prev.slice(0, 50).map((c, i) => {
-                const lc = LEAD_COLOR[c.leadType] || "#9CA3AF";
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "8px 11px",
-                      borderBottom:
-                        i < prev.length - 1 ? `1px solid ${C.deep}` : "none",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "50%",
-                        background: lc + "18",
-                        color: lc,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 9,
-                        fontWeight: 700,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {ini(c.name)}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{ color: C.tp, fontSize: 12, fontWeight: 500 }}
-                      >
-                        {c.name}
-                      </div>
-                      <div style={{ color: C.tm, fontSize: 10.5 }}>
-                        {c.cpf}
-                        {c.phone ? " · " + c.phone : ""}
-                      </div>
-                    </div>
-                    <span style={{ color: lc, fontSize: 10.5, flexShrink: 0 }}>
-                      {c.leadType}
-                    </span>
-                  </div>
-                );
-              })}
-              {prev.length > 50 && (
-                <div
-                  style={{ color: C.tm, fontSize: 11, padding: "10px 12px" }}
-                >
-                  ...e mais {prev.length - 50}
-                </div>
-              )}
+          )}
+          {err && (
+            <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "11px 14px", marginBottom: 16, color: "#F87171", fontSize: 13 }}>
+              ⚠ {err}
             </div>
-            <button
-              onClick={conf}
-              disabled={loading}
-              style={{
-                ...S.btn(C.acc, "#fff"),
-                padding: "10px 22px",
-                fontSize: 13.5,
-                opacity: loading ? 0.7 : 1,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading
-                ? "Salvando..."
-                : `Importar ${prev.length} cliente${prev.length !== 1 ? "s" : ""}`}
+          )}
+          <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
+            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Modelo de Planilha</div>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>
+              Colunas: Nome*, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email, Matricula, TipoLead, Observacao
+            </div>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 14 }}>
+              TipoLead: <span style={{ color: "#4F8EF7" }}>FGTS</span>, <span style={{ color: "#A78BFA" }}>Empréstimo do Trabalhador</span>, <span style={{ color: "#F472B6" }}>Empréstimo do Bolsa Família</span>, <span style={{ color: "#FB923C" }}>Saque Complementar</span>, <span style={{ color: "#34D399" }}>INSS</span>, <span style={{ color: "#F59E0B" }}>Bolsa Família</span>, <span style={{ color: "#9CA3AF" }}>Outro</span>
+            </div>
+            <button onClick={dl} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>
+              ⬇ Baixar modelo CSV
             </button>
-          </>
-        )}
-      </div>
+          </div>
+          <div style={{ ...S.card, padding: "22px" }}>
+            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Selecionar arquivo</div>
+            <input ref={fRef} type="file" accept=".csv,.txt" onChange={hf} style={{ color: C.ts, fontSize: 13, marginBottom: 16, display: "block" }} />
+            {prev.length > 0 && (
+              <>
+                <div style={{ color: "#34D399", fontSize: 12.5, marginBottom: 12 }}>
+                  {prev.length} cliente{prev.length !== 1 ? "s" : ""} em <span style={{ color: C.tm }}>{fn}</span>
+                </div>
+                <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 16, borderRadius: 8, border: `1px solid ${C.b1}` }}>
+                  {prev.slice(0, 50).map((c, i) => {
+                    const lc = LEAD_COLOR[c.leadType] || "#9CA3AF";
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", borderBottom: i < prev.length - 1 ? `1px solid ${C.deep}` : "none" }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: lc + "18", color: lc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+                          {ini(c.name)}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: C.tp, fontSize: 12, fontWeight: 500 }}>{c.name}</div>
+                          <div style={{ color: C.tm, fontSize: 10.5 }}>{c.cpf}{c.phone ? " · " + c.phone : ""}</div>
+                        </div>
+                        <span style={{ color: lc, fontSize: 10.5, flexShrink: 0 }}>{c.leadType}</span>
+                      </div>
+                    );
+                  })}
+                  {prev.length > 50 && <div style={{ color: C.tm, fontSize: 11, padding: "10px 12px" }}>...e mais {prev.length - 50}</div>}
+                </div>
+                <button onClick={conf} disabled={loading} style={{ ...S.btn(C.acc, "#fff"), padding: "10px 22px", fontSize: 13.5, opacity: loading ? 0.7 : 1, cursor: loading ? "not-allowed" : "pointer" }}>
+                  {loading ? "Salvando..." : `Importar ${prev.length} cliente${prev.length !== 1 ? "s" : ""}`}
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ABA HISTÓRICO */}
+      {tab === "history" && (
+        <div>
+          {history.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
+              <div style={{ fontSize: 36, opacity: 0.3, marginBottom: 12 }}>📋</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhuma planilha importada ainda</div>
+            </div>
+          ) : (
+            history.map((entry) => (
+              <div key={entry.id} style={{ ...S.card, padding: "18px 20px", marginBottom: 12, display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ fontSize: 28, flexShrink: 0 }}>📄</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: C.tp, fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{entry.name}</div>
+                  <div style={{ color: C.tm, fontSize: 11.5 }}>
+                    {entry.count} cliente{entry.count !== 1 ? "s" : ""} · {entry.date}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => downloadHistory(entry)}
+                    style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, padding: "7px 13px", fontSize: 12 }}
+                  >
+                    ⬇ Baixar
+                  </button>
+                  <button
+                    onClick={() => deleteHistory(entry)}
+                    style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "7px 13px", fontSize: 12 }}
+                  >
+                    🗑 Apagar
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -4975,7 +4950,7 @@ export default function App() {
           <AddClient setContacts={setContacts} setPage={setPage} />
         )}
         {page === "import" && (
-          <ImportPage setContacts={setContacts} setPage={setPage} />
+          <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPage} />
         )}
         {page === "review" && (
           <ReviewClient contacts={contacts} setContacts={setContacts} />
