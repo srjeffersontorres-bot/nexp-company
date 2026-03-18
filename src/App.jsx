@@ -19,7 +19,6 @@ import {
   setPresence,
   removePresence,
   listenPresence,
-  uploadMedia,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
