@@ -4263,15 +4263,42 @@ function UsuariosTab({ users, setUsers, currentUser }) {
       setErr("Nome, CPF, email e senha são obrigatórios.");
       return;
     }
-    if (users.find((u) => u.email === form.email)) {
-      setErr("Email já cadastrado.");
-      return;
-    }
     setErr("");
     setOk("Criando usuário...");
     try {
-      const uid = await createOperator(form.email, form.password);
       const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+      let uid;
+      let reativado = false;
+
+      try {
+        uid = await createOperator(form.email, form.password);
+      } catch (e) {
+        if (e.code === "auth/email-already-in-use") {
+          // Tenta fazer login para obter o UID do usuário existente
+          const { signInWithEmailAndPassword } = await import("firebase/auth");
+          const { getAuth } = await import("firebase/auth");
+          const tempAuth = getAuth();
+          // Usa instância secundária para não deslogar o mestre
+          const { initializeApp, getApps } = await import("firebase/app");
+          const secondApp = getApps().find(a => a.name === "reauth") ||
+            initializeApp({
+              apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+              authDomain: "nexpcompany-9a7ba.firebaseapp.com",
+              projectId: "nexpcompany-9a7ba",
+              storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
+              messagingSenderId: "1043432853586",
+              appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
+            }, "reauth");
+          const { getAuth: getAuth2, signInWithEmailAndPassword: signIn2 } = await import("firebase/auth");
+          const auth2 = getAuth2(secondApp);
+          const cred = await signIn2(auth2, form.email, form.password);
+          uid = cred.user.uid;
+          reativado = true;
+        } else {
+          throw e;
+        }
+      }
+
       const newU = {
         id: uid, uid,
         username: form.email,
@@ -4282,10 +4309,11 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         photo: form.photo || null,
         createdBy: currentUser.uid || currentUser.id,
         active: true,
+        deleted: false,
       };
       await saveUserProfile(uid, newU);
 
-      // ── Enviar email de boas-vindas via EmailJS ──
+      // Enviar email de boas-vindas
       try {
         await fetch("https://api.emailjs.com/api/v1.0/email/send", {
           method: "POST",
@@ -4304,16 +4332,15 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             },
           }),
         });
-        flash("Usuário criado e email de boas-vindas enviado! ✉");
+        flash(reativado ? "Usuário reativado e email enviado! ✉" : "Usuário criado e email enviado! ✉");
       } catch {
-        flash("Usuário criado! (Email não pôde ser enviado)");
+        flash(reativado ? "Usuário reativado!" : "Usuário criado!");
       }
 
       setForm({ name: "", cpf: "", email: "", password: "", role: "indicado", photo: null });
       setMode("list");
     } catch (e) {
-      const msg = e.code === "auth/email-already-in-use" ? "Este email já está em uso." : e.message;
-      setErr("Erro: " + msg);
+      setErr("Erro: " + e.message);
       setOk("");
     }
   };
