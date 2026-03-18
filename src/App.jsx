@@ -5738,7 +5738,7 @@ function StoriesPage({ currentUser, users }) {
   };
 
   // Tick para atualizar o contador em tempo real
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setTick(n => n + 1), 1000);
     return () => clearInterval(t);
