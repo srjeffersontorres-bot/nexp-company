@@ -1182,28 +1182,43 @@ function CCard({ contact, onUpdate, onDelete }) {
   const [sc, setSc] = useState(false);
   const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({ ...contact });
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const save = () => { onUpdate(form); setEd(false); };
+  // Estado local para reactions e extraLeads — evita sobreposição
+  const [reactions, setReactions] = useState(contact.reactions || []);
+  const [extraLeads, setExtraLeads] = useState(contact.extraLeads || []);
+
+  // Sincroniza quando contact muda externamente (ex: outro cliente)
+  useEffect(() => {
+    setReactions(contact.reactions || []);
+    setExtraLeads(contact.extraLeads || []);
+    setForm({ ...contact });
+  }, [contact.id]); // eslint-disable-line
+
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const save = () => { onUpdate({ ...form, reactions, extraLeads }); setEd(false); };
 
   // Emojis — máx 3
   const tog = (e) => {
-    const r = contact.reactions || [];
-    let newR;
-    if (r.includes(e)) {
-      newR = r.filter((x) => x !== e);
-    } else {
-      if (r.length >= 3) return; // bloqueia se já tem 3
-      newR = [...r, e];
-    }
-    onUpdate({ ...contact, reactions: newR });
+    setReactions((prev) => {
+      let newR;
+      if (prev.includes(e)) {
+        newR = prev.filter((x) => x !== e);
+      } else {
+        if (prev.length >= 3) return prev;
+        newR = [...prev, e];
+      }
+      onUpdate({ ...contact, reactions: newR, extraLeads });
+      return newR;
+    });
   };
 
   // Múltiplos tipos de lead
   const togLead = (t) => {
-    const leads = contact.extraLeads || [];
-    const newLeads = leads.includes(t) ? leads.filter(x => x !== t) : [...leads, t];
-    onUpdate({ ...contact, extraLeads: newLeads });
+    setExtraLeads((prev) => {
+      const newLeads = prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t];
+      onUpdate({ ...contact, extraLeads: newLeads, reactions });
+      return newLeads;
+    });
   };
 
   // Copiar CPF
@@ -1216,7 +1231,7 @@ function CCard({ contact, onUpdate, onDelete }) {
   };
 
   const lc = LEAD_COLOR[contact.leadType] || "#9CA3AF";
-  const allLeads = [contact.leadType, ...(contact.extraLeads || [])].filter(Boolean);
+  const allLeads = [contact.leadType, ...extraLeads].filter(Boolean);
 
   return (
     <div style={{ ...S.card, marginBottom: 10, overflow: "hidden" }}>
@@ -1230,9 +1245,8 @@ function CCard({ contact, onUpdate, onDelete }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: C.tp, fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 6 }}>
             {contact.name}
-            {/* Emojis ao lado do nome */}
-            {(contact.reactions || []).length > 0 && (
-              <span style={{ fontSize: 13 }}>{(contact.reactions || []).join("")}</span>
+            {reactions.length > 0 && (
+              <span style={{ fontSize: 13 }}>{reactions.join("")}</span>
             )}
           </div>
           <div style={{ color: C.tm, fontSize: 11.5, marginTop: 1, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1281,7 +1295,7 @@ function CCard({ contact, onUpdate, onDelete }) {
                     const st = STATUS_STYLE[s];
                     const sel = contact.status === s;
                     return (
-                      <button key={s} onClick={() => onUpdate({ ...contact, status: s })}
+                      <button key={s} onClick={() => onUpdate({ ...contact, status: s, reactions, extraLeads })}
                         style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}44` : `1px solid ${C.b2}`, borderRadius: 20, padding: "4px 10px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
                         {s}
                       </button>
@@ -1299,7 +1313,7 @@ function CCard({ contact, onUpdate, onDelete }) {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {LEAD_TYPES.filter(t => t !== contact.leadType && t !== "Outro").map((t) => {
                     const col = LEAD_COLOR[t] || "#9CA3AF";
-                    const sel = (contact.extraLeads || []).includes(t);
+                    const sel = extraLeads.includes(t);
                     return (
                       <button key={t} onClick={() => togLead(t)}
                         style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}44` : `1px solid ${C.b2}`, borderRadius: 20, padding: "4px 10px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
@@ -1321,12 +1335,12 @@ function CCard({ contact, onUpdate, onDelete }) {
               {/* Emojis — máx 3 */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Reações <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>({(contact.reactions||[]).length}/3)</span>
+                  Reações <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>({reactions.length}/3)</span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {EMOJIS.map((e) => {
-                    const a = (contact.reactions || []).includes(e);
-                    const maxed = (contact.reactions || []).length >= 3 && !a;
+                    const a = reactions.includes(e);
+                    const maxed = reactions.length >= 3 && !a;
                     return (
                       <button key={e} onClick={() => tog(e)} disabled={maxed}
                         style={{ background: a ? "#1E2A45" : C.deep, border: a ? "1px solid #4F8EF766" : `1px solid ${C.b2}`, borderRadius: 8, padding: "4px 7px", cursor: maxed ? "not-allowed" : "pointer", fontSize: 15, transform: a ? "scale(1.15)" : "scale(1)", transition: "all 0.12s", opacity: maxed ? 0.3 : 1 }}>
