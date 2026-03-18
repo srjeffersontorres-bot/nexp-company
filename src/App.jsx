@@ -16,6 +16,9 @@ import {
   createOperator,
   listenChat,
   sendChatMessage,
+  setPresence,
+  removePresence,
+  listenPresence,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -699,7 +702,7 @@ function LoginPage({ onLogin }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, flashUserId }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     {
@@ -892,43 +895,38 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat }) {
               marginBottom: 8,
             }}
           >
-            {uObj.photo ? (
-              <img
-                src={uObj.photo}
-                alt=""
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  border: `1.5px solid ${C.atxt}33`,
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: "50%",
-                  background: C.abg,
-                  color: C.atxt,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  border: `1.5px solid ${C.atxt}33`,
-                }}
-              >
-                {ini(uObj.name || "OP")}
-              </div>
-            )}
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              {uObj.photo ? (
+                <img src={uObj.photo} alt=""
+                  style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${C.atxt}33` }} />
+              ) : (
+                <div style={{
+                  width: 30, height: 30, borderRadius: "50%",
+                  background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg,
+                  color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, border: `1.5px solid ${C.atxt}33`,
+                  animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none",
+                  transition: "background 0.3s",
+                }}>
+                  {ini(uObj.name || "OP")}
+                </div>
+              )}
+              {/* Pontinho online */}
+              <div style={{
+                position: "absolute", bottom: 0, right: 0,
+                width: 8, height: 8, borderRadius: "50%",
+                background: "#16A34A",
+                border: `1.5px solid ${C.sb}`,
+              }} />
+            </div>
             <div>
-              <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>
+              <div style={{ color: C.ts, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                 {uObj.name || uObj.username}
               </div>
-              <div style={{ color: C.td, fontSize: 10 }}>
+              <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
                 {roleLabel[user.role]}
+                <span style={{ color: "#16A34A", fontSize: 9 }}>● online</span>
               </div>
             </div>
           </div>
@@ -5007,33 +5005,56 @@ const QUICK_MESSAGES = [
 
 const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","✅","👏","😎","🤝","💰","🏆","🎯"];
 
-function ChatPage({ currentUser, users }) {
-  const [tab, setTab] = useState("geral"); // "geral" | uid do destinatário
-  const [messages, setMessages] = useState([]);
+function ChatPage({ currentUser, users, presence }) {
+  const myId = currentUser.uid || currentUser.id;
+  const isMestre = currentUser.role === "mestre";
+
+  // Para mestre: pode abrir DM com qualquer um
+  // Para master/operador: pode abrir DM com o mestre
+  const mestreUser = users.find(u => u.role === "mestre");
+  const dmList = isMestre
+    ? users.filter(u => (u.uid || u.id) !== myId)
+    : (mestreUser ? [mestreUser] : []);
+
+  const [tab, setTab] = useState("geral");
+  const [allMessages, setAllMessages] = useState([]);
   const [text, setText] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [filter, setFilter] = useState("");
-  const [attachment, setAttachment] = useState(null); // { name, url, type }
+  const [attachment, setAttachment] = useState(null);
+  const [shakeLocal, setShakeLocal] = useState(false);
+  const [flashAuthor, setFlashAuthor] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
-  const isMestre = currentUser.role === "mestre";
-  const myId = currentUser.uid || currentUser.id;
 
   useEffect(() => {
-    const unsub = listenChat((msgs) => {
-      if (tab === "geral") {
-        setMessages(msgs.filter(m => !m.toId));
-      } else {
-        setMessages(msgs.filter(m =>
-          (m.authorId === myId && m.toId === tab) ||
-          (m.authorId === tab && m.toId === myId)
-        ));
-      }
-    });
+    const unsub = listenChat((msgs) => setAllMessages(msgs));
     return () => unsub();
-  }, [tab, myId]); // eslint-disable-line
+  }, []);
+
+  // Filtrar mensagens por tab
+  const messages = tab === "geral"
+    ? allMessages.filter(m => !m.toId)
+    : allMessages.filter(m =>
+        (m.authorId === myId && m.toId === tab) ||
+        (m.authorId === tab && m.toId === myId)
+      );
+
+  // Detectar nova mensagem para flash
+  const lastMsgId = useRef(null);
+  useEffect(() => {
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    if (last.id !== lastMsgId.current) {
+      lastMsgId.current = last.id;
+      if (last.authorId !== myId) {
+        setFlashAuthor(last.authorId);
+        setTimeout(() => setFlashAuthor(null), 3000);
+      }
+    }
+  }, [messages]); // eslint-disable-line
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -5043,18 +5064,14 @@ function ChatPage({ currentUser, users }) {
     const f = e.target.files[0];
     if (!f) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setAttachment({ name: f.name, url: ev.target.result, type: f.type });
-    };
+    reader.onload = (ev) => setAttachment({ name: f.name, url: ev.target.result, type: f.type });
     reader.readAsDataURL(f);
   };
 
   const send = async (msg) => {
     const content = (msg || text).trim();
     if (!content && !attachment) return;
-    setText("");
-    setShowQuick(false);
-    setShowEmoji(false);
+    setText(""); setShowQuick(false); setShowEmoji(false);
     const payload = {
       text: content || "",
       authorId: myId,
@@ -5075,176 +5092,261 @@ function ChatPage({ currentUser, users }) {
     if (e.key === "Escape") { setShowQuick(false); setShowEmoji(false); }
   };
 
+  const shake = () => {
+    setShakeLocal(true);
+    setTimeout(() => setShakeLocal(false), 800);
+    send("🔔 Atenção!");
+  };
+
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
   const filteredQuick = filter
     ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase()))
     : QUICK_MESSAGES;
 
-  // Usuários para DM (só mestre vê)
-  const dmUsers = users.filter(u => (u.uid || u.id) !== myId);
-  const tabUser = tab !== "geral" ? dmUsers.find(u => (u.uid || u.id) === tab) : null;
+  const tabUser = tab !== "geral" ? dmList.find(u => (u.uid || u.id) === tab) : null;
 
-  const tabStyle = (active) => ({
-    background: "none", border: "none", cursor: "pointer",
-    padding: "8px 14px", fontSize: 12.5,
-    fontWeight: active ? 600 : 400,
-    color: active ? C.atxt : C.tm,
-    borderBottom: active ? `2px solid ${C.atxt}` : "2px solid transparent",
-    marginBottom: "-1px", whiteSpace: "nowrap",
-  });
+  // Contar não lidas por DM
+  const unreadDM = (uid) => allMessages.filter(m =>
+    m.toId === myId && m.authorId === uid && !m.read
+  ).length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.bg }}>
-      {/* Header */}
-      <div style={{ padding: "16px 24px 0", borderBottom: `1px solid ${C.b1}`, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <h1 style={{ color: C.tp, fontSize: 18, fontWeight: 700, margin: 0 }}>💬 Chat da Equipe</h1>
+    <div style={{ display: "flex", height: "100vh", background: C.bg, animation: shakeLocal ? "shake 0.6s ease" : "none" }}>
+
+      {/* ── Sidebar de conversas ── */}
+      <div style={{ width: 220, borderRight: `1px solid ${C.b1}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        {/* Header */}
+        <div style={{ padding: "16px 14px 10px", borderBottom: `1px solid ${C.b1}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 22 }}>🧑‍💻</span>
+            <div>
+              <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>CHAT CORBAN</div>
+              <div style={{ color: C.tm, fontSize: 10 }}>Equipe em tempo real</div>
+            </div>
+          </div>
         </div>
-        {/* Tabs */}
-        <div style={{ display: "flex", overflowX: "auto", gap: 2 }}>
-          <button style={tabStyle(tab === "geral")} onClick={() => setTab("geral")}>
-            🌐 Geral
+
+        {/* Lista de conversas */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {/* Grupo */}
+          <button onClick={() => setTab("geral")}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", background: tab === "geral" ? C.abg : "transparent", border: "none", cursor: "pointer", textAlign: "left", borderBottom: `1px solid ${C.b1}` }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.acc + "1A", color: C.acc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🌐</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: tab === "geral" ? C.atxt : C.ts, fontSize: 12, fontWeight: 600 }}>Geral</div>
+              <div style={{ color: C.tm, fontSize: 10 }}>Todos os membros</div>
+            </div>
           </button>
-          {isMestre && dmUsers.map(u => {
+
+          {/* DMs */}
+          {dmList.map(u => {
+            const uid = u.uid || u.id;
             const rc = roleColor[u.role] || C.atxt;
+            const isOnline = presence[uid]?.online;
+            const unread = unreadDM(uid);
+            const isFlashing = flashAuthor === uid;
+            const isActive = tab === uid;
             return (
-              <button key={u.uid || u.id} style={tabStyle(tab === (u.uid || u.id))} onClick={() => setTab(u.uid || u.id)}>
-                <span style={{ color: rc }}>●</span> {u.name || u.email}
+              <button key={uid} onClick={() => setTab(uid)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "10px 14px", background: isActive ? C.abg : "transparent", border: "none", cursor: "pointer", textAlign: "left", borderBottom: `1px solid ${C.b1}` }}>
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: "50%",
+                    background: isFlashing ? "#16A34A" : rc + "1A",
+                    color: isFlashing ? "#fff" : rc,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 700,
+                    animation: isFlashing ? "pulse 0.8s infinite" : "none",
+                    transition: "background 0.3s",
+                  }}>
+                    {ini(u.name || u.email || "?")}
+                  </div>
+                  {isOnline && (
+                    <div style={{ position: "absolute", bottom: 0, right: 0, width: 9, height: 9, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}` }} />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: isActive ? C.atxt : C.ts, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {u.name || u.email}
+                  </div>
+                  <div style={{ color: isOnline ? "#16A34A" : C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 3 }}>
+                    {isOnline ? <><span>●</span> online</> : roleLabel[u.role]}
+                  </div>
+                </div>
+                {unread > 0 && (
+                  <span style={{ background: "#16A34A", color: "#fff", fontSize: 9, padding: "1px 5px", borderRadius: 9, fontWeight: 700, animation: "pulse 1s infinite" }}>{unread}</span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Mensagens */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
-        {tab !== "geral" && tabUser && (
-          <div style={{ textAlign: "center", padding: "12px 0 6px" }}>
-            <span style={{ background: C.deep, color: C.tm, fontSize: 11, padding: "4px 12px", borderRadius: 20, border: `1px solid ${C.b1}` }}>
-              Conversa privada com {tabUser.name || tabUser.email}
-            </span>
-          </div>
-        )}
-        {messages.length === 0 && (
-          <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhuma mensagem ainda</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>Digite / para mensagens rápidas</div>
-          </div>
-        )}
-        {messages.map((msg) => {
-          const isMine = msg.authorId === myId;
-          const rc = roleColor[msg.authorRole] || C.atxt;
-          const time = msg.createdAt?.seconds
-            ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-            : "";
-          return (
-            <div key={msg.id} style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 8 }}>
-              {!isMine && (
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: rc + "1A", color: rc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, border: `1.5px solid ${rc}33` }}>
-                  {ini(msg.authorName || "?")}
+      {/* ── Área de conversa ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Header da conversa */}
+        <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {tab === "geral" ? (
+            <>
+              <span style={{ fontSize: 20 }}>🌐</span>
+              <div>
+                <div style={{ color: C.tp, fontSize: 14, fontWeight: 700 }}>Chat Geral</div>
+                <div style={{ color: C.tm, fontSize: 11 }}>{users.length} membros</div>
+              </div>
+            </>
+          ) : tabUser ? (
+            <>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: (roleColor[tabUser.role] || C.atxt) + "1A", color: roleColor[tabUser.role] || C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>
+                  {ini(tabUser.name || "?")}
                 </div>
-              )}
-              <div style={{ maxWidth: "72%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
-                {!isMine && (
-                  <span style={{ color: rc, fontSize: 10.5, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>
-                    {msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}
-                  </span>
+                {presence[tab]?.online && (
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16A34A", border: `2px solid ${C.bg}` }} />
                 )}
-                <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px", padding: "9px 14px", fontSize: 13.5, lineHeight: 1.5, wordBreak: "break-word" }}>
-                  {msg.text && <div>{msg.text}</div>}
-                  {msg.attachment && (
-                    <div style={{ marginTop: msg.text ? 8 : 0 }}>
-                      {msg.attachment.type?.startsWith("image/") ? (
-                        <img src={msg.attachment.url} alt={msg.attachment.name} style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, display: "block" }} />
-                      ) : (
-                        <a href={msg.attachment.url} download={msg.attachment.name}
-                          style={{ color: isMine ? "#fff" : C.atxt, fontSize: 12, textDecoration: "underline" }}>
-                          📎 {msg.attachment.name}
-                        </a>
-                      )}
-                    </div>
-                  )}
+              </div>
+              <div>
+                <div style={{ color: C.tp, fontSize: 14, fontWeight: 700 }}>{tabUser.name || tabUser.email}</div>
+                <div style={{ color: presence[tab]?.online ? "#16A34A" : C.tm, fontSize: 11 }}>
+                  {presence[tab]?.online ? "● online" : roleLabel[tabUser.role]}
                 </div>
-                <span style={{ color: C.td, fontSize: 10, marginTop: 3 }}>{time}</span>
               </div>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
+              {/* Botão chamar atenção — DM apenas */}
+              <button onClick={shake}
+                title="Chamar atenção"
+                style={{ marginLeft: "auto", background: "#2D1515", border: "1px solid #EF444433", color: "#F87171", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                🔔 Chamar atenção
+              </button>
+            </>
+          ) : null}
+        </div>
 
-      {/* Mensagens rápidas */}
-      {showQuick && (
-        <div style={{ margin: "0 24px 8px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 12, overflow: "hidden", maxHeight: 220, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ color: C.tm, fontSize: 11 }}>⚡ Clique para enviar</span>
-            <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "4px 8px", fontSize: 11, flex: 1 }} />
-            <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 14 }}>✕</button>
-          </div>
-          <div style={{ overflowY: "auto", flex: 1 }}>
-            {filteredQuick.map((m, i) => (
-              <div key={i} onClick={() => send(m)}
-                style={{ padding: "9px 14px", cursor: "pointer", fontSize: 12.5, color: C.ts, borderBottom: `1px solid ${C.b1}` }}
-                onMouseEnter={e => e.currentTarget.style.background = C.abg}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                {m}
+        {/* Mensagens */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {messages.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: C.tm }}>
+              <div style={{ fontSize: 36, marginBottom: 10 }}>💬</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{tab === "geral" ? "Seja o primeiro a falar!" : "Início da conversa privada"}</div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>Digite / para mensagens de incentivo</div>
+            </div>
+          )}
+          {messages.map((msg) => {
+            const isMine = msg.authorId === myId;
+            const rc = roleColor[msg.authorRole] || C.atxt;
+            const time = msg.createdAt?.seconds
+              ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+              : "";
+            return (
+              <div key={msg.id} style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 7 }}>
+                {!isMine && (
+                  <div style={{
+                    width: 28, height: 28, borderRadius: "50%",
+                    background: flashAuthor === msg.authorId ? "#16A34A" : rc + "1A",
+                    color: flashAuthor === msg.authorId ? "#fff" : rc,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    animation: flashAuthor === msg.authorId ? "pulse 0.8s infinite" : "none",
+                    transition: "background 0.3s",
+                  }}>
+                    {ini(msg.authorName || "?")}
+                  </div>
+                )}
+                <div style={{ maxWidth: "70%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
+                  {!isMine && (
+                    <span style={{ color: rc, fontSize: 10, fontWeight: 700, marginBottom: 2, paddingLeft: 3 }}>
+                      {msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}
+                    </span>
+                  )}
+                  <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px", padding: "8px 13px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
+                    {msg.text && <div>{msg.text}</div>}
+                    {msg.attachment && (
+                      <div style={{ marginTop: msg.text ? 6 : 0 }}>
+                        {msg.attachment.type?.startsWith("image/") ? (
+                          <img src={msg.attachment.url} alt={msg.attachment.name} style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, display: "block" }} />
+                        ) : (
+                          <a href={msg.attachment.url} download={msg.attachment.name} style={{ color: isMine ? "#fff" : C.atxt, fontSize: 12, textDecoration: "underline" }}>
+                            📎 {msg.attachment.name}
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ color: C.td, fontSize: 9.5, marginTop: 2 }}>{time}</span>
+                </div>
               </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Mensagens rápidas */}
+        {showQuick && (
+          <div style={{ margin: "0 20px 6px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 10, overflow: "hidden", maxHeight: 200, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "7px 12px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: C.tm, fontSize: 11 }}>⚡ Clique para enviar</span>
+              <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "3px 8px", fontSize: 11, flex: 1 }} />
+              <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 13 }}>✕</button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {filteredQuick.map((m, i) => (
+                <div key={i} onClick={() => send(m)}
+                  style={{ padding: "8px 14px", cursor: "pointer", fontSize: 12, color: C.ts, borderBottom: `1px solid ${C.b1}` }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.abg}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  {m}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Prévia anexo */}
+        {attachment && (
+          <div style={{ margin: "0 20px 5px", padding: "7px 12px", background: C.card, borderRadius: 8, border: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10 }}>
+            {attachment.type?.startsWith("image/") ? (
+              <img src={attachment.url} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 5 }} />
+            ) : <span style={{ fontSize: 20 }}>📎</span>}
+            <span style={{ color: C.ts, fontSize: 11, flex: 1 }}>{attachment.name}</span>
+            <button onClick={() => { setAttachment(null); if (fileRef.current) fileRef.current.value = ""; }} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 13 }}>✕</button>
+          </div>
+        )}
+
+        {/* Emojis */}
+        {showEmoji && (
+          <div style={{ margin: "0 20px 5px", display: "flex", flexWrap: "wrap", gap: 5, padding: "7px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}` }}>
+            {CHAT_EMOJIS.map((e, i) => (
+              <button key={i} onClick={() => setText(t => t + e)}
+                style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", borderRadius: 5, padding: "2px 3px" }}
+                onMouseEnter={ev => ev.currentTarget.style.background = C.b2}
+                onMouseLeave={ev => ev.currentTarget.style.background = "none"}>
+                {e}
+              </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Prévia anexo */}
-      {attachment && (
-        <div style={{ margin: "0 24px 6px", padding: "8px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10 }}>
-          {attachment.type?.startsWith("image/") ? (
-            <img src={attachment.url} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6 }} />
-          ) : (
-            <span style={{ fontSize: 22 }}>📎</span>
-          )}
-          <span style={{ color: C.ts, fontSize: 12, flex: 1 }}>{attachment.name}</span>
-          <button onClick={() => { setAttachment(null); if (fileRef.current) fileRef.current.value = ""; }} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 14 }}>✕</button>
-        </div>
-      )}
-
-      {/* Emojis rápidos */}
-      {showEmoji && (
-        <div style={{ margin: "0 24px 6px", display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}` }}>
-          {CHAT_EMOJIS.map((e, i) => (
-            <button key={i} onClick={() => setText(t => t + e)}
-              style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", borderRadius: 6, padding: "2px 4px" }}
-              onMouseEnter={ev => ev.currentTarget.style.background = C.b2}
-              onMouseLeave={ev => ev.currentTarget.style.background = "none"}>
-              {e}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Input */}
-      <div style={{ padding: "8px 24px 16px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 7, alignItems: "flex-end" }}>
-          <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} title="Mensagens rápidas (/)"
-            style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 10, padding: "9px 11px", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>⚡</button>
-          <button onClick={() => setShowEmoji(p => !p)}
-            style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 10, padding: "9px 11px", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>😊</button>
-          {/* Anexo */}
-          <button onClick={() => fileRef.current?.click()} title="Anexar arquivo"
-            style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 10, padding: "9px 11px", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>📎</button>
-          <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={handleFile} style={{ display: "none" }} />
-          <textarea ref={inputRef} value={text}
-            onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
-            onKeyDown={handleKey}
-            placeholder={tab === "geral" ? "Mensagem para a equipe... (/ para atalhos)" : `Mensagem privada para ${tabUser?.name || "usuário"}...`}
-            rows={1}
-            style={{ ...S.input, flex: 1, resize: "none", borderRadius: 10, padding: "9px 13px", fontSize: 13, lineHeight: 1.5 }} />
-          <button onClick={() => send()} disabled={!text.trim() && !attachment}
-            style={{ ...S.btn(text.trim() || attachment ? C.acc : C.deep, text.trim() || attachment ? "#fff" : C.td), padding: "9px 16px", fontSize: 15, flexShrink: 0, opacity: text.trim() || attachment ? 1 : 0.5 }}>➤</button>
-        </div>
-        <div style={{ color: C.td, fontSize: 10, marginTop: 4 }}>
-          Enter para enviar · Shift+Enter para nova linha · / para atalhos{tab !== "geral" ? " · 📎 para anexos" : ""}
+        {/* Input */}
+        <div style={{ padding: "8px 20px 14px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }}
+              style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>⚡</button>
+            <button onClick={() => setShowEmoji(p => !p)}
+              style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>😊</button>
+            {tab !== "geral" && (
+              <button onClick={() => fileRef.current?.click()}
+                style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>📎</button>
+            )}
+            <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={handleFile} style={{ display: "none" }} />
+            <textarea ref={inputRef} value={text}
+              onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
+              onKeyDown={handleKey}
+              placeholder={tab === "geral" ? "Mensagem para a equipe... (/ para atalhos)" : `Mensagem para ${tabUser?.name || "usuário"}...`}
+              rows={1}
+              style={{ ...S.input, flex: 1, resize: "none", borderRadius: 9, padding: "8px 12px", fontSize: 13, lineHeight: 1.5 }} />
+            <button onClick={() => send()} disabled={!text.trim() && !attachment}
+              style={{ ...S.btn(text.trim() || attachment ? C.acc : C.deep, text.trim() || attachment ? "#fff" : C.td), padding: "8px 14px", fontSize: 14, flexShrink: 0, opacity: text.trim() || attachment ? 1 : 0.5 }}>➤</button>
+          </div>
+          <div style={{ color: C.td, fontSize: 10, marginTop: 3 }}>Enter para enviar · Shift+Enter nova linha · / para atalhos</div>
         </div>
       </div>
     </div>
@@ -5261,6 +5363,8 @@ export default function App() {
   const [theme, setTheme] = useState("Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
   const [shake, setShake] = useState(false);
+  const [presence, setPresenceData] = useState({});
+  const [flashUserId, setFlashUserId] = useState(null);
   const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar
@@ -5302,24 +5406,43 @@ export default function App() {
     return () => unsub();
   }, [currentUser]);
 
+  // ── Presença online ───────────────────────────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
+    const interval = setInterval(() => {
+      setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
+    }, 30000);
+    const handleUnload = () => removePresence(myId);
+    window.addEventListener("beforeunload", handleUnload);
+    const unsub = listenPresence((data) => setPresenceData(data));
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("beforeunload", handleUnload);
+      removePresence(myId);
+      unsub();
+    };
+  }, [currentUser]); // eslint-disable-line
+
   // ── Ouvir chat para indicador de não lidas e shake ────────────
   useEffect(() => {
     if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
     const unsub = listenChat((msgs) => {
-      const myId = currentUser.uid || currentUser.id;
-      // Mensagens direcionadas a mim (DM) ou gerais novas
-      const relevant = msgs.filter(m =>
-        !m.toId || m.toId === myId
-      );
+      const relevant = msgs.filter(m => !m.toId || m.toId === myId);
       if (page !== "chat") {
         const newCount = relevant.length;
         if (newCount > lastChatCount.current) {
           setUnreadChat(n => n + (newCount - lastChatCount.current));
-          // Shake se for DM do mestre para mim
           const lastMsg = relevant[relevant.length - 1];
-          if (lastMsg && lastMsg.toId === myId && lastMsg.authorRole === "mestre") {
-            setShake(true);
-            setTimeout(() => setShake(false), 1000);
+          if (lastMsg) {
+            setFlashUserId(lastMsg.authorId);
+            setTimeout(() => setFlashUserId(null), 3000);
+            if (lastMsg.toId === myId && lastMsg.authorRole === "mestre") {
+              setShake(true);
+              setTimeout(() => setShake(false), 1000);
+            }
           }
         }
       }
@@ -5421,6 +5544,8 @@ export default function App() {
         users={users}
         onLogout={logout}
         unreadChat={unreadChat}
+        presence={presence}
+        flashUserId={flashUserId}
       />
       <div style={{ flex: 1, overflowY: "auto" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
@@ -5443,7 +5568,7 @@ export default function App() {
           <LedsPage contacts={contacts} userRole={currentUser.role} />
         )}
         {page === "chat" && (
-          <ChatPage currentUser={currentUser} users={users} />
+          <ChatPage currentUser={currentUser} users={users} presence={presence} />
         )}
         {page === "premium" && currentUser.role === "mestre" && (
           <PremiumNexp contacts={contacts} setContacts={setContacts} />

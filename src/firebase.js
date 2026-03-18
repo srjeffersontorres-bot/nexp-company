@@ -89,6 +89,29 @@ export async function deleteContacts(ids) {
   }
 }
 
+// ── Presença Online ───────────────────────────────────────────
+
+/** Atualiza presença online do usuário. */
+export async function setPresence(uid, name, role) {
+  await setDoc(doc(db, "presence", uid), {
+    uid, name, role, online: true, lastSeen: serverTimestamp(),
+  }, { merge: true });
+}
+
+/** Remove presença online. */
+export async function removePresence(uid) {
+  await setDoc(doc(db, "presence", uid), { online: false, lastSeen: serverTimestamp() }, { merge: true });
+}
+
+/** Ouve presenças online em tempo real. */
+export function listenPresence(callback) {
+  return onSnapshot(collection(db, "presence"), (snap) => {
+    const data = {};
+    snap.docs.forEach(d => { data[d.id] = d.data(); });
+    callback(data);
+  });
+}
+
 // ── Chat ─────────────────────────────────────────────────────────
 
 /** Ouve mensagens do chat em tempo real. */
