@@ -5603,14 +5603,73 @@ function StoriesPage({ currentUser, users }) {
   const [mediaErr, setMediaErr] = useState("");
   const mediaRef = useRef();
 
-  const BG_COLORS = ["#1A1F2E","#0D2B1A","#2D1515","#2D0E30","#2B1D03","#082033","#1C1903","#0A0A0A","#1a1a2e","#16213e"];
   const FONTS = [
-    { name: "Inter",     label: "Padrão",   style: "'Inter',sans-serif" },
-    { name: "Georgia",   label: "Clássica", style: "Georgia,serif" },
-    { name: "Courier",   label: "Código",   style: "'Courier New',monospace" },
-    { name: "Impact",    label: "Impacto",  style: "Impact,sans-serif" },
-    { name: "Pacifico",  label: "Cursiva",  style: "'Comic Sans MS',cursive" },
+    { name: "Inter",     label: "Padrão",    style: "'Inter',sans-serif" },
+    { name: "Georgia",   label: "Clássica",  style: "Georgia,serif" },
+    { name: "Courier",   label: "Código",    style: "'Courier New',monospace" },
+    { name: "Impact",    label: "Impacto",   style: "Impact,sans-serif" },
+    { name: "Comic",     label: "Cursiva",   style: "'Comic Sans MS',cursive" },
+    { name: "Trebuchet", label: "Moderna",   style: "Trebuchet MS,sans-serif" },
+    { name: "Palatino",  label: "Elegante",  style: "Palatino Linotype,serif" },
   ];
+
+  // Solid backgrounds
+  const BG_SOLIDS = [
+    { id:"s1", bg:"#1A1F2E", label:"" }, { id:"s2", bg:"#0D2B1A", label:"" },
+    { id:"s3", bg:"#2D1515", label:"" }, { id:"s4", bg:"#2D0E30", label:"" },
+    { id:"s5", bg:"#082033", label:"" }, { id:"s6", bg:"#2B1D03", label:"" },
+    { id:"s7", bg:"#0A0A0A", label:"" }, { id:"s8", bg:"#16213e", label:"" },
+  ];
+
+  // Gradient backgrounds
+  const BG_GRADIENTS = [
+    { id:"g1", bg:"linear-gradient(135deg,#667eea,#764ba2)", label:"💜" },
+    { id:"g2", bg:"linear-gradient(135deg,#f093fb,#f5576c)", label:"💗" },
+    { id:"g3", bg:"linear-gradient(135deg,#4facfe,#00f2fe)", label:"💙" },
+    { id:"g4", bg:"linear-gradient(135deg,#43e97b,#38f9d7)", label:"💚" },
+    { id:"g5", bg:"linear-gradient(135deg,#fa709a,#fee140)", label:"🌅" },
+    { id:"g6", bg:"linear-gradient(135deg,#a18cd1,#fbc2eb)", label:"🌸" },
+    { id:"g7", bg:"linear-gradient(135deg,#ffecd2,#fcb69f)", label:"🍑" },
+    { id:"g8", bg:"linear-gradient(135deg,#2c3e50,#3498db)", label:"🌊" },
+  ];
+
+  // Themed emoji tile backgrounds (rendered via CSS pattern)
+  const BG_THEMED = [
+    { id:"t1", bg:"#1a0a2e", emoji:"❤️",  label:"Corações" },
+    { id:"t2", bg:"#1a2e0a", emoji:"💰",  label:"Dinheiro" },
+    { id:"t3", bg:"#2e2a0a", emoji:"⭐",  label:"Estrelas" },
+    { id:"t4", bg:"#0a1a2e", emoji:"🔥",  label:"Fogo"    },
+    { id:"t5", bg:"#2e0a0a", emoji:"🎉",  label:"Festa"   },
+    { id:"t6", bg:"#0a2e2a", emoji:"💎",  label:"Diamante"},
+    { id:"t7", bg:"#2e1a0a", emoji:"🏆",  label:"Troféu"  },
+    { id:"t8", bg:"#1a0a1a", emoji:"✨",  label:"Brilho"  },
+  ];
+
+  // Dynamic CSS animated backgrounds
+  const BG_DYNAMIC = [
+    { id:"d1", label:"🌈 Aurora",   css:"linear-gradient(270deg,#ff6b6b,#feca57,#48dbfb,#ff9ff3,#54a0ff)", animate:true },
+    { id:"d2", label:"🌊 Oceano",   css:"linear-gradient(135deg,#0f3460,#16213e,#0f3460,#533483)", animate:true },
+    { id:"d3", label:"🌙 Galáxia",  css:"linear-gradient(135deg,#0c0c1e,#1a0533,#0c1a33,#0c0c1e)", animate:true },
+    { id:"d4", label:"🌺 Tropical", css:"linear-gradient(135deg,#f7971e,#ffd200,#f7971e,#21d4fd)", animate:true },
+  ];
+
+  const allBgs = [
+    ...BG_SOLIDS.map(b=>({...b, type:"solid"})),
+    ...BG_GRADIENTS.map(b=>({...b, type:"gradient"})),
+    ...BG_THEMED.map(b=>({...b, type:"themed"})),
+    ...BG_DYNAMIC.map(b=>({...b, type:"dynamic"})),
+  ];
+
+  const getPreviewStyle = (bgItem) => {
+    if (!bgItem) return { background: "#1A1F2E" };
+    if (bgItem.type === "solid")   return { background: bgItem.bg };
+    if (bgItem.type === "gradient") return { background: bgItem.bg };
+    if (bgItem.type === "themed")  return { background: bgItem.bg };
+    if (bgItem.type === "dynamic") return { background: bgItem.css, backgroundSize:"400% 400%", animation:"bgShift 4s ease infinite" };
+    return { background: "#1A1F2E" };
+  };
+
+  const selectedBgItem = allBgs.find(b => b.id === newBg) || allBgs[0];
 
   // ── Listen stories realtime ──────────────────────────────────
   useEffect(() => {
@@ -5625,19 +5684,23 @@ function StoriesPage({ currentUser, users }) {
     return unsub;
   }, []);
 
-  // ── Comprimir imagem antes de enviar ────────────────────────
-  const compressImage = (file, maxW = 1080, quality = 0.82) => new Promise((resolve) => {
+  // ── Comprimir imagem para ~40KB antes de enviar ──────────────
+  const compressImage = (file) => new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const scale = Math.min(1, maxW / Math.max(img.width, img.height));
+      const MAX = 600; // máx 600px — bem rápido de subir
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
       const canvas = document.createElement("canvas");
       canvas.width = w; canvas.height = h;
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => resolve(new File([blob], file.name, { type: "image/jpeg" })), "image/jpeg", quality);
+      canvas.toBlob(
+        blob => resolve(new File([blob], "story.jpg", { type: "image/jpeg" })),
+        "image/jpeg", 0.60
+      );
     };
     img.src = url;
   });
@@ -5646,13 +5709,11 @@ function StoriesPage({ currentUser, users }) {
     const f = e.target.files[0]; if (!f) return;
     setMediaErr("");
     const isImg   = f.type.startsWith("image/");
-    const isVideo = f.type.startsWith("video/");
     const isAudio = f.type.startsWith("audio/");
     const mb = f.size / 1024 / 1024;
-    if (isImg   && mb > 5)  { setMediaErr("Imagem máx 5 MB.");  return; }
-    if (isVideo && mb > 50) { setMediaErr("Vídeo máx 50 MB.");  return; }
-    if (isAudio && mb > 5)  { setMediaErr("Áudio máx 5 MB.");   return; }
-    if (!isImg && !isVideo && !isAudio) { setMediaErr("Formato não suportado."); return; }
+    if (!isImg && !isAudio) { setMediaErr("Apenas imagem ou áudio."); return; }
+    if (isImg   && mb > 2.5) { setMediaErr("Imagem máx 2,5 MB."); return; }
+    if (isAudio && mb > 1)   { setMediaErr("Áudio máx 1 MB.");    return; }
     const previewUrl = URL.createObjectURL(f);
     setNewMedia({ url: previewUrl, type: f.type, name: f.name, file: f, isImg });
   };
@@ -5849,7 +5910,7 @@ function StoriesPage({ currentUser, users }) {
       {/* Header */}
       <div style={{ marginBottom:22 }}>
         <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>Stories</h1>
-        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Atualizações que duram 24h · até 20 stories · 📷5MB · 🎥50MB · 🎵5MB</p>
+        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Atualizações que duram 24h · até 20 stories · 📷 2,5MB · 🎵 1MB</p>
       </div>
 
       {/* ── Criar story ── */}
@@ -5861,28 +5922,66 @@ function StoriesPage({ currentUser, users }) {
           </div>
 
           {/* Preview */}
-          <div style={{ background:newBg, borderRadius:14, padding:"28px 22px", minHeight:140, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12, marginBottom:16, border:`1px solid ${C.b1}` }}>
-            {newMedia?.type?.startsWith("image/") && <img src={newMedia.url} alt="" style={{ maxWidth:"100%", maxHeight:180, borderRadius:10, objectFit:"contain" }} />}
-            {newMedia?.type?.startsWith("video/") && <video src={newMedia.url} controls style={{ maxWidth:"100%", maxHeight:180, borderRadius:10 }} />}
-            {newMedia?.type?.startsWith("audio/") && <audio src={newMedia.url} controls style={{ width:"100%" }} />}
-            {newText && <div style={{ color:"#fff", fontSize:18, fontWeight:600, textAlign:"center", textShadow:"0 1px 6px #00000066", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit" }}>{newText}</div>}
-            {!newText && !newMedia && <div style={{ color:"#ffffff44", fontSize:13 }}>Preview do story</div>}
+          <div style={{
+            ...getPreviewStyle(selectedBgItem),
+            borderRadius:14, padding:"28px 22px", minHeight:160,
+            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+            gap:12, marginBottom:16, border:`1px solid ${C.b1}`, position:"relative", overflow:"hidden",
+          }}>
+            {/* Themed emoji tiles */}
+            {selectedBgItem?.type === "themed" && (
+              <div style={{ position:"absolute", inset:0, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"center", opacity:0.18, fontSize:24, gap:4, pointerEvents:"none", userSelect:"none" }}>
+                {Array(40).fill(selectedBgItem.emoji).map((e,i)=><span key={i}>{e}</span>)}
+              </div>
+            )}
+            {newMedia?.type?.startsWith("image/") && <img src={newMedia.url} alt="" style={{ maxWidth:"100%", maxHeight:160, borderRadius:10, objectFit:"contain", position:"relative" }} />}
+            {newMedia?.type?.startsWith("audio/") && <audio src={newMedia.url} controls style={{ width:"100%", position:"relative" }} />}
+            {newText && <div style={{ color:"#fff", fontSize:18, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit", position:"relative" }}>{newText}</div>}
+            {!newText && !newMedia && <div style={{ color:"#ffffff44", fontSize:13, position:"relative" }}>Preview do story</div>}
           </div>
 
-          {/* BG picker */}
-          <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center", flexWrap:"wrap" }}>
-            <span style={{ color:C.tm, fontSize:11.5 }}>Fundo:</span>
-            {BG_COLORS.map(bg => (
-              <button key={bg} onClick={() => setNewBg(bg)} style={{ width:22, height:22, borderRadius:"50%", background:bg, border:newBg===bg?`2px solid ${C.atxt}`:`1px solid ${C.b2}`, cursor:"pointer", flexShrink:0 }} />
-            ))}
+          {/* Background picker */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ color:C.tm, fontSize:11.5, marginBottom:8 }}>🎨 Fundo</div>
+            {/* Sólidos */}
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+              {BG_SOLIDS.map(b => (
+                <button key={b.id} onClick={() => setNewBg(b.id)} style={{ width:26, height:26, borderRadius:"50%", background:b.bg, border:newBg===b.id?`2px solid ${C.atxt}`:`1px solid ${C.b2}`, cursor:"pointer", flexShrink:0 }} />
+              ))}
+            </div>
+            {/* Gradientes */}
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+              {BG_GRADIENTS.map(b => (
+                <button key={b.id} onClick={() => setNewBg(b.id)} title={b.label}
+                  style={{ width:26, height:26, borderRadius:"50%", background:b.bg, border:newBg===b.id?`2px solid ${C.atxt}`:`1px solid ${C.b2}`, cursor:"pointer", flexShrink:0, fontSize:12 }} />
+              ))}
+            </div>
+            {/* Temáticos */}
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+              {BG_THEMED.map(b => (
+                <button key={b.id} onClick={() => setNewBg(b.id)} title={b.label}
+                  style={{ width:44, height:26, borderRadius:13, background:b.bg, border:newBg===b.id?`2px solid ${C.atxt}`:`1px solid ${C.b2}`, cursor:"pointer", flexShrink:0, fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  {b.emoji}
+                </button>
+              ))}
+            </div>
+            {/* Dinâmicos */}
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {BG_DYNAMIC.map(b => (
+                <button key={b.id} onClick={() => setNewBg(b.id)} title={b.label}
+                  style={{ background:b.css, backgroundSize:"200% 200%", animation:"bgShift 3s ease infinite", border:newBg===b.id?`2px solid ${C.atxt}`:`1px solid ${C.b2}`, borderRadius:13, padding:"3px 10px", cursor:"pointer", flexShrink:0, fontSize:10.5, color:"#fff", fontWeight:600 }}>
+                  {b.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Font picker */}
-          <div style={{ display:"flex", gap:6, marginBottom:14, alignItems:"center", flexWrap:"wrap" }}>
-            <span style={{ color:C.tm, fontSize:11.5, flexShrink:0 }}>Fonte:</span>
+          <div style={{ display:"flex", gap:5, marginBottom:14, alignItems:"center", flexWrap:"wrap" }}>
+            <span style={{ color:C.tm, fontSize:11.5, flexShrink:0 }}>Aa</span>
             {FONTS.map(f => (
               <button key={f.name} onClick={() => setNewFont(f.name)}
-                style={{ background:newFont===f.name?C.abg:C.deep, border:newFont===f.name?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", color:newFont===f.name?C.atxt:C.tm, fontSize:12, fontFamily:f.style, fontWeight:newFont===f.name?600:400 }}>
+                style={{ background:newFont===f.name?C.abg:C.deep, border:newFont===f.name?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:8, padding:"4px 10px", cursor:"pointer", color:newFont===f.name?C.atxt:C.tm, fontSize:11.5, fontFamily:f.style, fontWeight:newFont===f.name?600:400 }}>
                 {f.label}
               </button>
             ))}
@@ -5896,12 +5995,12 @@ function StoriesPage({ currentUser, users }) {
 
           <div style={{ marginBottom:16 }}>
             <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>
-              Mídia &nbsp;<span style={{ color:C.td, fontSize:10.5 }}>📷 imagem 5MB · 🎥 vídeo 50MB · 🎵 áudio 5MB</span>
+              Mídia &nbsp;<span style={{ color:C.td, fontSize:10.5 }}>📷 imagem 2,5MB · 🎵 áudio 1MB</span>
             </label>
-            <input ref={mediaRef} type="file" accept="image/*,video/*,audio/*" onChange={handleMedia} style={{ display:"none" }} />
+            <input ref={mediaRef} type="file" accept="image/*,audio/*" onChange={handleMedia} style={{ display:"none" }} />
             <button onClick={() => mediaRef.current?.click()}
               style={{ ...S.btn(C.deep, C.atxt), border:`1px solid ${C.atxt}44`, fontSize:13, padding:"9px 20px", display:"flex", alignItems:"center", gap:8, fontWeight:600 }}>
-              📷🎥🎵 Adicionar mídia
+              📷🎵 Adicionar mídia
             </button>
             {newMedia && (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, padding:"7px 12px", background:C.deep, borderRadius:8, border:`1px solid ${C.b1}` }}>
@@ -5985,7 +6084,17 @@ function StoriesPage({ currentUser, users }) {
       {viewStory && (
         <div style={{ display:"grid", gridTemplateColumns:"1fr 360px", gap:20, maxWidth:900 }}>
           {/* Story card */}
-          <div style={{ background:viewStory.bg||C.card, borderRadius:18, overflow:"hidden", border:`1px solid ${C.b1}`, display:"flex", flexDirection:"column", minHeight:440, position:"relative" }}>
+          <div style={{
+            ...(()=>{
+              const b = allBgs.find(x=>x.id===viewStory.bg);
+              if (!b) return { background: viewStory.bg || C.card };
+              if (b.type==="dynamic") return { background:b.css, backgroundSize:"400% 400%", animation:"bgShift 4s ease infinite" };
+              if (b.type==="gradient") return { background:b.bg };
+              if (b.type==="themed") return { background:b.bg };
+              return { background:b.bg };
+            })(),
+            borderRadius:18, overflow:"hidden", border:`1px solid ${C.b1}`, display:"flex", flexDirection:"column", minHeight:440, position:"relative",
+          }}>
 
             {/* Progress dots */}
             {viewAuthorStories.length > 1 && (
@@ -6033,11 +6142,16 @@ function StoriesPage({ currentUser, users }) {
             </div>
 
             {/* Content */}
-            <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px", gap:14, overflow:"hidden" }}>
-              {viewStory.media?.type?.startsWith("image/") && <img src={viewStory.media.url} alt="" style={{ maxWidth:"100%", maxHeight:260, borderRadius:12, objectFit:"contain" }} />}
-              {viewStory.media?.type?.startsWith("video/") && <video src={viewStory.media.url} controls style={{ maxWidth:"100%", maxHeight:240, borderRadius:12 }} />}
-              {viewStory.media?.type?.startsWith("audio/") && <audio src={viewStory.media.url} controls style={{ width:"90%" }} />}
-              {viewStory.text && <div style={{ color:"#fff", fontSize:20, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", lineHeight:1.4, fontFamily: viewStory.font === "Georgia" ? "Georgia,serif" : viewStory.font === "Courier" ? "'Courier New',monospace" : viewStory.font === "Impact" ? "Impact,sans-serif" : viewStory.font === "Pacifico" ? "'Comic Sans MS',cursive" : "'Inter',sans-serif" }}>{viewStory.text}</div>}
+            <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px", gap:14, overflow:"hidden", position:"relative" }}>
+              {/* Themed emoji pattern */}
+              {(()=>{ const b=allBgs.find(x=>x.id===viewStory.bg); return b?.type==="themed" && (
+                <div style={{ position:"absolute", inset:0, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"center", opacity:0.15, fontSize:26, gap:5, pointerEvents:"none" }}>
+                  {Array(30).fill(b.emoji).map((e,i)=><span key={i}>{e}</span>)}
+                </div>
+              );})()}
+              {viewStory.media?.type?.startsWith("image/") && <img src={viewStory.media.url} alt="" style={{ maxWidth:"100%", maxHeight:260, borderRadius:12, objectFit:"contain", position:"relative" }} />}
+              {viewStory.media?.type?.startsWith("audio/") && <audio src={viewStory.media.url} controls style={{ width:"90%", position:"relative" }} />}
+              {viewStory.text && <div style={{ color:"#fff", fontSize:20, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", lineHeight:1.4, position:"relative", fontFamily: viewStory.font === "Georgia" ? "Georgia,serif" : viewStory.font === "Courier" ? "'Courier New',monospace" : viewStory.font === "Impact" ? "Impact,sans-serif" : viewStory.font === "Comic" ? "'Comic Sans MS',cursive" : viewStory.font === "Trebuchet" ? "Trebuchet MS,sans-serif" : viewStory.font === "Palatino" ? "Palatino Linotype,serif" : "'Inter',sans-serif" }}>{viewStory.text}</div>}
             </div>
 
             {/* Footer — reactions + likes + views */}
@@ -6491,6 +6605,11 @@ export default function App() {
         }
         @keyframes pulse {
           0%,100%{opacity:1} 50%{opacity:0.5}
+        }
+        @keyframes bgShift {
+          0%{background-position:0% 50%}
+          50%{background-position:100% 50%}
+          100%{background-position:0% 50%}
         }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
