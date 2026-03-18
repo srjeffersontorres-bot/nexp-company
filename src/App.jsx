@@ -4317,7 +4317,15 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     }
   };
 
-  // ── Open edit panel
+  // ── Delete user
+  const deleteUser = async (u) => {
+    if (!window.confirm(`Excluir o usuário "${u.name}"?\nEsta ação não pode ser desfeita.`)) return;
+    try {
+      // Marca como deletado no Firestore — impede login futuro
+      await saveUserProfile(u.uid || u.id, { ...u, active: false, deleted: true });
+      flash(`Usuário "${u.name}" excluído com sucesso!`);
+    } catch (e) { setErr("Erro ao excluir: " + e.message); }
+  };
   const openEdit = (u) => {
     if (expandId === u.id) {
       setExpandId(null); setEditForm(null); setResetPw(""); return;
@@ -4755,6 +4763,27 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       }}
                     >
                       {isExpanded ? "✕ Fechar" : "✏ Editar"}
+                    </button>
+                  )}
+
+                  {/* Delete button — apenas mestre pode excluir, nunca a si mesmo, nunca outro mestre */}
+                  {currentUser.role === "mestre" && !isSelf && u.role !== "mestre" && (
+                    <button
+                      onClick={() => deleteUser(u)}
+                      style={{
+                        background: "transparent",
+                        color: "#EF4444",
+                        border: "1px solid #EF444433",
+                        borderRadius: 8,
+                        padding: "5px 12px",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        flexShrink: 0,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      🗑 Excluir
                     </button>
                   )}
                 </div>
