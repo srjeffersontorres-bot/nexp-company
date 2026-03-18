@@ -13,8 +13,6 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
-  query,
-  orderBy,
   serverTimestamp,
 } from "firebase/firestore";
 import {
@@ -49,16 +47,16 @@ setPersistence(auth, browserLocalPersistence);
 
 /** Ouve todos os contatos em tempo real. Chame onSnapshot e retorna unsub. */
 export function listenContacts(callback) {
-  const q = query(collection(db, "contacts"), orderBy("updatedAt", "desc"));
+  const q = collection(db, "contacts");
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  }, (error) => {
-    // Se o índice ainda não existe, retorna sem ordenação
-    console.warn("Firestore order error, loading without order:", error);
-    const q2 = collection(db, "contacts");
-    onSnapshot(q2, (snap) => {
-      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Ordena localmente por updatedAt decrescente
+    docs.sort((a, b) => {
+      const ta = a.updatedAt?.seconds ?? 0;
+      const tb = b.updatedAt?.seconds ?? 0;
+      return tb - ta;
     });
+    callback(docs);
   });
 }
 
@@ -66,10 +64,9 @@ export function listenContacts(callback) {
 export async function saveContact(contact) {
   const id = contact.id ? String(contact.id) : String(Date.now());
   const ref = doc(db, "contacts", id);
-  const now = serverTimestamp();
   await setDoc(
     ref,
-    { ...contact, id, updatedAt: now, createdAt: now },
+    { ...contact, id, updatedAt: serverTimestamp() },
     { merge: true },
   );
   return id;
