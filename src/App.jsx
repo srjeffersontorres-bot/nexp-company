@@ -336,33 +336,6 @@ function StatusBadge({ status }) {
     </span>
   );
 }
-function EmojiBar({ reactions = [], onToggle }) {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-      {EMOJIS.map((e) => {
-        const a = reactions.includes(e);
-        return (
-          <button
-            key={e}
-            onClick={() => onToggle(e)}
-            style={{
-              background: a ? "#1E2A45" : C.deep,
-              border: a ? "1px solid #4F8EF766" : `1px solid ${C.b2}`,
-              borderRadius: 8,
-              padding: "4px 7px",
-              cursor: "pointer",
-              fontSize: 15,
-              transform: a ? "scale(1.15)" : "scale(1)",
-              transition: "all 0.12s",
-            }}
-          >
-            {e}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 function CommSim({ compact = false }) {
   const [sv, setSv] = useState("");
   const [pct, setPct] = useState("");
