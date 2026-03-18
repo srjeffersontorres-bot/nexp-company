@@ -1583,7 +1583,9 @@ function ContactsPage({ contacts, setContacts }) {
     await saveContact(u);
   };
   const rem = async (id) => {
+    const c = contacts.find((x) => String(x.id) === String(id));
     await deleteContact(id);
+    if (c) addLog("delete_one", `Cliente removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Lead: ${c.leadType}`);
   };
   return (
     <div style={{ padding: "30px 36px", maxWidth: 820 }}>
@@ -1867,7 +1869,139 @@ function AddClient({ setContacts, setPage }) {
   );
 }
 
-// ── Verify Tab ────────────────────────────────────────────────
+// ── Action Log ─────────────────────────────────────────────────
+const LOG_KEY = "nexp_action_log";
+function readLog() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); } catch { return []; }
+}
+function addLog(type, desc, detail = "") {
+  const logs = readLog();
+  logs.unshift({ id: String(Date.now()), type, desc, detail, date: new Date().toLocaleString("pt-BR") });
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(logs.slice(0, 500))); } catch {}
+}
+// tipos: "import" | "delete_batch" | "delete_one" | "delete_all"
+
+
+// ── History Tab ───────────────────────────────────────────────
+function HistoryTab() {
+  const [logs, setLogs] = useState(() => readLog());
+  const [filterType, setFilterType] = useState("all");
+  const [filterDate, setFilterDate] = useState("");
+
+  const refresh = () => setLogs(readLog());
+
+  const clearAll = () => {
+    if (!window.confirm("Limpar todo o histórico de ações?")) return;
+    localStorage.removeItem(LOG_KEY);
+    setLogs([]);
+  };
+
+  const iconMap = {
+    import: { icon: "⬆", color: "#34D399", label: "Importação" },
+    delete_batch: { icon: "🗑", color: "#F87171", label: "Planilha deletada" },
+    delete_one: { icon: "❌", color: "#FBBF24", label: "Cliente removido" },
+    delete_all: { icon: "💣", color: "#EF4444", label: "Todos deletados" },
+  };
+
+  // Filtrar logs
+  const filtered = logs.filter((log) => {
+    if (filterType !== "all" && log.type !== filterType) return false;
+    if (filterDate) {
+      // filterDate vem como "YYYY-MM-DD", log.date como "DD/MM/YYYY, HH:MM:SS"
+      const [d, m, y] = (log.date || "").split(",")[0].split("/");
+      const logDay = `${y?.trim()}-${m?.padStart(2,"0")}-${d?.padStart(2,"0")}`;
+      if (logDay !== filterDate) return false;
+    }
+    return true;
+  });
+
+  const filterBtnStyle = (active) => ({
+    background: active ? C.acc + "22" : C.deep,
+    color: active ? C.atxt : C.tm,
+    border: active ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+    borderRadius: 20, padding: "5px 13px", fontSize: 12,
+    cursor: "pointer", fontWeight: active ? 600 : 400,
+  });
+
+  return (
+    <div>
+      {/* Cabeçalho */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ color: C.ts, fontSize: 13 }}>
+          {filtered.length} de {logs.length} registro{logs.length !== 1 ? "s" : ""}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={refresh} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, padding: "6px 12px", fontSize: 12 }}>↻ Atualizar</button>
+          {logs.length > 0 && <button onClick={clearAll} style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "6px 12px", fontSize: 12 }}>🗑 Limpar</button>}
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div style={{ ...S.card, padding: "14px 18px", marginBottom: 14 }}>
+        <div style={{ color: C.tm, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Filtrar por</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {[
+            { id: "all", label: "Todos" },
+            { id: "import", label: "⬆ Importações" },
+            { id: "delete_batch", label: "🗑 Planilhas deletadas" },
+            { id: "delete_one", label: "❌ Clientes removidos" },
+            { id: "delete_all", label: "💣 Deleção total" },
+          ].map((f) => (
+            <button key={f.id} onClick={() => setFilterType(f.id)} style={filterBtnStyle(filterType === f.id)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <label style={{ color: C.tm, fontSize: 12, flexShrink: 0 }}>📅 Data:</label>
+          <input
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            style={{ ...S.input, width: "auto", padding: "6px 10px", fontSize: 12 }}
+          />
+          {filterDate && (
+            <button onClick={() => setFilterDate("")} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 13 }}>✕</button>
+          )}
+        </div>
+      </div>
+
+      {/* Lista */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "50px 0", color: C.tm }}>
+          <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 10 }}>🔍</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>
+            {logs.length === 0 ? "Nenhuma ação registrada ainda" : "Nenhum resultado para os filtros selecionados"}
+          </div>
+        </div>
+      ) : (
+        <div style={{ ...S.card, overflow: "hidden" }}>
+          {filtered.map((log, i) => {
+            const meta = iconMap[log.type] || { icon: "•", color: C.tm, label: log.type };
+            // Separar data e hora
+            const [datePart, timePart] = (log.date || "").split(", ");
+            return (
+              <div key={log.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px", borderBottom: i < filtered.length - 1 ? `1px solid ${C.b1}` : "none" }}>
+                <div style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, background: meta.color + "18", color: meta.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>{meta.icon}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: meta.color, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>{meta.label}</span>
+                  <div style={{ color: C.tp, fontSize: 12.5, fontWeight: 500, margin: "2px 0" }}>{log.desc}</div>
+                  {log.detail && <div style={{ color: C.tm, fontSize: 11 }}>{log.detail}</div>}
+                </div>
+                {/* Data e hora separados */}
+                <div style={{ flexShrink: 0, textAlign: "right" }}>
+                  <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 600 }}>{datePart}</div>
+                  <div style={{ color: C.td, fontSize: 11 }}>{timePart}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VerifyTab({ contacts, setContacts, history, saveHistory, currentUser, isMestre }) {
   const [modal, setModal] = useState(null); // { entry } | "all"
   const [pw, setPw] = useState("");
@@ -1886,10 +2020,12 @@ function VerifyTab({ contacts, setContacts, history, saveHistory, currentUser, i
       // Senha correta — executar deleção em lote
       if (modal === "all") {
         await deleteContacts(contacts.map((c) => String(c.id)));
+        addLog("delete_all", `Todos os leads deletados`, `${contacts.length} leads removidos do sistema`);
         setContacts([]);
         saveHistory([]);
       } else {
         await deleteContacts(modal.contacts.map((c) => String(c.id)));
+        addLog("delete_batch", `Planilha deletada: ${modal.name}`, `${modal.count} leads removidos`);
         setContacts((cs) => cs.filter((c) => !modal.contacts.find((x) => String(x.id) === String(c.id))));
         saveHistory(history.filter((h) => h.id !== modal.id));
       }
@@ -2078,6 +2214,7 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
       // Salvar histórico
       const entry = { id: String(ts), name: fn, count: imported, skipped, date: new Date().toLocaleString("pt-BR"), contacts: importedContacts };
       saveHistory([entry, ...history]);
+      addLog("import", `Planilha importada: ${fn}`, `${imported} importados${skipped > 0 ? `, ${skipped} pulados (CPF duplicado)` : ""}`);
       setDoneInfo({ imported, skipped });
       setDone(true); setPrev([]); setFn("");
       if (fRef.current) fRef.current.value = "";
@@ -2191,42 +2328,7 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 
       {/* ── ABA HISTÓRICO (só mestre) ── */}
       {tab === "history" && isMestre && (
-        <div>
-          {history.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
-              <div style={{ fontSize: 36, opacity: 0.3, marginBottom: 12 }}>📋</div>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhuma planilha importada ainda</div>
-            </div>
-          ) : history.map((entry) => (
-            <div key={entry.id} style={{ ...S.card, padding: "18px 20px", marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ fontSize: 26, flexShrink: 0 }}>📄</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: C.tp, fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{entry.name}</div>
-                  <div style={{ color: C.tm, fontSize: 11.5 }}>
-                    {entry.count} importado{entry.count !== 1 ? "s" : ""}
-                    {entry.skipped > 0 && <span style={{ color: "#FBBF24" }}> · {entry.skipped} pulados</span>}
-                    {" · "}{entry.date}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <button
-                    onClick={() => exportCSV(entry.contacts, `nexp_${entry.name}`)}
-                    style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, padding: "7px 12px", fontSize: 12 }}
-                  >⬇ Baixar</button>
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm(`Apagar os ${entry.count} leads de "${entry.name}" do sistema?`)) return;
-                      await deleteContacts(entry.contacts.map((c) => String(c.id)));
-                      saveHistory(history.filter((h) => h.id !== entry.id));
-                    }}
-                    style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "7px 12px", fontSize: 12 }}
-                  >🗑 Apagar</button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <HistoryTab />
       )}
     </div>
   );
@@ -3700,6 +3802,7 @@ function PremiumNexp({ contacts, setContacts }) {
                       onClick={async () => {
                         if (window.confirm("Remover este lead?")) {
                           await deleteContact(String(c.id));
+                          addLog("delete_one", `Lead removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Status: ${c.status}`);
                           setContacts((cs) => cs.filter((x) => x.id !== c.id));
                         }
                         closeEdit();
