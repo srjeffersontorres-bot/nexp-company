@@ -1868,7 +1868,9 @@ function ImportPage({ setContacts, setPage }) {
   const [fn, setFn] = useState("");
   const [done, setDone] = useState(false);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
   const fRef = useRef();
+
   const dl = () => {
     const b = new Blob([EXAMPLE_CSV], { type: "text/csv;charset=utf-8;" });
     const u = URL.createObjectURL(b);
@@ -1878,40 +1880,52 @@ function ImportPage({ setContacts, setPage }) {
     a.click();
     URL.revokeObjectURL(u);
   };
+
   const hf = (e) => {
     const f = e.target.files[0];
     if (!f) return;
     setFn(f.name);
     setDone(false);
     setErr("");
+    setPrev([]);
     const r = new FileReader();
     r.onload = (ev) => {
       try {
         const p = parseCSV(ev.target.result);
         if (!p.length) {
-          setErr("Nenhum registro encontrado.");
-          setPrev([]);
+          setErr("Nenhum registro encontrado. Verifique se o arquivo está no formato correto.");
           return;
         }
         setPrev(p);
       } catch (er) {
-        setErr("Erro: " + er.message);
-        setPrev([]);
+        setErr("Erro ao ler arquivo: " + er.message);
       }
     };
+    r.onerror = () => setErr("Erro ao carregar o arquivo. Tente novamente.");
     r.readAsText(f, "UTF-8");
   };
+
   const conf = async () => {
-    const newContacts = prev.map((c, i) => ({ ...c, id: Date.now() + i, reactions: [] }));
+    if (!prev.length) return;
+    setLoading(true);
+    setErr("");
     try {
-      await Promise.all(newContacts.map((c) => saveContact(c)));
+      const newContacts = prev.map((c, i) => ({
+        ...c,
+        id: String(Date.now() + i),
+        reactions: [],
+      }));
+      for (const c of newContacts) {
+        await saveContact(c);
+      }
       setDone(true);
       setPrev([]);
       setFn("");
       if (fRef.current) fRef.current.value = "";
     } catch (e) {
-      setErr("Erro ao salvar: " + e.message);
+      setErr("Erro ao salvar no banco: " + e.message);
     }
+    setLoading(false);
   };
   return (
     <div style={{ padding: "30px 36px", maxWidth: 780 }}>
@@ -2098,13 +2112,18 @@ function ImportPage({ setContacts, setPage }) {
             </div>
             <button
               onClick={conf}
+              disabled={loading}
               style={{
                 ...S.btn(C.acc, "#fff"),
                 padding: "10px 22px",
                 fontSize: 13.5,
+                opacity: loading ? 0.7 : 1,
+                cursor: loading ? "not-allowed" : "pointer",
               }}
             >
-              Importar {prev.length} cliente{prev.length !== 1 ? "s" : ""}
+              {loading
+                ? "Salvando..."
+                : `Importar ${prev.length} cliente${prev.length !== 1 ? "s" : ""}`}
             </button>
           </>
         )}
