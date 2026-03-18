@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import {
   auth,
+  db,
   listenContacts,
   saveContact,
   deleteContact,
@@ -2346,17 +2348,26 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const list = filtered || contacts;
   const [idx, setIdx] = useState(0);
   const [sc, setSc] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const si = Math.min(idx, list.length - 1);
+  const cur = list[si] || {};
+
+  // Estado local isolado por cliente
+  const [reactions, setReactions] = useState(cur.reactions || []);
+  const [leadType, setLeadType] = useState(cur.leadType || "FGTS");
+
+  // Sincroniza ao trocar de cliente
+  useEffect(() => {
+    setReactions(cur.reactions || []);
+    setLeadType(cur.leadType || "FGTS");
+    setDone(false);
+  }, [cur.id]); // eslint-disable-line
+
   if (!list.length)
     return (
       <div style={{ padding: "30px 36px" }}>
-        <h1
-          style={{
-            color: C.tp,
-            fontSize: 21,
-            fontWeight: 700,
-            margin: "0 0 30px",
-          }}
-        >
+        <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: "0 0 30px" }}>
           Ver Clientes
         </h1>
         <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
@@ -2367,31 +2378,51 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
         </div>
       </div>
     );
-  const si = Math.min(idx, list.length - 1);
-  const cur = list[si];
+
+  const lc = LEAD_COLOR[leadType] || "#9CA3AF";
   const nexts = list.slice(si + 1, si + 11);
-  const lc = LEAD_COLOR[cur.leadType] || "#9CA3AF";
+
   const upd = async (u) => {
     await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
   };
+
+  // Emojis — máx 3, isolados por cliente
   const tog = (e) => {
-    const r = cur.reactions || [];
-    upd({
-      ...cur,
-      reactions: r.includes(e) ? r.filter((x) => x !== e) : [...r, e],
+    setReactions((prev) => {
+      if (prev.includes(e)) {
+        const newR = prev.filter((x) => x !== e);
+        upd({ ...cur, reactions: newR, leadType });
+        return newR;
+      }
+      if (prev.length >= 3) return prev;
+      const newR = [...prev, e];
+      upd({ ...cur, reactions: newR, leadType });
+      return newR;
     });
   };
+
+  // Tipo de lead principal
+  const selectLead = (t) => {
+    setLeadType(t);
+    upd({ ...cur, leadType: t, reactions });
+  };
+
+  // Concluído — avança para o próximo
+  const conclude = async () => {
+    await upd({ ...cur, reactions, leadType, status: cur.status });
+    setDone(true);
+    setTimeout(() => {
+      if (si < list.length - 1) {
+        setIdx((i) => i + 1);
+      }
+    }, 800);
+  };
+
   return (
     <div style={{ padding: "26px 36px", maxWidth: 800 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 20,
-        }}
-      >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
           <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>
             {filtered ? "Filtrado" : "Ver Clientes"}
@@ -2404,330 +2435,185 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
           <button
             onClick={() => setIdx((i) => Math.max(0, i - 1))}
             disabled={si === 0}
-            style={{
-              ...S.btn(si === 0 ? C.deep : C.abg, si === 0 ? C.td : C.atxt),
-              border: `1px solid ${C.b2}`,
-              padding: "7px 14px",
-              fontSize: 13,
-            }}
-          >
-            ← Anterior
-          </button>
+            style={{ ...S.btn(si === 0 ? C.deep : C.abg, si === 0 ? C.td : C.atxt), border: `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 13 }}
+          >← Anterior</button>
           <button
             onClick={() => setIdx((i) => Math.min(list.length - 1, i + 1))}
             disabled={si === list.length - 1}
-            style={{
-              ...S.btn(
-                si === list.length - 1 ? C.deep : C.acc,
-                si === list.length - 1 ? C.td : "#fff",
-              ),
-              padding: "7px 14px",
-              fontSize: 13,
-            }}
-          >
-            Próximo →
-          </button>
+            style={{ ...S.btn(si === list.length - 1 ? C.deep : C.acc, si === list.length - 1 ? C.td : "#fff"), padding: "7px 14px", fontSize: 13 }}
+          >Próximo →</button>
         </div>
       </div>
-      <div
-        style={{
-          ...S.card,
-          border: `1px solid ${lc}33`,
-          padding: "24px 26px",
-          marginBottom: 16,
-          boxShadow: `0 0 28px ${lc}08`,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 14,
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: "50%",
-              background: lc + "1A",
-              color: lc,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-              fontWeight: 700,
-              border: `2px solid ${lc}44`,
-              flexShrink: 0,
-            }}
-          >
+
+      {/* Card */}
+      <div style={{ ...S.card, border: `1px solid ${lc}33`, padding: "24px 26px", marginBottom: 16, boxShadow: `0 0 28px ${lc}08` }}>
+
+        {/* Nome e info */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: lc + "1A", color: lc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, border: `2px solid ${lc}44`, flexShrink: 0 }}>
             {ini(cur.name)}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ color: C.tp, fontSize: 18, fontWeight: 700 }}>
+            <div style={{ color: C.tp, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
               {cur.name}
+              {reactions.length > 0 && <span style={{ fontSize: 16 }}>{reactions.join("")}</span>}
             </div>
-            <div style={{ color: C.tm, fontSize: 12.5, marginTop: 2 }}>
-              {cur.cpf}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginTop: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <LeadBadge c={cur} />
+            <div style={{ color: C.tm, fontSize: 12.5, marginTop: 2 }}>{cur.cpf}</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <LeadBadge c={{ ...cur, leadType }} />
               <StatusBadge status={cur.status} />
               {cur.matricula && (
-                <span
-                  style={{
-                    color: C.tm,
-                    fontSize: 11,
-                    padding: "3px 9px",
-                    borderRadius: 20,
-                    border: `1px solid ${C.b2}`,
-                  }}
-                >
+                <span style={{ color: C.tm, fontSize: 11, padding: "3px 9px", borderRadius: 20, border: `1px solid ${C.b2}` }}>
                   #{cur.matricula}
                 </span>
               )}
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3,1fr)",
-            gap: "10px 18px",
-            padding: "12px",
-            background: C.deep,
-            borderRadius: 10,
-            marginBottom: 16,
-          }}
-        >
-          {[
-            ["Tel 1", cur.phone || "—"],
-            ["Tel 2", cur.phone2 || "—"],
-            ["Tel 3", cur.phone3 || "—"],
-            ["Email", cur.email || "—"],
-            ["CNPJ", cur.cnpj || "—"],
-          ].map(([l, v]) => (
+
+        {/* Dados */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px 18px", padding: "12px", background: C.deep, borderRadius: 10, marginBottom: 16 }}>
+          {[["Tel 1", cur.phone || "—"], ["Tel 2", cur.phone2 || "—"], ["Tel 3", cur.phone3 || "—"], ["Email", cur.email || "—"], ["CNPJ", cur.cnpj || "—"]].map(([l, v]) => (
             <div key={l}>
-              <div style={{ color: C.tm, fontSize: 10, marginBottom: 2 }}>
-                {l}
-              </div>
-              <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 500 }}>
-                {v}
-              </div>
+              <div style={{ color: C.tm, fontSize: 10, marginBottom: 2 }}>{l}</div>
+              <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 500 }}>{v}</div>
             </div>
           ))}
         </div>
+
+        {/* Tipo de Lead Principal */}
         <div style={{ marginBottom: 14 }}>
-          <div
-            style={{
-              color: C.tm,
-              fontSize: 10.5,
-              marginBottom: 7,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Marcar status
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Tipo de Lead
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {CLIENT_STATUS.map((s) => {
-              const st = STATUS_STYLE[s];
-              const sel = cur.status === s;
+            {LEAD_TYPES.filter(t => t !== "Outro").map((t) => {
+              const col = LEAD_COLOR[t] || "#9CA3AF";
+              const sel = leadType === t;
               return (
-                <button
-                  key={s}
-                  onClick={() => upd({ ...cur, status: s })}
-                  style={{
-                    background: sel ? st.bg : C.deep,
-                    color: sel ? st.color : C.tm,
-                    border: sel
-                      ? `1px solid ${st.color}55`
-                      : `1px solid ${C.b2}`,
-                    borderRadius: 20,
-                    padding: "5px 11px",
-                    fontSize: 10.5,
-                    cursor: "pointer",
-                    fontWeight: sel ? 600 : 400,
-                    transition: "all 0.12s",
-                  }}
-                >
-                  {sel ? "✓ " : ""}
-                  {s}
+                <button key={t} onClick={() => selectLead(t)}
+                  style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+                  {sel ? "✓ " : ""}{t}
                 </button>
               );
             })}
           </div>
         </div>
+
+        {/* Status */}
         <div style={{ marginBottom: 14 }}>
-          <div
-            style={{
-              color: C.tm,
-              fontSize: 10.5,
-              marginBottom: 7,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Reações
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>Marcar status</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {CLIENT_STATUS.map((s) => {
+              const st = STATUS_STYLE[s];
+              const sel = cur.status === s;
+              return (
+                <button key={s} onClick={() => upd({ ...cur, status: s, reactions, leadType })}
+                  style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+                  {sel ? "✓ " : ""}{s}
+                </button>
+              );
+            })}
           </div>
-          <EmojiBar reactions={cur.reactions || []} onToggle={tog} />
         </div>
+
+        {/* Emojis — máx 3 */}
         <div style={{ marginBottom: 14 }}>
-          <div
-            style={{
-              color: C.tm,
-              fontSize: 10.5,
-              marginBottom: 5,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Observações
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Reações <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>({reactions.length}/3)</span>
           </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {EMOJIS.map((e) => {
+              const a = reactions.includes(e);
+              const maxed = reactions.length >= 3 && !a;
+              return (
+                <button key={e} onClick={() => tog(e)} disabled={maxed}
+                  style={{ background: a ? "#1E2A45" : C.deep, border: a ? "1px solid #4F8EF766" : `1px solid ${C.b2}`, borderRadius: 8, padding: "4px 7px", cursor: maxed ? "not-allowed" : "pointer", fontSize: 15, transform: a ? "scale(1.15)" : "scale(1)", transition: "all 0.12s", opacity: maxed ? 0.3 : 1 }}>
+                  {e}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Observações */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.5px" }}>Observações</div>
           <textarea
             value={cur.observacao || ""}
-            onChange={(e) => upd({ ...cur, observacao: e.target.value })}
+            onChange={(e) => upd({ ...cur, observacao: e.target.value, reactions, leadType })}
             rows={3}
             placeholder="Observação..."
-            style={{
-              ...S.input,
-              background: C.deep,
-              border: `1px solid ${C.b2}`,
-              color: C.ts,
-              resize: "vertical",
-            }}
+            style={{ ...S.input, background: C.deep, border: `1px solid ${C.b2}`, color: C.ts, resize: "vertical" }}
           />
         </div>
-        <div>
+
+        {/* Botões de ação */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Concluído */}
+          <button
+            onClick={conclude}
+            style={{
+              ...S.btn(done ? "#0A2918" : "#16A34A", done ? "#34D399" : "#fff"),
+              border: done ? "1px solid #34D39944" : "none",
+              padding: "10px 24px",
+              fontSize: 14,
+              fontWeight: 700,
+              flex: 1,
+              transition: "all 0.2s",
+            }}
+          >
+            {done ? "✓ Concluído — avançando..." : "✅ Concluído"}
+          </button>
+
+          {/* Simular comissão */}
           <button
             onClick={() => setSc((p) => !p)}
-            style={{
-              background: "transparent",
-              border: `1px solid ${C.b2}`,
-              color: C.tm,
-              borderRadius: 8,
-              padding: "6px 13px",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
+            style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "10px 16px", fontSize: 12, cursor: "pointer" }}
           >
-            {sc ? "▲ Fechar" : "💰 Simular comissão"}
+            {sc ? "▲ Fechar" : "💰 Comissão"}
           </button>
-          {sc && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: "16px",
-                background: C.deep,
-                borderRadius: 10,
-                border: `1px solid ${C.b2}`,
-              }}
-            >
-              <CommSim compact />
-            </div>
-          )}
         </div>
+
+        {sc && (
+          <div style={{ marginTop: 12, padding: "16px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b2}` }}>
+            <CommSim compact />
+          </div>
+        )}
       </div>
+
+      {/* Lista próximos */}
       {nexts.length > 0 && (
         <div>
-          <div
-            style={{
-              color: C.td,
-              fontSize: 10.5,
-              marginBottom: 7,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
+          <div style={{ color: C.td, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Próximos {nexts.length}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {nexts.map((c, i) => {
               const lc2 = LEAD_COLOR[c.leadType] || "#9CA3AF";
-              const ss2 =
-                STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
+              const ss2 = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
               return (
-                <div
-                  key={c.id}
-                  onClick={() => setIdx(si + 1 + i)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    padding: "6px 11px",
-                    background: C.deep,
-                    borderRadius: 7,
-                    border: `1px solid ${C.b1}`,
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = C.card)
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = C.deep)
-                  }
+                <div key={c.id} onClick={() => setIdx(si + 1 + i)}
+                  style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = C.card)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = C.deep)}
                 >
-                  <div
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: "50%",
-                      background: lc2 + "18",
-                      color: lc2,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 8,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: lc2 + "18", color: lc2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
                     {ini(c.name)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span
-                      style={{ color: C.ts, fontSize: 11, fontWeight: 500 }}
-                    >
-                      {c.name}
-                    </span>
+                    <span style={{ color: C.ts, fontSize: 11, fontWeight: 500 }}>{c.name}</span>
                   </div>
-                  <span style={{ color: lc2, fontSize: 9.5, flexShrink: 0 }}>
-                    {c.leadType === "Outro"
-                      ? c.leadTypeCustom || "Outro"
-                      : c.leadType}
-                  </span>
-                  <span
-                    style={{
-                      background: ss2.bg,
-                      color: ss2.color,
-                      fontSize: 9,
-                      padding: "2px 7px",
-                      borderRadius: 20,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {c.status}
-                  </span>
+                  <span style={{ color: lc2, fontSize: 9.5, flexShrink: 0 }}>{c.leadType === "Outro" ? c.leadTypeCustom || "Outro" : c.leadType}</span>
+                  <span style={{ background: ss2.bg, color: ss2.color, fontSize: 9, padding: "2px 7px", borderRadius: 20, fontWeight: 600 }}>{c.status}</span>
                   {(c.reactions || []).length > 0 && (
                     <div style={{ display: "flex", gap: 1 }}>
                       {(c.reactions || []).slice(0, 3).map((e, j) => (
-                        <span key={j} style={{ fontSize: 10 }}>
-                          {e}
-                        </span>
+                        <span key={j} style={{ fontSize: 10 }}>{e}</span>
                       ))}
                     </div>
                   )}
-                  <span style={{ color: C.td, fontSize: 9.5 }}>
-                    #{si + 2 + i}
-                  </span>
+                  <span style={{ color: C.td, fontSize: 9.5 }}>#{si + 2 + i}</span>
                 </div>
               );
             })}
@@ -2735,18 +2621,7 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
         </div>
       )}
       {si === list.length - 1 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "18px",
-            color: C.tm,
-            fontSize: 13,
-            background: C.deep,
-            borderRadius: 10,
-            marginTop: 14,
-            border: `1px solid ${C.b1}`,
-          }}
-        >
+        <div style={{ textAlign: "center", padding: "18px", color: C.tm, fontSize: 13, background: C.deep, borderRadius: 10, marginTop: 14, border: `1px solid ${C.b1}` }}>
           ✓ Último cliente da lista.
         </div>
       )}
@@ -4284,9 +4159,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             uid = found.uid || found.id;
             reativado = true;
           } else {
-            const { collection: col2, query: q2, where: w2, getDocs: gd2 } = await import("firebase/firestore");
-            const { db: db2 } = await import("./firebase");
-            const snap = await gd2(q2(col2(db2, "users"), w2("email", "==", form.email)));
+            const snap = await getDocs(query(collection(db, "users"), where("email", "==", form.email)));
             if (!snap.empty) {
               uid = snap.docs[0].id;
               reativado = true;
