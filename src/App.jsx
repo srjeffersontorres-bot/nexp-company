@@ -5158,7 +5158,7 @@ function ChatPage({ currentUser, users, presence }) {
       await sendChatMessage({ groupId: id, text: "📷 " + (currentUser.name || currentUser.email) + " alterou a foto do grupo.", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, system: true });
     }
     if (prev && prev.name !== groupName) {
-      await sendChatMessage({ groupId: id, text: "✏️ Nome alterado para "" + groupName + "".", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, system: true });
+      await sendChatMessage({ groupId: id, text: "\u270f\ufe0f Nome alterado para \"" + groupName + "\".", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, system: true });
     }
     setShowGroupModal(false); setTab(id);
   };
