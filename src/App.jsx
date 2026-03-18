@@ -5081,20 +5081,30 @@ function ChatPage({ currentUser, users, presence }) {
     }
   }, [messages]); // eslint-disable-line
 
+  // Rola para o final ao receber mensagens
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Marca mensagens como lidas quando abre a DM
+  // Marca como lida apenas quando o usuário vê o final da conversa (scroll chegou lá)
+  const markReadRef = useRef(false);
   useEffect(() => {
     if (tab === "geral" || !tab) return;
-    const unread = messages.filter(m => m.authorId === tab && !m.readAt);
-    unread.forEach(async (m) => {
-      try {
-        await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true });
-      } catch(e) {}
-    });
-  }, [tab, messages]); // eslint-disable-line
+    markReadRef.current = false;
+    // Pequeno delay para garantir que o usuário realmente abriu e está vendo
+    const timer = setTimeout(() => {
+      markReadRef.current = true;
+      const unread = allMessages.filter(m =>
+        m.toId === myId && m.authorId === tab && !m.readAt && m.type !== "shake"
+      );
+      unread.forEach(async (m) => {
+        try {
+          await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true });
+        } catch(e) {}
+      });
+    }, 1500); // aguarda 1.5s antes de marcar como lida
+    return () => clearTimeout(timer);
+  }, [tab]); // eslint-disable-line
 
   const handleFile = (e) => {
     const f = e.target.files[0];
@@ -5149,9 +5159,9 @@ function ChatPage({ currentUser, users, presence }) {
 
   const tabUser = tab !== "geral" ? dmList.find(u => (u.uid || u.id) === tab) : null;
 
-  // Contar não lidas por DM
+  // Contar não lidas por DM — usa readAt
   const unreadDM = (uid) => allMessages.filter(m =>
-    m.toId === myId && m.authorId === uid && !m.read
+    m.toId === myId && m.authorId === uid && !m.readAt && m.type !== "shake"
   ).length;
 
   return (
@@ -5603,7 +5613,6 @@ export default function App() {
   const setPageAndSave = (p) => {
     sessionStorage.setItem("nexp_page", p);
     setPage(p);
-    if (p === "chat") setUnreadChat(0);
   };
 
   // ── Persistência de sessão Firebase ──────────────────────────
@@ -5664,31 +5673,32 @@ export default function App() {
     const unsub = listenChat((msgs) => {
       const relevant = msgs.filter(m => !m.toId || m.toId === myId);
       const newCount = relevant.length;
+
+      // ── Shake: detecta SEMPRE, em qualquer página ──
       if (newCount > lastChatCount.current) {
         const newMsgs = relevant.slice(lastChatCount.current);
-
-        // ── Shake: detecta SEMPRE, em qualquer página ──
         const shakeSignal = newMsgs.find(m => m.type === "shake" && m.toId === myId);
         if (shakeSignal) {
           setShake(true);
           setTimeout(() => setShake(false), 1000);
         }
-
-        // ── Badge e flash: só quando fora do chat ──
-        if (page !== "chat") {
-          const lastMsg = relevant[relevant.length - 1];
-          if (lastMsg) {
-            setFlashUserId(lastMsg.authorId);
-            setTimeout(() => setFlashUserId(null), 3000);
-          }
-          const normalMsgs = newMsgs.filter(m => m.type !== "shake");
-          if (normalMsgs.length > 0) setUnreadChat(n => n + normalMsgs.length);
+        // Flash no avatar de quem mandou
+        const lastNew = newMsgs.filter(m => m.type !== "shake").pop();
+        if (lastNew && lastNew.authorId !== myId) {
+          setFlashUserId(lastNew.authorId);
+          setTimeout(() => setFlashUserId(null), 3000);
         }
       }
       lastChatCount.current = newCount;
+
+      // ── Badge: recalcula em tempo real com base em readAt ──
+      const unread = relevant.filter(m =>
+        m.type !== "shake" && m.authorId !== myId && !m.readAt
+      ).length;
+      setUnreadChat(unread);
     });
     return () => unsub();
-  }, [currentUser, page]); // eslint-disable-line
+  }, [currentUser]); // eslint-disable-line
 
   // Apply accent theme to module-level C so all components pick it up on re-render
   Object.assign(C, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
