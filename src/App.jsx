@@ -5050,6 +5050,8 @@ function ChatPage({ currentUser, users, presence }) {
   const [attachment, setAttachment] = useState(null);
   const shakeLocal = false;
   const [flashAuthor, setFlashAuthor] = useState(null);
+  const [hoveredMsg, setHoveredMsg] = useState(null);
+  const [reactionPicker, setReactionPicker] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
@@ -5140,7 +5142,6 @@ function ChatPage({ currentUser, users, presence }) {
 
   const shake = async () => {
     if (tab === "geral" || !tab) return;
-    // Envia sinal de shake via Firestore para o destinatário
     await sendChatMessage({
       text: "🔔",
       type: "shake",
@@ -5149,6 +5150,23 @@ function ChatPage({ currentUser, users, presence }) {
       authorRole: currentUser.role,
       toId: tab,
     });
+  };
+
+  const REACTION_EMOJIS = ["❤️","😂","😮","😢","😡","👍","🔥","🎉"];
+
+  const toggleReaction = async (msgId, emoji) => {
+    setReactionPicker(null);
+    const msg = allMessages.find(m => m.id === msgId);
+    if (!msg) return;
+    const reactions = msg.reactions || {};
+    const users = reactions[emoji] || [];
+    const updated = users.includes(myId)
+      ? users.filter(u => u !== myId)
+      : [...users, myId];
+    const newReactions = { ...reactions, [emoji]: updated };
+    // Remove emoji key if no one reacted
+    if (updated.length === 0) delete newReactions[emoji];
+    await setDoc(doc(db, "chat", msgId), { reactions: newReactions }, { merge: true });
   };
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
@@ -5283,8 +5301,15 @@ function ChatPage({ currentUser, users, presence }) {
             const time = msg.createdAt?.seconds
               ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
               : "";
+            const reactions = msg.reactions || {};
+            const hasReactions = Object.keys(reactions).some(e => reactions[e]?.length > 0);
+
             return (
-              <div key={msg.id} style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 7 }}>
+              <div key={msg.id}
+                style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 7, position: "relative" }}
+                onMouseEnter={() => setHoveredMsg(msg.id)}
+                onMouseLeave={() => { setHoveredMsg(null); if (reactionPicker === msg.id) setReactionPicker(null); }}
+              >
                 {!isMine && (
                   <div style={{
                     width: 28, height: 28, borderRadius: "50%",
@@ -5298,40 +5323,116 @@ function ChatPage({ currentUser, users, presence }) {
                     {ini(msg.authorName || "?")}
                   </div>
                 )}
-                <div style={{ maxWidth: "70%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
+
+                <div style={{ maxWidth: "70%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start", position: "relative" }}>
                   {!isMine && (
                     <span style={{ color: rc, fontSize: 10, fontWeight: 700, marginBottom: 2, paddingLeft: 3 }}>
                       {msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}
                     </span>
                   )}
-                  <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px", padding: "8px 13px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
-                    {msg.text && <div>{msg.text}</div>}
-                    {msg.attachment && (
-                      <div style={{ marginTop: msg.text ? 6 : 0 }}>
-                        {msg.attachment.type?.startsWith("image/") ? (
-                          <img src={msg.attachment.url} alt={msg.attachment.name} style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, display: "block" }} />
-                        ) : (
-                          <a href={msg.attachment.url} download={msg.attachment.name} style={{ color: isMine ? "#fff" : C.atxt, fontSize: 12, textDecoration: "underline" }}>
-                            📎 {msg.attachment.name}
-                          </a>
+
+                  {/* Bolha da mensagem + botão de reação */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexDirection: isMine ? "row-reverse" : "row" }}>
+                    <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "16px 16px 4px 16px" : "16px 16px 16px 4px", padding: "8px 13px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
+                      {msg.text && <div>{msg.text}</div>}
+                      {msg.attachment && (
+                        <div style={{ marginTop: msg.text ? 6 : 0 }}>
+                          {msg.attachment.type?.startsWith("image/") ? (
+                            <img src={msg.attachment.url} alt={msg.attachment.name} style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, display: "block" }} />
+                          ) : (
+                            <a href={msg.attachment.url} download={msg.attachment.name} style={{ color: isMine ? "#fff" : C.atxt, fontSize: 12, textDecoration: "underline" }}>
+                              📎 {msg.attachment.name}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Botão de reação — aparece no hover */}
+                    {hoveredMsg === msg.id && (
+                      <div style={{ position: "relative" }}>
+                        <button
+                          onClick={() => setReactionPicker(p => p === msg.id ? null : msg.id)}
+                          style={{ background: C.card, border: `1px solid ${C.b1}`, borderRadius: "50%", width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 13, flexShrink: 0, boxShadow: "0 2px 8px #00000044" }}
+                        >
+                          🙂
+                        </button>
+
+                        {/* Picker de emojis */}
+                        {reactionPicker === msg.id && (
+                          <div style={{
+                            position: "absolute",
+                            bottom: 32,
+                            [isMine ? "right" : "left"]: 0,
+                            background: C.card,
+                            border: `1px solid ${C.b1}`,
+                            borderRadius: 24,
+                            padding: "6px 10px",
+                            display: "flex",
+                            gap: 4,
+                            zIndex: 100,
+                            boxShadow: "0 4px 20px #00000066",
+                            whiteSpace: "nowrap",
+                          }}>
+                            {REACTION_EMOJIS.map(e => {
+                              const reacted = (reactions[e] || []).includes(myId);
+                              return (
+                                <button key={e} onClick={() => toggleReaction(msg.id, e)}
+                                  style={{
+                                    background: reacted ? C.abg : "transparent",
+                                    border: reacted ? `1px solid ${C.atxt}44` : "1px solid transparent",
+                                    borderRadius: "50%",
+                                    width: 34, height: 34,
+                                    fontSize: 18,
+                                    cursor: "pointer",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    transition: "all 0.12s",
+                                    transform: reacted ? "scale(1.2)" : "scale(1)",
+                                  }}
+                                  onMouseEnter={ev => ev.currentTarget.style.transform = "scale(1.3)"}
+                                  onMouseLeave={ev => ev.currentTarget.style.transform = reacted ? "scale(1.2)" : "scale(1)"}
+                                >
+                                  {e}
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
+
+                  {/* Reações exibidas abaixo da bolha */}
+                  {hasReactions && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, justifyContent: isMine ? "flex-end" : "flex-start" }}>
+                      {Object.entries(reactions).filter(([, users]) => users?.length > 0).map(([emoji, users]) => {
+                        const iReacted = users.includes(myId);
+                        return (
+                          <button key={emoji} onClick={() => toggleReaction(msg.id, emoji)}
+                            style={{
+                              background: iReacted ? C.abg : C.deep,
+                              border: iReacted ? `1px solid ${C.atxt}55` : `1px solid ${C.b2}`,
+                              borderRadius: 20,
+                              padding: "2px 8px",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              display: "flex", alignItems: "center", gap: 4,
+                              transition: "all 0.12s",
+                            }}>
+                            <span>{emoji}</span>
+                            <span style={{ color: iReacted ? C.atxt : C.tm, fontSize: 10.5, fontWeight: 600 }}>{users.length}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Horário + status de leitura */}
                   <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, justifyContent: isMine ? "flex-end" : "flex-start" }}>
                     <span style={{ color: C.td, fontSize: 9.5 }}>{time}</span>
-                    {/* Status de leitura — só em DM, só nas minhas mensagens */}
                     {isMine && tab !== "geral" && (
-                      <span style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: msg.readAt ? "#38BDF8" : C.td,
-                        letterSpacing: "-1px",
-                        lineHeight: 1,
-                        title: msg.readAt ? `Visto às ${new Date(msg.readAt).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}` : "Enviado",
-                      }}
-                        title={msg.readAt ? `Visto às ${new Date(msg.readAt).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}` : "Enviado"}
-                      >
+                      <span style={{ fontSize: 11, fontWeight: 700, color: msg.readAt ? "#38BDF8" : C.td, letterSpacing: "-1px", lineHeight: 1 }}
+                        title={msg.readAt ? `Visto às ${new Date(msg.readAt).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}` : "Enviado"}>
                         {msg.readAt ? "✓✓" : "✓"}
                       </span>
                     )}
