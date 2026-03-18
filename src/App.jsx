@@ -5216,7 +5216,7 @@ function ChatPage({ currentUser, users, presence }) {
                   const rc = roleColor[u.role] || C.atxt;
                   return (
                     <button key={uid} onClick={() => setGroupMembers(p => sel ? p.filter(x => x !== uid) : [...p, uid])}
-                      style={{ background: sel ? rc + "1A" : C.deep, color: sel ? rc : C.tm, border: sel ?  : , borderRadius: 20, padding: "5px 10px", fontSize: 11.5, cursor: uid === myId ? "not-allowed" : "pointer", fontWeight: sel ? 600 : 400 }}>
+                      style={{ background: sel ? rc + "1A" : C.deep, color: sel ? rc : C.tm, border: sel ? `1px solid ${rc}44` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 10px", fontSize: 11.5, cursor: uid === myId ? "not-allowed" : "pointer", fontWeight: sel ? 600 : 400 }}>
                       {sel ? "✓ " : ""}{u.name || u.email}
                     </button>
                   );
