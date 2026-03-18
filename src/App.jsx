@@ -946,7 +946,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
                 border: `1.5px solid ${C.sb}`,
               }} />
             </div>
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: C.ts, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                 {uObj.name || uObj.username}
               </div>
@@ -955,6 +955,20 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
                 <span style={{ color: "#16A34A", fontSize: 9 }}>● online</span>
               </div>
             </div>
+            {/* Botão + para criar story */}
+            <button
+              onClick={() => setPage("stories")}
+              title="Criar story"
+              style={{
+                width: 20, height: 20, borderRadius: "50%",
+                background: C.acc, color: "#fff",
+                border: `1.5px solid ${C.bg}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 700, cursor: "pointer",
+                flexShrink: 0, lineHeight: 1,
+                padding: 0,
+              }}
+            >+</button>
           </div>
           <button
             onClick={onLogout}
@@ -5653,23 +5667,9 @@ function StoriesPage({ currentUser, users }) {
   return (
     <div style={{ padding: "28px 36px", height: "100%", boxSizing: "border-box" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Stories</h1>
-          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Atualizações que duram 24 horas</p>
-        </div>
-        {!myStory && (
-          <button onClick={() => setCreating(true)}
-            style={{ ...S.btn(C.acc, "#fff"), padding: "10px 20px", fontSize: 13, display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ fontSize: 16 }}>＋</span> Criar story
-          </button>
-        )}
-        {myStory && (
-          <button onClick={() => deleteStory(myStory.id)}
-            style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "9px 16px", fontSize: 12 }}>
-            🗑 Meu story
-          </button>
-        )}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Stories</h1>
+        <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Atualizações que duram 24 horas · clique no seu avatar para criar</p>
       </div>
 
       {/* ── Criar story ── */}
@@ -5724,24 +5724,53 @@ function StoriesPage({ currentUser, users }) {
         <div style={{ ...S.card, padding: "60px", textAlign: "center" }}>
           <div style={{ fontSize: 44, opacity: 0.2, marginBottom: 14 }}>◎</div>
           <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>Nenhum story ativo</div>
-          <div style={{ color: C.td, fontSize: 12, marginTop: 6 }}>Seja o primeiro a compartilhar algo com a equipe!</div>
-          <button onClick={() => setCreating(true)} style={{ ...S.btn(C.acc, "#fff"), marginTop: 18, padding: "10px 22px", fontSize: 13 }}>
-            ＋ Criar story
-          </button>
+          <div style={{ color: C.td, fontSize: 12, marginTop: 6 }}>Clique no seu avatar para criar um story!</div>
+          {/* Avatar próprio com + mesmo sem stories */}
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+            <button onClick={() => setCreating(true)}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer" }}>
+              <div style={{ position: "relative", width: 68, height: 68 }}>
+                <div style={{ width: 68, height: 68, borderRadius: "50%", background: `linear-gradient(135deg,${C.atxt}55,${C.acc}55)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 700, color: C.atxt, border: `2px dashed ${C.atxt}` }}>
+                  {ini(currentUser.name || currentUser.email || "?")}
+                </div>
+                <div style={{ position: "absolute", bottom: 0, right: 0, width: 22, height: 22, borderRadius: "50%", background: C.acc, border: `2px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff", fontWeight: 700, lineHeight: 1 }}>+</div>
+              </div>
+              <span style={{ color: C.atxt, fontSize: 11, fontWeight: 600 }}>Criar story</span>
+            </button>
+          </div>
         </div>
       ) : (
         <>
           {/* Avatars */}
           <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, marginBottom: 24 }}>
-            {/* Botão criar se não tem story */}
-            {!myStory && !creating && (
-              <button onClick={() => setCreating(true)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
-                <div style={{ width: 60, height: 60, borderRadius: "50%", background: C.deep, border: `2px dashed ${C.atxt}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: C.atxt }}>＋</div>
-                <span style={{ color: C.tm, fontSize: 11 }}>Criar</span>
-              </button>
-            )}
-            {authorStories.map(s => {
-              const isMine = s.authorId === myId;
+            {/* Avatar do próprio usuário — sempre primeiro */}
+            <button
+              onClick={() => myStory ? (setViewing(viewing === myStory.id ? null : myStory.id), !viewing && markViewed(myStory)) : setCreating(true)}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
+            >
+              <div style={{ position: "relative", width: 68, height: 68 }}>
+                {/* Ring */}
+                <div style={{
+                  width: 68, height: 68, borderRadius: "50%", padding: 3, boxSizing: "border-box",
+                  background: myStory
+                    ? (viewing === myStory.id ? `linear-gradient(135deg,${C.atxt},${C.acc})` : `linear-gradient(135deg,${C.acc},${C.atxt}88)`)
+                    : "transparent",
+                  border: !myStory ? `2px dashed ${C.atxt}66` : "none",
+                }}>
+                  <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: myStory ? (myStory.bg || C.card) : C.deep, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: C.atxt, border: `2px solid ${C.bg}` }}>
+                    {ini(currentUser.name || currentUser.email || "?")}
+                  </div>
+                </div>
+                {/* Botão + quando não tem story */}
+                {!myStory && (
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 22, height: 22, borderRadius: "50%", background: C.acc, border: `2px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff", fontWeight: 700, lineHeight: 1 }}>+</div>
+                )}
+              </div>
+              <span style={{ color: myStory && viewing === myStory.id ? C.atxt : C.tm, fontSize: 11, fontWeight: 600 }}>Você</span>
+            </button>
+
+            {/* Avatares dos outros usuários com story */}
+            {authorStories.filter(s => s.authorId !== myId).map(s => {
               const viewed = (s.views || []).includes(myId);
               const rc = roleColor[s.authorRole] || C.atxt;
               const isViewing = viewing === s.id;
@@ -5749,8 +5778,8 @@ function StoriesPage({ currentUser, users }) {
                 <button key={s.id} onClick={() => { setViewing(isViewing ? null : s.id); if (!isViewing) markViewed(s); }}
                   style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
                   <div style={{
-                    width: 60, height: 60, borderRadius: "50%", padding: 3,
-                    background: isViewing ? `linear-gradient(135deg,${C.atxt},${C.acc})` : viewed ? `1px solid ${C.b2}` : `linear-gradient(135deg,${rc},${rc}88)`,
+                    width: 68, height: 68, borderRadius: "50%", padding: 3,
+                    background: isViewing ? `linear-gradient(135deg,${C.atxt},${C.acc})` : viewed ? "transparent" : `linear-gradient(135deg,${rc},${rc}88)`,
                     border: viewed && !isViewing ? `2px solid ${C.b2}` : "none",
                     boxSizing: "border-box",
                   }}>
@@ -5759,7 +5788,7 @@ function StoriesPage({ currentUser, users }) {
                     </div>
                   </div>
                   <span style={{ color: isViewing ? C.atxt : C.tm, fontSize: 11, fontWeight: isViewing ? 600 : 400, maxWidth: 64, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                    {isMine ? "Você" : s.authorName.split(" ")[0]}
+                    {s.authorName.split(" ")[0]}
                   </span>
                 </button>
               );
