@@ -4270,6 +4270,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     setOk("Criando usuário...");
     try {
       const uid = await createOperator(form.email, form.password);
+      const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
       const newU = {
         id: uid, uid,
         username: form.email,
@@ -4282,7 +4283,31 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         active: true,
       };
       await saveUserProfile(uid, newU);
-      flash("Usuário criado com sucesso!");
+
+      // ── Enviar email de boas-vindas via EmailJS ──
+      try {
+        await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            service_id: "nexp_service",
+            template_id: "template_hubbahe",
+            user_id: "GaZRJdTXt0UMdEY3H",
+            template_params: {
+              to_name: form.name,
+              to_email: form.email,
+              user_email: form.email,
+              user_password: form.password,
+              user_role: roleLabel[newU.role] || newU.role,
+              access_link: "https://nexp-company.vercel.app",
+            },
+          }),
+        });
+        flash("Usuário criado e email de boas-vindas enviado! ✉");
+      } catch {
+        flash("Usuário criado! (Email não pôde ser enviado)");
+      }
+
       setForm({ name: "", cpf: "", email: "", password: "", role: "indicado", photo: null });
       setMode("list");
     } catch (e) {
