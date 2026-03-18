@@ -742,7 +742,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
-    { id: "chat", label: "Chat da Equipe", icon: "💬", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
       id: "config",
@@ -879,6 +878,37 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         })}
       </nav>
       <div style={{ padding: "0 12px" }}>
+
+        {/* Chat — separado do nav, acima do perfil */}
+        <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10 }}>
+          <button
+            onClick={() => setPage("chat")}
+            style={{
+              display: "flex", alignItems: "center", gap: 9,
+              padding: "9px 11px", borderRadius: 9, width: "100%",
+              border: page === "chat" ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+              cursor: "pointer", textAlign: "left",
+              background: page === "chat" ? C.abg : C.deep,
+              color: page === "chat" ? C.atxt : C.tm,
+              fontSize: 12.5, fontWeight: page === "chat" ? 600 : 400,
+              transition: "all 0.12s",
+            }}
+          >
+            <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>💬</span>
+            Chat da Equipe
+            {unreadChat > 0 && (
+              <span style={{
+                marginLeft: "auto", background: "#16A34A", color: "#fff",
+                fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700,
+                animation: "pulse 1.5s infinite",
+              }}>
+                {unreadChat}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Perfil do usuário */}
         <div
           style={{
             background: C.deep,
@@ -887,14 +917,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
             border: `1px solid ${C.b1}`,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              marginBottom: 8,
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
             <div style={{ position: "relative", flexShrink: 0 }}>
               {uObj.photo ? (
                 <img src={uObj.photo} alt=""
