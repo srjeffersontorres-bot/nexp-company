@@ -5236,8 +5236,8 @@ function ChatPage({ currentUser, users, presence }) {
       )}
 
       {/* Sidebar conversas */}
-      <div style={{ width: 210, borderRight: , display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{ padding: "12px 12px 8px", borderBottom:  }}>
+      <div style={{ width: 210, borderRight: `1px solid ${C.b1}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "12px 12px 8px", borderBottom: `1px solid ${C.b1}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 20 }}>🧑‍💻</span>
             <div style={{ flex: 1 }}>
@@ -5308,7 +5308,7 @@ function ChatPage({ currentUser, users, presence }) {
       {/* Área de conversa */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Header */}
-        <div style={{ padding: "10px 18px", borderBottom: , display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <div style={{ padding: "10px 18px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {tab === "geral" && (
             <><span style={{ fontSize: 18 }}>🌐</span><div><div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>Chat Geral</div><div style={{ color: C.tm, fontSize: 10 }}>{users.length} membros</div></div></>
           )}
@@ -5402,7 +5402,7 @@ function ChatPage({ currentUser, users, presence }) {
         {/* Mensagens rápidas */}
         {showQuick && (
           <div style={{ margin: "0 18px 5px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 10, overflow: "hidden", maxHeight: 190, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "7px 10px", borderBottom: , display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ padding: "7px 10px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: C.tm, fontSize: 10.5 }}>⚡ Clique para enviar</span>
               <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "3px 7px", fontSize: 10.5, flex: 1 }} />
               <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 12 }}>✕</button>
@@ -5438,7 +5438,7 @@ function ChatPage({ currentUser, users, presence }) {
         )}
 
         {/* Input */}
-        <div style={{ padding: "7px 18px 12px", borderTop: , flexShrink: 0 }}>
+        <div style={{ padding: "7px 18px 12px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
             <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>⚡</button>
             <button onClick={() => setShowEmoji(p => !p)} style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 8, padding: "8px 9px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>😊</button>
