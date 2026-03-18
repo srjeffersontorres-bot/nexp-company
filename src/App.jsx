@@ -5218,12 +5218,6 @@ function ChatPage({ currentUser, users, presence }) {
                   {presence[tab]?.online ? "● online" : roleLabel[tabUser.role]}
                 </div>
               </div>
-              {/* Botão chamar atenção — DM apenas */}
-              <button onClick={shake}
-                title="Chamar atenção"
-                style={{ marginLeft: "auto", background: "#2D1515", border: "1px solid #EF444433", color: "#F87171", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                🔔 Chamar atenção
-              </button>
             </>
           ) : null}
         </div>
@@ -5339,6 +5333,28 @@ function ChatPage({ currentUser, users, presence }) {
               style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>⚡</button>
             <button onClick={() => setShowEmoji(p => !p)}
               style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>😊</button>
+            {/* Botão nudge estilo MSN — só aparece em DM */}
+            {tab !== "geral" && (
+              <button
+                onClick={shake}
+                title="Chamar atenção (nudge)"
+                style={{
+                  background: C.deep,
+                  border: `1px solid ${C.b2}`,
+                  color: C.tm,
+                  borderRadius: 9,
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  flexShrink: 0,
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#2D1515"; e.currentTarget.style.borderColor = "#EF444433"; e.currentTarget.style.color = "#F87171"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = C.deep; e.currentTarget.style.borderColor = C.b2; e.currentTarget.style.color = C.tm; }}
+              >
+                📳
+              </button>
+            )}
             {tab !== "geral" && (
               <button onClick={() => fileRef.current?.click()}
                 style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>📎</button>
