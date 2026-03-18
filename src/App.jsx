@@ -5456,7 +5456,7 @@ function ChatPage({ currentUser, users, presence }) {
             <textarea ref={inputRef} value={text}
               onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
               onKeyDown={handleKey}
-              placeholder={tab === "geral" ? "Mensagem para a equipe... (/)" : }
+              placeholder={tab === "geral" ? "Mensagem para a equipe... (/)" : `Mensagem para ${tabUser?.name || tabGroup?.name || "usuário"}...`}
               rows={1}
               style={{ ...S.input, flex: 1, resize: "none", borderRadius: 8, padding: "8px 11px", fontSize: 12.5, lineHeight: 1.5 }} />
             <button onClick={() => send()} disabled={!text.trim() && !attachment}
