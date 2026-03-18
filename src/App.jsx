@@ -14,6 +14,8 @@ import {
   login as firebaseLogin,
   logout as firebaseLogout,
   createOperator,
+  listenChat,
+  sendChatMessage,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -737,6 +739,7 @@ function Sidebar({ page, setPage, user, users, onLogout }) {
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
+    { id: "chat", label: "Chat da Equipe", icon: "💬", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
       id: "config",
@@ -4954,6 +4957,225 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   );
 }
 
+// ── Chat Page ──────────────────────────────────────────────────
+const QUICK_MESSAGES = [
+  "🔥 Hoje vai ser incrível, vamos com tudo pessoal!",
+  "🌅 Novo dia, novas oportunidades!",
+  "💪 Foco total hoje, vamos bater as metas!",
+  "🚀 Equipe unida, ninguém nos para!",
+  "⭐ Cada cliente é uma chance de fazer a diferença!",
+  "💰 Vendas feitas com propósito mudam vidas!",
+  "🎯 Mira no alvo, hoje é dia de fechar negócio!",
+  "🏆 Campeões não desistem, bora que bora!",
+  "✨ Acredite no seu potencial e vá em frente!",
+  "📈 Resultado não vem do acaso, vem do esforço!",
+  "💡 Uma boa conversa pode mudar o dia do cliente!",
+  "🤝 Atendimento com excelência é o nosso padrão!",
+  "🌟 Você é capaz de mais do que imagina!",
+  "🎉 Cada SIM é uma vitória que devemos celebrar!",
+  "📞 Liga pro cliente, oportunidade não espera!",
+  "💎 Qualidade no atendimento gera fidelidade!",
+  "🔑 A chave do sucesso é não parar de tentar!",
+  "🌈 Dificuldades existem para nos fortalecer!",
+  "⚡ Energia boa atrai resultados bons!",
+  "🎯 Foca no que você pode controlar: seu esforço!",
+  "👊 Time forte, resultados fortes!",
+  "🏅 Persistência é a mãe do sucesso!",
+  "💬 Uma boa escuta vale mais que mil palavras!",
+  "🌍 Nosso trabalho transforma a vida das pessoas!",
+  "🔔 Alerta de oportunidade: é hoje o dia!",
+  "🤩 Anime-se! O melhor cliente está por vir!",
+  "📊 Números sobem quando o time se une!",
+  "🧠 Trabalhe com estratégia, não só com força!",
+  "🌻 Plante dedicação e colha resultados!",
+  "🎊 Parabéns a todos pelo esforço de cada dia!",
+];
+
+const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","✅","👏","😎","🤝","💰","🏆","🎯"];
+
+function ChatPage({ currentUser }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [showQuick, setShowQuick] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [filter, setFilter] = useState("");
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const unsub = listenChat((msgs) => setMessages(msgs));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const send = async (msg) => {
+    const content = (msg || text).trim();
+    if (!content) return;
+    setText("");
+    setShowQuick(false);
+    setShowEmoji(false);
+    await sendChatMessage({
+      text: content,
+      authorId: currentUser.uid || currentUser.id,
+      authorName: currentUser.name || currentUser.email,
+      authorRole: currentUser.role,
+    });
+    inputRef.current?.focus();
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === "/") { setShowQuick(true); }
+    if (e.key === "Escape") { setShowQuick(false); setShowEmoji(false); }
+  };
+
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+
+  const filteredQuick = filter
+    ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase()))
+    : QUICK_MESSAGES;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", padding: "0", background: C.bg }}>
+      {/* Header */}
+      <div style={{ padding: "20px 28px 14px", borderBottom: `1px solid ${C.b1}`, flexShrink: 0 }}>
+        <h1 style={{ color: C.tp, fontSize: 20, fontWeight: 700, margin: 0 }}>💬 Chat da Equipe</h1>
+        <p style={{ color: C.tm, fontSize: 12, margin: "3px 0 0" }}>Mensagens em tempo real com toda a equipe</p>
+      </div>
+
+      {/* Mensagens */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 28px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhuma mensagem ainda</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>Digite / para mensagens rápidas</div>
+          </div>
+        )}
+        {messages.map((msg) => {
+          const isMine = msg.authorId === (currentUser.uid || currentUser.id);
+          const rc = roleColor[msg.authorRole] || C.atxt;
+          const time = msg.createdAt?.seconds
+            ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+            : "";
+          return (
+            <div key={msg.id} style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 8 }}>
+              {/* Avatar */}
+              {!isMine && (
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: rc + "1A", color: rc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, border: `1.5px solid ${rc}33` }}>
+                  {ini(msg.authorName || "?")}
+                </div>
+              )}
+              <div style={{ maxWidth: "72%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
+                {!isMine && (
+                  <span style={{ color: rc, fontSize: 10.5, fontWeight: 700, marginBottom: 3, paddingLeft: 4 }}>
+                    {msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}
+                  </span>
+                )}
+                <div style={{
+                  background: isMine ? C.acc : C.card,
+                  color: isMine ? "#fff" : C.tp,
+                  border: isMine ? "none" : `1px solid ${C.b1}`,
+                  borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                  padding: "9px 14px",
+                  fontSize: 13.5,
+                  lineHeight: 1.5,
+                  wordBreak: "break-word",
+                }}>
+                  {msg.text}
+                </div>
+                <span style={{ color: C.td, fontSize: 10, marginTop: 3, paddingHorizontal: 4 }}>{time}</span>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Mensagens rápidas */}
+      {showQuick && (
+        <div style={{ margin: "0 28px 8px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 12, overflow: "hidden", maxHeight: 220, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: C.tm, fontSize: 11 }}>⚡ Mensagens rápidas — clique para enviar</span>
+            <input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filtrar..."
+              style={{ ...S.input, padding: "4px 8px", fontSize: 11, flex: 1, marginLeft: "auto" }}
+            />
+            <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 14 }}>✕</button>
+          </div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {filteredQuick.map((m, i) => (
+              <div key={i} onClick={() => send(m)}
+                style={{ padding: "9px 14px", cursor: "pointer", fontSize: 12.5, color: C.ts, borderBottom: `1px solid ${C.b1}`, transition: "background 0.1s" }}
+                onMouseEnter={e => e.currentTarget.style.background = C.abg}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                {m}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{ padding: "10px 28px 18px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
+        {/* Emojis rápidos */}
+        {showEmoji && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8, padding: "8px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}` }}>
+            {CHAT_EMOJIS.map((e, i) => (
+              <button key={i} onClick={() => setText(t => t + e)}
+                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", borderRadius: 6, padding: "2px 4px", transition: "background 0.1s" }}
+                onMouseEnter={ev => ev.currentTarget.style.background = C.b2}
+                onMouseLeave={ev => ev.currentTarget.style.background = "none"}
+              >{e}</button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          {/* Botão mensagens rápidas */}
+          <button onClick={() => { setShowQuick(p => !p); setFilter(""); }}
+            title="Mensagens rápidas (ou digite /)"
+            style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 10, padding: "10px 12px", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>
+            ⚡
+          </button>
+          {/* Botão emoji */}
+          <button onClick={() => setShowEmoji(p => !p)}
+            style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 10, padding: "10px 12px", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>
+            😊
+          </button>
+          {/* Campo de texto */}
+          <textarea
+            ref={inputRef}
+            value={text}
+            onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
+            onKeyDown={handleKey}
+            placeholder="Digite uma mensagem... (/ para atalhos, Enter para enviar)"
+            rows={1}
+            style={{ ...S.input, flex: 1, resize: "none", borderRadius: 10, padding: "10px 14px", fontSize: 13, lineHeight: 1.5 }}
+          />
+          {/* Enviar */}
+          <button onClick={() => send()}
+            disabled={!text.trim()}
+            style={{ ...S.btn(text.trim() ? C.acc : C.deep, text.trim() ? "#fff" : C.td), padding: "10px 18px", fontSize: 15, flexShrink: 0, opacity: text.trim() ? 1 : 0.5 }}>
+            ➤
+          </button>
+        </div>
+        <div style={{ color: C.td, fontSize: 10.5, marginTop: 5 }}>
+          Enter para enviar · Shift+Enter para nova linha · / para mensagens rápidas
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
@@ -5101,6 +5323,9 @@ export default function App() {
         )}
         {page === "leds" && (
           <LedsPage contacts={contacts} userRole={currentUser.role} />
+        )}
+        {page === "chat" && (
+          <ChatPage currentUser={currentUser} />
         )}
         {page === "premium" && currentUser.role === "mestre" && (
           <PremiumNexp contacts={contacts} setContacts={setContacts} />

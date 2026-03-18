@@ -89,6 +89,23 @@ export async function deleteContacts(ids) {
   }
 }
 
+// ── Chat ─────────────────────────────────────────────────────────
+
+/** Ouve mensagens do chat em tempo real. */
+export function listenChat(callback) {
+  return onSnapshot(collection(db, "chat"), (snap) => {
+    const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    msgs.sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
+    callback(msgs);
+  });
+}
+
+/** Envia uma mensagem no chat. */
+export async function sendChatMessage(msg) {
+  const id = String(Date.now());
+  await setDoc(doc(db, "chat", id), { ...msg, id, createdAt: serverTimestamp() });
+}
+
 // ── Users (Profiles) ─────────────────────────────────────────────
 
 /** Ouve todos os perfis de usuário em tempo real. */
