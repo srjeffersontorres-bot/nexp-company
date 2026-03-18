@@ -5248,7 +5248,7 @@ function ChatPage({ currentUser, users, presence }) {
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
           {/* Geral */}
-          <button onClick={() => setTab("geral")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: tab === "geral" ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+          <button onClick={() => setTab("geral")} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: tab === "geral" ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom: `1px solid ${C.b1}` }}>
             <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.acc + "1A", color: C.acc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>🌐</div>
             <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
               <div style={{ color: tab === "geral" ? C.atxt : C.ts, fontSize: 11.5, fontWeight: 600 }}>Geral</div>
@@ -5257,7 +5257,7 @@ function ChatPage({ currentUser, users, presence }) {
           </button>
           {/* Grupos */}
           {myGroups.map(g => (
-            <button key={g.id} onClick={() => setTab(g.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: tab === g.id ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+            <button key={g.id} onClick={() => setTab(g.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: tab === g.id ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom: `1px solid ${C.b1}` }}>
               <div style={{ width: 32, height: 32, borderRadius: "50%", overflow: "hidden", flexShrink: 0, background: C.abg, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {g.photo ? <img src={g.photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 15 }}>👥</span>}
               </div>
@@ -5269,7 +5269,7 @@ function ChatPage({ currentUser, users, presence }) {
           ))}
           {/* Criar grupo (só mestre) */}
           {isMestre && (
-            <button onClick={openCreateGroup} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+            <button onClick={openCreateGroup} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "transparent", border: "none", cursor: "pointer", borderBottom: `1px solid ${C.b1}` }}>
               <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.deep, color: C.tm, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>＋</div>
               <div style={{ color: C.tm, fontSize: 11, textAlign: "left" }}>Criar grupo</div>
             </button>
@@ -5283,7 +5283,7 @@ function ChatPage({ currentUser, users, presence }) {
             const isFlashing = flashAuthor === uid;
             const isActive = tab === uid;
             return (
-              <button key={uid} onClick={() => setTab(uid)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: isActive ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom:  }}>
+              <button key={uid} onClick={() => setTab(uid)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: isActive ? C.abg : "transparent", border: "none", cursor: "pointer", borderBottom: `1px solid ${C.b1}` }}>
                 <div style={{ position: "relative", flexShrink: 0 }}>
                   {u.photo ? (
                     <img src={u.photo} alt="" onClick={e => { e.stopPropagation(); setViewPhoto(u.photo); }} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", cursor: "zoom-in" }} />
@@ -5292,7 +5292,7 @@ function ChatPage({ currentUser, users, presence }) {
                       {ini(u.name || u.email || "?")}
                     </div>
                   )}
-                  {isOnline && <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border:  }} />}
+                  {isOnline && <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}` }} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                   <div style={{ color: isActive ? C.atxt : C.ts, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name || u.email}</div>
@@ -5336,7 +5336,7 @@ function ChatPage({ currentUser, users, presence }) {
                 ) : (
                   <div style={{ width: 34, height: 34, borderRadius: "50%", background: (roleColor[tabUser.role] || C.atxt) + "1A", color: roleColor[tabUser.role] || C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{ini(tabUser.name || "?")}</div>
                 )}
-                {presence[tab]?.online && <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16A34A", border:  }} />}
+                {presence[tab]?.online && <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#16A34A", border: `2px solid ${C.bg}` }} />}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>{tabUser.name || tabUser.email}</div>
@@ -5379,7 +5379,7 @@ function ChatPage({ currentUser, users, presence }) {
                 )}
                 <div style={{ maxWidth: "68%", display: "flex", flexDirection: "column", alignItems: isMine ? "flex-end" : "flex-start" }}>
                   {!isMine && <span style={{ color: rc, fontSize: 9.5, fontWeight: 700, marginBottom: 2, paddingLeft: 3 }}>{msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}</span>}
-                  <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : , borderRadius: isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px", padding: "8px 12px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
+                  <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px", padding: "8px 12px", fontSize: 13, lineHeight: 1.5, wordBreak: "break-word" }}>
                     {msg.text && <div>{msg.text}</div>}
                     {msg.attachment && (
                       <div style={{ marginTop: msg.text ? 6 : 0 }}>
@@ -5409,7 +5409,7 @@ function ChatPage({ currentUser, users, presence }) {
             </div>
             <div style={{ overflowY: "auto", flex: 1 }}>
               {filteredQuick.map((m, i) => (
-                <div key={i} onClick={() => send(m)} style={{ padding: "7px 12px", cursor: "pointer", fontSize: 11.5, color: C.ts, borderBottom:  }}
+                <div key={i} onClick={() => send(m)} style={{ padding: "7px 12px", cursor: "pointer", fontSize: 11.5, color: C.ts, borderBottom: `1px solid ${C.b1}` }}
                   onMouseEnter={e => e.currentTarget.style.background = C.abg} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   {m}
                 </div>
@@ -5429,7 +5429,7 @@ function ChatPage({ currentUser, users, presence }) {
 
         {/* Emojis */}
         {showEmoji && (
-          <div style={{ margin: "0 18px 5px", display: "flex", flexWrap: "wrap", gap: 5, padding: "7px 10px", background: C.card, borderRadius: 9, border:  }}>
+          <div style={{ margin: "0 18px 5px", display: "flex", flexWrap: "wrap", gap: 5, padding: "7px 10px", background: C.card, borderRadius: 9, border: `1px solid ${C.b1}` }}>
             {CHAT_EMOJIS.map((e, i) => (
               <button key={i} onClick={() => setText(t => t + e)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", borderRadius: 5, padding: "2px" }}
                 onMouseEnter={ev => ev.currentTarget.style.background = C.b2} onMouseLeave={ev => ev.currentTarget.style.background = "none"}>{e}</button>
