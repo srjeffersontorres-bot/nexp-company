@@ -3334,7 +3334,6 @@ function PremiumNexp({ contacts, setContacts }) {
       ) : (
         filtered.map((c) => {
           const lc = LEAD_COLOR[c.leadType] || "#9CA3AF";
-          const ss = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
           const isEditing = editId === c.id;
           return (
             <div
