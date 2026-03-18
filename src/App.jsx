@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import {
   auth,
+  db,
   listenContacts,
   saveContact,
   deleteContact,
@@ -4143,9 +4145,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             uid = found.uid || found.id;
             reativado = true;
           } else {
-            const { collection: col2, query: q2, where: w2, getDocs: gd2 } = await import("firebase/firestore");
-            const { db: db2 } = await import("./firebase");
-            const snap = await gd2(q2(col2(db2, "users"), w2("email", "==", form.email)));
+            const snap = await getDocs(query(collection(db, "users"), where("email", "==", form.email)));
             if (!snap.empty) {
               uid = snap.docs[0].id;
               reativado = true;
