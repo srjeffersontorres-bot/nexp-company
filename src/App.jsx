@@ -2346,388 +2346,259 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const list = filtered || contacts;
   const [idx, setIdx] = useState(0);
   const [sc, setSc] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const listRef = useRef(null);
+
+  // Estado local isolado por cliente
+  const si = Math.min(idx, list.length - 1);
+  const cur = list[si] || {};
+  const [reactions, setReactions] = useState(cur.reactions || []);
+  const [extraLeads, setExtraLeads] = useState(cur.extraLeads || []);
+
+  // Sincroniza ao trocar de cliente
+  useEffect(() => {
+    setReactions(cur.reactions || []);
+    setExtraLeads(cur.extraLeads || []);
+    setCopied(false);
+  }, [cur.id]); // eslint-disable-line
+
+  // Auto-scroll da lista
+  useEffect(() => {
+    if (!listRef.current) return;
+    const el = listRef.current.querySelector(`[data-idx="${si}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [si]);
+
+  // Auto-play
+  useEffect(() => {
+    if (!autoPlay) return;
+    const t = setInterval(() => {
+      setIdx((i) => {
+        if (i >= list.length - 1) { setAutoPlay(false); return i; }
+        return i + 1;
+      });
+    }, 3000);
+    return () => clearInterval(t);
+  }, [autoPlay, list.length]);
+
   if (!list.length)
     return (
       <div style={{ padding: "30px 36px" }}>
-        <h1
-          style={{
-            color: C.tp,
-            fontSize: 21,
-            fontWeight: 700,
-            margin: "0 0 30px",
-          }}
-        >
-          Ver Clientes
-        </h1>
+        <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: "0 0 30px" }}>Ver Clientes</h1>
         <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
           <div style={{ fontSize: 36, opacity: 0.3, marginBottom: 12 }}>👥</div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>
-            Nenhum cliente{filtered ? " encontrado" : ""}
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhum cliente{filtered ? " encontrado" : ""}</div>
         </div>
       </div>
     );
-  const si = Math.min(idx, list.length - 1);
-  const cur = list[si];
-  const nexts = list.slice(si + 1, si + 11);
+
   const lc = LEAD_COLOR[cur.leadType] || "#9CA3AF";
+  const allLeads = [cur.leadType, ...extraLeads].filter(Boolean);
+
   const upd = async (u) => {
     await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
   };
+
+  // Emojis — máx 3
   const tog = (e) => {
-    const r = cur.reactions || [];
-    upd({
-      ...cur,
-      reactions: r.includes(e) ? r.filter((x) => x !== e) : [...r, e],
+    setReactions((prev) => {
+      let newR;
+      if (prev.includes(e)) {
+        newR = prev.filter((x) => x !== e);
+      } else {
+        if (prev.length >= 3) return prev;
+        newR = [...prev, e];
+      }
+      upd({ ...cur, reactions: newR, extraLeads });
+      return newR;
     });
   };
+
+  // Múltiplos leads
+  const togLead = (t) => {
+    setExtraLeads((prev) => {
+      const newLeads = prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t];
+      upd({ ...cur, extraLeads: newLeads, reactions });
+      return newLeads;
+    });
+  };
+
+  // Copiar CPF
+  const copyCPF = () => {
+    navigator.clipboard.writeText(cur.cpf || "").then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   return (
-    <div style={{ padding: "26px 36px", maxWidth: 800 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 20,
-        }}
-      >
+    <div style={{ padding: "26px 36px", maxWidth: 820 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>
-            {filtered ? "Filtrado" : "Ver Clientes"}
-          </h1>
-          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>
-            {si + 1} de {list.length}
-          </p>
+          <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>{filtered ? "Filtrado" : "Ver Clientes"}</h1>
+          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>{si + 1} de {list.length}</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setIdx((i) => Math.max(0, i - 1))}
-            disabled={si === 0}
-            style={{
-              ...S.btn(si === 0 ? C.deep : C.abg, si === 0 ? C.td : C.atxt),
-              border: `1px solid ${C.b2}`,
-              padding: "7px 14px",
-              fontSize: 13,
-            }}
-          >
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setAutoPlay(p => !p)}
+            style={{ ...S.btn(autoPlay ? "#0D2B1A" : C.deep, autoPlay ? "#34D399" : C.tm), border: autoPlay ? "1px solid #34D39944" : `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 12 }}>
+            {autoPlay ? "⏸ Pausar" : "▶ Auto"}
+          </button>
+          <button onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={si === 0}
+            style={{ ...S.btn(si === 0 ? C.deep : C.abg, si === 0 ? C.td : C.atxt), border: `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 13 }}>
             ← Anterior
           </button>
-          <button
-            onClick={() => setIdx((i) => Math.min(list.length - 1, i + 1))}
-            disabled={si === list.length - 1}
-            style={{
-              ...S.btn(
-                si === list.length - 1 ? C.deep : C.acc,
-                si === list.length - 1 ? C.td : "#fff",
-              ),
-              padding: "7px 14px",
-              fontSize: 13,
-            }}
-          >
+          <button onClick={() => setIdx((i) => Math.min(list.length - 1, i + 1))} disabled={si === list.length - 1}
+            style={{ ...S.btn(si === list.length - 1 ? C.deep : C.acc, si === list.length - 1 ? C.td : "#fff"), padding: "7px 14px", fontSize: 13 }}>
             Próximo →
           </button>
         </div>
       </div>
-      <div
-        style={{
-          ...S.card,
-          border: `1px solid ${lc}33`,
-          padding: "24px 26px",
-          marginBottom: 16,
-          boxShadow: `0 0 28px ${lc}08`,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 14,
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: "50%",
-              background: lc + "1A",
-              color: lc,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-              fontWeight: 700,
-              border: `2px solid ${lc}44`,
-              flexShrink: 0,
-            }}
-          >
+
+      {/* Card principal */}
+      <div style={{ ...S.card, border: `1px solid ${lc}33`, padding: "24px 26px", marginBottom: 16, boxShadow: `0 0 28px ${lc}08` }}>
+        {/* Nome + emojis + CPF */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: lc + "1A", color: lc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, border: `2px solid ${lc}44`, flexShrink: 0 }}>
             {ini(cur.name)}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ color: C.tp, fontSize: 18, fontWeight: 700 }}>
+            <div style={{ color: C.tp, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {cur.name}
+              {reactions.length > 0 && <span style={{ fontSize: 16 }}>{reactions.join("")}</span>}
             </div>
-            <div style={{ color: C.tm, fontSize: 12.5, marginTop: 2 }}>
+            <div style={{ color: C.tm, fontSize: 12.5, marginTop: 2, display: "flex", alignItems: "center", gap: 8 }}>
               {cur.cpf}
+              {cur.cpf && (
+                <button onClick={copyCPF}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: copied ? "#34D399" : C.td, fontSize: 13, padding: 0 }}
+                  title="Copiar CPF">
+                  {copied ? "✓" : "⎘"}
+                </button>
+              )}
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginTop: 8,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               <LeadBadge c={cur} />
               <StatusBadge status={cur.status} />
-              {cur.matricula && (
-                <span
-                  style={{
-                    color: C.tm,
-                    fontSize: 11,
-                    padding: "3px 9px",
-                    borderRadius: 20,
-                    border: `1px solid ${C.b2}`,
-                  }}
-                >
-                  #{cur.matricula}
-                </span>
-              )}
+              {extraLeads.map((t, i) => {
+                const col = LEAD_COLOR[t] || "#9CA3AF";
+                return <span key={i} style={{ background: col + "18", color: col, fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 700, border: `1px solid ${col}33` }}>{t}</span>;
+              })}
+              {cur.matricula && <span style={{ color: C.tm, fontSize: 11, padding: "3px 9px", borderRadius: 20, border: `1px solid ${C.b2}` }}>#{cur.matricula}</span>}
             </div>
           </div>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3,1fr)",
-            gap: "10px 18px",
-            padding: "12px",
-            background: C.deep,
-            borderRadius: 10,
-            marginBottom: 16,
-          }}
-        >
-          {[
-            ["Tel 1", cur.phone || "—"],
-            ["Tel 2", cur.phone2 || "—"],
-            ["Tel 3", cur.phone3 || "—"],
-            ["Email", cur.email || "—"],
-            ["CNPJ", cur.cnpj || "—"],
-          ].map(([l, v]) => (
+
+        {/* Dados */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px 18px", padding: "12px", background: C.deep, borderRadius: 10, marginBottom: 16 }}>
+          {[["Tel 1", cur.phone || "—"], ["Tel 2", cur.phone2 || "—"], ["Tel 3", cur.phone3 || "—"], ["Email", cur.email || "—"], ["CNPJ", cur.cnpj || "—"]].map(([l, v]) => (
             <div key={l}>
-              <div style={{ color: C.tm, fontSize: 10, marginBottom: 2 }}>
-                {l}
-              </div>
-              <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 500 }}>
-                {v}
-              </div>
+              <div style={{ color: C.tm, fontSize: 10, marginBottom: 2 }}>{l}</div>
+              <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 500 }}>{v}</div>
             </div>
           ))}
         </div>
+
+        {/* Status */}
         <div style={{ marginBottom: 14 }}>
-          <div
-            style={{
-              color: C.tm,
-              fontSize: 10.5,
-              marginBottom: 7,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Marcar status
-          </div>
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>Marcar status</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {CLIENT_STATUS.map((s) => {
               const st = STATUS_STYLE[s];
               const sel = cur.status === s;
               return (
-                <button
-                  key={s}
-                  onClick={() => upd({ ...cur, status: s })}
-                  style={{
-                    background: sel ? st.bg : C.deep,
-                    color: sel ? st.color : C.tm,
-                    border: sel
-                      ? `1px solid ${st.color}55`
-                      : `1px solid ${C.b2}`,
-                    borderRadius: 20,
-                    padding: "5px 11px",
-                    fontSize: 10.5,
-                    cursor: "pointer",
-                    fontWeight: sel ? 600 : 400,
-                    transition: "all 0.12s",
-                  }}
-                >
-                  {sel ? "✓ " : ""}
-                  {s}
+                <button key={s} onClick={() => upd({ ...cur, status: s, reactions, extraLeads })}
+                  style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+                  {sel ? "✓ " : ""}{s}
                 </button>
               );
             })}
           </div>
         </div>
+
+        {/* Tipos de Lead adicionais */}
         <div style={{ marginBottom: 14 }}>
-          <div
-            style={{
-              color: C.tm,
-              fontSize: 10.5,
-              marginBottom: 7,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Reações
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Tipos de Lead <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>Principal: <span style={{ color: lc }}>{cur.leadType}</span></span>
           </div>
-          <EmojiBar reactions={cur.reactions || []} onToggle={tog} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {LEAD_TYPES.filter(t => t !== cur.leadType && t !== "Outro").map((t) => {
+              const col = LEAD_COLOR[t] || "#9CA3AF";
+              const sel = extraLeads.includes(t);
+              return (
+                <button key={t} onClick={() => togLead(t)}
+                  style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}44` : `1px solid ${C.b2}`, borderRadius: 20, padding: "4px 10px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+                  {sel ? "✓ " : "+ "}{t}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {/* Emojis — máx 3 */}
         <div style={{ marginBottom: 14 }}>
-          <div
-            style={{
-              color: C.tm,
-              fontSize: 10.5,
-              marginBottom: 5,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Observações
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Reações <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>({reactions.length}/3)</span>
           </div>
-          <textarea
-            value={cur.observacao || ""}
-            onChange={(e) => upd({ ...cur, observacao: e.target.value })}
-            rows={3}
-            placeholder="Observação..."
-            style={{
-              ...S.input,
-              background: C.deep,
-              border: `1px solid ${C.b2}`,
-              color: C.ts,
-              resize: "vertical",
-            }}
-          />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {EMOJIS.map((e) => {
+              const a = reactions.includes(e);
+              const maxed = reactions.length >= 3 && !a;
+              return (
+                <button key={e} onClick={() => tog(e)} disabled={maxed}
+                  style={{ background: a ? "#1E2A45" : C.deep, border: a ? "1px solid #4F8EF766" : `1px solid ${C.b2}`, borderRadius: 8, padding: "4px 7px", cursor: maxed ? "not-allowed" : "pointer", fontSize: 15, transform: a ? "scale(1.15)" : "scale(1)", transition: "all 0.12s", opacity: maxed ? 0.3 : 1 }}>
+                  {e}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {/* Observações */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.5px" }}>Observações</div>
+          <textarea value={cur.observacao || ""} onChange={(e) => upd({ ...cur, observacao: e.target.value, reactions, extraLeads })} rows={3} placeholder="Observação..."
+            style={{ ...S.input, background: C.deep, border: `1px solid ${C.b2}`, color: C.ts, resize: "vertical" }} />
+        </div>
+
+        {/* Simulador */}
         <div>
-          <button
-            onClick={() => setSc((p) => !p)}
-            style={{
-              background: "transparent",
-              border: `1px solid ${C.b2}`,
-              color: C.tm,
-              borderRadius: 8,
-              padding: "6px 13px",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
+          <button onClick={() => setSc((p) => !p)}
+            style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "6px 13px", fontSize: 12, cursor: "pointer" }}>
             {sc ? "▲ Fechar" : "💰 Simular comissão"}
           </button>
-          {sc && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: "16px",
-                background: C.deep,
-                borderRadius: 10,
-                border: `1px solid ${C.b2}`,
-              }}
-            >
-              <CommSim compact />
-            </div>
-          )}
+          {sc && <div style={{ marginTop: 12, padding: "16px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b2}` }}><CommSim compact /></div>}
         </div>
       </div>
-      {nexts.length > 0 && (
+
+      {/* Lista scrollável */}
+      {list.length > 1 && (
         <div>
-          <div
-            style={{
-              color: C.td,
-              fontSize: 10.5,
-              marginBottom: 7,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Próximos {nexts.length}
+          <div style={{ color: C.td, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Todos os clientes — role para navegar
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {nexts.map((c, i) => {
+          <div ref={listRef} style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3, paddingRight: 4 }}>
+            {list.map((c, i) => {
               const lc2 = LEAD_COLOR[c.leadType] || "#9CA3AF";
-              const ss2 =
-                STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
+              const ss2 = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
+              const isCur = i === si;
               return (
-                <div
-                  key={c.id}
-                  onClick={() => setIdx(si + 1 + i)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    padding: "6px 11px",
-                    background: C.deep,
-                    borderRadius: 7,
-                    border: `1px solid ${C.b1}`,
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = C.card)
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = C.deep)
-                  }
-                >
-                  <div
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: "50%",
-                      background: lc2 + "18",
-                      color: lc2,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 8,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
+                <div key={c.id} data-idx={i} onClick={() => setIdx(i)}
+                  style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 11px", background: isCur ? C.abg : C.deep, borderRadius: 7, border: isCur ? `1px solid ${C.atxt}44` : `1px solid ${C.b1}`, cursor: "pointer", transition: "all 0.12s" }}
+                  onMouseEnter={(e) => { if (!isCur) e.currentTarget.style.background = C.card; }}
+                  onMouseLeave={(e) => { if (!isCur) e.currentTarget.style.background = C.deep; }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: lc2 + "18", color: lc2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
                     {ini(c.name)}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span
-                      style={{ color: C.ts, fontSize: 11, fontWeight: 500 }}
-                    >
-                      {c.name}
-                    </span>
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ color: isCur ? C.atxt : C.ts, fontSize: 11, fontWeight: isCur ? 600 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+                    {(c.reactions || []).length > 0 && <span style={{ fontSize: 10, flexShrink: 0 }}>{(c.reactions || []).join("")}</span>}
                   </div>
-                  <span style={{ color: lc2, fontSize: 9.5, flexShrink: 0 }}>
-                    {c.leadType === "Outro"
-                      ? c.leadTypeCustom || "Outro"
-                      : c.leadType}
-                  </span>
-                  <span
-                    style={{
-                      background: ss2.bg,
-                      color: ss2.color,
-                      fontSize: 9,
-                      padding: "2px 7px",
-                      borderRadius: 20,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {c.status}
-                  </span>
-                  {(c.reactions || []).length > 0 && (
-                    <div style={{ display: "flex", gap: 1 }}>
-                      {(c.reactions || []).slice(0, 3).map((e, j) => (
-                        <span key={j} style={{ fontSize: 10 }}>
-                          {e}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <span style={{ color: C.td, fontSize: 9.5 }}>
-                    #{si + 2 + i}
-                  </span>
+                  <span style={{ color: lc2, fontSize: 9.5, flexShrink: 0 }}>{c.leadType === "Outro" ? c.leadTypeCustom || "Outro" : c.leadType}</span>
+                  <span style={{ background: ss2.bg, color: ss2.color, fontSize: 9, padding: "2px 7px", borderRadius: 20, fontWeight: 600, flexShrink: 0 }}>{c.status}</span>
+                  <span style={{ color: C.td, fontSize: 9.5, flexShrink: 0 }}>#{i + 1}</span>
                 </div>
               );
             })}
@@ -2735,24 +2606,12 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
         </div>
       )}
       {si === list.length - 1 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "18px",
-            color: C.tm,
-            fontSize: 13,
-            background: C.deep,
-            borderRadius: 10,
-            marginTop: 14,
-            border: `1px solid ${C.b1}`,
-          }}
-        >
+        <div style={{ textAlign: "center", padding: "18px", color: C.tm, fontSize: 13, background: C.deep, borderRadius: 10, marginTop: 14, border: `1px solid ${C.b1}` }}>
           ✓ Último cliente da lista.
         </div>
       )}
     </div>
   );
-}
 
 // ── Cliente Status ─────────────────────────────────────────────
 function ClienteStatus({ contacts, setContacts }) {
