@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import {
   auth,
   db,
@@ -742,6 +742,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
+    { id: "atalhos", label: "Atalhos", icon: "🔗", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
       id: "config",
@@ -5400,6 +5401,162 @@ function ChatPage({ currentUser, users, presence }) {
   );
 }
 
+// ── Atalhos ────────────────────────────────────────────────────
+function AtalhosPage({ currentUser }) {
+  const isMestre = currentUser.role === "mestre";
+  const [atalhos, setAtalhos] = useState([]);
+  const [form, setForm] = useState({ nome: "", link: "" });
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({ nome: "", link: "" });
+  const [ok, setOk] = useState("");
+  const [err, setErr] = useState("");
+
+  // Ouve atalhos do Firestore em tempo real
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "atalhos"), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+      setAtalhos(list);
+    });
+    return unsub;
+  }, []);
+
+  const flash = (msg) => { setOk(msg); setTimeout(() => setOk(""), 3000); };
+
+  const save = async () => {
+    if (!form.nome.trim() || !form.link.trim()) { setErr("Nome e link são obrigatórios."); return; }
+    setErr("");
+    const url = form.link.startsWith("http") ? form.link : "https://" + form.link;
+    const id = String(Date.now());
+    await setDoc(doc(db, "atalhos", id), { nome: form.nome.trim(), link: url, ordem: atalhos.length });
+    setForm({ nome: "", link: "" });
+    flash("Atalho adicionado!");
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.nome.trim() || !editForm.link.trim()) return;
+    const url = editForm.link.startsWith("http") ? editForm.link : "https://" + editForm.link;
+    await setDoc(doc(db, "atalhos", editId), { ...editForm, link: url }, { merge: true });
+    setEditId(null);
+    flash("Atalho atualizado!");
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Remover este atalho?")) return;
+    await deleteDoc(doc(db, "atalhos", id));
+    flash("Atalho removido!");
+  };
+
+  const getFavicon = (url) => {
+    try { return `https://www.google.com/s2/favicons?sz=32&domain=${new URL(url).hostname}`; }
+    catch { return null; }
+  };
+
+  return (
+    <div style={{ padding: "30px 36px", maxWidth: 680 }}>
+      <div style={{ marginBottom: 26 }}>
+        <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>🔗 Atalhos</h1>
+        <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Links rápidos da equipe</p>
+      </div>
+
+      {ok && <div style={{ background: "#091E12", border: "1px solid #34D39933", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#34D399", fontSize: 13 }}>✓ {ok}</div>}
+      {err && <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#F87171", fontSize: 13 }}>⚠ {err}</div>}
+
+      {/* Formulário — só mestre vê */}
+      {isMestre && (
+        <div style={{ ...S.card, padding: "20px", marginBottom: 22 }}>
+          <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Adicionar atalho</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 4 }}>Nome</label>
+              <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+                placeholder="ex: Sistema interno" style={{ ...S.input }} />
+            </div>
+            <div>
+              <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 4 }}>Link</label>
+              <input value={form.link} onChange={e => setForm(f => ({ ...f, link: e.target.value }))}
+                placeholder="ex: https://sistema.com" style={{ ...S.input }} />
+            </div>
+          </div>
+          <button onClick={save} style={{ ...S.btn(C.acc, "#fff"), padding: "9px 22px", fontSize: 13, fontWeight: 700 }}>
+            + Adicionar
+          </button>
+        </div>
+      )}
+
+      {/* Lista de atalhos */}
+      {atalhos.length === 0 ? (
+        <div style={{ ...S.card, padding: "48px", textAlign: "center" }}>
+          <div style={{ fontSize: 36, opacity: 0.2, marginBottom: 12 }}>🔗</div>
+          <div style={{ color: C.tm, fontSize: 13 }}>
+            {isMestre ? "Nenhum atalho adicionado ainda." : "Nenhum atalho disponível."}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {atalhos.map((a) => (
+            <div key={a.id} style={{ ...S.card, overflow: "hidden" }}>
+              {/* Linha principal */}
+              {editId !== a.id ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px" }}>
+                  {/* Favicon */}
+                  <div style={{ width: 36, height: 36, borderRadius: 9, background: C.deep, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: `1px solid ${C.b1}` }}>
+                    {getFavicon(a.link)
+                      ? <img src={getFavicon(a.link)} alt="" width={20} height={20} onError={e => { e.currentTarget.style.display = "none"; }} />
+                      : <span style={{ fontSize: 16 }}>🔗</span>}
+                  </div>
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: C.tp, fontSize: 13.5, fontWeight: 600 }}>{a.nome}</div>
+                    <div style={{ color: C.tm, fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.link}</div>
+                  </div>
+                  {/* Abrir */}
+                  <a href={a.link} target="_blank" rel="noopener noreferrer"
+                    style={{ background: C.abg, color: C.atxt, border: `1px solid ${C.atxt}33`, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, textDecoration: "none", flexShrink: 0 }}>
+                    Abrir →
+                  </a>
+                  {/* Editar / Remover — só mestre */}
+                  {isMestre && (
+                    <>
+                      <button onClick={() => { setEditId(a.id); setEditForm({ nome: a.nome, link: a.link }); }}
+                        style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "6px 11px", fontSize: 12, cursor: "pointer" }}>
+                        ✏
+                      </button>
+                      <button onClick={() => remove(a.id)}
+                        style={{ background: "transparent", border: "1px solid #EF444433", color: "#EF4444", borderRadius: 8, padding: "6px 11px", fontSize: 12, cursor: "pointer" }}>
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                /* Linha de edição */
+                <div style={{ padding: "14px 16px", borderTop: `1px solid ${C.b1}`, background: C.deep }}>
+                  <div style={{ color: C.atxt, fontSize: 12, fontWeight: 600, marginBottom: 12 }}>✏ Editando atalho</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ color: C.tm, fontSize: 11, display: "block", marginBottom: 4 }}>Nome</label>
+                      <input value={editForm.nome} onChange={e => setEditForm(f => ({ ...f, nome: e.target.value }))} style={{ ...S.input, background: C.card, padding: "7px 10px", fontSize: 12.5 }} />
+                    </div>
+                    <div>
+                      <label style={{ color: C.tm, fontSize: 11, display: "block", marginBottom: 4 }}>Link</label>
+                      <input value={editForm.link} onChange={e => setEditForm(f => ({ ...f, link: e.target.value }))} style={{ ...S.input, background: C.card, padding: "7px 10px", fontSize: 12.5 }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={saveEdit} style={{ ...S.btn(C.acc, "#fff"), padding: "8px 20px", fontSize: 12.5 }}>Salvar</button>
+                    <button onClick={() => setEditId(null)} style={{ ...S.btn("transparent", C.tm), border: `1px solid ${C.b2}`, padding: "8px 14px", fontSize: 12 }}>Cancelar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
@@ -5628,6 +5785,9 @@ export default function App() {
         )}
         {page === "leds" && (
           <LedsPage contacts={contacts} userRole={currentUser.role} />
+        )}
+        {page === "atalhos" && (
+          <AtalhosPage currentUser={currentUser} />
         )}
         {page === "chat" && (
           <ChatPage currentUser={currentUser} users={users} presence={presence} />
