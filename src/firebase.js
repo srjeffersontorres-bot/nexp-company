@@ -20,6 +20,8 @@ import {
 } from "firebase/firestore";
 import {
   getAuth,
+  setPersistence,
+  browserLocalPersistence,
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
@@ -40,6 +42,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// ── Mantém a sessão do usuário após recarregar a página ──────────
+setPersistence(auth, browserLocalPersistence);
 
 // ── Contacts (Leads) ─────────────────────────────────────────────
 
