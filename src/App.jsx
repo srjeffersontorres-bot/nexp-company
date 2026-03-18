@@ -4238,7 +4238,8 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   const canSeeAll = currentUser.role === "mestre";
   const visible = users.filter(
     (u) =>
-      canSeeAll || u.createdBy === currentUser.id || u.id === currentUser.id,
+      !u.deleted &&
+      (canSeeAll || u.createdBy === currentUser.id || u.id === currentUser.id),
   );
 
   const roleLabel = {

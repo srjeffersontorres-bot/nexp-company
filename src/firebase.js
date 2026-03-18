@@ -94,7 +94,7 @@ export async function deleteContacts(ids) {
 /** Ouve todos os perfis de usuário em tempo real. */
 export function listenUsers(callback) {
   return onSnapshot(collection(db, "users"), (snap) => {
-    callback(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
+    callback(snap.docs.map((d) => ({ uid: d.id, ...d.data() })).filter((u) => !u.deleted));
   });
 }
 
