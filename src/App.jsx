@@ -742,7 +742,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
-    { id: "stories", label: "Stories", icon: "◎", roles: ["mestre", "master", "indicado"] },
     { id: "atalhos", label: "Atalhos", icon: "🔗", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
@@ -882,8 +881,26 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       </nav>
       <div style={{ padding: "0 12px" }}>
 
-        {/* Chat — separado do nav, acima do perfil */}
-        <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10 }}>
+        {/* Stories + Chat — separados do nav, acima do perfil */}
+        <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+          {/* Stories */}
+          <button
+            onClick={() => setPage("stories")}
+            style={{
+              display: "flex", alignItems: "center", gap: 9,
+              padding: "9px 11px", borderRadius: 9, width: "100%",
+              border: page === "stories" ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+              cursor: "pointer", textAlign: "left",
+              background: page === "stories" ? C.abg : C.deep,
+              color: page === "stories" ? C.atxt : C.tm,
+              fontSize: 12.5, fontWeight: page === "stories" ? 600 : 400,
+              transition: "all 0.12s",
+            }}
+          >
+            <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>◎</span>
+            Stories
+          </button>
+          {/* Chat */}
           <button
             onClick={() => setPage("chat")}
             style={{
@@ -5556,19 +5573,27 @@ function ChatPage({ currentUser, users, presence }) {
 }
 
 // ── Stories ────────────────────────────────────────────────────
-const STORY_EMOJIS = ["❤️","😂","🔥","👏","😮","😢","🎉","💯"];
+const STORY_EMOJIS = [
+  "😀","😂","🤣","😍","🥰","😘","😎","🤩","🥳","😜",
+  "😅","😇","🤗","🤔","😏","😒","😔","😢","😭","😤",
+  "😡","🤯","🥺","😬","🙄","😴","🤤","🥴","😷","🤒",
+  "❤️","🧡","💛","💚","💙","💜","🖤","💖","💝","💯",
+  "🔥","⭐","✨","🎉","🎊","🎈","🏆","👑","💎","🌟",
+  "👍","👏","🙌","💪","🤝","🫶","👀","💬","💭","🚀",
+];
 const STORY_EMOJI_REACTIONS = ["❤️","😂","🔥","👍","😮","🎉","💯","😢"];
 
 function StoriesPage({ currentUser, users }) {
   const myId = currentUser.uid || currentUser.id;
   const myProfile = users.find(u => (u.uid || u.id) === myId) || currentUser;
   const [stories, setStories] = useState([]);
-  const [viewingAuthor, setViewingAuthor] = useState(null); // author id whose stories we're viewing
-  const [viewingIdx, setViewingIdx] = useState(0); // index within that author's stories
+  const [viewingAuthor, setViewingAuthor] = useState(null);
+  const [viewingIdx, setViewingIdx] = useState(0);
   const [creating, setCreating] = useState(false);
   const [newText, setNewText] = useState("");
-  const [newMedia, setNewMedia] = useState(null); // {url, type, name}
+  const [newMedia, setNewMedia] = useState(null);
   const [newBg, setNewBg] = useState("#1A1F2E");
+  const [newFont, setNewFont] = useState("Inter");
   const [comment, setComment] = useState("");
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -5577,6 +5602,13 @@ function StoriesPage({ currentUser, users }) {
   const mediaRef = useRef();
 
   const BG_COLORS = ["#1A1F2E","#0D2B1A","#2D1515","#2D0E30","#2B1D03","#082033","#1C1903","#0A0A0A","#1a1a2e","#16213e"];
+  const FONTS = [
+    { name: "Inter",     label: "Padrão",   style: "'Inter',sans-serif" },
+    { name: "Georgia",   label: "Clássica", style: "Georgia,serif" },
+    { name: "Courier",   label: "Código",   style: "'Courier New',monospace" },
+    { name: "Impact",    label: "Impacto",  style: "Impact,sans-serif" },
+    { name: "Pacifico",  label: "Cursiva",  style: "'Comic Sans MS',cursive" },
+  ];
 
   // ── Listen stories realtime ──────────────────────────────────
   useEffect(() => {
@@ -5601,7 +5633,7 @@ function StoriesPage({ currentUser, users }) {
     const mb = f.size / 1024 / 1024;
     if (isImg   && mb > 5)  { setMediaErr("Imagem máx 5 MB.");  return; }
     if (isVideo && mb > 50) { setMediaErr("Vídeo máx 50 MB.");  return; }
-    if (isAudio && mb > 1)  { setMediaErr("Áudio máx 1 MB.");   return; }
+    if (isAudio && mb > 5)  { setMediaErr("Áudio máx 5 MB.");   return; }
     if (!isImg && !isVideo && !isAudio) { setMediaErr("Formato não suportado."); return; }
     const r = new FileReader();
     r.onload = ev => setNewMedia({ url: ev.target.result, type: f.type, name: f.name });
@@ -5612,7 +5644,7 @@ function StoriesPage({ currentUser, users }) {
   const post = async () => {
     if (!newText.trim() && !newMedia) return;
     const myStories = stories.filter(s => s.authorId === myId);
-    if (myStories.length >= 10) { setMediaErr("Limite de 10 stories atingido."); return; }
+    if (myStories.length >= 20) { setMediaErr("Limite de 20 stories atingido."); return; }
     setLoading(true);
     const now = Date.now();
     const id = String(now);
@@ -5623,6 +5655,7 @@ function StoriesPage({ currentUser, users }) {
       authorRole: currentUser.role,
       authorPhoto: myProfile.photo || null,
       text: newText.trim(),
+      font: newFont,
       media: newMedia || null,
       bg: newBg,
       likes: [],
@@ -5632,7 +5665,7 @@ function StoriesPage({ currentUser, users }) {
       createdAt: now,
       expiresAt: now + 24 * 60 * 60 * 1000,
     });
-    setCreating(false); setNewText(""); setNewMedia(null); setNewBg("#1A1F2E");
+    setCreating(false); setNewText(""); setNewMedia(null); setNewBg("#1A1F2E"); setNewFont("Inter");
     setLoading(false);
   };
 
@@ -5760,15 +5793,15 @@ function StoriesPage({ currentUser, users }) {
       {/* Header */}
       <div style={{ marginBottom:22 }}>
         <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>Stories</h1>
-        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Atualizações que duram 24h · imagem 5MB · vídeo 50MB · áudio 1MB</p>
+        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Atualizações que duram 24h · até 20 stories · 📷5MB · 🎥50MB · 🎵5MB</p>
       </div>
 
       {/* ── Criar story ── */}
       {creating && (
         <div style={{ ...S.card, padding:"22px", marginBottom:24 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-            <div style={{ color:C.ts, fontSize:13, fontWeight:600 }}>✨ Novo Story ({myStories.length}/10)</div>
-            {myStories.length >= 10 && <span style={{ color:"#F87171", fontSize:12 }}>Limite de 10 atingido</span>}
+            <div style={{ color:C.ts, fontSize:13, fontWeight:600 }}>✨ Novo Story ({myStories.length}/20)</div>
+            {myStories.length >= 20 && <span style={{ color:"#F87171", fontSize:12 }}>Limite de 20 atingido</span>}
           </div>
 
           {/* Preview */}
@@ -5776,39 +5809,59 @@ function StoriesPage({ currentUser, users }) {
             {newMedia?.type?.startsWith("image/") && <img src={newMedia.url} alt="" style={{ maxWidth:"100%", maxHeight:180, borderRadius:10, objectFit:"contain" }} />}
             {newMedia?.type?.startsWith("video/") && <video src={newMedia.url} controls style={{ maxWidth:"100%", maxHeight:180, borderRadius:10 }} />}
             {newMedia?.type?.startsWith("audio/") && <audio src={newMedia.url} controls style={{ width:"100%" }} />}
-            {newText && <div style={{ color:"#fff", fontSize:18, fontWeight:600, textAlign:"center", textShadow:"0 1px 6px #00000066" }}>{newText}</div>}
+            {newText && <div style={{ color:"#fff", fontSize:18, fontWeight:600, textAlign:"center", textShadow:"0 1px 6px #00000066", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit" }}>{newText}</div>}
             {!newText && !newMedia && <div style={{ color:"#ffffff44", fontSize:13 }}>Preview do story</div>}
           </div>
 
           {/* BG picker */}
-          <div style={{ display:"flex", gap:8, marginBottom:14, alignItems:"center", flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center", flexWrap:"wrap" }}>
             <span style={{ color:C.tm, fontSize:11.5 }}>Fundo:</span>
             {BG_COLORS.map(bg => (
               <button key={bg} onClick={() => setNewBg(bg)} style={{ width:22, height:22, borderRadius:"50%", background:bg, border:newBg===bg?`2px solid ${C.atxt}`:`1px solid ${C.b2}`, cursor:"pointer", flexShrink:0 }} />
             ))}
           </div>
 
+          {/* Font picker */}
+          <div style={{ display:"flex", gap:6, marginBottom:14, alignItems:"center", flexWrap:"wrap" }}>
+            <span style={{ color:C.tm, fontSize:11.5, flexShrink:0 }}>Fonte:</span>
+            {FONTS.map(f => (
+              <button key={f.name} onClick={() => setNewFont(f.name)}
+                style={{ background:newFont===f.name?C.abg:C.deep, border:newFont===f.name?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", color:newFont===f.name?C.atxt:C.tm, fontSize:12, fontFamily:f.style, fontWeight:newFont===f.name?600:400 }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           <div style={{ marginBottom:12 }}>
             <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Texto</label>
-            <textarea value={newText} onChange={e=>setNewText(e.target.value)} rows={2} placeholder="Escreva algo..." style={{ ...S.input, resize:"vertical" }} />
+            <textarea value={newText} onChange={e=>setNewText(e.target.value)} rows={2} placeholder="Escreva algo..."
+              style={{ ...S.input, resize:"vertical", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit" }} />
           </div>
 
           <div style={{ marginBottom:16 }}>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Mídia</label>
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>
+              Mídia &nbsp;<span style={{ color:C.td, fontSize:10.5 }}>📷 imagem 5MB · 🎥 vídeo 50MB · 🎵 áudio 5MB</span>
+            </label>
             <input ref={mediaRef} type="file" accept="image/*,video/*,audio/*" onChange={handleMedia} style={{ display:"none" }} />
-            <button onClick={() => mediaRef.current?.click()} style={{ ...S.btn(C.deep, C.tm), border:`1px solid ${C.b2}`, fontSize:12, padding:"8px 16px" }}>
-              {newMedia ? `✓ ${newMedia.name}` : "📎 Imagem / Vídeo / Áudio"}
+            <button onClick={() => mediaRef.current?.click()}
+              style={{ ...S.btn(C.deep, C.atxt), border:`1px solid ${C.atxt}44`, fontSize:13, padding:"9px 20px", display:"flex", alignItems:"center", gap:8, fontWeight:600 }}>
+              📷🎥🎵 Adicionar mídia
             </button>
-            {newMedia && <button onClick={() => setNewMedia(null)} style={{ marginLeft:8, background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:12 }}>✕</button>}
+            {newMedia && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, padding:"7px 12px", background:C.deep, borderRadius:8, border:`1px solid ${C.b1}` }}>
+                <span style={{ color:C.ts, fontSize:12, flex:1 }}>✓ {newMedia.name}</span>
+                <button onClick={() => setNewMedia(null)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:13 }}>✕</button>
+              </div>
+            )}
             {mediaErr && <div style={{ color:"#F87171", fontSize:11.5, marginTop:6 }}>⚠ {mediaErr}</div>}
           </div>
 
           <div style={{ display:"flex", gap:10 }}>
-            <button onClick={post} disabled={loading || myStories.length >= 10 || (!newText.trim() && !newMedia)}
-              style={{ ...S.btn(C.acc,"#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, opacity:(!newText.trim()&&!newMedia)||myStories.length>=10?0.5:1 }}>
+            <button onClick={post} disabled={loading || myStories.length >= 20 || (!newText.trim() && !newMedia)}
+              style={{ ...S.btn(C.acc,"#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, opacity:(!newText.trim()&&!newMedia)||myStories.length>=20?0.5:1 }}>
               {loading ? "Postando..." : "Publicar"}
             </button>
-            <button onClick={()=>{setCreating(false);setNewText("");setNewMedia(null);setMediaErr("");}}
+            <button onClick={()=>{setCreating(false);setNewText("");setNewMedia(null);setMediaErr("");setNewFont("Inter");}}
               style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"10px 16px", fontSize:13 }}>
               Cancelar
             </button>
@@ -5827,7 +5880,7 @@ function StoriesPage({ currentUser, users }) {
           isMe={true}
         />
         {/* + criar se já tenho stories mas menos de 10 */}
-        {myStories.length > 0 && myStories.length < 10 && (
+        {myStories.length > 0 && myStories.length < 20 && (
           <button onClick={() => setCreating(true)}
             style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer", flexShrink:0 }}>
             <div style={{ width:68, height:68, borderRadius:"50%", background:C.deep, border:`2px dashed ${C.atxt}66`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, color:C.atxt }}>＋</div>
@@ -5899,7 +5952,7 @@ function StoriesPage({ currentUser, users }) {
               {viewStory.media?.type?.startsWith("image/") && <img src={viewStory.media.url} alt="" style={{ maxWidth:"100%", maxHeight:260, borderRadius:12, objectFit:"contain" }} />}
               {viewStory.media?.type?.startsWith("video/") && <video src={viewStory.media.url} controls style={{ maxWidth:"100%", maxHeight:240, borderRadius:12 }} />}
               {viewStory.media?.type?.startsWith("audio/") && <audio src={viewStory.media.url} controls style={{ width:"90%" }} />}
-              {viewStory.text && <div style={{ color:"#fff", fontSize:20, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", lineHeight:1.4 }}>{viewStory.text}</div>}
+              {viewStory.text && <div style={{ color:"#fff", fontSize:20, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", lineHeight:1.4, fontFamily: viewStory.font === "Georgia" ? "Georgia,serif" : viewStory.font === "Courier" ? "'Courier New',monospace" : viewStory.font === "Impact" ? "Impact,sans-serif" : viewStory.font === "Pacifico" ? "'Comic Sans MS',cursive" : "'Inter',sans-serif" }}>{viewStory.text}</div>}
             </div>
 
             {/* Footer — reactions + likes + views */}
@@ -5983,10 +6036,12 @@ function StoriesPage({ currentUser, users }) {
             {/* Comment input */}
             <div style={{ padding:"10px 14px", borderTop:`1px solid ${C.b1}`, flexShrink:0 }}>
               {showCommentEmoji && (
-                <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8, padding:"6px 8px", background:C.deep, borderRadius:10, border:`1px solid ${C.b1}` }}>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:3, marginBottom:8, padding:"8px 10px", background:C.deep, borderRadius:10, border:`1px solid ${C.b1}`, maxHeight:120, overflowY:"auto" }}>
                   {STORY_EMOJIS.map(e => (
                     <button key={e} onClick={() => setComment(t=>t+e)}
-                      style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", borderRadius:5, padding:"2px" }}>
+                      style={{ background:"none", border:"none", fontSize:18, cursor:"pointer", borderRadius:5, padding:"2px 3px" }}
+                      onMouseEnter={ev=>ev.currentTarget.style.background=C.b2}
+                      onMouseLeave={ev=>ev.currentTarget.style.background="none"}>
                       {e}
                     </button>
                   ))}
