@@ -742,6 +742,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
+    { id: "stories", label: "Stories", icon: "◎", roles: ["mestre", "master", "indicado"] },
     { id: "atalhos", label: "Atalhos", icon: "🔗", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
@@ -5540,6 +5541,312 @@ function ChatPage({ currentUser, users, presence }) {
   );
 }
 
+// ── Stories ────────────────────────────────────────────────────
+function StoriesPage({ currentUser, users }) {
+  const myId = currentUser.uid || currentUser.id;
+  const [stories, setStories] = useState([]);
+  const [viewing, setViewing] = useState(null); // story id being viewed
+  const [creating, setCreating] = useState(false);
+  const [newText, setNewText] = useState("");
+  const [newImg, setNewImg] = useState(null);
+  const [newBg, setNewBg] = useState("#1A1F2E");
+  const [comment, setComment] = useState("");
+  const [loading, setLoading] = useState(false);
+  const imgRef = useRef();
+
+  const BG_COLORS = ["#1A1F2E","#0D2B1A","#2D1515","#2D0E30","#2B1D03","#082033","#1C1903","#0A0A0A"];
+
+  // Listen stories realtime
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "stories"), (snap) => {
+      const now = Date.now();
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(s => s.expiresAt > now) // only active stories
+        .sort((a, b) => b.createdAt - a.createdAt);
+      setStories(list);
+    });
+    return unsub;
+  }, []);
+
+  const handleImg = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => setNewImg(ev.target.result);
+    r.readAsDataURL(f);
+  };
+
+  const post = async () => {
+    if (!newText.trim() && !newImg) return;
+    setLoading(true);
+    const now = Date.now();
+    const id = String(now);
+    await setDoc(doc(db, "stories", id), {
+      id,
+      authorId: myId,
+      authorName: currentUser.name || currentUser.email,
+      authorRole: currentUser.role,
+      text: newText.trim(),
+      image: newImg || null,
+      bg: newBg,
+      likes: [],
+      comments: [],
+      views: [],
+      createdAt: now,
+      expiresAt: now + 24 * 60 * 60 * 1000,
+    });
+    setCreating(false); setNewText(""); setNewImg(null); setNewBg("#1A1F2E");
+    setLoading(false);
+  };
+
+  const deleteStory = async (id) => {
+    if (!window.confirm("Excluir este story?")) return;
+    await deleteDoc(doc(db, "stories", id));
+    if (viewing === id) setViewing(null);
+  };
+
+  const toggleLike = async (story) => {
+    const likes = story.likes || [];
+    const updated = likes.includes(myId) ? likes.filter(u => u !== myId) : [...likes, myId];
+    await setDoc(doc(db, "stories", story.id), { likes: updated }, { merge: true });
+  };
+
+  const addComment = async (story) => {
+    if (!comment.trim()) return;
+    const comments = [...(story.comments || []), {
+      userId: myId,
+      userName: currentUser.name || currentUser.email,
+      userRole: currentUser.role,
+      text: comment.trim(),
+      createdAt: Date.now(),
+    }];
+    await setDoc(doc(db, "stories", story.id), { comments }, { merge: true });
+    setComment("");
+  };
+
+  const markViewed = async (story) => {
+    const views = story.views || [];
+    if (!views.includes(myId)) {
+      await setDoc(doc(db, "stories", story.id), { views: [...views, myId] }, { merge: true });
+    }
+  };
+
+  // Group stories by author — keep only latest per author
+  const byAuthor = {};
+  stories.forEach(s => {
+    if (!byAuthor[s.authorId] || s.createdAt > byAuthor[s.authorId].createdAt)
+      byAuthor[s.authorId] = s;
+  });
+  const authorStories = Object.values(byAuthor);
+  const myStory = byAuthor[myId];
+  const viewStory = viewing ? stories.find(s => s.id === viewing) : null;
+
+  const timeLeft = (expiresAt) => {
+    const diff = expiresAt - Date.now();
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    return h > 0 ? `${h}h restantes` : `${m}m restantes`;
+  };
+
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+
+  return (
+    <div style={{ padding: "28px 36px", height: "100%", boxSizing: "border-box" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Stories</h1>
+          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Atualizações que duram 24 horas</p>
+        </div>
+        {!myStory && (
+          <button onClick={() => setCreating(true)}
+            style={{ ...S.btn(C.acc, "#fff"), padding: "10px 20px", fontSize: 13, display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ fontSize: 16 }}>＋</span> Criar story
+          </button>
+        )}
+        {myStory && (
+          <button onClick={() => deleteStory(myStory.id)}
+            style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "9px 16px", fontSize: 12 }}>
+            🗑 Meu story
+          </button>
+        )}
+      </div>
+
+      {/* ── Criar story ── */}
+      {creating && (
+        <div style={{ ...S.card, padding: "22px", marginBottom: 24 }}>
+          <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 16 }}>✨ Novo Story</div>
+
+          {/* Preview */}
+          <div style={{ background: newBg, borderRadius: 14, padding: "28px 22px", minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 16, border: `1px solid ${C.b1}`, position: "relative" }}>
+            {newImg && <img src={newImg} alt="" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 10, objectFit: "contain" }} />}
+            {newText && <div style={{ color: "#fff", fontSize: 18, fontWeight: 600, textAlign: "center", textShadow: "0 1px 6px #00000066" }}>{newText}</div>}
+            {!newText && !newImg && <div style={{ color: "#ffffff44", fontSize: 13 }}>Preview do story</div>}
+          </div>
+
+          {/* Background color picker */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center" }}>
+            <span style={{ color: C.tm, fontSize: 11.5 }}>Fundo:</span>
+            {BG_COLORS.map(bg => (
+              <button key={bg} onClick={() => setNewBg(bg)} style={{ width: 24, height: 24, borderRadius: "50%", background: bg, border: newBg === bg ? `2px solid ${C.atxt}` : `1px solid ${C.b2}`, cursor: "pointer", flexShrink: 0 }} />
+            ))}
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 5 }}>Texto</label>
+            <textarea value={newText} onChange={e => setNewText(e.target.value)} rows={3} placeholder="Escreva algo para compartilhar com a equipe..." style={{ ...S.input, resize: "vertical" }} />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 5 }}>Imagem (opcional)</label>
+            <input ref={imgRef} type="file" accept="image/*" onChange={handleImg} style={{ display: "none" }} />
+            <button onClick={() => imgRef.current?.click()} style={{ ...S.btn(C.deep, C.tm), border: `1px solid ${C.b2}`, fontSize: 12, padding: "8px 16px" }}>
+              {newImg ? "✓ Imagem selecionada" : "📷 Adicionar imagem"}
+            </button>
+            {newImg && <button onClick={() => setNewImg(null)} style={{ marginLeft: 8, background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 12 }}>✕ Remover</button>}
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={post} disabled={loading || (!newText.trim() && !newImg)}
+              style={{ ...S.btn(C.acc, "#fff"), padding: "10px 24px", fontSize: 13, fontWeight: 700, opacity: (!newText.trim() && !newImg) ? 0.5 : 1 }}>
+              {loading ? "Postando..." : "Publicar story"}
+            </button>
+            <button onClick={() => { setCreating(false); setNewText(""); setNewImg(null); }}
+              style={{ ...S.btn("transparent", C.tm), border: `1px solid ${C.b2}`, padding: "10px 16px", fontSize: 13 }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Story avatars row ── */}
+      {authorStories.length === 0 && !creating ? (
+        <div style={{ ...S.card, padding: "60px", textAlign: "center" }}>
+          <div style={{ fontSize: 44, opacity: 0.2, marginBottom: 14 }}>◎</div>
+          <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>Nenhum story ativo</div>
+          <div style={{ color: C.td, fontSize: 12, marginTop: 6 }}>Seja o primeiro a compartilhar algo com a equipe!</div>
+          <button onClick={() => setCreating(true)} style={{ ...S.btn(C.acc, "#fff"), marginTop: 18, padding: "10px 22px", fontSize: 13 }}>
+            ＋ Criar story
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Avatars */}
+          <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, marginBottom: 24 }}>
+            {/* Botão criar se não tem story */}
+            {!myStory && !creating && (
+              <button onClick={() => setCreating(true)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+                <div style={{ width: 60, height: 60, borderRadius: "50%", background: C.deep, border: `2px dashed ${C.atxt}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: C.atxt }}>＋</div>
+                <span style={{ color: C.tm, fontSize: 11 }}>Criar</span>
+              </button>
+            )}
+            {authorStories.map(s => {
+              const isMine = s.authorId === myId;
+              const viewed = (s.views || []).includes(myId);
+              const rc = roleColor[s.authorRole] || C.atxt;
+              const isViewing = viewing === s.id;
+              return (
+                <button key={s.id} onClick={() => { setViewing(isViewing ? null : s.id); if (!isViewing) markViewed(s); }}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+                  <div style={{
+                    width: 60, height: 60, borderRadius: "50%", padding: 3,
+                    background: isViewing ? `linear-gradient(135deg,${C.atxt},${C.acc})` : viewed ? `1px solid ${C.b2}` : `linear-gradient(135deg,${rc},${rc}88)`,
+                    border: viewed && !isViewing ? `2px solid ${C.b2}` : "none",
+                    boxSizing: "border-box",
+                  }}>
+                    <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: s.bg || C.card, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: rc, border: `2px solid ${C.bg}` }}>
+                      {ini(s.authorName || "?")}
+                    </div>
+                  </div>
+                  <span style={{ color: isViewing ? C.atxt : C.tm, fontSize: 11, fontWeight: isViewing ? 600 : 400, maxWidth: 64, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    {isMine ? "Você" : s.authorName.split(" ")[0]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Story viewer ── */}
+          {viewStory && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, maxWidth: 900 }}>
+              {/* Story card */}
+              <div style={{ background: viewStory.bg || C.card, borderRadius: 18, overflow: "hidden", border: `1px solid ${C.b1}`, display: "flex", flexDirection: "column", minHeight: 420 }}>
+                {/* Header */}
+                <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(180deg,#00000055 0%,transparent 100%)" }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: (roleColor[viewStory.authorRole] || C.atxt) + "1A", color: roleColor[viewStory.authorRole] || C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, border: "1.5px solid rgba(255,255,255,0.3)" }}>
+                    {ini(viewStory.authorName || "?")}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: "#fff", fontSize: 13, fontWeight: 700, textShadow: "0 1px 4px #000" }}>{viewStory.authorName}</div>
+                    <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10.5 }}>{timeLeft(viewStory.expiresAt)}</div>
+                  </div>
+                  {viewStory.authorId === myId && (
+                    <button onClick={() => deleteStory(viewStory.id)} style={{ background: "rgba(0,0,0,0.4)", border: "none", color: "#F87171", borderRadius: "50%", width: 28, height: 28, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                  )}
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 20px", gap: 14 }}>
+                  {viewStory.image && <img src={viewStory.image} alt="" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 12, objectFit: "contain" }} />}
+                  {viewStory.text && <div style={{ color: "#fff", fontSize: 20, fontWeight: 600, textAlign: "center", textShadow: "0 2px 8px #00000088", lineHeight: 1.4 }}>{viewStory.text}</div>}
+                </div>
+
+                {/* Footer — likes + views */}
+                <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 14, background: "linear-gradient(0deg,#00000055 0%,transparent 100%)" }}>
+                  <button onClick={() => toggleLike(viewStory)} style={{ background: "rgba(0,0,0,0.3)", border: "none", borderRadius: 20, padding: "6px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 16 }}>{(viewStory.likes || []).includes(myId) ? "❤️" : "🤍"}</span>
+                    <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>{(viewStory.likes || []).length}</span>
+                  </button>
+                  <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}>
+                    👁 {(viewStory.views || []).length} visualizações
+                  </span>
+                </div>
+              </div>
+
+              {/* Comments panel */}
+              <div style={{ ...S.card, display: "flex", flexDirection: "column", maxHeight: 420, overflow: "hidden" }}>
+                <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.b1}`, color: C.ts, fontSize: 13, fontWeight: 600 }}>
+                  💬 Comentários ({(viewStory.comments || []).length})
+                </div>
+                <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {(viewStory.comments || []).length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "24px 0", color: C.tm, fontSize: 12 }}>Seja o primeiro a comentar!</div>
+                  ) : (viewStory.comments || []).map((c, i) => {
+                    const rc2 = roleColor[c.userRole] || C.atxt;
+                    return (
+                      <div key={i} style={{ display: "flex", gap: 9 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: rc2 + "1A", color: rc2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                          {ini(c.userName || "?")}
+                        </div>
+                        <div>
+                          <div style={{ color: rc2, fontSize: 10.5, fontWeight: 700 }}>{c.userName}</div>
+                          <div style={{ color: C.ts, fontSize: 12.5, marginTop: 2, lineHeight: 1.4 }}>{c.text}</div>
+                          <div style={{ color: C.td, fontSize: 9.5, marginTop: 3 }}>
+                            {new Date(c.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ padding: "10px 14px", borderTop: `1px solid ${C.b1}`, display: "flex", gap: 8 }}>
+                  <input value={comment} onChange={e => setComment(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addComment(viewStory)}
+                    placeholder="Comentar..." style={{ ...S.input, padding: "7px 11px", fontSize: 12.5, flex: 1 }} />
+                  <button onClick={() => addComment(viewStory)} disabled={!comment.trim()}
+                    style={{ ...S.btn(comment.trim() ? C.acc : C.deep, comment.trim() ? "#fff" : C.td), padding: "7px 14px", fontSize: 13, opacity: comment.trim() ? 1 : 0.5 }}>
+                    ➤
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Atalhos ────────────────────────────────────────────────────
 function AtalhosPage({ currentUser }) {
   const isMestre = currentUser.role === "mestre";
@@ -5927,6 +6234,9 @@ export default function App() {
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
+        )}
+        {page === "stories" && (
+          <StoriesPage currentUser={currentUser} users={users} />
         )}
         {page === "chat" && (
           <ChatPage currentUser={currentUser} users={users} presence={presence} />
