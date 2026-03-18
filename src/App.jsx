@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import {
   auth,
   listenContacts,
@@ -1866,6 +1866,149 @@ function AddClient({ setContacts, setPage }) {
   );
 }
 
+// ── Verify Tab ────────────────────────────────────────────────
+function VerifyTab({ contacts, setContacts, history, saveHistory, currentUser, isMestre }) {
+  const [modal, setModal] = useState(null); // { entry } | "all"
+  const [pw, setPw] = useState("");
+  const [pwErr, setPwErr] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+
+  const openModal = (target) => { setModal(target); setPw(""); setPwErr(""); };
+  const closeModal = () => { setModal(null); setPw(""); setPwErr(""); };
+
+  const confirmDelete = async () => {
+    if (!pw.trim()) { setPwErr("Digite a senha mestre."); return; }
+    setPwLoading(true); setPwErr("");
+    try {
+      const credential = EmailAuthProvider.credential(currentUser.email, pw);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      // Senha correta — executar deleção
+      if (modal === "all") {
+        for (const c of contacts) { try { await deleteContact(String(c.id)); } catch {} }
+        setContacts([]);
+        saveHistory([]);
+      } else {
+        for (const c of modal.contacts) { try { await deleteContact(String(c.id)); } catch {} }
+        setContacts((cs) => cs.filter((c) => !modal.contacts.find((x) => String(x.id) === String(c.id))));
+        saveHistory(history.filter((h) => h.id !== modal.id));
+      }
+      closeModal();
+    } catch {
+      setPwErr("Senha incorreta. Tente novamente.");
+    }
+    setPwLoading(false);
+  };
+
+  return (
+    <div>
+      {/* Modal de confirmação de senha */}
+      {modal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: "#0F1320", border: "1px solid #2D3348", borderRadius: 16, padding: "28px 28px 24px", width: "100%", maxWidth: 360 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 22 }}>🔒</span>
+              <div style={{ color: "#F87171", fontSize: 15, fontWeight: 700 }}>Confirmação necessária</div>
+            </div>
+            <div style={{ color: "#9CA3AF", fontSize: 12.5, marginBottom: 18, lineHeight: 1.5 }}>
+              {modal === "all"
+                ? `Você está prestes a deletar TODOS os ${contacts.length} leads do sistema. Esta ação não pode ser desfeita.`
+                : `Você está prestes a deletar os ${modal.count} leads da planilha "${modal.name}". Esta ação não pode ser desfeita.`}
+              <br /><br />Digite a senha mestre para confirmar:
+            </div>
+            <input
+              type="password"
+              value={pw}
+              onChange={(e) => { setPw(e.target.value); setPwErr(""); }}
+              onKeyDown={(e) => e.key === "Enter" && confirmDelete()}
+              placeholder="Senha mestre"
+              autoFocus
+              style={{ ...S.input, marginBottom: 8 }}
+            />
+            {pwErr && <div style={{ color: "#F87171", fontSize: 12, marginBottom: 10 }}>⚠ {pwErr}</div>}
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button
+                onClick={closeModal}
+                style={{ ...S.btn("transparent", "#9CA3AF"), border: "1px solid #2D3348", flex: 1, padding: "10px" }}
+              >← Voltar</button>
+              <button
+                onClick={confirmDelete}
+                disabled={pwLoading}
+                style={{ ...S.btn("#DC2626", "#fff"), flex: 1, padding: "10px", opacity: pwLoading ? 0.7 : 1 }}
+              >{pwLoading ? "Verificando..." : "🗑 Deletar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card geral */}
+      <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
+        <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Todos os Leads do Sistema</div>
+        <div style={{ color: C.tm, fontSize: 12, marginBottom: 16 }}>
+          {contacts.length} lead{contacts.length !== 1 ? "s" : ""} cadastrado{contacts.length !== 1 ? "s" : ""} no total.
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => exportCSV(contacts, `nexp_todos_leads_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`)}
+            style={{ ...S.btn(C.acc, "#fff"), padding: "10px 20px", fontSize: 13 }}
+          >⬇ Baixar todos os leads ({contacts.length})</button>
+          {isMestre && contacts.length > 0 && (
+            <button
+              onClick={() => openModal("all")}
+              style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "10px 20px", fontSize: 13 }}
+            >🗑 Deletar todos os leads</button>
+          )}
+        </div>
+      </div>
+
+      {/* Planilhas importadas com opção de deletar */}
+      {isMestre && (
+        <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
+          <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Planilhas Importadas</div>
+          {history.length === 0 ? (
+            <div style={{ color: C.tm, fontSize: 12 }}>Nenhuma planilha no histórico.</div>
+          ) : history.map((entry) => (
+            <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.b1}` }}>
+              <div style={{ fontSize: 22, flexShrink: 0 }}>📄</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: C.tp, fontSize: 12.5, fontWeight: 600 }}>{entry.name}</div>
+                <div style={{ color: C.tm, fontSize: 11 }}>{entry.count} leads · {entry.date}</div>
+              </div>
+              <button
+                onClick={() => openModal(entry)}
+                style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "6px 12px", fontSize: 12, flexShrink: 0 }}
+              >🗑 Deletar</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Resumo por tipo */}
+      <div style={{ ...S.card, padding: "22px" }}>
+        <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Resumo por tipo de Lead</div>
+        {contacts.length === 0 ? (
+          <div style={{ color: C.tm, fontSize: 12 }}>Nenhum lead no sistema.</div>
+        ) : LEAD_TYPES.map((t) => {
+          const n = contacts.filter((c) => c.leadType === t).length;
+          if (!n) return null;
+          const col = LEAD_COLOR[t] || "#9CA3AF";
+          const pct = Math.round((n / contacts.length) * 100);
+          return (
+            <div key={t} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ color: col, fontSize: 12 }}>{t}</span>
+                <span style={{ color: C.tm, fontSize: 11 }}>{n} · {pct}%</span>
+              </div>
+              <div style={{ background: C.b1, borderRadius: 4, height: 5 }}>
+                <div style={{ width: pct + "%", height: "100%", borderRadius: 4, background: col }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Import Page ────────────────────────────────────────────────
 function ImportPage({ contacts, setContacts, setPage, currentUser }) {
   const isMestre = currentUser?.role === "mestre";
@@ -2035,41 +2178,14 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 
       {/* ── ABA VERIFICAÇÃO DE LEDS ── */}
       {tab === "verify" && (
-        <div>
-          <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
-            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Todos os Leads do Sistema</div>
-            <div style={{ color: C.tm, fontSize: 12, marginBottom: 16 }}>
-              {contacts.length} lead{contacts.length !== 1 ? "s" : ""} cadastrado{contacts.length !== 1 ? "s" : ""} no total.
-            </div>
-            <button
-              onClick={() => exportCSV(contacts, `nexp_todos_leads_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`)}
-              style={{ ...S.btn(C.acc, "#fff"), padding: "10px 20px", fontSize: 13 }}
-            >
-              ⬇ Baixar todos os leads ({contacts.length})
-            </button>
-          </div>
-          {/* Resumo por tipo */}
-          <div style={{ ...S.card, padding: "22px" }}>
-            <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Resumo por tipo de Lead</div>
-            {LEAD_TYPES.map((t) => {
-              const n = contacts.filter((c) => c.leadType === t).length;
-              if (!n) return null;
-              const col = LEAD_COLOR[t] || "#9CA3AF";
-              const pct = Math.round((n / contacts.length) * 100);
-              return (
-                <div key={t} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ color: col, fontSize: 12 }}>{t}</span>
-                    <span style={{ color: C.tm, fontSize: 11 }}>{n} · {pct}%</span>
-                  </div>
-                  <div style={{ background: C.b1, borderRadius: 4, height: 5 }}>
-                    <div style={{ width: pct + "%", height: "100%", borderRadius: 4, background: col }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <VerifyTab
+          contacts={contacts}
+          setContacts={setContacts}
+          history={history}
+          saveHistory={saveHistory}
+          currentUser={currentUser}
+          isMestre={isMestre}
+        />
       )}
 
       {/* ── ABA HISTÓRICO (só mestre) ── */}
