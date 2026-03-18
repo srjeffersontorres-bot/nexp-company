@@ -4275,11 +4275,9 @@ function UsuariosTab({ users, setUsers, currentUser }) {
       } catch (e) {
         if (e.code === "auth/email-already-in-use") {
           // Tenta fazer login para obter o UID do usuário existente
-          const { signInWithEmailAndPassword } = await import("firebase/auth");
-          const { getAuth } = await import("firebase/auth");
-          const tempAuth = getAuth();
           // Usa instância secundária para não deslogar o mestre
           const { initializeApp, getApps } = await import("firebase/app");
+          const { getAuth: getAuth2, signInWithEmailAndPassword: signIn2 } = await import("firebase/auth");
           const secondApp = getApps().find(a => a.name === "reauth") ||
             initializeApp({
               apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
@@ -4289,7 +4287,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
               messagingSenderId: "1043432853586",
               appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
             }, "reauth");
-          const { getAuth: getAuth2, signInWithEmailAndPassword: signIn2 } = await import("firebase/auth");
           const auth2 = getAuth2(secondApp);
           const cred = await signIn2(auth2, form.email, form.password);
           uid = cred.user.uid;
