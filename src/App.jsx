@@ -699,7 +699,7 @@ function LoginPage({ onLogin }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────
-function Sidebar({ page, setPage, user, users, onLogout }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     {
@@ -855,6 +855,20 @@ function Sidebar({ page, setPage, user, users, onLogout }) {
                   }}
                 >
                   ★
+                </span>
+              )}
+              {it.id === "chat" && unreadChat > 0 && (
+                <span style={{
+                  marginLeft: "auto",
+                  background: "#16A34A",
+                  color: "#fff",
+                  fontSize: 9,
+                  padding: "1px 6px",
+                  borderRadius: 9,
+                  fontWeight: 700,
+                  animation: "pulse 1.5s infinite",
+                }}>
+                  {unreadChat}
                 </span>
               )}
             </button>
@@ -4993,64 +5007,125 @@ const QUICK_MESSAGES = [
 
 const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","✅","👏","😎","🤝","💰","🏆","🎯"];
 
-function ChatPage({ currentUser }) {
+function ChatPage({ currentUser, users }) {
+  const [tab, setTab] = useState("geral"); // "geral" | uid do destinatário
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [showQuick, setShowQuick] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [filter, setFilter] = useState("");
+  const [attachment, setAttachment] = useState(null); // { name, url, type }
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
+  const isMestre = currentUser.role === "mestre";
+  const myId = currentUser.uid || currentUser.id;
 
   useEffect(() => {
-    const unsub = listenChat((msgs) => setMessages(msgs));
+    const unsub = listenChat((msgs) => {
+      if (tab === "geral") {
+        setMessages(msgs.filter(m => !m.toId));
+      } else {
+        setMessages(msgs.filter(m =>
+          (m.authorId === myId && m.toId === tab) ||
+          (m.authorId === tab && m.toId === myId)
+        ));
+      }
+    });
     return () => unsub();
-  }, []);
+  }, [tab, myId]); // eslint-disable-line
 
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const handleFile = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setAttachment({ name: f.name, url: ev.target.result, type: f.type });
+    };
+    reader.readAsDataURL(f);
+  };
 
   const send = async (msg) => {
     const content = (msg || text).trim();
-    if (!content) return;
+    if (!content && !attachment) return;
     setText("");
     setShowQuick(false);
     setShowEmoji(false);
-    await sendChatMessage({
-      text: content,
-      authorId: currentUser.uid || currentUser.id,
+    const payload = {
+      text: content || "",
+      authorId: myId,
       authorName: currentUser.name || currentUser.email,
       authorRole: currentUser.role,
-    });
+      ...(tab !== "geral" && { toId: tab }),
+      ...(attachment && { attachment }),
+    };
+    setAttachment(null);
+    if (fileRef.current) fileRef.current.value = "";
+    await sendChatMessage(payload);
     inputRef.current?.focus();
   };
 
   const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-    if (e.key === "/") { setShowQuick(true); }
+    if (e.key === "/") setShowQuick(true);
     if (e.key === "Escape") { setShowQuick(false); setShowEmoji(false); }
   };
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
-
   const filteredQuick = filter
     ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase()))
     : QUICK_MESSAGES;
 
+  // Usuários para DM (só mestre vê)
+  const dmUsers = users.filter(u => (u.uid || u.id) !== myId);
+  const tabUser = tab !== "geral" ? dmUsers.find(u => (u.uid || u.id) === tab) : null;
+
+  const tabStyle = (active) => ({
+    background: "none", border: "none", cursor: "pointer",
+    padding: "8px 14px", fontSize: 12.5,
+    fontWeight: active ? 600 : 400,
+    color: active ? C.atxt : C.tm,
+    borderBottom: active ? `2px solid ${C.atxt}` : "2px solid transparent",
+    marginBottom: "-1px", whiteSpace: "nowrap",
+  });
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", padding: "0", background: C.bg }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.bg }}>
       {/* Header */}
-      <div style={{ padding: "20px 28px 14px", borderBottom: `1px solid ${C.b1}`, flexShrink: 0 }}>
-        <h1 style={{ color: C.tp, fontSize: 20, fontWeight: 700, margin: 0 }}>💬 Chat da Equipe</h1>
-        <p style={{ color: C.tm, fontSize: 12, margin: "3px 0 0" }}>Mensagens em tempo real com toda a equipe</p>
+      <div style={{ padding: "16px 24px 0", borderBottom: `1px solid ${C.b1}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <h1 style={{ color: C.tp, fontSize: 18, fontWeight: 700, margin: 0 }}>💬 Chat da Equipe</h1>
+        </div>
+        {/* Tabs */}
+        <div style={{ display: "flex", overflowX: "auto", gap: 2 }}>
+          <button style={tabStyle(tab === "geral")} onClick={() => setTab("geral")}>
+            🌐 Geral
+          </button>
+          {isMestre && dmUsers.map(u => {
+            const rc = roleColor[u.role] || C.atxt;
+            return (
+              <button key={u.uid || u.id} style={tabStyle(tab === (u.uid || u.id))} onClick={() => setTab(u.uid || u.id)}>
+                <span style={{ color: rc }}>●</span> {u.name || u.email}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Mensagens */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 28px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {tab !== "geral" && tabUser && (
+          <div style={{ textAlign: "center", padding: "12px 0 6px" }}>
+            <span style={{ background: C.deep, color: C.tm, fontSize: 11, padding: "4px 12px", borderRadius: 20, border: `1px solid ${C.b1}` }}>
+              Conversa privada com {tabUser.name || tabUser.email}
+            </span>
+          </div>
+        )}
         {messages.length === 0 && (
           <div style={{ textAlign: "center", padding: "60px 0", color: C.tm }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
@@ -5059,14 +5134,13 @@ function ChatPage({ currentUser }) {
           </div>
         )}
         {messages.map((msg) => {
-          const isMine = msg.authorId === (currentUser.uid || currentUser.id);
+          const isMine = msg.authorId === myId;
           const rc = roleColor[msg.authorRole] || C.atxt;
           const time = msg.createdAt?.seconds
             ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
             : "";
           return (
             <div key={msg.id} style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 8 }}>
-              {/* Avatar */}
               {!isMine && (
                 <div style={{ width: 32, height: 32, borderRadius: "50%", background: rc + "1A", color: rc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, border: `1.5px solid ${rc}33` }}>
                   {ini(msg.authorName || "?")}
@@ -5078,19 +5152,22 @@ function ChatPage({ currentUser }) {
                     {msg.authorName} · {roleLabel[msg.authorRole] || msg.authorRole}
                   </span>
                 )}
-                <div style={{
-                  background: isMine ? C.acc : C.card,
-                  color: isMine ? "#fff" : C.tp,
-                  border: isMine ? "none" : `1px solid ${C.b1}`,
-                  borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                  padding: "9px 14px",
-                  fontSize: 13.5,
-                  lineHeight: 1.5,
-                  wordBreak: "break-word",
-                }}>
-                  {msg.text}
+                <div style={{ background: isMine ? C.acc : C.card, color: isMine ? "#fff" : C.tp, border: isMine ? "none" : `1px solid ${C.b1}`, borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px", padding: "9px 14px", fontSize: 13.5, lineHeight: 1.5, wordBreak: "break-word" }}>
+                  {msg.text && <div>{msg.text}</div>}
+                  {msg.attachment && (
+                    <div style={{ marginTop: msg.text ? 8 : 0 }}>
+                      {msg.attachment.type?.startsWith("image/") ? (
+                        <img src={msg.attachment.url} alt={msg.attachment.name} style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, display: "block" }} />
+                      ) : (
+                        <a href={msg.attachment.url} download={msg.attachment.name}
+                          style={{ color: isMine ? "#fff" : C.atxt, fontSize: 12, textDecoration: "underline" }}>
+                          📎 {msg.attachment.name}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <span style={{ color: C.td, fontSize: 10, marginTop: 3, paddingHorizontal: 4 }}>{time}</span>
+                <span style={{ color: C.td, fontSize: 10, marginTop: 3 }}>{time}</span>
               </div>
             </div>
           );
@@ -5100,24 +5177,18 @@ function ChatPage({ currentUser }) {
 
       {/* Mensagens rápidas */}
       {showQuick && (
-        <div style={{ margin: "0 28px 8px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 12, overflow: "hidden", maxHeight: 220, display: "flex", flexDirection: "column" }}>
+        <div style={{ margin: "0 24px 8px", background: C.card, border: `1px solid ${C.b1}`, borderRadius: 12, overflow: "hidden", maxHeight: 220, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "8px 12px", borderBottom: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ color: C.tm, fontSize: 11 }}>⚡ Mensagens rápidas — clique para enviar</span>
-            <input
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              placeholder="Filtrar..."
-              style={{ ...S.input, padding: "4px 8px", fontSize: 11, flex: 1, marginLeft: "auto" }}
-            />
+            <span style={{ color: C.tm, fontSize: 11 }}>⚡ Clique para enviar</span>
+            <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding: "4px 8px", fontSize: 11, flex: 1 }} />
             <button onClick={() => { setShowQuick(false); setFilter(""); }} style={{ background: "none", border: "none", color: C.tm, cursor: "pointer", fontSize: 14 }}>✕</button>
           </div>
           <div style={{ overflowY: "auto", flex: 1 }}>
             {filteredQuick.map((m, i) => (
               <div key={i} onClick={() => send(m)}
-                style={{ padding: "9px 14px", cursor: "pointer", fontSize: 12.5, color: C.ts, borderBottom: `1px solid ${C.b1}`, transition: "background 0.1s" }}
+                style={{ padding: "9px 14px", cursor: "pointer", fontSize: 12.5, color: C.ts, borderBottom: `1px solid ${C.b1}` }}
                 onMouseEnter={e => e.currentTarget.style.background = C.abg}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-              >
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 {m}
               </div>
             ))}
@@ -5125,51 +5196,55 @@ function ChatPage({ currentUser }) {
         </div>
       )}
 
+      {/* Prévia anexo */}
+      {attachment && (
+        <div style={{ margin: "0 24px 6px", padding: "8px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}`, display: "flex", alignItems: "center", gap: 10 }}>
+          {attachment.type?.startsWith("image/") ? (
+            <img src={attachment.url} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6 }} />
+          ) : (
+            <span style={{ fontSize: 22 }}>📎</span>
+          )}
+          <span style={{ color: C.ts, fontSize: 12, flex: 1 }}>{attachment.name}</span>
+          <button onClick={() => { setAttachment(null); if (fileRef.current) fileRef.current.value = ""; }} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 14 }}>✕</button>
+        </div>
+      )}
+
+      {/* Emojis rápidos */}
+      {showEmoji && (
+        <div style={{ margin: "0 24px 6px", display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}` }}>
+          {CHAT_EMOJIS.map((e, i) => (
+            <button key={i} onClick={() => setText(t => t + e)}
+              style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", borderRadius: 6, padding: "2px 4px" }}
+              onMouseEnter={ev => ev.currentTarget.style.background = C.b2}
+              onMouseLeave={ev => ev.currentTarget.style.background = "none"}>
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Input */}
-      <div style={{ padding: "10px 28px 18px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
-        {/* Emojis rápidos */}
-        {showEmoji && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8, padding: "8px 12px", background: C.card, borderRadius: 10, border: `1px solid ${C.b1}` }}>
-            {CHAT_EMOJIS.map((e, i) => (
-              <button key={i} onClick={() => setText(t => t + e)}
-                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", borderRadius: 6, padding: "2px 4px", transition: "background 0.1s" }}
-                onMouseEnter={ev => ev.currentTarget.style.background = C.b2}
-                onMouseLeave={ev => ev.currentTarget.style.background = "none"}
-              >{e}</button>
-            ))}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          {/* Botão mensagens rápidas */}
-          <button onClick={() => { setShowQuick(p => !p); setFilter(""); }}
-            title="Mensagens rápidas (ou digite /)"
-            style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 10, padding: "10px 12px", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>
-            ⚡
-          </button>
-          {/* Botão emoji */}
+      <div style={{ padding: "8px 24px 16px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "flex-end" }}>
+          <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} title="Mensagens rápidas (/)"
+            style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 10, padding: "9px 11px", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>⚡</button>
           <button onClick={() => setShowEmoji(p => !p)}
-            style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 10, padding: "10px 12px", cursor: "pointer", fontSize: 16, flexShrink: 0 }}>
-            😊
-          </button>
-          {/* Campo de texto */}
-          <textarea
-            ref={inputRef}
-            value={text}
+            style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 10, padding: "9px 11px", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>😊</button>
+          {/* Anexo */}
+          <button onClick={() => fileRef.current?.click()} title="Anexar arquivo"
+            style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 10, padding: "9px 11px", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>📎</button>
+          <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={handleFile} style={{ display: "none" }} />
+          <textarea ref={inputRef} value={text}
             onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
             onKeyDown={handleKey}
-            placeholder="Digite uma mensagem... (/ para atalhos, Enter para enviar)"
+            placeholder={tab === "geral" ? "Mensagem para a equipe... (/ para atalhos)" : `Mensagem privada para ${tabUser?.name || "usuário"}...`}
             rows={1}
-            style={{ ...S.input, flex: 1, resize: "none", borderRadius: 10, padding: "10px 14px", fontSize: 13, lineHeight: 1.5 }}
-          />
-          {/* Enviar */}
-          <button onClick={() => send()}
-            disabled={!text.trim()}
-            style={{ ...S.btn(text.trim() ? C.acc : C.deep, text.trim() ? "#fff" : C.td), padding: "10px 18px", fontSize: 15, flexShrink: 0, opacity: text.trim() ? 1 : 0.5 }}>
-            ➤
-          </button>
+            style={{ ...S.input, flex: 1, resize: "none", borderRadius: 10, padding: "9px 13px", fontSize: 13, lineHeight: 1.5 }} />
+          <button onClick={() => send()} disabled={!text.trim() && !attachment}
+            style={{ ...S.btn(text.trim() || attachment ? C.acc : C.deep, text.trim() || attachment ? "#fff" : C.td), padding: "9px 16px", fontSize: 15, flexShrink: 0, opacity: text.trim() || attachment ? 1 : 0.5 }}>➤</button>
         </div>
-        <div style={{ color: C.td, fontSize: 10.5, marginTop: 5 }}>
-          Enter para enviar · Shift+Enter para nova linha · / para mensagens rápidas
+        <div style={{ color: C.td, fontSize: 10, marginTop: 4 }}>
+          Enter para enviar · Shift+Enter para nova linha · / para atalhos{tab !== "geral" ? " · 📎 para anexos" : ""}
         </div>
       </div>
     </div>
@@ -5184,11 +5259,15 @@ export default function App() {
   const [contacts, setContacts] = useState([]);
   const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
   const [theme, setTheme] = useState("Padrão");
+  const [unreadChat, setUnreadChat] = useState(0);
+  const [shake, setShake] = useState(false);
+  const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar
   const setPageAndSave = (p) => {
     sessionStorage.setItem("nexp_page", p);
     setPage(p);
+    if (p === "chat") setUnreadChat(0);
   };
 
   // ── Persistência de sessão Firebase ──────────────────────────
@@ -5222,6 +5301,32 @@ export default function App() {
     const unsub = listenUsers((data) => setUsers(data));
     return () => unsub();
   }, [currentUser]);
+
+  // ── Ouvir chat para indicador de não lidas e shake ────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = listenChat((msgs) => {
+      const myId = currentUser.uid || currentUser.id;
+      // Mensagens direcionadas a mim (DM) ou gerais novas
+      const relevant = msgs.filter(m =>
+        !m.toId || m.toId === myId
+      );
+      if (page !== "chat") {
+        const newCount = relevant.length;
+        if (newCount > lastChatCount.current) {
+          setUnreadChat(n => n + (newCount - lastChatCount.current));
+          // Shake se for DM do mestre para mim
+          const lastMsg = relevant[relevant.length - 1];
+          if (lastMsg && lastMsg.toId === myId && lastMsg.authorRole === "mestre") {
+            setShake(true);
+            setTimeout(() => setShake(false), 1000);
+          }
+        }
+      }
+      lastChatCount.current = relevant.length;
+    });
+    return () => unsub();
+  }, [currentUser, page]); // eslint-disable-line
 
   // Apply accent theme to module-level C so all components pick it up on re-render
   Object.assign(C, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
@@ -5288,21 +5393,34 @@ export default function App() {
   };
 
   return (
-    <div
-      key={theme}
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        background: C.bg,
-        fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
-      }}
-    >
+    <>
+      <style>{`
+        @keyframes shake {
+          0%,100%{transform:translateX(0)}
+          10%,30%,50%,70%,90%{transform:translateX(-6px)}
+          20%,40%,60%,80%{transform:translateX(6px)}
+        }
+        @keyframes pulse {
+          0%,100%{opacity:1} 50%{opacity:0.5}
+        }
+      `}</style>
+      <div
+        key={theme}
+        style={{
+          display: "flex",
+          minHeight: "100vh",
+          background: C.bg,
+          fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
+          animation: shake ? "shake 0.6s ease" : "none",
+        }}
+      >
       <Sidebar
         page={page}
         setPage={setPageAndSave}
         user={currentUser}
         users={users}
         onLogout={logout}
+        unreadChat={unreadChat}
       />
       <div style={{ flex: 1, overflowY: "auto" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
@@ -5325,7 +5443,7 @@ export default function App() {
           <LedsPage contacts={contacts} userRole={currentUser.role} />
         )}
         {page === "chat" && (
-          <ChatPage currentUser={currentUser} />
+          <ChatPage currentUser={currentUser} users={users} />
         )}
         {page === "premium" && currentUser.role === "mestre" && (
           <PremiumNexp contacts={contacts} setContacts={setContacts} />
@@ -5351,5 +5469,6 @@ export default function App() {
         )}
       </div>
     </div>
+    </>
   );
 }
