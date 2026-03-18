@@ -5592,16 +5592,13 @@ function StoriesPage({ currentUser, users }) {
   const [viewingIdx, setViewingIdx] = useState(0);
   const [creating, setCreating] = useState(false);
   const [newText, setNewText] = useState("");
-  const [newMedia, setNewMedia] = useState(null);
-  const [newBg, setNewBg] = useState("#1A1F2E");
+  const [newBg, setNewBg] = useState("s1");
   const [newFont, setNewFont] = useState("Inter");
   const [comment, setComment] = useState("");
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [mediaErr, setMediaErr] = useState("");
-  const mediaRef = useRef();
 
   const FONTS = [
     { name: "Inter",     label: "Padrão",    style: "'Inter',sans-serif" },
@@ -5684,69 +5681,13 @@ function StoriesPage({ currentUser, users }) {
     return unsub;
   }, []);
 
-  // ── Comprimir imagem para ~40KB antes de enviar ──────────────
-  const compressImage = (file) => new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 600; // máx 600px — bem rápido de subir
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      canvas.toBlob(
-        blob => resolve(new File([blob], "story.jpg", { type: "image/jpeg" })),
-        "image/jpeg", 0.60
-      );
-    };
-    img.src = url;
-  });
-
-  const handleMedia = (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    setMediaErr("");
-    const isImg   = f.type.startsWith("image/");
-    const isAudio = f.type.startsWith("audio/");
-    const mb = f.size / 1024 / 1024;
-    if (!isImg && !isAudio) { setMediaErr("Apenas imagem ou áudio."); return; }
-    if (isImg   && mb > 2.5) { setMediaErr("Imagem máx 2,5 MB."); return; }
-    if (isAudio && mb > 1)   { setMediaErr("Áudio máx 1 MB.");    return; }
-    const previewUrl = URL.createObjectURL(f);
-    setNewMedia({ url: previewUrl, type: f.type, name: f.name, file: f, isImg });
-  };
-
   // ── Post story ───────────────────────────────────────────────
   const post = async () => {
-    if (!newText.trim() && !newMedia) return;
+    if (!newText.trim()) return;
     const myStories = stories.filter(s => s.authorId === myId);
     if (myStories.length >= 20) { setMediaErr("Limite de 20 stories atingido."); return; }
     setLoading(true);
-    setUploadProgress(0);
-
     try {
-      let mediaPayload = null;
-
-      if (newMedia?.file) {
-        let fileToUpload = newMedia.file;
-
-        // Comprime imagem automaticamente antes de enviar
-        if (newMedia.isImg) {
-          setUploadProgress(5);
-          fileToUpload = await compressImage(newMedia.file);
-          setUploadProgress(10);
-        }
-
-        const path = `stories/${myId}/${Date.now()}_${fileToUpload.name}`;
-        const url = await uploadMedia(fileToUpload, path, (pct) => {
-          // Pct vai de 10-100 para imagem, 0-100 para vídeo/áudio
-          setUploadProgress(newMedia.isImg ? 10 + Math.round(pct * 0.9) : pct);
-        });
-        mediaPayload = { url, type: newMedia.type, name: newMedia.name, storagePath: path };
-      }
-
       const now = Date.now();
       const id = String(now);
       await setDoc(doc(db, "stories", id), {
@@ -5757,7 +5698,7 @@ function StoriesPage({ currentUser, users }) {
         authorPhoto: myProfile.photo || null,
         text: newText.trim(),
         font: newFont,
-        media: mediaPayload,
+        media: null,
         bg: newBg,
         likes: [],
         reactions: {},
@@ -5766,12 +5707,11 @@ function StoriesPage({ currentUser, users }) {
         createdAt: now,
         expiresAt: now + 24 * 60 * 60 * 1000,
       });
-
-      setCreating(false); setNewText(""); setNewMedia(null); setNewBg("#1A1F2E"); setNewFont("Inter");
+      setCreating(false); setNewText(""); setNewBg("s1"); setNewFont("Inter");
     } catch(e) {
       setMediaErr("Erro ao postar: " + e.message);
     } finally {
-      setLoading(false); setUploadProgress(0);
+      setLoading(false);
     }
   };
 
@@ -5928,16 +5868,15 @@ function StoriesPage({ currentUser, users }) {
             display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
             gap:12, marginBottom:16, border:`1px solid ${C.b1}`, position:"relative", overflow:"hidden",
           }}>
-            {/* Themed emoji tiles */}
             {selectedBgItem?.type === "themed" && (
               <div style={{ position:"absolute", inset:0, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"center", opacity:0.18, fontSize:24, gap:4, pointerEvents:"none", userSelect:"none" }}>
                 {Array(40).fill(selectedBgItem.emoji).map((e,i)=><span key={i}>{e}</span>)}
               </div>
             )}
-            {newMedia?.type?.startsWith("image/") && <img src={newMedia.url} alt="" style={{ maxWidth:"100%", maxHeight:160, borderRadius:10, objectFit:"contain", position:"relative" }} />}
-            {newMedia?.type?.startsWith("audio/") && <audio src={newMedia.url} controls style={{ width:"100%", position:"relative" }} />}
-            {newText && <div style={{ color:"#fff", fontSize:18, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit", position:"relative" }}>{newText}</div>}
-            {!newText && !newMedia && <div style={{ color:"#ffffff44", fontSize:13, position:"relative" }}>Preview do story</div>}
+            {newText
+              ? <div style={{ color:"#fff", fontSize:18, fontWeight:600, textAlign:"center", textShadow:"0 2px 8px #00000088", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit", position:"relative" }}>{newText}</div>
+              : <div style={{ color:"#ffffff44", fontSize:13, position:"relative" }}>Preview do story</div>
+            }
           </div>
 
           {/* Background picker */}
@@ -5993,55 +5932,18 @@ function StoriesPage({ currentUser, users }) {
               style={{ ...S.input, resize:"vertical", fontFamily: FONTS.find(f=>f.name===newFont)?.style || "inherit" }} />
           </div>
 
-          <div style={{ marginBottom:16 }}>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>
-              Mídia &nbsp;<span style={{ color:C.td, fontSize:10.5 }}>📷 imagem 2,5MB · 🎵 áudio 1MB</span>
-            </label>
-            <input ref={mediaRef} type="file" accept="image/*,audio/*" onChange={handleMedia} style={{ display:"none" }} />
-            <button onClick={() => mediaRef.current?.click()}
-              style={{ ...S.btn(C.deep, C.atxt), border:`1px solid ${C.atxt}44`, fontSize:13, padding:"9px 20px", display:"flex", alignItems:"center", gap:8, fontWeight:600 }}>
-              📷🎵 Adicionar mídia
-            </button>
-            {newMedia && (
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, padding:"7px 12px", background:C.deep, borderRadius:8, border:`1px solid ${C.b1}` }}>
-                <span style={{ color:C.ts, fontSize:12, flex:1 }}>✓ {newMedia.name}</span>
-                <button onClick={() => setNewMedia(null)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:13 }}>✕</button>
-              </div>
-            )}
-            {mediaErr && <div style={{ color:"#F87171", fontSize:11.5, marginTop:6 }}>⚠ {mediaErr}</div>}
-          </div>
-
           <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-            <button onClick={post} disabled={loading || myStories.length >= 20 || (!newText.trim() && !newMedia)}
-              style={{ ...S.btn(C.acc,"#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, opacity:(!newText.trim()&&!newMedia)||myStories.length>=20?0.5:1 }}>
-              {loading ? (uploadProgress > 0 ? `Enviando ${uploadProgress}%` : "Processando...") : "Publicar"}
+            <button onClick={post} disabled={loading || myStories.length >= 20 || !newText.trim()}
+              style={{ ...S.btn(C.acc,"#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, opacity:!newText.trim()||myStories.length>=20?0.5:1 }}>
+              {loading ? "Publicando..." : "Publicar"}
             </button>
-            <button onClick={()=>{setCreating(false);setNewText("");setNewMedia(null);setMediaErr("");setNewFont("Inter");}}
+            <button onClick={()=>{setCreating(false);setNewText("");setMediaErr("");setNewFont("Inter");setNewBg("s1");}}
               disabled={loading}
-              style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"10px 16px", fontSize:13, opacity:loading?0.5:1 }}>
+              style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"10px 16px", fontSize:13 }}>
               Cancelar
             </button>
           </div>
-          {loading && newMedia?.file && (
-            <div style={{ marginTop:12 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-                <span style={{ color:C.tm, fontSize:11.5 }}>
-                  {newMedia.isImg && uploadProgress < 10
-                    ? "🗜 Comprimindo imagem..."
-                    : uploadProgress < 100
-                    ? "☁️ Enviando para a nuvem..."
-                    : "💾 Salvando story..."}
-                </span>
-                <span style={{ color:C.atxt, fontSize:11.5, fontWeight:600 }}>{uploadProgress}%</span>
-              </div>
-              <div style={{ background:C.b1, borderRadius:4, height:6, overflow:"hidden" }}>
-                <div style={{ width:`${uploadProgress}%`, height:"100%", background:`linear-gradient(90deg,${C.acc},${C.atxt})`, borderRadius:4, transition:"width 0.3s" }} />
-              </div>
-            </div>
-          )}
-          {loading && !newMedia?.file && (
-            <div style={{ marginTop:10, color:C.tm, fontSize:12 }}>💾 Salvando...</div>
-          )}
+          {mediaErr && <div style={{ color:"#F87171", fontSize:12, marginTop:8 }}>⚠ {mediaErr}</div>}
         </div>
       )}
 
