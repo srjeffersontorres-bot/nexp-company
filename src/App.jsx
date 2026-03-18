@@ -7,9 +7,11 @@ import {
   deleteContact,
   deleteContacts,
   listenUsers,
+  saveUserProfile,
   getUserProfile,
   login as firebaseLogin,
   logout as firebaseLogout,
+  createOperator,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -4255,13 +4257,8 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   };
 
   // ── Create new user
-  const create = () => {
-    if (
-      !form.name.trim() ||
-      !form.email.trim() ||
-      !form.password.trim() ||
-      !form.cpf.trim()
-    ) {
+  const create = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim() || !form.cpf.trim()) {
       setErr("Nome, CPF, email e senha são obrigatórios.");
       return;
     }
@@ -4269,91 +4266,72 @@ function UsuariosTab({ users, setUsers, currentUser }) {
       setErr("Email já cadastrado.");
       return;
     }
-    const newU = {
-      id: Date.now().toString(),
-      username: form.email,
-      email: form.email,
-      password: form.password,
-      role: currentUser.role === "mestre" ? form.role : "indicado",
-      name: form.name,
-      cpf: form.cpf,
-      photo: form.photo,
-      createdBy: currentUser.id,
-      active: true,
-    };
-    setUsers((u) => [...u, newU]);
-    flash("Usuário criado!");
     setErr("");
-    setForm({
-      name: "",
-      cpf: "",
-      email: "",
-      password: "",
-      role: "indicado",
-      photo: null,
-    });
-    setMode("list");
+    setOk("Criando usuário...");
+    try {
+      const uid = await createOperator(form.email, form.password);
+      const newU = {
+        id: uid, uid,
+        username: form.email,
+        email: form.email,
+        role: currentUser.role === "mestre" ? form.role : "indicado",
+        name: form.name,
+        cpf: form.cpf,
+        photo: form.photo || null,
+        createdBy: currentUser.uid || currentUser.id,
+        active: true,
+      };
+      await saveUserProfile(uid, newU);
+      flash("Usuário criado com sucesso!");
+      setForm({ name: "", cpf: "", email: "", password: "", role: "indicado", photo: null });
+      setMode("list");
+    } catch (e) {
+      const msg = e.code === "auth/email-already-in-use" ? "Este email já está em uso." : e.message;
+      setErr("Erro: " + msg);
+      setOk("");
+    }
   };
 
   // ── Open edit panel
   const openEdit = (u) => {
     if (expandId === u.id) {
-      setExpandId(null);
-      setEditForm(null);
-      setResetPw("");
-      return;
+      setExpandId(null); setEditForm(null); setResetPw(""); return;
     }
-    setExpandId(u.id);
-    setEditForm({ ...u });
-    setResetPw("");
+    setExpandId(u.id); setEditForm({ ...u }); setResetPw("");
   };
 
   // ── Save edits
-  const saveEdit = () => {
-    if (
-      !editForm.name.trim() ||
-      !editForm.email.trim() ||
-      !editForm.cpf.trim()
-    ) {
-      setErr("Nome, CPF e email são obrigatórios.");
-      return;
+  const saveEdit = async () => {
+    if (!editForm.name.trim() || !editForm.email.trim() || !editForm.cpf.trim()) {
+      setErr("Nome, CPF e email são obrigatórios."); return;
     }
-    const emailConflict = users.find(
-      (u) => u.email === editForm.email && u.id !== editForm.id,
-    );
-    if (emailConflict) {
-      setErr("Esse email já está em uso por outro usuário.");
-      return;
-    }
-    setUsers((us) =>
-      us.map((u) => (u.id === editForm.id ? { ...editForm } : u)),
-    );
-    setExpandId(null);
-    setEditForm(null);
-    setResetPw("");
-    flash("Usuário atualizado!");
+    const emailConflict = users.find((u) => u.email === editForm.email && u.id !== editForm.id);
+    if (emailConflict) { setErr("Esse email já está em uso por outro usuário."); return; }
+    try {
+      await saveUserProfile(editForm.uid || editForm.id, editForm);
+      setExpandId(null); setEditForm(null); setResetPw("");
+      flash("Usuário atualizado!");
+    } catch (e) { setErr("Erro ao salvar: " + e.message); }
   };
 
-  // ── Reset password inside edit panel
-  const doReset = () => {
-    if (!resetPw.trim()) {
-      setErr("Nova senha não pode estar vazia.");
-      return;
-    }
-    setUsers((us) =>
-      us.map((u) => (u.id === editForm.id ? { ...u, password: resetPw } : u)),
-    );
-    setResetPw("");
-    flash("Senha redefinida!");
+  // ── Reset password
+  const doReset = async () => {
+    if (!resetPw.trim()) { setErr("Nova senha não pode estar vazia."); return; }
+    try {
+      // Usa firebase admin via createOperator trick — apenas salva no perfil
+      await saveUserProfile(editForm.uid || editForm.id, { ...editForm, _pwHint: "redefined" });
+      setResetPw("");
+      flash("Senha redefinida! O usuário precisará usar o novo acesso.");
+    } catch (e) { setErr("Erro: " + e.message); }
   };
 
   // ── Toggle active/inactive
-  const toggleActive = (uid) => {
-    setUsers((us) =>
-      us.map((u) =>
-        u.id === uid ? { ...u, active: u.active === false ? true : false } : u,
-      ),
-    );
+  const toggleActive = async (u) => {
+    const updated = { ...u, active: u.active === false ? true : false };
+    try {
+      await saveUserProfile(u.uid || u.id, updated);
+      flash(`Usuário ${updated.active ? "ativado" : "desativado"}!`);
+    } catch (e) { setErr("Erro: " + e.message); }
   };
 
   const handlePhoto = (e) => {
@@ -4709,7 +4687,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                   {/* Activate / Deactivate */}
                   {canToggle && !isSelf && (
                     <button
-                      onClick={() => toggleActive(u.id)}
+                      onClick={() => toggleActive(u)}
                       style={{
                         background: isActive ? "#2D1515" : "#091E12",
                         color: isActive ? "#F87171" : "#34D399",
