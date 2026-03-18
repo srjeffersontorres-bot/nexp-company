@@ -2,17 +2,13 @@ import { useState, useRef, useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   auth,
-  db,
   listenContacts,
   saveContact,
   deleteContact,
   listenUsers,
-  saveUserProfile,
   getUserProfile,
   login as firebaseLogin,
   logout as firebaseLogout,
-  createOperator,
-  resetUserPassword,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -265,7 +261,6 @@ const SAMPLE = [
     observacao: "Número desatualizado.",
     reactions: ["📞"],
   },
-];
 
 const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao
 João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,joao@email.com,,M001,FGTS,Saldo disponível
