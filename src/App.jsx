@@ -4960,8 +4960,14 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
   const [theme, setTheme] = useState("Padrão");
+
+  // Salva a página ativa ao trocar
+  const setPageAndSave = (p) => {
+    sessionStorage.setItem("nexp_page", p);
+    setPage(p);
+  };
 
   // ── Persistência de sessão Firebase ──────────────────────────
   useEffect(() => {
@@ -5047,7 +5053,7 @@ export default function App() {
       <LoginPage
         onLogin={(u) => {
           setCurrentUser(u);
-          setPage("dashboard");
+          setPageAndSave("dashboard");
         }}
       />
     );
@@ -5055,6 +5061,7 @@ export default function App() {
   const logout = async () => {
     await firebaseLogout();
     setCurrentUser(null);
+    sessionStorage.removeItem("nexp_page");
     setPage("dashboard");
   };
 
@@ -5070,7 +5077,7 @@ export default function App() {
     >
       <Sidebar
         page={page}
-        setPage={setPage}
+        setPage={setPageAndSave}
         user={currentUser}
         users={users}
         onLogout={logout}
@@ -5081,10 +5088,10 @@ export default function App() {
           <ContactsPage contacts={contacts} setContacts={setContacts} />
         )}
         {page === "add" && (
-          <AddClient setContacts={setContacts} setPage={setPage} />
+          <AddClient setContacts={setContacts} setPage={setPageAndSave} />
         )}
         {page === "import" && (
-          <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPage} currentUser={currentUser} />
+          <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPageAndSave} currentUser={currentUser} />
         )}
         {page === "review" && (
           <ReviewClient contacts={contacts} setContacts={setContacts} />
