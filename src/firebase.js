@@ -12,6 +12,7 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  writeBatch,
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
@@ -75,6 +76,17 @@ export async function saveContact(contact) {
 /** Remove um contato do Firestore. */
 export async function deleteContact(id) {
   await deleteDoc(doc(db, "contacts", String(id)));
+}
+
+/** Remove múltiplos contatos de uma vez usando batch (máx 500 por lote). */
+export async function deleteContacts(ids) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 500) chunks.push(ids.slice(i, i + 500));
+  for (const chunk of chunks) {
+    const batch = writeBatch(db);
+    chunk.forEach((id) => batch.delete(doc(db, "contacts", String(id))));
+    await batch.commit();
+  }
 }
 
 // ── Users (Profiles) ─────────────────────────────────────────────

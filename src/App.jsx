@@ -5,6 +5,7 @@ import {
   listenContacts,
   saveContact,
   deleteContact,
+  deleteContacts,
   listenUsers,
   getUserProfile,
   login as firebaseLogin,
@@ -1882,13 +1883,13 @@ function VerifyTab({ contacts, setContacts, history, saveHistory, currentUser, i
     try {
       const credential = EmailAuthProvider.credential(currentUser.email, pw);
       await reauthenticateWithCredential(auth.currentUser, credential);
-      // Senha correta — executar deleção
+      // Senha correta — executar deleção em lote
       if (modal === "all") {
-        for (const c of contacts) { try { await deleteContact(String(c.id)); } catch {} }
+        await deleteContacts(contacts.map((c) => String(c.id)));
         setContacts([]);
         saveHistory([]);
       } else {
-        for (const c of modal.contacts) { try { await deleteContact(String(c.id)); } catch {} }
+        await deleteContacts(modal.contacts.map((c) => String(c.id)));
         setContacts((cs) => cs.filter((c) => !modal.contacts.find((x) => String(x.id) === String(c.id))));
         saveHistory(history.filter((h) => h.id !== modal.id));
       }
@@ -2216,7 +2217,7 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
                   <button
                     onClick={async () => {
                       if (!window.confirm(`Apagar os ${entry.count} leads de "${entry.name}" do sistema?`)) return;
-                      for (const c of entry.contacts) { try { await deleteContact(String(c.id)); } catch {} }
+                      await deleteContacts(entry.contacts.map((c) => String(c.id)));
                       saveHistory(history.filter((h) => h.id !== entry.id));
                     }}
                     style={{ ...S.btn("transparent", "#EF4444"), border: "1px solid #EF444433", padding: "7px 12px", fontSize: 12 }}
