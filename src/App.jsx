@@ -19,6 +19,7 @@ import {
   setPresence,
   removePresence,
   listenPresence,
+  uploadMedia,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -5598,6 +5599,7 @@ function StoriesPage({ currentUser, users }) {
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [mediaErr, setMediaErr] = useState("");
   const mediaRef = useRef();
 
@@ -5623,7 +5625,6 @@ function StoriesPage({ currentUser, users }) {
     return unsub;
   }, []);
 
-  // ── Media upload with size limits ────────────────────────────
   const handleMedia = (e) => {
     const f = e.target.files[0]; if (!f) return;
     setMediaErr("");
@@ -5635,9 +5636,9 @@ function StoriesPage({ currentUser, users }) {
     if (isVideo && mb > 50) { setMediaErr("Vídeo máx 50 MB.");  return; }
     if (isAudio && mb > 5)  { setMediaErr("Áudio máx 5 MB.");   return; }
     if (!isImg && !isVideo && !isAudio) { setMediaErr("Formato não suportado."); return; }
-    const r = new FileReader();
-    r.onload = ev => setNewMedia({ url: ev.target.result, type: f.type, name: f.name });
-    r.readAsDataURL(f);
+    // Create preview URL + keep File for Storage upload
+    const previewUrl = URL.createObjectURL(f);
+    setNewMedia({ url: previewUrl, type: f.type, name: f.name, file: f });
   };
 
   // ── Post story ───────────────────────────────────────────────
@@ -5646,27 +5647,44 @@ function StoriesPage({ currentUser, users }) {
     const myStories = stories.filter(s => s.authorId === myId);
     if (myStories.length >= 20) { setMediaErr("Limite de 20 stories atingido."); return; }
     setLoading(true);
-    const now = Date.now();
-    const id = String(now);
-    await setDoc(doc(db, "stories", id), {
-      id,
-      authorId: myId,
-      authorName: currentUser.name || currentUser.email,
-      authorRole: currentUser.role,
-      authorPhoto: myProfile.photo || null,
-      text: newText.trim(),
-      font: newFont,
-      media: newMedia || null,
-      bg: newBg,
-      likes: [],
-      reactions: {},
-      comments: [],
-      views: [],
-      createdAt: now,
-      expiresAt: now + 24 * 60 * 60 * 1000,
-    });
-    setCreating(false); setNewText(""); setNewMedia(null); setNewBg("#1A1F2E"); setNewFont("Inter");
-    setLoading(false);
+    setUploadProgress(0);
+
+    try {
+      let mediaPayload = null;
+
+      // Upload mídia para Firebase Storage (não Firestore)
+      if (newMedia?.file) {
+        const path = `stories/${myId}/${Date.now()}_${newMedia.file.name}`;
+        const url = await uploadMedia(newMedia.file, path, (pct) => setUploadProgress(pct));
+        mediaPayload = { url, type: newMedia.type, name: newMedia.name, storagePath: path };
+      }
+
+      const now = Date.now();
+      const id = String(now);
+      await setDoc(doc(db, "stories", id), {
+        id,
+        authorId: myId,
+        authorName: currentUser.name || currentUser.email,
+        authorRole: currentUser.role,
+        authorPhoto: myProfile.photo || null,
+        text: newText.trim(),
+        font: newFont,
+        media: mediaPayload,
+        bg: newBg,
+        likes: [],
+        reactions: {},
+        comments: [],
+        views: [],
+        createdAt: now,
+        expiresAt: now + 24 * 60 * 60 * 1000,
+      });
+
+      setCreating(false); setNewText(""); setNewMedia(null); setNewBg("#1A1F2E"); setNewFont("Inter");
+    } catch(e) {
+      setMediaErr("Erro ao postar: " + e.message);
+    } finally {
+      setLoading(false); setUploadProgress(0);
+    }
   };
 
   const deleteStory = async (id) => {
@@ -5710,10 +5728,21 @@ function StoriesPage({ currentUser, users }) {
   // ── Helpers ──────────────────────────────────────────────────
   const timeLeft = (expiresAt) => {
     const diff = expiresAt - Date.now();
+    if (diff <= 0) return "Expirado";
     const h = Math.floor(diff / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
-    return h > 0 ? `${h}h restantes` : `${m}m restantes`;
+    const s = Math.floor((diff % 60000) / 1000);
+    if (h > 0) return `${h}h ${m}m restantes`;
+    if (m > 0) return `${m}m ${s}s restantes`;
+    return `${s}s restantes`;
   };
+
+  // Tick para atualizar o contador em tempo real
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
 
@@ -5856,16 +5885,34 @@ function StoriesPage({ currentUser, users }) {
             {mediaErr && <div style={{ color:"#F87171", fontSize:11.5, marginTop:6 }}>⚠ {mediaErr}</div>}
           </div>
 
-          <div style={{ display:"flex", gap:10 }}>
+          <div style={{ display:"flex", gap:10, alignItems:"center" }}>
             <button onClick={post} disabled={loading || myStories.length >= 20 || (!newText.trim() && !newMedia)}
               style={{ ...S.btn(C.acc,"#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, opacity:(!newText.trim()&&!newMedia)||myStories.length>=20?0.5:1 }}>
-              {loading ? "Postando..." : "Publicar"}
+              {loading ? (uploadProgress > 0 ? `Enviando ${uploadProgress}%` : "Processando...") : "Publicar"}
             </button>
             <button onClick={()=>{setCreating(false);setNewText("");setNewMedia(null);setMediaErr("");setNewFont("Inter");}}
-              style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"10px 16px", fontSize:13 }}>
+              disabled={loading}
+              style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"10px 16px", fontSize:13, opacity:loading?0.5:1 }}>
               Cancelar
             </button>
           </div>
+          {/* Barra de progresso do upload */}
+          {loading && newMedia?.file && (
+            <div style={{ marginTop:12 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                <span style={{ color:C.tm, fontSize:11.5 }}>
+                  {uploadProgress < 100 ? "Fazendo upload da mídia..." : "Salvando story..."}
+                </span>
+                <span style={{ color:C.atxt, fontSize:11.5, fontWeight:600 }}>{uploadProgress}%</span>
+              </div>
+              <div style={{ background:C.b1, borderRadius:4, height:6, overflow:"hidden" }}>
+                <div style={{ width:`${uploadProgress}%`, height:"100%", background:`linear-gradient(90deg,${C.acc},${C.atxt})`, borderRadius:4, transition:"width 0.3s" }} />
+              </div>
+            </div>
+          )}
+          {loading && !newMedia?.file && (
+            <div style={{ marginTop:10, color:C.tm, fontSize:12 }}>💾 Salvando...</div>
+          )}
         </div>
       )}
 
@@ -5930,7 +5977,15 @@ function StoriesPage({ currentUser, users }) {
               </div>
               <div style={{ flex:1 }}>
                 <div style={{ color:"#fff", fontSize:13, fontWeight:700, textShadow:"0 1px 4px #000" }}>{viewStory.authorName}</div>
-                <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10 }}>{timeLeft(viewStory.expiresAt)}</div>
+                <div style={{ color:"rgba(255,255,255,0.75)", fontSize:10, marginBottom:3 }}>⏳ {timeLeft(viewStory.expiresAt)}</div>
+                {/* Barra de expiração — verde→amarela→vermelha */}
+                <div style={{ background:"rgba(255,255,255,0.2)", borderRadius:3, height:3, width:110, overflow:"hidden" }}>
+                  <div style={{
+                    height:"100%", borderRadius:3, transition:"width 1s linear",
+                    width:`${Math.max(0,((viewStory.expiresAt-Date.now())/(24*3600000))*100)}%`,
+                    background: ((viewStory.expiresAt-Date.now())/(24*3600000)) > 0.5 ? "#34D399" : ((viewStory.expiresAt-Date.now())/(24*3600000)) > 0.2 ? "#FBBF24" : "#F87171",
+                  }}/>
+                </div>
               </div>
               <div style={{ display:"flex", gap:6, alignItems:"center" }}>
                 {viewingIdx > 0 && (

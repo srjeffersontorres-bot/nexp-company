@@ -25,6 +25,13 @@ import {
   updatePassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
+import {
+  getStorage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
 
 // ── Substitua aqui com suas credenciais ──────────────────────────
 const firebaseConfig = {
@@ -40,9 +47,34 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 // ── Mantém a sessão do usuário após recarregar a página ──────────
 setPersistence(auth, browserLocalPersistence);
+
+// ── Storage — Upload de mídia para stories ───────────────────────
+export function uploadMedia(file, path, onProgress) {
+  return new Promise((resolve, reject) => {
+    const storageRef = ref(storage, path);
+    const task = uploadBytesResumable(storageRef, file);
+    task.on(
+      "state_changed",
+      (snap) => {
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+        if (onProgress) onProgress(pct);
+      },
+      reject,
+      async () => {
+        const url = await getDownloadURL(task.snapshot.ref);
+        resolve(url);
+      }
+    );
+  });
+}
+
+export async function deleteMedia(storagePath) {
+  try { await deleteObject(ref(storage, storagePath)); } catch(e) {}
+}
 
 // ── Contacts (Leads) ─────────────────────────────────────────────
 
