@@ -93,35 +93,21 @@ export async function deleteContacts(ids) {
 
 /** Atualiza presença online do usuário. */
 export async function setPresence(uid, name, role) {
-  await setDoc(
-    doc(db, "presence", uid),
-    {
-      uid,
-      name,
-      role,
-      online: true,
-      lastSeen: serverTimestamp(),
-    },
-    { merge: true },
-  );
+  await setDoc(doc(db, "presence", uid), {
+    uid, name, role, online: true, lastSeen: serverTimestamp(),
+  }, { merge: true });
 }
 
 /** Remove presença online. */
 export async function removePresence(uid) {
-  await setDoc(
-    doc(db, "presence", uid),
-    { online: false, lastSeen: serverTimestamp() },
-    { merge: true },
-  );
+  await setDoc(doc(db, "presence", uid), { online: false, lastSeen: serverTimestamp() }, { merge: true });
 }
 
 /** Ouve presenças online em tempo real. */
 export function listenPresence(callback) {
   return onSnapshot(collection(db, "presence"), (snap) => {
     const data = {};
-    snap.docs.forEach((d) => {
-      data[d.id] = d.data();
-    });
+    snap.docs.forEach(d => { data[d.id] = d.data(); });
     callback(data);
   });
 }
@@ -132,9 +118,7 @@ export function listenPresence(callback) {
 export function listenChat(callback) {
   return onSnapshot(collection(db, "chat"), (snap) => {
     const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    msgs.sort(
-      (a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0),
-    );
+    msgs.sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
     callback(msgs);
   });
 }
@@ -142,11 +126,7 @@ export function listenChat(callback) {
 /** Envia uma mensagem no chat. */
 export async function sendChatMessage(msg) {
   const id = String(Date.now());
-  await setDoc(doc(db, "chat", id), {
-    ...msg,
-    id,
-    createdAt: serverTimestamp(),
-  });
+  await setDoc(doc(db, "chat", id), { ...msg, id, createdAt: serverTimestamp() });
 }
 
 // ── Users (Profiles) ─────────────────────────────────────────────
@@ -154,11 +134,7 @@ export async function sendChatMessage(msg) {
 /** Ouve todos os perfis de usuário em tempo real. */
 export function listenUsers(callback) {
   return onSnapshot(collection(db, "users"), (snap) => {
-    callback(
-      snap.docs
-        .map((d) => ({ uid: d.id, ...d.data() }))
-        .filter((u) => !u.deleted),
-    );
+    callback(snap.docs.map((d) => ({ uid: d.id, ...d.data() })).filter((u) => !u.deleted));
   });
 }
 
