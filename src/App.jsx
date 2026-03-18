@@ -4265,24 +4265,19 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         uid = await createOperator(form.email, form.password);
       } catch (e) {
         if (e.code === "auth/email-already-in-use") {
-          // Busca UID pelo email no Firestore (usuário foi excluído mas ainda existe no Auth)
-          const existing = await getUserProfile(null).catch(() => null);
-          // Procura nos usuários carregados
           const found = users.find(u => u.email === form.email);
           if (found) {
             uid = found.uid || found.id;
             reativado = true;
           } else {
-            // Busca no Firestore diretamente
-            const { collection, query, where, getDocs } = await import("firebase/firestore");
-            const { db } = await import("./firebase");
-            const q = query(collection(db, "users"), where("email", "==", form.email));
-            const snap = await getDocs(q);
+            const { collection: col2, query: q2, where: w2, getDocs: gd2 } = await import("firebase/firestore");
+            const { db: db2 } = await import("./firebase");
+            const snap = await gd2(q2(col2(db2, "users"), w2("email", "==", form.email)));
             if (!snap.empty) {
               uid = snap.docs[0].id;
               reativado = true;
             } else {
-              throw new Error("Email já existe no Auth mas o perfil não foi encontrado.");
+              throw new Error("Email já existe mas o perfil não foi encontrado.");
             }
           }
         } else {

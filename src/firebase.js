@@ -10,14 +10,11 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   setDoc,
   deleteDoc,
   writeBatch,
   onSnapshot,
   serverTimestamp,
-  query,
-  where,
 } from "firebase/firestore";
 import {
   getAuth,
