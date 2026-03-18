@@ -768,6 +768,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         padding: "20px 0",
         flexShrink: 0,
         borderRight: `1px solid ${C.b1}`,
+        overflow: "hidden",
       }}
     >
       <div
@@ -5571,6 +5572,8 @@ export default function App() {
   return (
     <>
       <style>{`
+        * { box-sizing: border-box; }
+        html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; }
         @keyframes shake {
           0%,100%{transform:translateX(0)}
           10%,30%,50%,70%,90%{transform:translateX(-6px)}
@@ -5579,12 +5582,18 @@ export default function App() {
         @keyframes pulse {
           0%,100%{opacity:1} 50%{opacity:0.5}
         }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #1A1F2E; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #525870; }
       `}</style>
       <div
         key={theme}
         style={{
           display: "flex",
-          minHeight: "100vh",
+          height: "100vh",
+          width: "100vw",
+          overflow: "hidden",
           background: C.bg,
           fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
           animation: shake ? "shake 0.6s ease" : "none",
@@ -5600,7 +5609,7 @@ export default function App() {
         presence={presence}
         flashUserId={flashUserId}
       />
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", height: "100vh" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
           <ContactsPage contacts={contacts} setContacts={setContacts} />
