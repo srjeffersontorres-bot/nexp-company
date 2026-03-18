@@ -742,6 +742,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
       roles: ["mestre", "master", "indicado"],
     },
     { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
+    { id: "chat", label: "Chat da Equipe", icon: "💬", roles: ["mestre", "master", "indicado"] },
     { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
     {
       id: "config",
@@ -878,48 +879,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         })}
       </nav>
       <div style={{ padding: "0 12px" }}>
-
-        {/* ── Chat button — separado do nav principal ── */}
-        <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10 }}>
-          <button
-            onClick={() => setPage("chat")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              padding: "9px 11px",
-              borderRadius: 9,
-              border: page === "chat" ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
-              cursor: "pointer",
-              textAlign: "left",
-              width: "100%",
-              background: page === "chat" ? C.abg : C.deep,
-              color: page === "chat" ? C.atxt : C.tm,
-              fontSize: 12.5,
-              fontWeight: page === "chat" ? 600 : 400,
-              transition: "all 0.12s",
-            }}
-          >
-            <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>💬</span>
-            Chat da Equipe
-            {unreadChat > 0 && (
-              <span style={{
-                marginLeft: "auto",
-                background: "#16A34A",
-                color: "#fff",
-                fontSize: 9,
-                padding: "2px 7px",
-                borderRadius: 9,
-                fontWeight: 700,
-                animation: "pulse 1.5s infinite",
-              }}>
-                {unreadChat}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* ── User profile card ── */}
         <div
           style={{
             background: C.deep,
@@ -5075,14 +5034,13 @@ function ChatPage({ currentUser, users, presence }) {
     return () => unsub();
   }, []);
 
-  // Filtrar mensagens por tab — exclui mensagens do tipo shake da exibição
-  const messages = (tab === "geral"
+  // Filtrar mensagens por tab
+  const messages = tab === "geral"
     ? allMessages.filter(m => !m.toId)
     : allMessages.filter(m =>
         (m.authorId === myId && m.toId === tab) ||
         (m.authorId === tab && m.toId === myId)
-      )
-  ).filter(m => m.type !== "shake");
+      );
 
   // Detectar nova mensagem para flash
   const lastMsgId = useRef(null);
@@ -5134,54 +5092,20 @@ function ChatPage({ currentUser, users, presence }) {
     if (e.key === "Escape") { setShowQuick(false); setShowEmoji(false); }
   };
 
-  const shakeCountRef = useRef(0);
-  const shakeTimerRef = useRef(null);
-
-  const playNotifSound = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // Dois bipes curtos
-      [0, 0.18].forEach(offset => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = 880;
-        osc.type = "sine";
-        gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.15);
-        osc.start(ctx.currentTime + offset);
-        osc.stop(ctx.currentTime + offset + 0.15);
-      });
-    } catch(e) {}
-  };
-
   const shake = async () => {
     if (tab === "geral" || !tab) return;
-    if (shakeCountRef.current >= 5) return;
-
-    shakeCountRef.current += 1;
     setShakeLocal(true);
     setTimeout(() => setShakeLocal(false), 800);
-    playNotifSound();
-
-    // Envia sinal especial via Firestore que o destinatário detecta
+    // Envia sinal de shake via Firestore para o destinatário
     await sendChatMessage({
-      text: "",
+      text: "🔔",
       type: "shake",
       authorId: myId,
       authorName: currentUser.name || currentUser.email,
       authorRole: currentUser.role,
       toId: tab,
     });
-
-    // Reseta o contador após 60 segundos
-    clearTimeout(shakeTimerRef.current);
-    shakeTimerRef.current = setTimeout(() => {
-      shakeCountRef.current = 0;
-    }, 60000);
   };
-
-  const shakesLeft = 5 - (shakeCountRef.current || 0);
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
@@ -5298,26 +5222,9 @@ function ChatPage({ currentUser, users, presence }) {
               </div>
               {/* Botão chamar atenção — DM apenas */}
               <button onClick={shake}
-                disabled={shakeCountRef.current >= 5}
-                title={shakeCountRef.current >= 5 ? "Limite atingido (5x por minuto)" : `Chamar atenção (${5 - shakeCountRef.current} restantes)`}
-                style={{
-                  marginLeft: "auto",
-                  background: shakeCountRef.current >= 5 ? C.deep : "#2D1515",
-                  border: shakeCountRef.current >= 5 ? `1px solid ${C.b2}` : "1px solid #EF444433",
-                  color: shakeCountRef.current >= 5 ? C.td : "#F87171",
-                  borderRadius: 8, padding: "6px 12px", cursor: shakeCountRef.current >= 5 ? "not-allowed" : "pointer",
-                  fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6,
-                  opacity: shakeCountRef.current >= 5 ? 0.5 : 1,
-                  transition: "all 0.2s",
-                }}>
+                title="Chamar atenção"
+                style={{ marginLeft: "auto", background: "#2D1515", border: "1px solid #EF444433", color: "#F87171", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                 🔔 Chamar atenção
-                <span style={{
-                  background: shakeCountRef.current >= 5 ? C.b2 : "#EF444422",
-                  color: shakeCountRef.current >= 5 ? C.td : "#F87171",
-                  fontSize: 10, padding: "1px 6px", borderRadius: 9, fontWeight: 700,
-                }}>
-                  {5 - shakeCountRef.current}/5
-                </span>
               </button>
             </>
           ) : null}
@@ -5527,24 +5434,6 @@ export default function App() {
     };
   }, [currentUser]); // eslint-disable-line
 
-  // ── Som de notificação global ─────────────────────────────────
-  const playGlobalSound = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [0, 0.18].forEach(offset => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = 880;
-        osc.type = "sine";
-        gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.15);
-        osc.start(ctx.currentTime + offset);
-        osc.stop(ctx.currentTime + offset + 0.15);
-      });
-    } catch(e) {}
-  };
-
   // ── Ouvir chat para indicador de não lidas e shake ────────────
   useEffect(() => {
     if (!currentUser) return;
@@ -5555,29 +5444,20 @@ export default function App() {
         const newCount = relevant.length;
         if (newCount > lastChatCount.current) {
           const newMsgs = relevant.slice(lastChatCount.current);
-          // Conta apenas mensagens normais para badge
-          const normalNew = newMsgs.filter(m => m.type !== "shake");
-          if (normalNew.length > 0) setUnreadChat(n => n + normalNew.length);
-
           const lastMsg = relevant[relevant.length - 1];
           if (lastMsg) {
             setFlashUserId(lastMsg.authorId);
             setTimeout(() => setFlashUserId(null), 3000);
           }
-
-          // Detecta mensagem de shake direcionada a mim
-          const shakeMsg = newMsgs.find(m => m.type === "shake" && m.toId === myId);
-          if (shakeMsg) {
+          // Shake recebido — treme a tela do destinatário
+          const shakeSignal = newMsgs.find(m => m.type === "shake" && m.toId === myId);
+          if (shakeSignal) {
             setShake(true);
             setTimeout(() => setShake(false), 1000);
-            playGlobalSound();
-          } else if (lastMsg && lastMsg.toId === myId && lastMsg.type !== "shake") {
-            // Mensagem normal recebida — shake suave apenas do mestre
-            if (lastMsg.authorRole === "mestre") {
-              setShake(true);
-              setTimeout(() => setShake(false), 600);
-            }
           }
+          // Apenas mensagens normais contam pro badge
+          const normalMsgs = newMsgs.filter(m => m.type !== "shake");
+          if (normalMsgs.length > 0) setUnreadChat(n => n + normalMsgs.length);
         }
       }
       lastChatCount.current = relevant.length;
