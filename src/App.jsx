@@ -741,7 +741,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, presence, flashUserId, stories }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, presence, flashUserId, stories }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     {
@@ -899,6 +899,9 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                   )}
                   {item.id === "notificacoes" && unreadNotif > 0 && (
                     <span style={{ marginLeft: "auto", background: "#F59E0B", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadNotif}</span>
+                  )}
+                  {item.id === "stories" && unreadStories > 0 && (
+                    <span style={{ marginLeft: "auto", background: "linear-gradient(135deg,#3B6EF5,#7C3AED)", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadStories}</span>
                   )}
                 </button>
               ))}
@@ -4966,41 +4969,85 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 // ── Notificações ───────────────────────────────────────────────
 function NotificacoesPage({ currentUser, users }) {
   const myId = currentUser.uid || currentUser.id;
+  const isMestre = currentUser.role === "mestre";
   const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showBroadcastForm, setShowBroadcastForm] = useState(false);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastEmoji, setBroadcastEmoji] = useState("📢");
+  const [broadcastColor, setBroadcastColor] = useState("#F59E0B");
+  const [sending, setSending] = useState(false);
+  const markedRef = useRef(false);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(n => n.toId === myId)
-        .sort((a, b) => b.createdAt - a.createdAt);
+        .filter(n => n.toId === myId || n.broadcast === true)
+        .sort((a, b) => {
+          // Broadcasts pinned at top, then by date
+          if (a.broadcast && !b.broadcast) return -1;
+          if (!a.broadcast && b.broadcast) return 1;
+          return b.createdAt - a.createdAt;
+        });
       setNotifs(all);
       setLoading(false);
     });
     return () => unsub();
   }, []); // eslint-disable-line
 
-  // Mark all as read when page opens
+  // Mark all as read on mount
   useEffect(() => {
+    if (markedRef.current || notifs.length === 0) return;
+    markedRef.current = true;
     const markAll = async () => {
-      const unread = notifs.filter(n => !n.readAt);
-      for (const n of unread) {
-        await setDoc(doc(db, "notifications", n.id), { readAt: Date.now() }, { merge: true });
+      for (const n of notifs) {
+        if (n.broadcast) {
+          const readBy = n.readBy || [];
+          if (!readBy.includes(myId)) {
+            await setDoc(doc(db, "notifications", n.id), { readBy: [...readBy, myId] }, { merge: true });
+          }
+        } else if (!n.readAt) {
+          await setDoc(doc(db, "notifications", n.id), { readAt: Date.now() }, { merge: true });
+        }
       }
     };
-    if (notifs.length > 0) markAll();
-  }, [notifs.length]); // eslint-disable-line
+    markAll();
+  }, [notifs]); // eslint-disable-line
 
   const deleteNotif = async (id) => {
     await deleteDoc(doc(db, "notifications", id));
   };
 
-  const clearAll = async () => {
-    if (!window.confirm("Limpar todas as notificações?")) return;
-    for (const n of notifs) {
+  const clearPersonal = async () => {
+    if (!window.confirm("Limpar suas notificações pessoais?")) return;
+    for (const n of notifs.filter(n => !n.broadcast)) {
       await deleteDoc(doc(db, "notifications", n.id));
     }
+  };
+
+  const sendBroadcast = async () => {
+    if (!broadcastText.trim()) return;
+    setSending(true);
+    const id = "broadcast_" + Date.now();
+    await setDoc(doc(db, "notifications", id), {
+      id,
+      type: "broadcast",
+      broadcast: true,
+      emoji: broadcastEmoji,
+      color: broadcastColor,
+      text: broadcastText.trim(),
+      fromId: myId,
+      fromName: currentUser.name || currentUser.email,
+      createdAt: Date.now(),
+      readBy: [myId],
+    });
+    setBroadcastText(""); setShowBroadcastForm(false); setSending(false);
+  };
+
+  const deleteBroadcast = async (id) => {
+    if (!window.confirm("Remover este aviso para todos?")) return;
+    await deleteDoc(doc(db, "notifications", id));
   };
 
   const timeAgo = (ts) => {
@@ -5019,14 +5066,17 @@ function NotificacoesPage({ currentUser, users }) {
     if (type === "comment") return "💬";
     if (type === "group_add") return "👥";
     if (type === "group_rename") return "✏️";
+    if (type === "broadcast") return "📢";
     return "🔔";
   };
 
-  const notifColor = (type) => {
+  const notifColor = (type, customColor) => {
+    if (customColor) return customColor;
     if (type === "like") return "#F472B6";
     if (type === "comment") return C.atxt;
     if (type === "group_add") return "#34D399";
     if (type === "group_rename") return "#FBBF24";
+    if (type === "broadcast") return "#F59E0B";
     return C.atxt;
   };
 
@@ -5043,8 +5093,23 @@ function NotificacoesPage({ currentUser, users }) {
     if (n.type === "group_rename") return (
       <span><strong style={{ color: C.tp }}>{n.fromName}</strong> renomeou o grupo de <strong style={{ color: "#FBBF24" }}>{n.oldName}</strong> para <strong style={{ color: "#FBBF24" }}>{n.groupName}</strong></span>
     );
+    if (n.type === "broadcast") return (
+      <span style={{ color: C.tp, fontWeight: 500 }}>{n.text}</span>
+    );
     return <span>Nova notificação</span>;
   };
+
+  const BROADCAST_EMOJIS = ["📢","🚨","⚠️","✅","🔔","📌","💡","🎯","🏆","🚀","❗","📣"];
+  const BROADCAST_COLORS = [
+    { label: "Amarelo", color: "#F59E0B" },
+    { label: "Vermelho", color: "#EF4444" },
+    { label: "Verde", color: "#34D399" },
+    { label: "Azul", color: "#60A5FA" },
+    { label: "Roxo", color: "#C084FC" },
+  ];
+
+  const broadcasts = notifs.filter(n => n.broadcast);
+  const personal = notifs.filter(n => !n.broadcast);
 
   return (
     <div style={{ padding: "28px 36px", minHeight: "100%", background: C.bg }}>
@@ -5052,21 +5117,125 @@ function NotificacoesPage({ currentUser, users }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
         <div>
           <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Notificações 🔔</h1>
-          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Suas curtidas, comentários e atividades de grupo</p>
+          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Avisos, curtidas, comentários e atividades de grupo</p>
         </div>
-        {notifs.length > 0 && (
-          <button onClick={clearAll}
-            style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "7px 14px", fontSize: 12, cursor: "pointer" }}>
-            🗑 Limpar tudo
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          {isMestre && (
+            <button onClick={() => setShowBroadcastForm(p => !p)}
+              style={{ ...S.btn(showBroadcastForm ? C.abg : "#2B1D03", showBroadcastForm ? C.atxt : "#FBBF24"), border: `1px solid #F59E0B44`, padding: "7px 14px", fontSize: 12, fontWeight: 700 }}>
+              📢 Criar Aviso
+            </button>
+          )}
+          {personal.length > 0 && (
+            <button onClick={clearPersonal}
+              style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "7px 14px", fontSize: 12, cursor: "pointer" }}>
+              🗑 Limpar minhas
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* ── Broadcast form (mestre only) ── */}
+      {showBroadcastForm && isMestre && (
+        <div style={{ ...S.card, padding: "20px", marginBottom: 22, border: `1px solid #F59E0B44`, background: "#2B1D0311" }}>
+          <div style={{ color: "#FBBF24", fontSize: 13, fontWeight: 700, marginBottom: 14 }}>📢 Novo Aviso para Todos</div>
+
+          {/* Emoji picker */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 6 }}>Ícone</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {BROADCAST_EMOJIS.map(e => (
+                <button key={e} onClick={() => setBroadcastEmoji(e)}
+                  style={{ width: 32, height: 32, borderRadius: 8, background: broadcastEmoji === e ? "#F59E0B22" : C.deep, border: broadcastEmoji === e ? "1.5px solid #F59E0B" : `1px solid ${C.b2}`, fontSize: 16, cursor: "pointer" }}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Color picker */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 6 }}>Cor de destaque</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {BROADCAST_COLORS.map(bc => (
+                <button key={bc.color} onClick={() => setBroadcastColor(bc.color)}
+                  style={{ width: 24, height: 24, borderRadius: "50%", background: bc.color, border: broadcastColor === bc.color ? `3px solid #fff` : `2px solid transparent`, cursor: "pointer", boxShadow: broadcastColor === bc.color ? `0 0 0 1px ${bc.color}` : "none" }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Preview */}
+          {broadcastText.trim() && (
+            <div style={{ background: broadcastColor + "15", border: `1px solid ${broadcastColor}44`, borderRadius: 10, padding: "12px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20 }}>{broadcastEmoji}</span>
+              <span style={{ color: C.tp, fontSize: 13 }}>{broadcastText}</span>
+            </div>
+          )}
+
+          <div style={{ marginBottom: 12 }}>
+            <textarea value={broadcastText} onChange={e => setBroadcastText(e.target.value)}
+              placeholder="Escreva o aviso para toda a equipe..."
+              rows={3} style={{ ...S.input, resize: "vertical", fontSize: 13 }} />
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={sendBroadcast} disabled={!broadcastText.trim() || sending}
+              style={{ ...S.btn("#F59E0B", "#000"), padding: "9px 22px", fontSize: 13, fontWeight: 700, opacity: broadcastText.trim() ? 1 : 0.5 }}>
+              {sending ? "Enviando..." : "📢 Publicar Aviso"}
+            </button>
+            <button onClick={() => { setShowBroadcastForm(false); setBroadcastText(""); }}
+              style={{ ...S.btn(C.deep, C.tm), padding: "9px 16px", fontSize: 12, border: `1px solid ${C.b2}` }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div style={{ textAlign: "center", padding: "60px 0", color: C.tm, fontSize: 13 }}>Carregando...</div>
       )}
 
-      {!loading && notifs.length === 0 && (
+      {/* ── Broadcasts (Avisos) pinned at top ── */}
+      {broadcasts.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: C.td, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10, fontWeight: 600 }}>📢 Avisos da equipe</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 680 }}>
+            {broadcasts.map(n => {
+              const color = n.color || "#F59E0B";
+              const isUnread = !(n.readBy || []).includes(myId);
+              return (
+                <div key={n.id} style={{
+                  borderRadius: 12, padding: "14px 18px",
+                  background: color + "12",
+                  border: `1.5px solid ${color}55`,
+                  display: "flex", alignItems: "flex-start", gap: 12,
+                  boxShadow: isUnread ? `0 0 14px ${color}22` : "none",
+                }}>
+                  <span style={{ fontSize: 22, flexShrink: 0, marginTop: 1 }}>{n.emoji || "📢"}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: C.tp, fontSize: 13.5, fontWeight: 500, lineHeight: 1.5 }}>{n.text}</div>
+                    <div style={{ color: C.td, fontSize: 11, marginTop: 5, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>por <strong style={{ color }}>{n.fromName}</strong></span>
+                      <span>·</span>
+                      <span>{timeAgo(n.createdAt)}</span>
+                      {isUnread && <span style={{ background: color, color: "#000", fontSize: 9, padding: "1px 6px", borderRadius: 6, fontWeight: 700 }}>NOVO</span>}
+                    </div>
+                  </div>
+                  {isMestre && (
+                    <button onClick={() => deleteBroadcast(n.id)}
+                      style={{ background: "transparent", border: "none", color: C.td, cursor: "pointer", fontSize: 14, padding: "2px 6px", borderRadius: 6, flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.color = "#EF4444"}
+                      onMouseLeave={e => e.currentTarget.style.color = C.td}>✕</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Personal notifs ── */}
+      {!loading && personal.length === 0 && broadcasts.length === 0 && (
         <div style={{ ...S.card, padding: "60px 36px", textAlign: "center" }}>
           <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 14 }}>🔔</div>
           <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>Nenhuma notificação ainda</div>
@@ -5074,59 +5243,50 @@ function NotificacoesPage({ currentUser, users }) {
         </div>
       )}
 
-      {!loading && notifs.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 680 }}>
-          {notifs.map(n => {
-            const color = notifColor(n.type);
-            const isUnread = !n.readAt;
-            return (
-              <div key={n.id} style={{
-                ...S.card,
-                padding: "14px 16px",
-                display: "flex",
-                alignItems: "center",
-                gap: 13,
-                border: isUnread ? `1px solid ${color}44` : `1px solid ${C.b1}`,
-                background: isUnread ? color + "0A" : C.card,
-                transition: "all 0.2s",
-                position: "relative",
-              }}>
-                {/* Unread dot */}
-                {isUnread && (
-                  <div style={{ position: "absolute", top: 10, right: 10, width: 7, height: 7, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}88` }} />
-                )}
-
-                {/* From photo + icon badge */}
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}44`, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {n.fromPhoto
-                      ? <img src={n.fromPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <span style={{ color, fontSize: 15, fontWeight: 700 }}>{(n.fromName || "?").charAt(0).toUpperCase()}</span>
-                    }
+      {personal.length > 0 && (
+        <>
+          <div style={{ color: C.td, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10, fontWeight: 600 }}>Suas notificações</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 680 }}>
+            {personal.map(n => {
+              const color = notifColor(n.type, n.color);
+              const isUnread = !n.readAt;
+              return (
+                <div key={n.id} style={{
+                  ...S.card,
+                  padding: "14px 16px",
+                  display: "flex", alignItems: "center", gap: 13,
+                  border: isUnread ? `1px solid ${color}44` : `1px solid ${C.b1}`,
+                  background: isUnread ? color + "0A" : C.card,
+                  transition: "all 0.2s", position: "relative",
+                }}>
+                  {isUnread && (
+                    <div style={{ position: "absolute", top: 10, right: 10, width: 7, height: 7, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}88` }} />
+                  )}
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}44`, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {n.fromPhoto
+                        ? <img src={n.fromPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <span style={{ color, fontSize: 15, fontWeight: 700 }}>{(n.fromName || "?").charAt(0).toUpperCase()}</span>
+                      }
+                    </div>
+                    <div style={{ position: "absolute", bottom: -2, right: -2, width: 18, height: 18, borderRadius: "50%", background: C.card, border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>
+                      {notifIcon(n.type)}
+                    </div>
                   </div>
-                  <div style={{ position: "absolute", bottom: -2, right: -2, width: 18, height: 18, borderRadius: "50%", background: C.card, border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>
-                    {notifIcon(n.type)}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: C.ts, fontSize: 13, lineHeight: 1.5 }}>{notifText(n)}</div>
+                    <div style={{ color: C.td, fontSize: 11, marginTop: 4 }}>{timeAgo(n.createdAt)}</div>
                   </div>
+                  <button onClick={() => deleteNotif(n.id)}
+                    style={{ background: "transparent", border: "none", color: C.td, cursor: "pointer", fontSize: 14, padding: "4px 6px", borderRadius: 6, flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.color = "#EF4444"}
+                    onMouseLeave={e => e.currentTarget.style.color = C.td}
+                    title="Remover">✕</button>
                 </div>
-
-                {/* Text */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: C.ts, fontSize: 13, lineHeight: 1.5 }}>
-                    {notifText(n)}
-                  </div>
-                  <div style={{ color: C.td, fontSize: 11, marginTop: 4 }}>{timeAgo(n.createdAt)}</div>
-                </div>
-
-                {/* Delete */}
-                <button onClick={() => deleteNotif(n.id)}
-                  style={{ background: "transparent", border: "none", color: C.td, cursor: "pointer", fontSize: 14, padding: "4px 6px", borderRadius: 6, flexShrink: 0, transition: "color 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.color = "#EF4444"}
-                  onMouseLeave={e => e.currentTarget.style.color = C.td}
-                  title="Remover">✕</button>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -6689,6 +6849,7 @@ export default function App() {
   const [chatPos, setChatPos] = useState({ x: null, y: null });
   const [chatStories, setChatStories] = useState([]);
   const [unreadNotif, setUnreadNotif] = useState(0);
+  const [unreadStories, setUnreadStories] = useState(0);
   const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
@@ -6733,9 +6894,18 @@ export default function App() {
   // ── Ouvir stories para exibir ring no chat ────────────────────
   useEffect(() => {
     if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
     const unsub = onSnapshot(collection(db, "stories"), (snap) => {
       const now = Date.now();
-      setChatStories(snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.expiresAt>now));
+      const live = snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.expiresAt>now);
+      setChatStories(live);
+      // Conta stories de OUTROS usuários com pelo menos 1 não visto por mim
+      const othersWithUnseen = new Set(
+        live
+          .filter(s => s.authorId !== myId && !(s.views||[]).includes(myId))
+          .map(s => s.authorId)
+      ).size;
+      setUnreadStories(othersWithUnseen);
     });
     return () => unsub();
   }, [currentUser]); // eslint-disable-line
@@ -6745,10 +6915,12 @@ export default function App() {
     if (!currentUser) return;
     const myId = currentUser.uid || currentUser.id;
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
-      const notifs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(n => n.toId === myId);
-      const unread = notifs.filter(n => !n.readAt).length;
+      const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const mine = notifs.filter(n => n.toId === myId || n.broadcast === true);
+      const unread = mine.filter(n => {
+        if (n.broadcast) return !(n.readBy || []).includes(myId);
+        return !n.readAt;
+      }).length;
       setUnreadNotif(unread);
     });
     return () => unsub();
@@ -6926,6 +7098,7 @@ export default function App() {
         onLogout={logout}
         unreadChat={unreadChat}
         unreadNotif={unreadNotif}
+        unreadStories={unreadStories}
         presence={presence}
         flashUserId={flashUserId}
         stories={chatStories}
