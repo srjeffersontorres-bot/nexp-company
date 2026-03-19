@@ -6768,6 +6768,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [gcClearPwInput, setGcClearPwInput] = useState("");
   const [gcClearPwErr, setGcClearPwErr] = useState("");
   const [gcDelMsgId, setGcDelMsgId] = useState(null);
+  const [editGroupBio, setEditGroupBio] = useState("");
   const [showDMSettings, setShowDMSettings] = useState(false);
   const [dmTheme, setDmTheme] = useState(null);
   const [userReaction, setUserReaction] = useState(null);
@@ -6775,6 +6776,17 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [autoDeleteDM, setAutoDeleteDM] = useState(null); // null|"close"|"8h"|"24h"|"48h"|"7d"|"30d"
   const [confirmModal, setConfirmModal] = useState(null); // {title, body, onConfirm}
   const [deletingMsgIds, setDeletingMsgIds] = useState([]); // for dissolve anim
+  const [userBio, setUserBio] = useState("");
+  const [userRecado, setUserRecado] = useState("");
+  const [userRecadoExpiry, setUserRecadoExpiry] = useState(null);
+  const [userBirthday, setUserBirthday] = useState("");
+  const [viewingProfile, setViewingProfile] = useState(null);
+  const [showGeralSettings, setShowGeralSettings] = useState(false);
+  const [geralOnlyAdmins, setGeralOnlyAdmins] = useState(false);
+  const [geralAdmins, setGeralAdmins] = useState([]);
+  const [geralTheme, setGeralTheme] = useState(null);
+  const [geralDelMsgId, setGeralDelMsgId] = useState(null);
+  const [geralClearInput, setGeralClearInput] = useState("");
 
   // Derive group settings from activeGroup doc
   const groupOnlyAdmins = activeGroup?.onlyAdmins === true;
@@ -6874,6 +6886,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const send = async (msg) => {
     const content = (msg || text).trim();
     if (!content && !attachment) return;
+    // Content moderation
+    if (content && checkContent(content)) {
+      setModerationAlert(true);
+      setTimeout(() => setModerationAlert(false), 5000);
+      return;
+    }
     setText(""); setShowQuick(false); setShowEmoji(false);
     const payload = {
       text: content || "",
@@ -7096,6 +7114,21 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     }
   };
 
+  // ── Content moderation ───────────────────────────────────────
+  const BAD_WORDS = [
+    "puta","merda","caralho","porra","viado","bicha","macaco","negão","boceta",
+    "cuzão","arrombado","foda","fdp","vsf","sua mãe","viadinho","sapatão",
+    "traveco","corno","putinha","sexo","pornô","porn","nudes","buceta","pênis",
+    "vagina","cu ","racista","negro safado","preto safado","judeu","nazismo",
+    "hitler","kkk","fagg","nigger","retardado","idiota","imbecil","maldito",
+  ];
+  const [moderationAlert, setModerationAlert] = useState(false);
+
+  const checkContent = (msg) => {
+    const lower = msg.toLowerCase();
+    return BAD_WORDS.some(w => lower.includes(w));
+  };
+
   const QUICK_MESSAGES = ["Bom dia, equipe! 🌅","Boa tarde! ☀️","Boa noite! 🌙","Vamos nessa! 🚀","Meta batida! 🏆","Ótimo trabalho! 👏","Aguardando retorno 📞","Reunião em 5 min ⏰","Cliente interessado! 💰","Fechamento confirmado! ✅","Precisando de ajuda 🆘","Tudo certo por aqui 👍"];
   const filteredQuick = filter ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase())) : QUICK_MESSAGES;
 
@@ -7146,15 +7179,34 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           )}
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ color:C.tp, fontSize:13.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", animation: activeTab ? "nameReveal 0.4s ease" : "none" }}>
-              {activeGroup ? activeGroup.name : activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (
-                <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  {tabUser.photo
-                    ? <img src={tabUser.photo} alt="" style={{ width:22, height:22, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} />
-                    : <div style={{ width:22, height:22, borderRadius:"50%", background:(roleColor[tabUser.role]||C.atxt)+"1A", color:roleColor[tabUser.role]||C.atxt, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{ini(tabUser.name||"?")}</div>
-                  }
-                  {tabUser.name || tabUser.email}
-                </span>
-              ) : "💬 Nexp Chat"}
+              {activeGroup ? activeGroup.name
+                : activeTab === "geral" ? (
+                    <span style={{ display:"flex", alignItems:"center", gap:7 }}>
+                      🌍 Chat Geral
+                    </span>
+                  )
+                : tabUser ? (
+                  <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    {tabUser.photo
+                      ? <img src={tabUser.photo} alt="" style={{ width:22, height:22, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} />
+                      : <div style={{ width:22, height:22, borderRadius:"50%", background:(roleColor[tabUser.role]||C.atxt)+"1A", color:roleColor[tabUser.role]||C.atxt, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{ini(tabUser.name||"?")}</div>
+                    }
+                    {tabUser.name || tabUser.email}
+                  </span>
+                ) : (
+                  <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    {/* MSN-style 3-person white icon */}
+                    <svg width="22" height="18" viewBox="0 0 22 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="11" cy="5" r="3.2" fill="white"/>
+                      <path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                      <circle cx="3.5" cy="6" r="2.2" fill="white" opacity="0.7"/>
+                      <path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+                      <circle cx="18.5" cy="6" r="2.2" fill="white" opacity="0.7"/>
+                      <path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+                    </svg>
+                    Nexp Chat
+                  </span>
+                )}
             </div>
             <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
               {activeGroup ? (() => {
@@ -7169,13 +7221,20 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                 })()
               : tabUser
               ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role])
-              : "Selecione uma conversa"}
+              : "Seu mensageiro de trabalho"}
             </div>
           </div>
-          {/* DM settings button — only in private DMs */}
+          {/* DM settings button */}
           {activeTab && !activeGroupId && activeTab !== "geral" && (
-            <button onClick={() => setShowDMSettings(p=>!p)} title="Configurações"
+            <button onClick={() => setShowDMSettings(p=>!p)} title="Configurações da conversa"
               style={{ background:showDMSettings?C.abg:"transparent", border:showDMSettings?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showDMSettings?C.atxt:C.tm, borderRadius:8, padding:"3px 9px", fontSize:13, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }}>
+              ⚙
+            </button>
+          )}
+          {/* Geral settings button */}
+          {activeTab === "geral" && canManageGroups && (
+            <button onClick={() => setShowGeralSettings(p=>!p)} title="Configurações do Chat Geral"
+              style={{ background:showGeralSettings?C.abg:"transparent", border:showGeralSettings?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showGeralSettings?C.atxt:C.tm, borderRadius:8, padding:"3px 10px", fontSize:13, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }}>
               ⚙
             </button>
           )}
@@ -7189,20 +7248,20 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
         </div>
         {/* Controls */}
         <div style={{ display:"flex", gap:5 }}>
-          {/* + button to create group next to minimize */}
+          {/* 👤 Profile settings — LEFT of + */}
+          {!activeTab && (
+            <button onClick={() => setShowProfileSettings(p=>!p)} title="Meu perfil"
+              style={{ background: showProfileSettings ? C.acc+"22" : "rgba(255,255,255,0.08)", border: showProfileSettings ? `1px solid ${C.acc}55` : "none", color: showProfileSettings ? C.atxt : C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
+              onMouseEnter={e=>e.currentTarget.style.background=C.acc+"22"} onMouseLeave={e=>{ if(!showProfileSettings) e.currentTarget.style.background="rgba(255,255,255,0.08)"; }}>
+              👤
+            </button>
+          )}
+          {/* + create group */}
           {canManageGroups && !activeTab && (
             <button onClick={() => setShowCreateGroup(p=>!p)} title="Criar grupo"
               style={{ background: showCreateGroup ? C.acc : "rgba(59,110,245,0.18)", border:"none", color: showCreateGroup ? "#fff" : "#3B6EF5", borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, transition:"all 0.15s" }}
               onMouseEnter={e=>e.currentTarget.style.background=C.acc} onMouseLeave={e=>{ if(!showCreateGroup) e.currentTarget.style.background="rgba(59,110,245,0.18)"; }}>
               ＋
-            </button>
-          )}
-          {/* ⚙ Profile settings button */}
-          {!activeTab && (
-            <button onClick={() => setShowProfileSettings(p=>!p)} title="Meu perfil"
-              style={{ background: showProfileSettings ? C.abg : "rgba(255,255,255,0.08)", border:"none", color: showProfileSettings ? C.atxt : C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
-              onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>{ if(!showProfileSettings) e.currentTarget.style.background="rgba(255,255,255,0.08)"; }}>
-              ⚙
             </button>
           )}
           <button onClick={onMinimize} title="Minimizar" style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
@@ -7231,7 +7290,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           {(!searchChat || "chat geral".includes(searchChat.toLowerCase()) || "geral".includes(searchChat.toLowerCase())) && (
           <button onClick={() => setActiveTab("geral")} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
             onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🌐</div>
+            <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🌍</div>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>Chat Geral</div>
               <div style={{ color:C.tm, fontSize:11 }}>Todos os membros</div>
@@ -7546,7 +7605,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
                 {/* ── Nome + Foto ── */}
                 <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>✏ Nome e foto</div>
-                <div style={{ display:"flex", gap:12, marginBottom:18 }}>
+                <div style={{ display:"flex", gap:12, marginBottom:14 }}>
                   <div onClick={() => editGroupPhotoRef.current?.click()}
                     style={{ width:56, height:56, borderRadius:"50%", background:C.deep, border:`1.5px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
                     {activeGroup.photo ? <img src={activeGroup.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontSize:22 }}>📷</span>}
@@ -7558,6 +7617,21 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     placeholder={activeGroup.name}
                     style={{ ...S.input, fontSize:13, flex:1, borderRadius:10 }} />
                 </div>
+
+                {/* ── Biografia do grupo ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>📝 Biografia do grupo</div>
+                <textarea
+                  value={editGroupBio || activeGroup.bio || ""}
+                  onChange={e=>setEditGroupBio(e.target.value)}
+                  onBlur={async ()=>{
+                    if (editGroupBio.trim() !== (activeGroup.bio||"")) {
+                      await gcUpdate({ bio: editGroupBio.trim() });
+                    }
+                  }}
+                  placeholder="Descreva o propósito do grupo... (visível a todos os membros)"
+                  rows={3}
+                  style={{ ...S.input, resize:"none", fontSize:12.5, marginBottom:16, borderRadius:10 }}
+                />
 
                 {/* ── Temas ── */}
                 <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🎨 Tema do chat</div>
@@ -7697,7 +7771,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           {/* Messages */}
           <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5,
             background: (() => {
-              const t = activeGroupId ? groupColor : dmTheme;
+              const t = activeGroupId ? groupColor : (activeTab === "geral" ? geralTheme : dmTheme);
               if (!t) return "transparent";
               const BGAS = {
                 nature:"linear-gradient(135deg,#064e3b22,#065f4622)",
@@ -7710,6 +7784,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                 aurora:"linear-gradient(270deg,#6366f122,#8b5cf622,#ec489922)",
                 neon:"linear-gradient(270deg,#0ea5e922,#8b5cf622,#ec489922)",
                 coffee:"linear-gradient(135deg,#451a0322,#78350f22)",
+                desert:"linear-gradient(135deg,#78350f22,#b4530922)",
+                arctic:"linear-gradient(135deg,#0c4a6e22,#bae6fd22)",
+                lava:"linear-gradient(135deg,#7f1d1d22,#dc262622)",
+                midnight:"linear-gradient(135deg,#02061722,#0f172a33)",
+                emerald:"linear-gradient(135deg,#064e3b22,#10b98122)",
               };
               return BGAS[t] || (t + "18");
             })(),
@@ -7720,6 +7799,17 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             {groupOnlyAdmins && !isGroupAdm && (
               <div style={{ textAlign:"center", margin:"10px 0", padding:"8px 16px", background:"#2B1D03", border:"1px solid #F59E0B44", borderRadius:20, color:"#FBBF24", fontSize:11.5, fontWeight:600 }}>
                 🔒 Apenas administradores podem escrever neste grupo
+              </div>
+            )}
+            {activeTab === "geral" && geralOnlyAdmins && !geralAdmins.includes(myId) && currentUser.role !== "mestre" && (
+              <div style={{ textAlign:"center", margin:"10px 0", padding:"8px 16px", background:"#2B1D03", border:"1px solid #F59E0B44", borderRadius:20, color:"#FBBF24", fontSize:11.5, fontWeight:600 }}>
+                🔒 Apenas administradores podem escrever no Chat Geral
+              </div>
+            )}
+            {/* Show group bio */}
+            {activeGroup?.bio && (
+              <div style={{ textAlign:"center", margin:"8px 0 16px", padding:"10px 16px", background:C.abg, border:`1px solid ${C.atxt}22`, borderRadius:14, color:C.tm, fontSize:11.5, fontStyle:"italic" }}>
+                📝 {activeGroup.bio}
               </div>
             )}
             {messages.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:C.tm, fontSize:12 }}>Nenhuma mensagem ainda</div>}
@@ -7756,13 +7846,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   pointerEvents: deletingMsgIds.includes(msg.id) ? "none" : "auto",
                 }}
                   onMouseEnter={()=>setHoveredMsg(msg.id)} onMouseLeave={()=>{setHoveredMsg(null);if(reactionPicker===msg.id)setReactionPicker(null);}}>
-                  {/* Avatar — both sides with reaction emoji */}
+                  {/* Avatar — clickable to view profile */}
                   {(() => {
                     const photo = isMine ? myPhoto : getUserPhoto(msg.authorId);
                     const rc2 = roleColor[msg.authorRole] || C.atxt;
-                    const msgReaction = isMine ? userReaction : null; // only own reaction for now
+                    const msgReaction = isMine ? userReaction : null;
                     return (
-                      <div style={{ position:"relative", flexShrink:0 }}>
+                      <div style={{ position:"relative", flexShrink:0, cursor:"pointer" }}
+                        onClick={() => setViewingProfile(msg.authorId)}>
                         <div style={{ width:26, height:26, borderRadius:"50%", overflow:"hidden", border:`1.5px solid ${rc2}33` }}>
                           {photo
                             ? <img src={photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
@@ -7791,21 +7882,21 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       </div>
                       {hoveredMsg === msg.id && (
                         <div style={{ position:"relative", display:"flex", flexDirection:"column", gap:3 }}>
-                          {/* Adm can delete any group message — inline confirm */}
-                          {activeGroupId && isGroupAdm && (
-                            gcDelMsgId === msg.id ? (
+                          {/* Group OR Geral adm delete */}
+                          {(activeGroupId && isGroupAdm) || (activeTab==="geral" && (geralAdmins.includes(myId)||currentUser.role==="mestre")) ? (
+                            geralDelMsgId === msg.id || gcDelMsgId === msg.id ? (
                               <div style={{ position:"absolute", [isMine?"right":"left"]:0, top:26, background:"#1A0D0D", border:"1px solid #EF444433", borderRadius:12, padding:"10px 12px", zIndex:30, whiteSpace:"nowrap", boxShadow:"0 4px 20px #00000088", display:"flex", flexDirection:"column", gap:8, minWidth:190, maxWidth:220 }}>
                                 <div style={{ color:"#F87171", fontSize:12, fontWeight:700 }}>🗑 Apagar para todos?</div>
                                 <div style={{ color:C.tm, fontSize:10.5 }}>Esta mensagem será removida para todos.</div>
                                 <div style={{ display:"flex", gap:6 }}>
-                                  <button onClick={() => { gcDeleteMsg(gcDelMsgId); setGcDelMsgId(null); }} style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:8, padding:"5px 0", fontSize:12, cursor:"pointer", fontWeight:700, flex:1 }}>Apagar</button>
-                                  <button onClick={() => setGcDelMsgId(null)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                                  <button onClick={() => { gcDeleteMsg(gcDelMsgId||geralDelMsgId); setGcDelMsgId(null); setGeralDelMsgId(null); }} style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:8, padding:"5px 0", fontSize:12, cursor:"pointer", fontWeight:700, flex:1 }}>Apagar</button>
+                                  <button onClick={() => { setGcDelMsgId(null); setGeralDelMsgId(null); }} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
                                 </div>
                               </div>
                             ) : (
-                              <button onClick={()=>{setGcDelMsgId(msg.id);setReactionPicker(null);}} style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#F87171" }} title="Apagar para todos">🗑</button>
+                              <button onClick={()=>{ activeGroupId ? setGcDelMsgId(msg.id) : setGeralDelMsgId(msg.id); setReactionPicker(null); }} style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#F87171" }} title="Apagar para todos">🗑</button>
                             )
-                          )}
+                          ) : null}
                           <button onClick={()=>setReactionPicker(p=>p===msg.id?null:msg.id)} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"50%", width:22, height:22, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 6px #00000044" }}>🙂</button>
                           {reactionPicker===msg.id && (
                             <div style={{ position:"absolute", bottom:26, [isMine?"right":"left"]:0, background:C.card, border:`1px solid ${C.b1}`, borderRadius:22, padding:"5px 8px", display:"flex", gap:3, zIndex:10, boxShadow:"0 4px 16px #00000055", whiteSpace:"nowrap" }}>
@@ -7892,8 +7983,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <textarea ref={inputRef} value={text}
                 onChange={e=>{setText(e.target.value);if(e.target.value.startsWith("/"))setShowQuick(true);}}
                 onKeyDown={handleKey}
-                disabled={groupOnlyAdmins && !isGroupAdm}
-                placeholder={groupOnlyAdmins && !isGroupAdm ? "🔒 Apenas adms podem escrever" : "Escrever…"}
+                disabled={(groupOnlyAdmins && !isGroupAdm) || (activeTab==="geral" && geralOnlyAdmins && !geralAdmins.includes(myId) && currentUser.role!=="mestre")}
+                placeholder={(groupOnlyAdmins && !isGroupAdm) || (activeTab==="geral" && geralOnlyAdmins && !geralAdmins.includes(myId) && currentUser.role!=="mestre") ? "🔒 Apenas adms podem escrever" : "Escrever…"}
                 rows={1}
                 style={{ ...S.input, flex:1, resize:"none", borderRadius:20, padding:"8px 14px", fontSize:12.5, lineHeight:1.5, border:`1px solid ${text.trim()?C.atxt+"66":C.b2}`, transition:"border-color 0.2s, box-shadow 0.2s", boxShadow:text.trim()?`0 0 0 3px ${C.acc}18`:"none", outline:"none", opacity: groupOnlyAdmins && !isGroupAdm ? 0.5 : 1, cursor: groupOnlyAdmins && !isGroupAdm ? "not-allowed" : "text" }}
                 onFocus={e=>{if(!(groupOnlyAdmins&&!isGroupAdm)){e.target.style.borderColor=C.atxt+"88";e.target.style.boxShadow=`0 0 0 3px ${C.acc}22`;}}}
@@ -7916,28 +8007,54 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>👤 Meu Perfil</div>
           </div>
           <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:24 }}>
-              <div style={{ position:"relative" }}>
-                <div style={{ width:72, height:72, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, color:C.atxt }}>
+            {/* Photo + name */}
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:22 }}>
+              <div style={{ position:"relative", cursor:"pointer" }} onClick={()=>document.getElementById("profilePhotoInput").click()}>
+                <div style={{ width:80, height:80, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2.5px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:C.atxt }}>
                   {currentUser.photo ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(currentUser.name||"?")}
                 </div>
-                {userReaction && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:24, lineHeight:1 }}>{userReaction}</div>}
+                {userReaction && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:26, lineHeight:1 }}>{userReaction}</div>}
+                <div style={{ position:"absolute", bottom:4, left:"50%", transform:"translateX(-50%)", background:"rgba(0,0,0,0.6)", borderRadius:6, padding:"2px 6px", fontSize:9, color:"#fff", whiteSpace:"nowrap" }}>📷 Trocar</div>
               </div>
+              <input id="profilePhotoInput" type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
+                const f=e.target.files[0]; if(!f) return;
+                const r=new FileReader();
+                r.onload=async ev=>{ try { await saveUserProfile({...currentUser, photo:ev.target.result}); } catch(e2){} };
+                r.readAsDataURL(f);
+              }} />
               <div style={{ textAlign:"center" }}>
                 <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{currentUser.name||currentUser.email}</div>
                 <div style={{ color:C.tm, fontSize:11 }}>{currentUser.role}</div>
               </div>
-              <label style={{ display:"inline-flex", alignItems:"center", gap:8, background:C.deep, border:`1px solid ${C.b2}`, borderRadius:10, padding:"7px 16px", cursor:"pointer", fontSize:12.5, color:C.ts }}>
-                📷 Trocar foto de perfil
-                <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
-                  const f=e.target.files[0]; if(!f) return;
-                  const r=new FileReader();
-                  r.onload=async ev=>{ try { await saveUserProfile({...currentUser, photo:ev.target.result}); } catch(e2){} };
-                  r.readAsDataURL(f);
-                }} />
-              </label>
             </div>
-            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>💛 Como está seu coração hoje?</div>
+
+            {/* Recado */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>💬 Recado</div>
+            <div style={{ ...S.card, padding:"12px", borderRadius:12, marginBottom:16 }}>
+              <textarea value={userRecado} onChange={e=>setUserRecado(e.target.value)} placeholder="Escreva um recado que aparecerá no seu perfil..." rows={2}
+                style={{ ...S.input, resize:"none", fontSize:12.5, marginBottom:8 }} />
+              <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                {[{id:null,label:"Sem expirar"},{id:"8h",label:"8 horas"},{id:"12h",label:"12 horas"},{id:"24h",label:"24 horas"}].map(opt=>(
+                  <button key={String(opt.id)} onClick={()=>setUserRecadoExpiry(opt.id)}
+                    style={{ background:userRecadoExpiry===opt.id?C.acc:C.deep, color:userRecadoExpiry===opt.id?"#fff":C.ts, border:userRecadoExpiry===opt.id?"none":`1px solid ${C.b2}`, borderRadius:8, padding:"4px 10px", cursor:"pointer", fontSize:11, fontWeight:userRecadoExpiry===opt.id?700:400, transition:"all 0.15s" }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bio */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>📝 Biografia</div>
+            <textarea value={userBio} onChange={e=>setUserBio(e.target.value)} placeholder="Fale um pouco sobre você..." rows={3}
+              style={{ ...S.input, resize:"vertical", fontSize:12.5, marginBottom:16, borderRadius:10 }} />
+
+            {/* Birthday */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🎂 Data de aniversário</div>
+            <input type="date" value={userBirthday} onChange={e=>setUserBirthday(e.target.value)}
+              style={{ ...S.input, fontSize:12.5, marginBottom:16, borderRadius:10 }} />
+
+            {/* Reaction */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>💛 Como está seu coração hoje?</div>
             <div style={{ ...S.card, padding:"14px", borderRadius:12 }}>
               <p style={{ color:C.tm, fontSize:12, marginBottom:12 }}>Escolha um emoji que vai aparecer ao lado da sua foto para todos verem.</p>
               {userReaction && (
@@ -7958,6 +8075,155 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Chat Geral Settings ── */}
+      {showGeralSettings && activeTab === "geral" && (
+        <div style={{ position:"absolute", inset:0, zIndex:50, background:C.sb, display:"flex", flexDirection:"column", borderRadius:16, overflow:"hidden", animation:"fadeIn 0.2s ease" }}>
+          <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+            <button onClick={()=>setShowGeralSettings(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, lineHeight:1 }}>‹</button>
+            <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>⚙ Chat Geral — Configurações</div>
+          </div>
+          <div style={{ flex:1, overflowY:"auto", padding:"14px" }}>
+            {/* Lock */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🔧 Permissões</div>
+            <div onClick={()=>setGeralOnlyAdmins(p=>!p)} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", marginBottom:16, background:geralOnlyAdmins?"#F8717115":C.deep, border:geralOnlyAdmins?`1px solid #F8717144`:`1px solid ${C.b2}`, transition:"all 0.15s" }}>
+              <span style={{ color:geralOnlyAdmins?"#F87171":C.ts, fontSize:12, fontWeight:geralOnlyAdmins?600:400 }}>🔒 Travar (só adms escrevem)</span>
+              <div style={{ width:32, height:18, borderRadius:9, background:geralOnlyAdmins?"#F87171":C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                <div style={{ position:"absolute", top:2, left:geralOnlyAdmins?14:2, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+              </div>
+            </div>
+
+            {/* Admins */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>👑 Administradores do Geral</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:16, maxHeight:150, overflowY:"auto" }}>
+              {users.map(u => {
+                const uid = u.uid||u.id;
+                const isAdm = uid === myId || geralAdmins.includes(uid) || u.role==="mestre";
+                return (
+                  <div key={uid} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 10px", borderRadius:10, background:isAdm?C.abg:C.deep, border:isAdm?`1px solid ${C.atxt}33`:`1px solid ${C.b2}` }}>
+                    <div style={{ width:26, height:26, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:C.b2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:C.atxt }}>
+                      {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                    </div>
+                    <span style={{ flex:1, color:isAdm?C.atxt:C.ts, fontSize:12 }}>{u.name||u.email}{u.role==="mestre"?" 👑":""}</span>
+                    {uid !== myId && u.role !== "mestre" && (
+                      <button onClick={()=>setGeralAdmins(p=>p.includes(uid)?p.filter(x=>x!==uid):[...p,uid])}
+                        style={{ background:isAdm?"#2D1515":C.abg, color:isAdm?"#F87171":C.atxt, border:isAdm?"1px solid #EF444433":`1px solid ${C.atxt}33`, borderRadius:6, padding:"2px 8px", fontSize:10, cursor:"pointer", fontWeight:600 }}>
+                        {isAdm ? "Remover adm" : "+ Adm"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 15 Premium Themes */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🎨 15 Temas Premium</div>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:18 }}>
+              {[
+                {id:null,       label:"Padrão",        bg:C.deep},
+                {id:"nature",   label:"🌿 Natureza",   bg:"linear-gradient(135deg,#064e3b,#065f46)"},
+                {id:"ocean",    label:"🌊 Oceano",     bg:"linear-gradient(135deg,#0c4a6e,#075985)"},
+                {id:"sunset",   label:"🌅 Pôr do Sol", bg:"linear-gradient(135deg,#7c2d12,#c2410c)"},
+                {id:"galaxy",   label:"🌌 Galáxia",   bg:"linear-gradient(135deg,#1e1b4b,#4c1d95)"},
+                {id:"office",   label:"🏢 Escritório", bg:"linear-gradient(135deg,#1e293b,#475569)"},
+                {id:"forest",   label:"🌲 Floresta",  bg:"linear-gradient(135deg,#14532d,#15803d)"},
+                {id:"sakura",   label:"🌸 Sakura",    bg:"linear-gradient(135deg,#831843,#be185d)"},
+                {id:"aurora",   label:"✨ Aurora",     bg:"linear-gradient(270deg,#6366f1,#8b5cf6,#ec4899)"},
+                {id:"neon",     label:"⚡ Neon",       bg:"linear-gradient(270deg,#0ea5e9,#8b5cf6,#ec4899)"},
+                {id:"coffee",   label:"☕ Café",       bg:"linear-gradient(135deg,#451a03,#78350f)"},
+                {id:"desert",   label:"🏜 Deserto",   bg:"linear-gradient(135deg,#78350f,#b45309)"},
+                {id:"arctic",   label:"❄️ Ártico",    bg:"linear-gradient(135deg,#0c4a6e,#bae6fd)"},
+                {id:"lava",     label:"🌋 Lava",      bg:"linear-gradient(135deg,#7f1d1d,#dc2626)"},
+                {id:"midnight", label:"🌙 Meia Noite", bg:"linear-gradient(135deg,#020617,#0f172a)"},
+                {id:"emerald",  label:"💚 Esmeralda",  bg:"linear-gradient(135deg,#064e3b,#10b981)"},
+              ].map(t => {
+                const sel = geralTheme === t.id;
+                return (
+                  <button key={String(t.id)} onClick={()=>setGeralTheme(t.id)}
+                    style={{ background:t.bg, border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"5px 11px", cursor:"pointer", fontSize:10.5, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.2)" : "none", transition:"all 0.15s" }}>
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Clear geral */}
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🗑 Limpar Chat Geral</div>
+            <div style={{ display:"flex", gap:6, marginBottom:6 }}>
+              <input value={geralClearInput} onChange={e=>setGeralClearInput(e.target.value)}
+                placeholder='Digite "CONFIRMAR"' style={{ ...S.input, fontSize:12, flex:1, borderRadius:10 }} />
+              <button onClick={async () => {
+                if (geralClearInput.trim().toUpperCase() !== "CONFIRMAR") return;
+                const msgs = allMessages.filter(m => !m.toId && !m.groupId && m.type !== "system");
+                setDeletingMsgIds(msgs.map(m=>m.id));
+                setTimeout(async()=>{ for(const m of msgs){try{await deleteDoc(doc(db,"chat",m.id));}catch(e){}} setDeletingMsgIds([]); setGeralClearInput(""); }, 600);
+              }} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>Limpar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── User Profile View ── */}
+      {viewingProfile && (
+        <div style={{ position:"absolute", inset:0, zIndex:70, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, animation:"fadeIn 0.2s ease" }}
+          onClick={()=>setViewingProfile(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.sb, border:`1px solid ${C.b1}`, borderRadius:16, padding:"22px", maxWidth:300, width:"90%", boxShadow:"0 12px 48px rgba(0,0,0,0.8)" }}>
+            {(() => {
+              const vUser = users.find(u=>(u.uid||u.id)===viewingProfile) || (viewingProfile===myId ? currentUser : null);
+              if (!vUser) return null;
+              const vId = vUser.uid||vUser.id;
+              const rc2 = roleColor[vUser.role]||C.atxt;
+              const isOnlineV = presence[vId]?.online;
+              return (
+                <>
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:16 }}>
+                    <div style={{ position:"relative" }}>
+                      <div style={{ width:72, height:72, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2px solid ${rc2}44` }}>
+                        {vUser.photo ? <img src={vUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <div style={{ width:"100%", height:"100%", background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontWeight:700, color:rc2 }}>{ini(vUser.name||"?")}</div>}
+                      </div>
+                      {userReaction && vId===myId && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:22 }}>{userReaction}</div>}
+                    </div>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ color:C.tp, fontSize:15, fontWeight:700, animation:"nameReveal 0.4s ease" }}>{vUser.name||vUser.email}</div>
+                      <div style={{ color:rc2, fontSize:11, marginTop:2 }}>{roleLabel[vUser.role]}</div>
+                      <div style={{ color:isOnlineV?"#16A34A":C.tm, fontSize:11, marginTop:2 }}>
+                        {isOnlineV ? "🟢 Online agora" : lastMsgTime(vId) ? `👁 Visto às ${lastMsgTime(vId)}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  {userBio && vId===myId && <div style={{ color:C.ts, fontSize:12, textAlign:"center", marginBottom:12, fontStyle:"italic", background:C.deep, borderRadius:10, padding:"8px 12px" }}>📝 {userBio}</div>}
+                  {userRecado && vId===myId && <div style={{ color:C.atxt, fontSize:12, textAlign:"center", marginBottom:12, background:C.abg, borderRadius:10, padding:"8px 12px" }}>💬 {userRecado}</div>}
+                  {userBirthday && vId===myId && <div style={{ color:C.tm, fontSize:11, textAlign:"center", marginBottom:12 }}>🎂 {new Date(userBirthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long"})}</div>}
+                  {/* Reactions */}
+                  <div style={{ display:"flex", justifyContent:"center", gap:6, flexWrap:"wrap" }}>
+                    {["❤️","👍","😄","🔥","🙏"].map(e=>(
+                      <button key={e} onClick={()=>{}} style={{ fontSize:22, background:"transparent", border:"none", cursor:"pointer", borderRadius:8, padding:"3px" }}
+                        onMouseEnter={ev=>ev.currentTarget.style.transform="scale(1.3)"}
+                        onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={()=>setViewingProfile(null)} style={{ marginTop:14, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:10, padding:"7px", fontSize:12, cursor:"pointer", width:"100%" }}>Fechar</button>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Moderation Alert ── */}
+      {moderationAlert && (
+        <div style={{ position:"absolute", bottom:80, left:"50%", transform:"translateX(-50%)", zIndex:500, width:"90%", maxWidth:320, animation:"fadeIn 0.2s ease" }}>
+          <div style={{ background:"#1a0a0a", border:"1.5px solid #EF444444", borderRadius:14, padding:"14px 16px", boxShadow:"0 4px 24px rgba(0,0,0,0.7)" }}>
+            <div style={{ color:"#F87171", fontSize:13, fontWeight:700, marginBottom:6 }}>⚠️ Mensagem bloqueada</div>
+            <div style={{ color:C.ts, fontSize:12, lineHeight:1.6, marginBottom:10 }}>
+              Respeite seus colegas, alguma palavra ou frase pode ser ofensiva, pense no que vai falar antes de digitar, você pode ser restringido ou bloqueado.
+            </div>
+            <div style={{ color:C.td, fontSize:10.5, fontWeight:600, borderTop:`1px solid ${C.b1}`, paddingTop:8 }}>— Equipe Nexp Consultas</div>
           </div>
         </div>
       )}
