@@ -3799,11 +3799,40 @@ function PerfisTab({ users, setUsers, currentUser }) {
   const [editData, setEditData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState("");
+  const [cardOrder, setCardOrder] = useState([]);
+  const [dragOver, setDragOver] = useState(null);
+  const dragId = useRef(null);
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
 
-  const visible = users.filter(u => !u.deleted);
+  const allVisible = users.filter(u => !u.deleted);
+  // Apply custom order
+  const visible = cardOrder.length > 0
+    ? [...allVisible].sort((a, b) => {
+        const ai = cardOrder.indexOf(a.uid || a.id);
+        const bi = cardOrder.indexOf(b.uid || b.id);
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      })
+    : allVisible;
+
+  // Drag handlers
+  const onDragStart = (uid) => { dragId.current = uid; };
+  const onDragOver = (e, uid) => { e.preventDefault(); setDragOver(uid); };
+  const onDrop = (targetUid) => {
+    if (!dragId.current || dragId.current === targetUid) { setDragOver(null); return; }
+    const ids = visible.map(u => u.uid || u.id);
+    const fromIdx = ids.indexOf(dragId.current);
+    const toIdx = ids.indexOf(targetUid);
+    const newOrder = [...ids];
+    newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, dragId.current);
+    setCardOrder(newOrder);
+    dragId.current = null;
+    setDragOver(null);
+  };
 
   const openProfile = (u) => {
     const uid = u.uid || u.id;
@@ -3833,9 +3862,25 @@ function PerfisTab({ users, setUsers, currentUser }) {
 
   const EF = (k, v) => setEditData(d => ({ ...d, [k]: v }));
 
+  const [copiedKey, setCopiedKey] = useState(null);
+  const copyVal = (k, val) => {
+    if (!val) return;
+    navigator.clipboard.writeText(val).then(() => {
+      setCopiedKey(k); setTimeout(() => setCopiedKey(null), 1800);
+    });
+  };
+
   const Field = ({ label, k, type = "text", placeholder = "" }) => (
     <div style={{ marginBottom: 12 }}>
-      <label style={{ color: C.tm, fontSize: 11, display: "block", marginBottom: 4 }}>{label}</label>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <label style={{ color: C.tm, fontSize: 11 }}>{label}</label>
+        {editData?.[k] && (
+          <button onClick={() => copyVal(k, editData[k])}
+            style={{ background: "none", border: "none", color: copiedKey === k ? "#34D399" : C.td, cursor: "pointer", fontSize: 10, padding: "1px 5px" }}>
+            {copiedKey === k ? "✓ Copiado" : "⎘ Copiar"}
+          </button>
+        )}
+      </div>
       <input value={editData?.[k] || ""} onChange={e => EF(k, e.target.value)}
         type={type} placeholder={placeholder}
         style={{ ...S.input, fontSize: 12.5 }} />
@@ -3857,8 +3902,22 @@ function PerfisTab({ users, setUsers, currentUser }) {
           const hasMissingData = !u.cpf || !u.endereco || !u.banco || !u.certificacoes;
 
           return (
-            <button key={uid} onClick={() => openProfile(u)}
+            <div key={uid}
+              draggable
+              onDragStart={() => onDragStart(uid)}
+              onDragOver={e => onDragOver(e, uid)}
+              onDrop={() => onDrop(uid)}
+              onDragEnd={() => setDragOver(null)}
               style={{
+                opacity: dragOver === uid ? 0.5 : 1,
+                transform: dragOver === uid ? "scale(0.97)" : "scale(1)",
+                transition: "all 0.15s",
+                cursor: "grab",
+              }}
+            >
+            <button onClick={() => openProfile(u)}
+              style={{
+                width: "100%",
                 background: isSelected ? C.abg : C.card,
                 border: isSelected ? `1.5px solid ${C.atxt}` : hasMissingData ? `1px solid #F59E0B44` : `1px solid ${C.b1}`,
                 borderRadius: 12, padding: "16px 14px", cursor: "pointer", textAlign: "center",
@@ -3893,6 +3952,7 @@ function PerfisTab({ users, setUsers, currentUser }) {
                 ))}
               </div>
             </button>
+            </div>
           );
         })}
       </div>
@@ -3931,14 +3991,29 @@ function PerfisTab({ users, setUsers, currentUser }) {
           </div>
 
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏠 Endereço</div>
-          <Field label="Endereço completo" k="endereco" placeholder="Rua, número, bairro, cidade, estado" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 0 }}>
+            <Field label="CEP" k="cep" placeholder="00000-000" />
+            <Field label="Rua / Logradouro" k="rua" placeholder="Ex: Rua das Flores" />
+            <Field label="Nº" k="numero" placeholder="123" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 0 }}>
+            <Field label="Cidade" k="cidade" placeholder="Ex: Natal" />
+            <Field label="UF" k="uf" placeholder="Ex: RN" />
+          </div>
+          <Field label="Complemento" k="complemento" placeholder="Ex: Apto 12, Bloco B" />
 
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏦 Dados Bancários</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
             <Field label="Banco" k="banco" />
             <Field label="Agência" k="agencia" />
             <Field label="Conta" k="conta" />
-            <Field label="Chave PIX" k="pixKey" />
+          </div>
+          <div style={{ padding: "10px 12px", background: C.card, borderRadius: 8, border: `1px solid ${C.b1}`, marginBottom: 12 }}>
+            <div style={{ color: C.atxt, fontSize: 10, fontWeight: 700, marginBottom: 8, textTransform: "uppercase" }}>⚡ PIX</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+              <Field label="Chave PIX" k="pixKey" />
+              <Field label="Banco da Chave PIX" k="pixBanco" />
+            </div>
           </div>
 
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏆 Certificações</div>
@@ -4087,15 +4162,23 @@ function PerfilTab({ users, setUsers, currentUser }) {
 
   // Extended profile fields
   const [cpf, setCpf]               = useState(uObj.cpf || "");
-  const [endereco, setEndereco]      = useState(uObj.endereco || "");
-  const [banco, setBanco]            = useState(uObj.banco || "");
-  const [agencia, setAgencia]        = useState(uObj.agencia || "");
-  const [conta, setConta]            = useState(uObj.conta || "");
-  const [pixKey, setPixKey]          = useState(uObj.pixKey || "");
+  // Endereço separado
+  const [cep, setCep]               = useState(uObj.cep || "");
+  const [rua, setRua]               = useState(uObj.rua || "");
+  const [numero, setNumero]         = useState(uObj.numero || "");
+  const [cidade, setCidade]         = useState(uObj.cidade || "");
+  const [uf, setUf]                 = useState(uObj.uf || "");
+  const [complemento, setComplemento] = useState(uObj.complemento || "");
+  // Dados bancários
+  const [banco, setBanco]           = useState(uObj.banco || "");
+  const [agencia, setAgencia]       = useState(uObj.agencia || "");
+  const [conta, setConta]           = useState(uObj.conta || "");
+  const [pixKey, setPixKey]         = useState(uObj.pixKey || "");
+  const [pixBanco, setPixBanco]     = useState(uObj.pixBanco || "");
   const [certificacoes, setCertificacoes] = useState(uObj.certificacoes || "");
   const [certVencimento, setCertVencimento] = useState(uObj.certVencimento || "");
-  const [docTipo, setDocTipo]        = useState(uObj.docTipo || "RG");
-  const [docFile, setDocFile]        = useState(uObj.docFile || null);
+  const [docTipo, setDocTipo]       = useState(uObj.docTipo || "RG");
+  const [docFile, setDocFile]       = useState(uObj.docFile || null);
 
   const [ok, setOk] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -4117,7 +4200,8 @@ function PerfilTab({ users, setUsers, currentUser }) {
     setSaving(true);
     const updated = {
       ...uObj, name, photo: preview, cpf,
-      endereco, banco, agencia, conta, pixKey,
+      cep, rua, numero, cidade, uf, complemento,
+      banco, agencia, conta, pixKey, pixBanco,
       certificacoes, certVencimento, docTipo, docFile,
     };
     await saveUserProfile(myId, updated);
@@ -4136,9 +4220,27 @@ function PerfilTab({ users, setUsers, currentUser }) {
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const rc = roleColor[uObj.role] || C.atxt;
 
+  const [copiedField, setCopiedField] = useState(null);
+  const copyValue = (label, value) => {
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(() => {
+      setCopiedField(label);
+      setTimeout(() => setCopiedField(null), 1800);
+    });
+  };
+
   const Field = ({ label, value, onChange, placeholder, type = "text", readOnly = false }) => (
     <div style={{ marginBottom: 14 }}>
-      <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 5 }}>{label}</label>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+        <label style={{ color: C.tm, fontSize: 11.5 }}>{label}</label>
+        {value && (
+          <button onClick={() => copyValue(label, value)}
+            style={{ background: copiedField === label ? "#091E12" : "transparent", border: "none", color: copiedField === label ? "#34D399" : C.td, cursor: "pointer", fontSize: 10.5, padding: "1px 6px", borderRadius: 5, transition: "all 0.2s" }}
+            title="Copiar">
+            {copiedField === label ? "✓ Copiado" : "⎘ Copiar"}
+          </button>
+        )}
+      </div>
       <input value={value} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
         type={type} readOnly={readOnly || !canEdit}
         style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }} />
@@ -4191,7 +4293,16 @@ function PerfilTab({ users, setUsers, currentUser }) {
       {/* ── Endereço ── */}
       <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
         <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏠 Endereço</div>
-        <Field label="Endereço completo (rua, número, bairro, cidade, estado)" value={endereco} onChange={setEndereco} placeholder="Ex: Rua das Flores, 123, Bairro Centro, Natal - RN" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 12, marginBottom: 12 }}>
+          <Field label="CEP" value={cep} onChange={setCep} placeholder="00000-000" />
+          <Field label="Rua / Logradouro" value={rua} onChange={setRua} placeholder="Ex: Rua das Flores" />
+          <Field label="Nº" value={numero} onChange={setNumero} placeholder="Ex: 123" />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 12 }}>
+          <Field label="Cidade" value={cidade} onChange={setCidade} placeholder="Ex: Natal" />
+          <Field label="UF" value={uf} onChange={setUf} placeholder="Ex: RN" />
+        </div>
+        <Field label="Complemento" value={complemento} onChange={setComplemento} placeholder="Ex: Apto 12, Bloco B" />
       </div>
 
       {/* ── Dados bancários ── */}
@@ -4201,7 +4312,13 @@ function PerfilTab({ users, setUsers, currentUser }) {
           <Field label="Banco" value={banco} onChange={setBanco} placeholder="Ex: Banco do Brasil" />
           <Field label="Agência" value={agencia} onChange={setAgencia} placeholder="Ex: 1234-5" />
           <Field label="Conta" value={conta} onChange={setConta} placeholder="Ex: 12345-6" />
-          <Field label="Chave PIX" value={pixKey} onChange={setPixKey} placeholder="CPF, email, telefone ou chave aleatória" />
+        </div>
+        <div style={{ marginTop: 12, padding: "12px 14px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b1}` }}>
+          <div style={{ color: C.atxt, fontSize: 11, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.4px" }}>⚡ PIX</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Chave PIX" value={pixKey} onChange={setPixKey} placeholder="CPF, email, telefone ou chave" />
+            <Field label="Banco da Chave PIX" value={pixBanco} onChange={setPixBanco} placeholder="Ex: Nubank, Itaú..." />
+          </div>
         </div>
       </div>
 
@@ -4905,25 +5022,41 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                         </button>
                       </div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                      {[
-                        ["Nome completo", u.name],
-                        ["CPF", u.cpf],
-                        ["Email (login)", u.email],
-                        ["Endereço", u.endereco],
-                        ["Banco", u.banco],
-                        ["Agência", u.agencia],
-                        ["Conta", u.conta],
-                        ["Chave PIX", u.pixKey],
-                        ["Certificações", u.certificacoes],
-                        ["Vencimento cert.", u.certVencimento],
-                      ].map(([label, val]) => (
-                        <div key={label}>
-                          <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 3 }}>{label}</div>
-                          <div style={{ color: val ? C.tp : C.tm, fontSize: 12.5, fontWeight: val ? 500 : 400 }}>{val || "—"}</div>
+                    {(() => {
+                      const CopyField = ({ label, val }) => {
+                        const [copied, setCopied] = useState(false);
+                        const copy = () => { if (!val) return; navigator.clipboard.writeText(val).then(() => { setCopied(true); setTimeout(()=>setCopied(false),1800); }); };
+                        return (
+                          <div>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: 3 }}>
+                              <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px" }}>{label}</div>
+                              {val && <button onClick={copy} style={{ background:"none", border:"none", color: copied?"#34D399":C.td, cursor:"pointer", fontSize:10, padding:"0 4px" }}>{copied?"✓":"⎘"}</button>}
+                            </div>
+                            <div style={{ color: val ? C.tp : C.tm, fontSize: 12.5, fontWeight: val ? 500 : 400 }}>{val || "—"}</div>
+                          </div>
+                        );
+                      };
+                      const addr = [u.rua, u.numero, u.cidade, u.uf].filter(Boolean).join(", ");
+                      const addrFull = [u.cep ? `CEP ${u.cep}` : null, addr, u.complemento].filter(Boolean).join(" · ");
+                      return (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                          <CopyField label="Nome completo" val={u.name} />
+                          <CopyField label="CPF" val={u.cpf} />
+                          <CopyField label="Email (login)" val={u.email} />
+                          <CopyField label="CEP" val={u.cep} />
+                          <CopyField label="Rua / Nº" val={[u.rua, u.numero].filter(Boolean).join(", ")} />
+                          <CopyField label="Cidade / UF" val={[u.cidade, u.uf].filter(Boolean).join(" - ")} />
+                          <CopyField label="Complemento" val={u.complemento} />
+                          <CopyField label="Banco" val={u.banco} />
+                          <CopyField label="Agência" val={u.agencia} />
+                          <CopyField label="Conta" val={u.conta} />
+                          <CopyField label="Chave PIX" val={u.pixKey} />
+                          <CopyField label="Banco da PIX" val={u.pixBanco} />
+                          <CopyField label="Certificações" val={u.certificacoes} />
+                          <CopyField label="Vencimento cert." val={u.certVencimento} />
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
                     {u.docFile && (
                       <div style={{ marginTop: 16, borderTop: `1px solid ${C.b1}`, paddingTop: 14 }}>
                         <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>Documento ({u.docTipo || "—"})</div>
