@@ -6747,6 +6747,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [groupNewSearch, setGroupNewSearch] = useState("");
   const [groupNewTheme, setGroupNewTheme] = useState(null);
   const groupPhotoRef = useRef(null);
+  // eslint-disable-next-line no-unused-vars
   const [editingGroup, setEditingGroup] = useState(false);
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupPhoto, setEditGroupPhoto] = useState(null);
@@ -7058,7 +7059,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     for (const m of groupMsgs) { try { await deleteDoc(doc(db, "chat", m.id)); } catch(e) {} }
     setActiveTab(null); setShowGroupConfig(false);
   };
-
   const removeMemberWithNotif = async (uid) => {
     if (!activeGroup) return;
     const u = users.find(x=>(x.uid||x.id)===uid);
@@ -7495,11 +7495,30 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   })}
                 </div>
 
+                {/* Delete DM conversation */}
+                <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16, marginTop:16 }}>
+                  <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🗑 Excluir conversa</div>
+                  <p style={{ color:C.tm, fontSize:11.5, marginBottom:10 }}>Apaga todas as mensagens desta conversa para você. O outro usuário ainda verá o histórico.</p>
+                  <button onClick={async () => {
+                    if (!window.confirm("Excluir esta conversa? Suas mensagens serão apagadas.")) return;
+                    const myMsgs = allMessages.filter(m =>
+                      (m.authorId === myId && m.toId === activeTab) ||
+                      (m.authorId === activeTab && m.toId === myId)
+                    );
+                    for (const m of myMsgs) {
+                      if (m.authorId === myId) {
+                        try { await deleteDoc(doc(db, "chat", m.id)); } catch(e) {}
+                      }
+                    }
+                    setShowDMSettings(false);
+                    setActiveTab(null);
+                  }} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:12.5, fontWeight:600, cursor:"pointer", width:"100%", textAlign:"left" }}>
+                    🗑 Excluir conversa
+                  </button>
+                </div>
               </div>
             </div>
           )}
-
-          {/* ── Group config panel — FULLSCREEN (adm only) ── */}
           {showGroupConfig && isGroupAdm && activeGroup && (
             <div style={{ position:"absolute", inset:0, zIndex:50, background:C.sb, display:"flex", flexDirection:"column", borderRadius:16, overflow:"hidden" }}>
               <style>{`@keyframes gcFade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
@@ -7550,7 +7569,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
                 {/* ── Permissões ── */}
                 <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🔧 Permissões</div>
-                <div onClick={gcToggleOnlyAdmins} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", marginBottom:16, background:groupOnlyAdmins?"#F87171"+"15":C.deep, border:groupOnlyAdmins?`1px solid #F8717144`:`1px solid ${C.b2}`, transition:"all 0.15s" }}>
+                <div onClick={gcToggleOnlyAdmins} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", marginBottom:16, background:groupOnlyAdmins?"#F8717115":C.deep, border:groupOnlyAdmins?`1px solid #F8717144`:`1px solid ${C.b2}`, transition:"all 0.15s" }}>
                   <span style={{ color: groupOnlyAdmins ? "#F87171" : C.ts, fontSize:12, fontWeight: groupOnlyAdmins ? 600 : 400 }}>🔒 Travar conversa (só adms escrevem)</span>
                   <div style={{ width:32, height:18, borderRadius:9, background:groupOnlyAdmins?"#F87171":C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
                     <div style={{ position:"absolute", top:2, left: groupOnlyAdmins?14:2, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
@@ -7652,8 +7671,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       🚪 Sair do grupo
                     </button>
                   )}
-                  {/* Excluir — only creator */}
-                  {myId === (activeGroup.admId || activeGroup.createdBy) && (
+                  {/* Excluir — adms e criador */}
+                  {isGroupAdm && (
                     <button onClick={deleteGroup} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:12.5, fontWeight:600, cursor:"pointer", width:"100%", textAlign:"left" }}>
                       🗑 Excluir grupo
                     </button>
