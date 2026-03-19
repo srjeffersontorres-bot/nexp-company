@@ -4960,6 +4960,37 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 // ── Chat Page ──────────────────────────────────────────────────
 
 // ── Stories ────────────────────────────────────────────────────
+// ── Filtro de palavras ofensivas ──────────────────────────────
+const OFFENSIVE_WORDS = [
+  // Palavrões gerais
+  "merda","porra","caralho","puta","viado","buceta","cu","cuzão","cuzao",
+  "fdp","fudeu","fuder","foda","foder","otário","otario","idiota","imbecil",
+  "babaca","arrombado","burro","estúpido","estupido","lixo","inútil","inutilmente",
+  "safado","safada","vagabundo","vagabunda","prostituta","piranha","rapariga",
+  "desgraça","desgraca","maldito","maldita","inferno","filha da puta","filho da puta",
+  // Racismo
+  "macaco","macacão","neguinho","pretinho","crioulo","subumano",
+  "raça inferior","escravos","senzala","nordestino",
+  "bolsominion","comunista","petralha",
+  // Homofobia/transfobia
+  "gay","lésbica","sapatão","bicha","traveco","viadagem",
+  "homossexual","transexual",
+  // Outras ofensas
+  "nazi","nazista","hitler","fascista",
+];
+
+function containsOffensiveContent(text) {
+  const normalized = text.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ");
+  return OFFENSIVE_WORDS.some(word => {
+    const normWord = word.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9 ]/g, " ");
+    return normalized.includes(normWord);
+  });
+}
+
 const STORY_EMOJIS = [
   "😀","😂","🤣","😍","🥰","😘","😎","🤩","🥳","😜",
   "😅","😇","🤗","🤔","😏","😒","😔","😢","😭","😤",
@@ -5121,6 +5152,10 @@ function StoriesPage({ currentUser, users }) {
   // ── Comments ─────────────────────────────────────────────────
   const addComment = async (story) => {
     if (!comment.trim()) return;
+    if (containsOffensiveContent(comment)) {
+      alert("⚠ Comentário bloqueado: contém palavras ofensivas, racistas ou homofóbicas. Por favor, mantenha o respeito com todos.");
+      return;
+    }
     const comments = [...(story.comments || []), {
       userId: myId,
       userName: currentUser.name || currentUser.email,
@@ -5349,21 +5384,23 @@ function StoriesPage({ currentUser, users }) {
 
       {/* ── Avatar row ── */}
       <div style={{ display:"flex", gap:16, overflowX:"auto", paddingBottom:10, marginBottom:24 }}>
-        {/* Meu avatar sempre primeiro */}
-        <StoryAvatar
-          authorId={myId}
-          authorName={currentUser.name || currentUser.email}
-          authorPhoto={myProfile.photo}
-          authorStories={myStories}
-          isMe={true}
-        />
-        {/* + criar se já tenho stories mas menos de 10 */}
-        {myStories.length > 0 && myStories.length < 20 && (
+        {/* + criar SEMPRE como primeira opção (quando abaixo de 20 stories) */}
+        {myStories.length < 20 && (
           <button onClick={() => setCreating(true)}
             style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer", flexShrink:0 }}>
             <div style={{ width:68, height:68, borderRadius:"50%", background:C.deep, border:`2px dashed ${C.atxt}66`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, color:C.atxt }}>＋</div>
             <span style={{ color:C.tm, fontSize:11 }}>Novo</span>
           </button>
+        )}
+        {/* Meu avatar em seguida */}
+        {myStories.length > 0 && (
+          <StoryAvatar
+            authorId={myId}
+            authorName={currentUser.name || currentUser.email}
+            authorPhoto={myProfile.photo}
+            authorStories={myStories}
+            isMe={true}
+          />
         )}
         {/* Outros usuários */}
         {allAuthors.filter(id => id !== myId).map(authorId => {
@@ -5437,8 +5474,11 @@ function StoriesPage({ currentUser, users }) {
                   <button onClick={() => { setViewingIdx(i=>i+1); markViewed(viewAuthorStories[viewingIdx+1]); }}
                     style={{ background:"rgba(0,0,0,0.4)", border:"none", color:"#fff", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:14 }}>›</button>
                 )}
-                {viewStory.authorId === myId && (
-                  <button onClick={() => deleteStory(viewStory.id)} style={{ background:"rgba(0,0,0,0.4)", border:"none", color:"#F87171", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                {(viewStory.authorId === myId ||
+                  currentUser.role === "mestre" ||
+                  (currentUser.role === "master" && viewStory.authorRole !== "mestre")
+                ) && (
+                  <button onClick={() => deleteStory(viewStory.id)} style={{ background:"rgba(0,0,0,0.4)", border:"none", color:"#F87171", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }} title="Excluir story">✕</button>
                 )}
               </div>
             </div>
