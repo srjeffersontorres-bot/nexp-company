@@ -6771,6 +6771,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [showDMSettings, setShowDMSettings] = useState(false);
   const [dmTheme, setDmTheme] = useState(null);
   const [userReaction, setUserReaction] = useState(null);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [autoDeleteDM, setAutoDeleteDM] = useState(null); // null|"close"|"8h"|"24h"|"48h"|"7d"|"30d"
+  const [confirmModal, setConfirmModal] = useState(null); // {title, body, onConfirm}
+  const [deletingMsgIds, setDeletingMsgIds] = useState([]); // for dissolve anim
 
   // Derive group settings from activeGroup doc
   const groupOnlyAdmins = activeGroup?.onlyAdmins === true;
@@ -7018,8 +7022,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   };
 
   const gcDeleteMsg = async (msgId) => {
-    await deleteDoc(doc(db, "chat", msgId));
-    setGcDelMsgId(null);
+    setDeletingMsgIds(p => [...p, msgId]);
+    setTimeout(async () => {
+      await deleteDoc(doc(db, "chat", msgId));
+      setDeletingMsgIds(p => p.filter(x => x !== msgId));
+      setGcDelMsgId(null);
+    }, 500);
   };
 
   const gcClearAll = async () => {
@@ -7036,28 +7044,39 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     setGcClearPwInput(""); setGcClearPwErr("");
   };
 
-  const leaveGroup = async () => {
-    if (!activeGroup) return;
-    if (!window.confirm("Tem certeza que deseja sair do grupo?")) return;
-    const newMembers = (activeGroup.members||[]).filter(uid => uid !== myId);
-    await setDoc(doc(db, "chatGroups", activeGroup.id), { members: newMembers }, { merge: true });
-    // System message
-    await sendChatMessage({ text: `${currentUser.name||currentUser.email} saiu do grupo`, type:"system", groupId: activeGroup.id, authorId: myId, authorName: currentUser.name||currentUser.email });
-    // Notify all remaining members
-    for (const uid of newMembers) {
-      const nid = `notif_leave_${activeGroup.id}_${myId}_${Date.now()}_${uid}`;
-      await setDoc(doc(db, "notifications", nid), { type:"group_leave", userId:uid, groupId:activeGroup.id, groupName:activeGroup.name, userName:currentUser.name||currentUser.email, createdAt:Date.now(), read:false });
-    }
-    setActiveTab(null); setShowGroupConfig(false);
+  const leaveGroup = () => {
+    setConfirmModal({
+      title: "Sair do grupo",
+      body: `Tem certeza que deseja sair de "${activeGroup?.name}"?\nVocê não receberá mais mensagens deste grupo.`,
+      onConfirm: async () => {
+        const newMembers = (activeGroup.members||[]).filter(uid => uid !== myId);
+        await setDoc(doc(db, "chatGroups", activeGroup.id), { members: newMembers }, { merge: true });
+        await sendChatMessage({ text: `${currentUser.name||currentUser.email} saiu do grupo`, type:"system", groupId: activeGroup.id, authorId: myId, authorName: currentUser.name||currentUser.email });
+        for (const uid of newMembers) {
+          const nid = `notif_leave_${activeGroup.id}_${myId}_${Date.now()}_${uid}`;
+          await setDoc(doc(db, "notifications", nid), { type:"group_leave", userId:uid, groupId:activeGroup.id, groupName:activeGroup.name, userName:currentUser.name||currentUser.email, createdAt:Date.now(), read:false });
+        }
+        setActiveTab(null); setShowGroupConfig(false);
+      }
+    });
   };
 
-  const deleteGroup = async () => {
+  const deleteGroup = () => {
     if (!activeGroup || !isGroupAdm) return;
-    if (!window.confirm(`Excluir o grupo "${activeGroup.name}"? Esta ação não pode ser desfeita.`)) return;
-    await deleteDoc(doc(db, "chatGroups", activeGroup.id));
-    const groupMsgs = allMessages.filter(m => m.groupId === activeGroup.id);
-    for (const m of groupMsgs) { try { await deleteDoc(doc(db, "chat", m.id)); } catch(e) {} }
-    setActiveTab(null); setShowGroupConfig(false);
+    setConfirmModal({
+      title: "Excluir grupo",
+      body: `Você tem certeza que deseja excluir o Grupo "${activeGroup.name}"?\nEsta ação não pode ser desfeita.`,
+      onConfirm: async () => {
+        const groupMsgs = allMessages.filter(m => m.groupId === activeGroup.id);
+        setDeletingMsgIds(groupMsgs.map(m=>m.id));
+        setTimeout(async () => {
+          await deleteDoc(doc(db, "chatGroups", activeGroup.id));
+          for (const m of groupMsgs) { try { await deleteDoc(doc(db, "chat", m.id)); } catch(e) {} }
+          setDeletingMsgIds([]);
+          setActiveTab(null); setShowGroupConfig(false);
+        }, 600);
+      }
+    });
   };
   const removeMemberWithNotif = async (uid) => {
     if (!activeGroup) return;
@@ -7126,8 +7145,16 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             </div>
           )}
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ color:C.tp, fontSize:13.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-              {activeGroup ? activeGroup.name : activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (tabUser.name || tabUser.email) : "💬 Nexp Chat"}
+            <div style={{ color:C.tp, fontSize:13.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", animation: activeTab ? "nameReveal 0.4s ease" : "none" }}>
+              {activeGroup ? activeGroup.name : activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (
+                <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  {tabUser.photo
+                    ? <img src={tabUser.photo} alt="" style={{ width:22, height:22, borderRadius:"50%", objectFit:"cover", flexShrink:0 }} />
+                    : <div style={{ width:22, height:22, borderRadius:"50%", background:(roleColor[tabUser.role]||C.atxt)+"1A", color:roleColor[tabUser.role]||C.atxt, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{ini(tabUser.name||"?")}</div>
+                  }
+                  {tabUser.name || tabUser.email}
+                </span>
+              ) : "💬 Nexp Chat"}
             </div>
             <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
               {activeGroup ? (() => {
@@ -7168,6 +7195,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               style={{ background: showCreateGroup ? C.acc : "rgba(59,110,245,0.18)", border:"none", color: showCreateGroup ? "#fff" : "#3B6EF5", borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, transition:"all 0.15s" }}
               onMouseEnter={e=>e.currentTarget.style.background=C.acc} onMouseLeave={e=>{ if(!showCreateGroup) e.currentTarget.style.background="rgba(59,110,245,0.18)"; }}>
               ＋
+            </button>
+          )}
+          {/* ⚙ Profile settings button */}
+          {!activeTab && (
+            <button onClick={() => setShowProfileSettings(p=>!p)} title="Meu perfil"
+              style={{ background: showProfileSettings ? C.abg : "rgba(255,255,255,0.08)", border:"none", color: showProfileSettings ? C.atxt : C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
+              onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>{ if(!showProfileSettings) e.currentTarget.style.background="rgba(255,255,255,0.08)"; }}>
+              ⚙
             </button>
           )}
           <button onClick={onMinimize} title="Minimizar" style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
@@ -7414,80 +7449,48 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           {showDMSettings && activeTab && !activeGroupId && (
             <div style={{ position:"absolute", inset:0, zIndex:50, background:C.sb, display:"flex", flexDirection:"column", borderRadius:16, overflow:"hidden" }}>
               <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-                <button onClick={()=>setShowDMSettings(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, padding:"0 4px", lineHeight:1 }}>‹</button>
+                <button onClick={()=>setShowDMSettings(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, lineHeight:1 }}>‹</button>
                 <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>⚙ Configurações da conversa</div>
               </div>
               <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
 
-                {/* Profile photo */}
-                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>📷 Foto de perfil</div>
-                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
-                  <div style={{ position:"relative" }}>
-                    <div style={{ width:64, height:64, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:C.atxt }}>
-                      {currentUser.photo ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(currentUser.name||"?")}
+                {/* Last seen */}
+                {tabUser && (
+                  <div style={{ ...S.card, padding:"14px", borderRadius:12, marginBottom:18, display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ width:42, height:42, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:C.atxt, flexShrink:0 }}>
+                      {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
                     </div>
-                    {userReaction && <div style={{ position:"absolute", bottom:-4, right:-4, fontSize:22, lineHeight:1 }}>{userReaction}</div>}
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ color:C.ts, fontSize:13, fontWeight:600 }}>{currentUser.name||currentUser.email}</div>
-                    <div style={{ color:C.tm, fontSize:11 }}>{currentUser.role}</div>
-                    <label style={{ display:"inline-flex", alignItems:"center", gap:6, marginTop:8, background:C.deep, border:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:12, color:C.ts }}>
-                      📷 Trocar foto
-                      <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
-                        const f=e.target.files[0]; if(!f) return;
-                        const r=new FileReader();
-                        r.onload=async ev=>{
-                          await saveUserProfile({ ...(currentUser), photo: ev.target.result });
-                        };
-                        r.readAsDataURL(f);
-                      }} />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Emoji reaction */}
-                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>💛 Reação animada</div>
-                <div style={{ ...S.card, padding:"14px", marginBottom:20, borderRadius:12 }}>
-                  <div style={{ color:C.ts, fontSize:13, fontWeight:600, marginBottom:4 }}>Como está seu coração hoje?</div>
-                  <div style={{ color:C.tm, fontSize:11.5, marginBottom:12 }}>Escolha um emoji que vai aparecer ao lado da sua foto para todos verem.</div>
-                  {userReaction && (
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, padding:"8px 12px", background:C.acc+"15", border:`1px solid ${C.acc}44`, borderRadius:10 }}>
-                      <span style={{ fontSize:28 }}>{userReaction}</span>
-                      <span style={{ color:C.atxt, fontSize:12, fontWeight:600 }}>Sua reação atual</span>
-                      <button onClick={()=>setUserReaction(null)} style={{ marginLeft:"auto", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:12 }}>✕ Remover</button>
+                    <div>
+                      <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{tabUser.name||tabUser.email}</div>
+                      <div style={{ color: presence[activeTab]?.online ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
+                        {presence[activeTab]?.online ? "🟢 Online agora" : lastMsgTime(activeTab) ? `👁 Visto por último às ${lastMsgTime(activeTab)}` : "Nunca visto"}
+                      </div>
                     </div>
-                  )}
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                    {["❤️","🔥","😄","🥰","🤩","😎","💪","🙏","✨","🌟","🎉","💯","🚀","😅","🤔","😢","😡","🥺","🤗","💎"].map(e => (
-                      <button key={e} onClick={()=>setUserReaction(e)}
-                        style={{ fontSize:26, background:userReaction===e?C.abg:"transparent", border:userReaction===e?`2px solid ${C.atxt}44`:"2px solid transparent", borderRadius:10, padding:"4px 6px", cursor:"pointer", transition:"all 0.15s" }}
-                        onMouseEnter={ev=>ev.currentTarget.style.transform="scale(1.3)"}
-                        onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
-                        {e}
-                      </button>
-                    ))}
                   </div>
-                </div>
+                )}
 
                 {/* DM Themes */}
                 <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>🎨 Tema da conversa</div>
-                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:20 }}>
                   {[
-                    { id:null,       label:"Padrão",        bg:C.card },
-                    { id:"nature",   label:"🌿 Natureza",   bg:"linear-gradient(135deg,#064e3b,#065f46)" },
-                    { id:"ocean",    label:"🌊 Oceano",     bg:"linear-gradient(135deg,#0c4a6e,#075985)" },
-                    { id:"sunset",   label:"🌅 Pôr do sol", bg:"linear-gradient(135deg,#7c2d12,#c2410c)" },
-                    { id:"galaxy",   label:"🌌 Galáxia",   bg:"linear-gradient(135deg,#1e1b4b,#4c1d95)" },
-                    { id:"office",   label:"🏢 Escritório", bg:"linear-gradient(135deg,#1e293b,#475569)" },
-                    { id:"forest",   label:"🌲 Floresta",  bg:"linear-gradient(135deg,#14532d,#15803d)" },
-                    { id:"sakura",   label:"🌸 Sakura",    bg:"linear-gradient(135deg,#831843,#be185d)" },
-                    { id:"aurora",   label:"✨ Aurora",     bg:"linear-gradient(270deg,#6366f1,#8b5cf6,#ec4899)" },
-                    { id:"neon",     label:"⚡ Neon",       bg:"linear-gradient(270deg,#0ea5e9,#8b5cf6,#ec4899)" },
-                    { id:"coffee",   label:"☕ Café",       bg:"linear-gradient(135deg,#451a03,#78350f)" },
+                    { id:null, label:"Padrão", bg:C.card },
+                    { id:"nature", label:"🌿 Natureza", bg:"linear-gradient(135deg,#064e3b,#065f46)" },
+                    { id:"ocean", label:"🌊 Oceano", bg:"linear-gradient(135deg,#0c4a6e,#075985)" },
+                    { id:"sunset", label:"🌅 Pôr do sol", bg:"linear-gradient(135deg,#7c2d12,#c2410c)" },
+                    { id:"galaxy", label:"🌌 Galáxia", bg:"linear-gradient(135deg,#1e1b4b,#4c1d95)" },
+                    { id:"office", label:"🏢 Escritório", bg:"linear-gradient(135deg,#1e293b,#475569)" },
+                    { id:"forest", label:"🌲 Floresta", bg:"linear-gradient(135deg,#14532d,#15803d)" },
+                    { id:"sakura", label:"🌸 Sakura", bg:"linear-gradient(135deg,#831843,#be185d)" },
+                    { id:"aurora", label:"✨ Aurora", bg:"linear-gradient(270deg,#6366f1,#8b5cf6,#ec4899)" },
+                    { id:"neon", label:"⚡ Neon", bg:"linear-gradient(270deg,#0ea5e9,#8b5cf6,#ec4899)" },
+                    { id:"coffee", label:"☕ Café", bg:"linear-gradient(135deg,#451a03,#78350f)" },
                   ].map(t => {
                     const sel = dmTheme === t.id;
                     return (
-                      <button key={String(t.id)} onClick={()=>setDmTheme(t.id)}
+                      <button key={String(t.id)} onClick={async ()=>{
+                        setDmTheme(t.id);
+                        if (t.id) await sendChatMessage({ text:`${currentUser.name||currentUser.email} trocou o tema da conversa para ${t.label}`, type:"system", toId:activeTab, authorId:myId, authorName:currentUser.name||currentUser.email });
+                      }}
                         style={{ background:t.bg, backgroundSize:"200% 200%", border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", fontSize:11, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.2)" : "none", transition:"all 0.15s" }}>
                         {t.label}
                       </button>
@@ -7495,24 +7498,34 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   })}
                 </div>
 
-                {/* Delete DM conversation */}
-                <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16, marginTop:16 }}>
+                {/* Auto-delete */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>⏱ Exclusão automática</div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:8 }}>
+                  {[{id:null,label:"Desativado"},{id:"close",label:"Ao fechar"},{id:"8h",label:"8 horas"},{id:"24h",label:"24 horas"},{id:"48h",label:"48 horas"},{id:"7d",label:"7 dias"},{id:"30d",label:"30 dias"}].map(opt => (
+                    <button key={String(opt.id)} onClick={()=>setAutoDeleteDM(opt.id)}
+                      style={{ background: autoDeleteDM===opt.id ? C.acc : C.deep, color: autoDeleteDM===opt.id ? "#fff" : C.ts, border: autoDeleteDM===opt.id ? "none" : `1px solid ${C.b2}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:11.5, fontWeight: autoDeleteDM===opt.id ? 700 : 400, transition:"all 0.15s" }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {autoDeleteDM && <div style={{ color:C.tm, fontSize:11, marginBottom:18 }}>⚠ Mensagens apagadas automaticamente {autoDeleteDM==="close"?"ao fechar":"a cada "+autoDeleteDM}.</div>}
+
+                {/* Delete conversation */}
+                <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
                   <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🗑 Excluir conversa</div>
-                  <p style={{ color:C.tm, fontSize:11.5, marginBottom:10 }}>Apaga todas as mensagens desta conversa para você. O outro usuário ainda verá o histórico.</p>
-                  <button onClick={async () => {
-                    if (!window.confirm("Excluir esta conversa? Suas mensagens serão apagadas.")) return;
-                    const myMsgs = allMessages.filter(m =>
-                      (m.authorId === myId && m.toId === activeTab) ||
-                      (m.authorId === activeTab && m.toId === myId)
-                    );
-                    for (const m of myMsgs) {
-                      if (m.authorId === myId) {
-                        try { await deleteDoc(doc(db, "chat", m.id)); } catch(e) {}
-                      }
+                  <p style={{ color:C.tm, fontSize:11.5, marginBottom:10 }}>Apaga todas as suas mensagens desta conversa.</p>
+                  <button onClick={() => setConfirmModal({
+                    title:"Excluir bate papo",
+                    body:"Você tem certeza que deseja excluir esse bate papo?\n\nEsta ação não pode ser desfeita, mas você ainda poderá ter uma nova conversa com o usuário.",
+                    onConfirm: async () => {
+                      const myMsgs = allMessages.filter(m=>(m.authorId===myId&&m.toId===activeTab)||(m.authorId===activeTab&&m.toId===myId));
+                      setDeletingMsgIds(myMsgs.map(m=>m.id));
+                      setTimeout(async()=>{
+                        for(const m of myMsgs.filter(m=>m.authorId===myId)){try{await deleteDoc(doc(db,"chat",m.id));}catch(e){}}
+                        setDeletingMsgIds([]);setShowDMSettings(false);setActiveTab(null);
+                      },600);
                     }
-                    setShowDMSettings(false);
-                    setActiveTab(null);
-                  }} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:12.5, fontWeight:600, cursor:"pointer", width:"100%", textAlign:"left" }}>
+                  })} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"10px 14px", fontSize:12.5, fontWeight:600, cursor:"pointer", width:"100%", textAlign:"left" }}>
                     🗑 Excluir conversa
                   </button>
                 </div>
@@ -7676,8 +7689,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     <button onClick={deleteGroup} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:12.5, fontWeight:600, cursor:"pointer", width:"100%", textAlign:"left" }}>
                       🗑 Excluir grupo
                     </button>
-                  )}
-                </div>
+                  )}                </div>
 
               </div>
             </div>
@@ -7739,7 +7751,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               const reactions = msg.reactions || {};
               const hasReactions = Object.keys(reactions).some(e => (reactions[e]||[]).length > 0);
               return (
-                <div key={msg.id} style={{ display:"flex", flexDirection:isMine?"row-reverse":"row", alignItems:"flex-end", gap:6, position:"relative" }}
+                <div key={msg.id} style={{ display:"flex", flexDirection:isMine?"row-reverse":"row", alignItems:"flex-end", gap:6, position:"relative",
+                  animation: deletingMsgIds.includes(msg.id) ? "dissolve 0.5s ease forwards" : "none",
+                  pointerEvents: deletingMsgIds.includes(msg.id) ? "none" : "auto",
+                }}
                   onMouseEnter={()=>setHoveredMsg(msg.id)} onMouseLeave={()=>{setHoveredMsg(null);if(reactionPicker===msg.id)setReactionPicker(null);}}>
                   {/* Avatar — both sides with reaction emoji */}
                   {(() => {
@@ -7891,6 +7906,82 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Profile Settings fullscreen ── */}
+      {showProfileSettings && !activeTab && (
+        <div style={{ position:"absolute", inset:0, zIndex:60, background:C.sb, display:"flex", flexDirection:"column", borderRadius:16, overflow:"hidden", animation:"fadeIn 0.2s ease" }}>
+          <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+            <button onClick={()=>setShowProfileSettings(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, lineHeight:1 }}>‹</button>
+            <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>👤 Meu Perfil</div>
+          </div>
+          <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:24 }}>
+              <div style={{ position:"relative" }}>
+                <div style={{ width:72, height:72, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, color:C.atxt }}>
+                  {currentUser.photo ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(currentUser.name||"?")}
+                </div>
+                {userReaction && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:24, lineHeight:1 }}>{userReaction}</div>}
+              </div>
+              <div style={{ textAlign:"center" }}>
+                <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{currentUser.name||currentUser.email}</div>
+                <div style={{ color:C.tm, fontSize:11 }}>{currentUser.role}</div>
+              </div>
+              <label style={{ display:"inline-flex", alignItems:"center", gap:8, background:C.deep, border:`1px solid ${C.b2}`, borderRadius:10, padding:"7px 16px", cursor:"pointer", fontSize:12.5, color:C.ts }}>
+                📷 Trocar foto de perfil
+                <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
+                  const f=e.target.files[0]; if(!f) return;
+                  const r=new FileReader();
+                  r.onload=async ev=>{ try { await saveUserProfile({...currentUser, photo:ev.target.result}); } catch(e2){} };
+                  r.readAsDataURL(f);
+                }} />
+              </label>
+            </div>
+            <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>💛 Como está seu coração hoje?</div>
+            <div style={{ ...S.card, padding:"14px", borderRadius:12 }}>
+              <p style={{ color:C.tm, fontSize:12, marginBottom:12 }}>Escolha um emoji que vai aparecer ao lado da sua foto para todos verem.</p>
+              {userReaction && (
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, padding:"8px 12px", background:C.acc+"15", border:`1px solid ${C.acc}44`, borderRadius:10 }}>
+                  <span style={{ fontSize:28 }}>{userReaction}</span>
+                  <span style={{ color:C.atxt, fontSize:12, fontWeight:600 }}>Reação atual</span>
+                  <button onClick={()=>setUserReaction(null)} style={{ marginLeft:"auto", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:12 }}>✕ Remover</button>
+                </div>
+              )}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {["❤️","🔥","😄","🥰","🤩","😎","💪","🙏","✨","🌟","🎉","💯","🚀","😅","🤔","😢","😡","🥺","🤗","💎"].map(e => (
+                  <button key={e} onClick={()=>setUserReaction(e)}
+                    style={{ fontSize:24, background:userReaction===e?C.abg:"transparent", border:userReaction===e?`2px solid ${C.atxt}44`:"2px solid transparent", borderRadius:10, padding:"4px 6px", cursor:"pointer", transition:"transform 0.15s" }}
+                    onMouseEnter={ev=>ev.currentTarget.style.transform="scale(1.3)"}
+                    onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm Modal ── */}
+      {confirmModal && (
+        <div style={{ position:"absolute", inset:0, zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.65)", borderRadius:16, animation:"fadeIn 0.15s ease" }}>
+          <div style={{ background:C.sb, border:`1px solid ${C.b1}`, borderRadius:18, padding:"26px 24px", maxWidth:290, width:"90%", boxShadow:"0 12px 48px rgba(0,0,0,0.8)", animation:"fadeIn 0.2s ease" }}>
+            <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:10 }}>{confirmModal.title}</div>
+            <div style={{ color:C.tm, fontSize:12.5, lineHeight:1.65, marginBottom:22, whiteSpace:"pre-line" }}>{confirmModal.body}</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>{ confirmModal.onConfirm(); setConfirmModal(null); }}
+                style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:10, padding:"11px 0", fontSize:13, fontWeight:700, cursor:"pointer" }}
+                onMouseEnter={e=>e.currentTarget.style.background="#DC2626"} onMouseLeave={e=>e.currentTarget.style.background="#EF4444"}>
+                Sim, Excluir
+              </button>
+              <button onClick={()=>setConfirmModal(null)}
+                style={{ flex:1, background:C.deep, color:C.ts, border:`1px solid ${C.b2}`, borderRadius:10, padding:"11px 0", fontSize:13, fontWeight:600, cursor:"pointer" }}
+                onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background=C.deep}>
+                Não, Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -8134,6 +8225,15 @@ export default function App() {
         @keyframes fadeIn {
           from { opacity: 0; }
           to   { opacity: 1; }
+        }
+        @keyframes dissolve {
+          0%   { opacity:1; transform:scale(1) blur(0px); filter:blur(0); }
+          40%  { opacity:0.7; transform:scale(1.05); filter:blur(1px); }
+          100% { opacity:0; transform:scale(0.6); filter:blur(6px); }
+        }
+        @keyframes nameReveal {
+          from { opacity:0; letter-spacing:-3px; transform:translateX(-8px); }
+          to   { opacity:1; letter-spacing:normal; transform:translateX(0); }
         }
         @keyframes storyRing {
           0%,100% { box-shadow: 0 0 0 2px #16A34A, 0 0 8px #16A34A88; }
