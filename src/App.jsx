@@ -5673,7 +5673,7 @@ function AtalhosPage({ currentUser }) {
 }
 
 // ── FloatingChat ───────────────────────────────────────────────
-function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChange, onMinimize, onRestore, onClose, unreadChat }) {
+function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChange, onMinimize, onRestore, onClose, unreadChat, stories, onOpenStory }) {
   const myId = currentUser.uid || currentUser.id;
   const [activeTab, setActiveTab] = useState(null); // null = inbox, uid = DM, "geral" = geral
   const [allMessages, setAllMessages] = useState([]);
@@ -5693,6 +5693,13 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+
+  const getUserPhoto = (uid) => users.find(u => (u.uid||u.id) === uid)?.photo || null;
+  const myPhoto = getUserPhoto(myId) || currentUser.photo || null;
+  const hasStory = (uid) => {
+    const now = Date.now();
+    return (stories||[]).some(s => s.authorId === uid && s.expiresAt > now);
+  };
 
   const isMestre = currentUser.role === "mestre";
   const mestreUser = users.find(u => u.role === "mestre");
@@ -5858,12 +5865,27 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             const rc = roleColor[u.role] || C.atxt;
             const unread = unreadDM(uid);
             const isOnline = presence[uid]?.online;
+            const userHasStory = hasStory(uid);
             return (
               <button key={uid} onClick={() => setActiveTab(uid)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
                 onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div style={{ position:"relative", flexShrink:0 }}>
-                  {u.photo ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover" }} /> : <div style={{ width:40, height:40, borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700 }}>{ini(u.name||u.email||"?")}</div>}
-                  {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}` }} />}
+                  {/* Story ring */}
+                  {userHasStory && (
+                    <div
+                      onClick={e => { e.stopPropagation(); if(onOpenStory) onOpenStory(uid); }}
+                      style={{ position:"absolute", inset:-3, borderRadius:"50%", animation:"storyRing 1.8s ease infinite", cursor:"pointer", zIndex:1 }}
+                      title="Ver story"
+                    >
+                      <span style={{ position:"absolute", top:-4, right:-2, fontSize:10 }}>✨</span>
+                    </div>
+                  )}
+                  <div style={{ position:"relative", zIndex:2 }}>
+                    {u.photo ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", border: userHasStory ? "2px solid #16A34A" : "none" }} />
+                      : <div style={{ width:40, height:40, borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border: userHasStory ? "2px solid #16A34A" : "none" }}>{ini(u.name||u.email||"?")}</div>
+                    }
+                  </div>
+                  {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name || u.email}</div>
@@ -5891,9 +5913,19 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               return (
                 <div key={msg.id} style={{ display:"flex", flexDirection:isMine?"row-reverse":"row", alignItems:"flex-end", gap:6, position:"relative" }}
                   onMouseEnter={()=>setHoveredMsg(msg.id)} onMouseLeave={()=>{setHoveredMsg(null);if(reactionPicker===msg.id)setReactionPicker(null);}}>
-                  {!isMine && (
-                    <div style={{ width:26, height:26, borderRadius:"50%", background:flashAuthor===msg.authorId?"#16A34A":rc+"1A", color:flashAuthor===msg.authorId?"#fff":rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{ini(msg.authorName||"?")}</div>
-                  )}
+                  {/* Avatar — both sides */}
+                  {(() => {
+                    const photo = isMine ? myPhoto : getUserPhoto(msg.authorId);
+                    const rc2 = roleColor[msg.authorRole] || C.atxt;
+                    return (
+                      <div style={{ width:26, height:26, borderRadius:"50%", overflow:"hidden", flexShrink:0, border:`1.5px solid ${rc2}33` }}>
+                        {photo
+                          ? <img src={photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                          : <div style={{ width:"100%", height:"100%", background:rc2+"1A", color:rc2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700 }}>{ini(msg.authorName||"?")}</div>
+                        }
+                      </div>
+                    );
+                  })()}
                   <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems:isMine?"flex-end":"flex-start", position:"relative" }}>
                     {!isMine && activeTab==="geral" && <span style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2 }}>{msg.authorName}</span>}
                     <div style={{ display:"flex", alignItems:"center", gap:4, flexDirection:isMine?"row-reverse":"row" }}>
@@ -6023,6 +6055,7 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
   const [chatPos, setChatPos] = useState({ x: null, y: null });
+  const [chatStories, setChatStories] = useState([]);
   const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
@@ -6063,6 +6096,16 @@ export default function App() {
     const unsub = listenUsers((data) => setUsers(data));
     return () => unsub();
   }, [currentUser]);
+
+  // ── Ouvir stories para exibir ring no chat ────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = onSnapshot(collection(db, "stories"), (snap) => {
+      const now = Date.now();
+      setChatStories(snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.expiresAt>now));
+    });
+    return () => unsub();
+  }, [currentUser]); // eslint-disable-line
 
   // ── Presença online ───────────────────────────────────────────
   useEffect(() => {
@@ -6207,6 +6250,10 @@ export default function App() {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
+        @keyframes storyRing {
+          0%,100% { box-shadow: 0 0 0 2px #16A34A, 0 0 8px #16A34A88; }
+          50%     { box-shadow: 0 0 0 3px #4ade80, 0 0 16px #4ade8099; }
+        }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #1A1F2E; border-radius: 4px; }
@@ -6287,6 +6334,13 @@ export default function App() {
           onRestore={() => setChatMinimized(false)}
           onClose={() => { setChatOpen(false); setChatMinimized(false); }}
           unreadChat={unreadChat}
+          stories={chatStories}
+          onOpenStory={(uid) => {
+            setChatOpen(false);
+            setPage("stories");
+            sessionStorage.setItem("nexp_page", "stories");
+            sessionStorage.setItem("nexp_story_uid", uid);
+          }}
         />
       )}
     </div>
