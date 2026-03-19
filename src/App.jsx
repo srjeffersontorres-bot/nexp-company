@@ -77,24 +77,48 @@ const EMOJIS = [
 
 // ── Accent Themes ──────────────────────────────────────────────
 const ACCENT_THEMES = {
-  Padrão: { acc: "#3B6EF5", abg: "#141A2E", atxt: "#4F8EF7", lg1: "#3B6EF5", lg2: "#7C3AED" },
-  Verde: { acc: "#16A34A", abg: "#0A2918", atxt: "#34D399", lg1: "#16A34A", lg2: "#059669" },
-  Vermelho: { acc: "#DC2626", abg: "#2D0A0A", atxt: "#F87171", lg1: "#DC2626", lg2: "#B91C1C" },
-  Azul: { acc: "#0EA5E9", abg: "#082033", atxt: "#38BDF8", lg1: "#0EA5E9", lg2: "#0284C7" },
-  Amarelo: { acc: "#D97706", abg: "#2B1D03", atxt: "#FBBF24", lg1: "#D97706", lg2: "#B45309" },
-  Rosa: { acc: "#DB2777", abg: "#2D0E30", atxt: "#F472B6", lg1: "#DB2777", lg2: "#BE185D" },
-  // 5 Temas Claros
-  "☀️ Branco": { acc: "#2563EB", abg: "#EFF6FF", atxt: "#1D4ED8", lg1: "#3B82F6", lg2: "#6366F1", light: true, bg: "#F8FAFC", sb: "#F1F5F9", card: "#FFFFFF", deep: "#F8FAFC", b1: "#E2E8F0", b2: "#CBD5E1", tp: "#0F172A", ts: "#475569", tm: "#94A3B8", td: "#CBD5E1" },
-  "🌸 Sakura": { acc: "#DB2777", abg: "#FDF2F8", atxt: "#BE185D", lg1: "#EC4899", lg2: "#A855F7", light: true, bg: "#FFF7FB", sb: "#FDF2F8", card: "#FFFFFF", deep: "#FDF2F8", b1: "#FBCFE8", b2: "#F9A8D4", tp: "#1E1B2E", ts: "#6B21A8", tm: "#C084FC", td: "#E9D5FF" },
-  "🍃 Menta": { acc: "#059669", abg: "#ECFDF5", atxt: "#047857", lg1: "#10B981", lg2: "#06B6D4", light: true, bg: "#F0FDF4", sb: "#ECFDF5", card: "#FFFFFF", deep: "#F0FDF4", b1: "#D1FAE5", b2: "#A7F3D0", tp: "#064E3B", ts: "#065F46", tm: "#6EE7B7", td: "#A7F3D0" },
-  "🌤 Céu": { acc: "#0284C7", abg: "#EFF6FF", atxt: "#0369A1", lg1: "#38BDF8", lg2: "#818CF8", light: true, bg: "#F0F9FF", sb: "#E0F2FE", card: "#FFFFFF", deep: "#F0F9FF", b1: "#BAE6FD", b2: "#7DD3FC", tp: "#0C4A6E", ts: "#075985", tm: "#38BDF8", td: "#BAE6FD" },
-  "🧡 Pêssego": { acc: "#EA580C", abg: "#FFF7ED", atxt: "#C2410C", lg1: "#F97316", lg2: "#EAB308", light: true, bg: "#FFFBF5", sb: "#FFF7ED", card: "#FFFFFF", deep: "#FFF7ED", b1: "#FED7AA", b2: "#FDBA74", tp: "#431407", ts: "#9A3412", tm: "#FB923C", td: "#FED7AA" },
-  // 5 Temas Aleatórios
-  "🌌 Galáxia": { acc: "#8B5CF6", abg: "#1A0533", atxt: "#C084FC", lg1: "#7C3AED", lg2: "#EC4899" },
-  "🔥 Lava": { acc: "#F97316", abg: "#1F0A00", atxt: "#FB923C", lg1: "#EF4444", lg2: "#F97316" },
-  "🌊 Oceano": { acc: "#06B6D4", abg: "#001A2E", atxt: "#22D3EE", lg1: "#0EA5E9", lg2: "#6366F1" },
-  "🏆 Ouro": { acc: "#CA8A04", abg: "#1C1500", atxt: "#EAB308", lg1: "#D97706", lg2: "#CA8A04" },
-  "🌿 Floresta": { acc: "#15803D", abg: "#071A0A", atxt: "#4ADE80", lg1: "#16A34A", lg2: "#0D9488" },
+  Padrão: {
+    acc: "#3B6EF5",
+    abg: "#141A2E",
+    atxt: "#4F8EF7",
+    lg1: "#3B6EF5",
+    lg2: "#7C3AED",
+  },
+  Verde: {
+    acc: "#16A34A",
+    abg: "#0A2918",
+    atxt: "#34D399",
+    lg1: "#16A34A",
+    lg2: "#059669",
+  },
+  Vermelho: {
+    acc: "#DC2626",
+    abg: "#2D0A0A",
+    atxt: "#F87171",
+    lg1: "#DC2626",
+    lg2: "#B91C1C",
+  },
+  Azul: {
+    acc: "#0EA5E9",
+    abg: "#082033",
+    atxt: "#38BDF8",
+    lg1: "#0EA5E9",
+    lg2: "#0284C7",
+  },
+  Amarelo: {
+    acc: "#D97706",
+    abg: "#2B1D03",
+    atxt: "#FBBF24",
+    lg1: "#D97706",
+    lg2: "#B45309",
+  },
+  Rosa: {
+    acc: "#DB2777",
+    abg: "#2D0E30",
+    atxt: "#F472B6",
+    lg1: "#DB2777",
+    lg2: "#BE185D",
+  },
 };
 
 // Fixed dark colour tokens (mutable so theme can override accent)
@@ -973,25 +997,13 @@ function Dashboard({ contacts }) {
   })).filter((x) => x.n > 0);
   const card = (label, val, color, sub) => (
     <div style={{ ...S.card, padding: "20px 22px", flex: 1 }}>
-      <div
-        style={{
-          color: C.td,
-          fontSize: 10.5,
-          textTransform: "uppercase",
-          letterSpacing: "0.6px",
-          marginBottom: 10,
-        }}
-      >
+      <div style={{ color: C.td, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 10, fontWeight: 700 }}>
         {label}
       </div>
-      <div
-        style={{ color, fontSize: 28, fontWeight: 700, letterSpacing: "-1px" }}
-      >
+      <div style={{ color, fontSize: 28, fontWeight: 700, letterSpacing: "-1px" }}>
         {val}
       </div>
-      {sub && (
-        <div style={{ color: C.td, fontSize: 11, marginTop: 6 }}>{sub}</div>
-      )}
+      {sub && <div style={{ color: C.td, fontSize: 11, marginTop: 6 }}>{sub}</div>}
     </div>
   );
   return (
@@ -2301,21 +2313,20 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const si = Math.min(idx, list.length - 1);
   const cur = list[si] || {};
 
-  // Estado local isolado por cliente — usa ref para evitar flash de re-render
+  // Estado local isolado por cliente
   const [reactions, setReactions] = useState(cur.reactions || []);
   const [leadType, setLeadType] = useState(cur.leadType || "FGTS");
-  const lockedId = useRef(null);
+  const [extraLeads, setExtraLeads] = useState(cur.extraLeads || []);
+  const [extraStatus, setExtraStatus] = useState(cur.extraStatus || []);
 
-  // Sincroniza apenas quando o ID do cliente muda — evita flash de re-render
-  if (cur.id && cur.id !== lockedId.current) {
-    lockedId.current = cur.id;
-    // Atualização síncrona durante render — segura pois condicionada ao ID
-  }
+  // Sincroniza ao trocar de cliente
   useEffect(() => {
     setReactions(cur.reactions || []);
     setLeadType(cur.leadType || "FGTS");
+    setExtraLeads(cur.extraLeads || []);
+    setExtraStatus(cur.extraStatus || []);
     setDone(false);
-  }, [cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cur.id]); // eslint-disable-line
 
   if (!list.length)
     return (
@@ -2355,20 +2366,34 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     });
   };
 
-  // Tipo de lead principal
+  // Tipo de lead — toggle multi-seleção
   const selectLead = (t) => {
+    if (t === leadType) return; // principal não pode desmarcar
+    const isExtra = extraLeads.includes(t);
+    const newExtra = isExtra ? extraLeads.filter(x => x !== t) : [...extraLeads, t];
+    setExtraLeads(newExtra);
+    upd({ ...cur, leadType, extraLeads: newExtra, reactions, extraStatus });
+  };
+
+  const selectLeadPrimary = (t) => {
     setLeadType(t);
-    upd({ ...cur, leadType: t, reactions });
+    upd({ ...cur, leadType: t, extraLeads, reactions, extraStatus });
+  };
+
+  // Status — toggle multi-seleção
+  const toggleStatus = (s) => {
+    const isSelected = extraStatus.includes(s);
+    const newExtra = isSelected ? extraStatus.filter(x => x !== s) : [...extraStatus, s];
+    setExtraStatus(newExtra);
+    upd({ ...cur, leadType, extraLeads, reactions, extraStatus: newExtra });
   };
 
   // Concluído — avança para o próximo
   const conclude = async () => {
-    await upd({ ...cur, reactions, leadType, status: cur.status });
+    await upd({ ...cur, reactions, leadType, extraLeads, extraStatus });
     setDone(true);
     setTimeout(() => {
-      if (si < list.length - 1) {
-        setIdx((i) => i + 1);
-      }
+      if (si < list.length - 1) setIdx((i) => i + 1);
     }, 800);
   };
 
@@ -2434,34 +2459,42 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
           ))}
         </div>
 
-        {/* Tipo de Lead Principal */}
+        {/* Tipo de Lead — multi-seleção */}
         <div style={{ marginBottom: 14 }}>
           <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Tipo de Lead
+            Tipo de Lead <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>(principal + adicionais)</span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {LEAD_TYPES.filter(t => t !== "Outro").map((t) => {
               const col = LEAD_COLOR[t] || "#9CA3AF";
-              const sel = leadType === t;
+              const isPrimary = leadType === t;
+              const isExtra = extraLeads.includes(t);
+              const sel = isPrimary || isExtra;
               return (
-                <button key={t} onClick={() => selectLead(t)}
-                  style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
-                  {sel ? "✓ " : ""}{t}
+                <button key={t}
+                  onClick={() => isPrimary ? null : (isExtra ? selectLead(t) : (extraLeads.length === 0 ? selectLeadPrimary(t) : selectLead(t)))}
+                  onContextMenu={e => { e.preventDefault(); if (!isPrimary) selectLeadPrimary(t); }}
+                  title={isPrimary ? "Lead principal" : "Clique para adicionar/remover · Clique direito para definir como principal"}
+                  style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+                  {isPrimary ? "★ " : isExtra ? "✓ " : ""}{t}
                 </button>
               );
             })}
           </div>
+          <div style={{ color: C.td, fontSize: 9.5, marginTop: 5 }}>★ = principal · ✓ = adicional · Clique direito para definir como principal</div>
         </div>
 
-        {/* Status */}
+        {/* Status — multi-seleção */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>Marcar status</div>
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Marcar status <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>(selecione múltiplos)</span>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {CLIENT_STATUS.map((s) => {
               const st = STATUS_STYLE[s];
-              const sel = cur.status === s;
+              const sel = extraStatus.includes(s);
               return (
-                <button key={s} onClick={() => upd({ ...cur, status: s, reactions, leadType })}
+                <button key={s} onClick={() => toggleStatus(s)}
                   style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
                   {sel ? "✓ " : ""}{s}
                 </button>
@@ -3103,25 +3136,10 @@ function PremiumNexp({ contacts, setContacts }) {
       >
         {statCards.map(([l, v, cor]) => (
           <div key={l} style={{ ...S.card, padding: "16px 18px" }}>
-            <div
-              style={{
-                color: C.td,
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.6px",
-                marginBottom: 8,
-              }}
-            >
+            <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 8, fontWeight: 700 }}>
               {l}
             </div>
-            <div
-              style={{
-                color: cor,
-                fontSize: 26,
-                fontWeight: 700,
-                letterSpacing: "-0.8px",
-              }}
-            >
+            <div style={{ color: cor, fontSize: 26, fontWeight: 700, letterSpacing: "-0.8px" }}>
               {v}
             </div>
           </div>
@@ -4055,8 +4073,6 @@ function PerfisTab({ users, setUsers, currentUser }) {
 
 function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("perfil");
-  const [permSearch, setPermSearch] = useState("");
-  const [permExpandedId, setPermExpandedId] = useState(null);
   const tabs = [
     {
       id: "perfil",
@@ -4169,76 +4185,45 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
               ))}
             </div>
 
-            {/* Per-user individual permissions */}
+            {/* Per-user individual chat control */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>👤 Permissões por usuário (individual)</div>
-              <div style={{ color:C.tm, fontSize:12, marginBottom:12 }}>Sobrescreve configurações de papel para usuários específicos.</div>
-              <input placeholder="🔍 Pesquisar usuário..." value={permSearch} onChange={e=>setPermSearch(e.target.value)} style={{ ...S.input, marginBottom:12 }} />
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>👤 Chat por usuário (individual)</div>
+              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>Sobrescreve a configuração de papel para usuários específicos.</div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {users.filter(u=>u.role!=="mestre" && (!permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase()))).map(u=>{
+                {users.filter(u=>u.role!=="mestre").map(u=>{
                   const uid = u.uid||u.id;
                   const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
                   const col = roleColor2[u.role]||C.atxt;
-                  const override = sysConfig.userOverrides?.[uid] || {};
-                  const chatOn = override.chat !== undefined ? override.chat : (u.role==="master"?sysConfig.masterChatEnabled:u.role==="indicado"?sysConfig.indicadoChatEnabled:sysConfig.visitanteChatEnabled);
-                  const expanded = permExpandedId === uid;
-                  const ALL_TABS = [
-                    { id:"dashboard", label:"Leads Gerais" }, { id:"contacts", label:"Contatos" },
-                    { id:"review", label:"Ver Clientes" }, { id:"cstatus", label:"Status" },
-                    { id:"add", label:"Adicionar" }, { id:"import", label:"Importar" },
-                    { id:"leds", label:"Leds" }, { id:"atalhos", label:"Atalhos" },
-                  ];
-                  const setOverrideKey = (key, val) => {
-                    const prev = sysConfig.userOverrides||{};
-                    onSysConfig({...sysConfig, userOverrides:{...prev,[uid]:{...(prev[uid]||{}),[key]:val}}});
-                  };
-                  const resetOverride = () => {
-                    const prev = {...(sysConfig.userOverrides||{})};
-                    delete prev[uid];
-                    onSysConfig({...sysConfig, userOverrides:prev});
-                  };
+                  const key = `userChat_${uid}`;
+                  const override = sysConfig.userOverrides?.[uid];
+                  const chatOn = override !== undefined ? override.chat : (
+                    u.role==="master"?sysConfig.masterChatEnabled:u.role==="indicado"?sysConfig.indicadoChatEnabled:sysConfig.visitanteChatEnabled
+                  );
                   return (
-                    <div key={uid} style={{ borderRadius:10, background:C.deep, border:`1px solid ${expanded?C.atxt+"44":C.b2}`, overflow:"hidden", transition:"border 0.2s" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer" }} onClick={()=>setPermExpandedId(expanded?null:uid)}>
-                        <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:col+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:col }}>
-                          {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
-                        </div>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ color:C.tp, fontSize:12.5, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name||u.email}</div>
-                          <div style={{ color:col, fontSize:10 }}>{u.role}</div>
-                        </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          {Object.keys(override).length > 0 && <span style={{ color:C.atxt, fontSize:9.5, background:C.abg, borderRadius:8, padding:"1px 7px" }}>personalizado</span>}
-                          <span style={{ color:C.td, fontSize:12 }}>{expanded?"▲":"▼"}</span>
-                        </div>
+                    <div key={uid} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:C.deep, border:`1px solid ${C.b2}` }}>
+                      <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:col+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:col }}>
+                        {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
                       </div>
-                      {expanded && (
-                        <div style={{ padding:"0 12px 12px", borderTop:`1px solid ${C.b1}` }}>
-                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:`1px solid ${C.b1}` }}>
-                            <span style={{ color:C.ts, fontSize:12.5 }}>💬 Acesso ao Chat</span>
-                            <div onClick={()=>setOverrideKey("chat",!chatOn)} style={{ width:36, height:20, borderRadius:10, background:chatOn?C.acc:C.b2, position:"relative", transition:"background 0.2s", cursor:"pointer", flexShrink:0 }}>
-                              <div style={{ position:"absolute", top:2, left:chatOn?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
-                            </div>
-                          </div>
-                          <div style={{ color:C.tm, fontSize:11, margin:"10px 0 8px" }}>📋 Abas visíveis:</div>
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                            {ALL_TABS.map(tabItem => {
-                              const tabOn = override.tabs ? override.tabs[tabItem.id] !== false : true;
-                              return (
-                                <button key={tabItem.id} onClick={()=>setOverrideKey("tabs",{...(override.tabs||{}),[tabItem.id]:!tabOn})}
-                                  style={{ background:tabOn?C.acc+"1A":C.card, color:tabOn?C.atxt:C.td, border:`1px solid ${tabOn?C.atxt+"44":C.b2}`, borderRadius:20, padding:"4px 10px", fontSize:11, cursor:"pointer", fontWeight:tabOn?600:400, transition:"all 0.15s" }}>
-                                  {tabOn?"✓ ":""}{tabItem.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {Object.keys(override).length > 0 && (
-                            <button onClick={resetOverride} style={{ marginTop:10, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
-                              ↺ Resetar para padrão do papel
-                            </button>
-                          )}
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ color:C.tp, fontSize:12.5, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name||u.email}</div>
+                        <div style={{ color:col, fontSize:10 }}>{u.role}</div>
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ color:C.td, fontSize:11 }}>Chat</span>
+                        <div onClick={()=>{
+                          const prev = sysConfig.userOverrides||{};
+                          onSysConfig({...sysConfig, userOverrides:{...prev,[uid]:{...(prev[uid]||{}),chat:!chatOn}}});
+                        }} style={{ width:36, height:20, borderRadius:10, background:chatOn?C.acc:C.b2, position:"relative", transition:"background 0.2s", cursor:"pointer", flexShrink:0 }}>
+                          <div style={{ position:"absolute", top:2, left:chatOn?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
                         </div>
-                      )}
+                        {override !== undefined && (
+                          <button onClick={()=>{
+                            const prev = {...(sysConfig.userOverrides||{})};
+                            delete prev[uid];
+                            onSysConfig({...sysConfig,userOverrides:prev});
+                          }} style={{ background:"none", border:"none", color:C.td, fontSize:10, cursor:"pointer" }} title="Resetar para padrão do papel">↺</button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -6693,13 +6678,13 @@ function StoriesPage({ currentUser, users, onGoToDM }) {
                           {/* Like / Dislike / Actions */}
                           <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
                             <button onClick={()=>toggleCommentLike("like")}
-                              style={{ background:iLiked?C.acc+"25":"transparent", border:"none", borderRadius:20, padding:"3px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iLiked?C.acc:C.tm, fontSize:14, fontWeight:iLiked?700:400, transition:"all 0.15s" }}>
-                              <span style={{ filter: iLiked ? "none" : "brightness(0) invert(1)", opacity: iLiked?1:0.6 }}>👍</span>
+                              style={{ background:"transparent", border:`1.5px solid ${iLiked?C.acc:C.b2}`, borderRadius:20, padding:"3px 10px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, color:iLiked?C.acc:C.tm, fontSize:13, fontWeight:iLiked?700:400, transition:"all 0.15s" }}>
+                              <span>👍</span>
                               {likes.length > 0 && <span style={{ fontSize:10 }}>{likes.length}</span>}
                             </button>
                             <button onClick={()=>toggleCommentLike("dislike")}
-                              style={{ background:iDisliked?"#F8717125":"transparent", border:"none", borderRadius:20, padding:"3px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iDisliked?"#F87171":C.tm, fontSize:14, fontWeight:iDisliked?700:400, transition:"all 0.15s" }}>
-                              <span style={{ filter: iDisliked ? "none" : "brightness(0) invert(1)", opacity: iDisliked?1:0.6 }}>👎</span>
+                              style={{ background:"transparent", border:`1.5px solid ${iDisliked?"#F87171":C.b2}`, borderRadius:20, padding:"3px 10px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, color:iDisliked?"#F87171":C.tm, fontSize:13, fontWeight:iDisliked?700:400, transition:"all 0.15s" }}>
+                              <span>👎</span>
                               {dislikes.length > 0 && <span style={{ fontSize:10 }}>{dislikes.length}</span>}
                             </button>
                             <button onClick={()=>{ setReplyingTo({idx:i, userName:c.userName}); setComment(`@${c.userName} `); }}
@@ -6746,6 +6731,7 @@ function StoriesPage({ currentUser, users, onGoToDM }) {
                                 const repLikes = rep.likes||[];
                                 const repILiked = repLikes.includes(myId);
                                 const repIsMine = rep.userId === myId;
+                                const showRepActions = commentActionIdx?.storyId===viewStory.id&&commentActionIdx?.idx===i&&commentActionIdx?.ri===ri;
                                 const toggleRepLike = async () => {
                                   const newReplies = (c.replies||[]).map((r,rj)=>rj!==ri?r:{...r,likes:repILiked?repLikes.filter(x=>x!==myId):[...repLikes,myId]});
                                   const comments = (viewStory.comments||[]).map((cm,ci)=>ci!==i?cm:{...cm,replies:newReplies});
@@ -6755,6 +6741,7 @@ function StoriesPage({ currentUser, users, onGoToDM }) {
                                   const newReplies = (c.replies||[]).filter((_,rj)=>rj!==ri);
                                   const comments = (viewStory.comments||[]).map((cm,ci)=>ci!==i?cm:{...cm,replies:newReplies});
                                   await setDoc(doc(db,"stories",viewStory.id),{comments},{merge:true});
+                                  setCommentActionIdx(null);
                                 };
                                 return (
                                   <div key={ri} style={{ display:"flex", gap:7 }}>
@@ -6767,17 +6754,25 @@ function StoriesPage({ currentUser, users, onGoToDM }) {
                                       <div style={{ color:C.td, fontSize:9.5, marginBottom:3 }}>{new Date(rep.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
                                       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                                         <button onClick={toggleRepLike}
-                                          style={{ background:repILiked?C.acc+"25":"transparent", border:"none", borderRadius:20, padding:"2px 7px", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:repILiked?C.acc:C.tm, fontSize:13 }}>
-                                          <span style={{ filter:repILiked?"none":"brightness(0) invert(1)", opacity:repILiked?1:0.6 }}>👍</span>
+                                          style={{ background:"transparent", border:`1.5px solid ${repILiked?C.acc:C.b2}`, borderRadius:20, padding:"2px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:repILiked?C.acc:C.tm, fontSize:12 }}>
+                                          <span>👍</span>
                                           {repLikes.length > 0 && <span style={{ fontSize:9.5 }}>{repLikes.length}</span>}
                                         </button>
                                         {repIsMine && (
-                                          <button onClick={deleteReply}
-                                            style={{ background:"none", border:"none", color:"#F87171", fontSize:10.5, cursor:"pointer", padding:"2px 5px", borderRadius:6 }}
-                                            onMouseEnter={e=>e.currentTarget.style.background="#2D1515"}
-                                            onMouseLeave={e=>e.currentTarget.style.background="none"}>
-                                            🗑
-                                          </button>
+                                          <div style={{ position:"relative" }}>
+                                            <button onClick={()=>setCommentActionIdx(showRepActions?null:{storyId:viewStory.id,idx:i,ri})}
+                                              style={{ background:"none", border:"none", cursor:"pointer", color:C.td, fontSize:12, padding:"0 4px" }}>•••</button>
+                                            {showRepActions && (
+                                              <div style={{ position:"absolute", right:0, bottom:22, background:C.card, border:`1px solid ${C.b1}`, borderRadius:10, padding:"4px", zIndex:20, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", minWidth:100 }}>
+                                                <button onClick={deleteReply}
+                                                  style={{ display:"block", width:"100%", textAlign:"left", padding:"6px 10px", background:"none", border:"none", color:"#F87171", fontSize:12, cursor:"pointer", borderRadius:6 }}
+                                                  onMouseEnter={e=>e.currentTarget.style.background="#2D1515"}
+                                                  onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                                                  🗑 Excluir
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
                                         )}
                                       </div>
                                     </div>
@@ -7052,7 +7047,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     activeGroup.createdBy === myId ||
     (activeGroup.admins || []).includes(myId)
   );
-  const canShakeInGroup = activeGroup && (canManageGroups || isGroupAdm);
+  const canShakeInGroup = activeGroup && canManageGroups;
 
   // Group config panel states
   const [showGroupConfig, setShowGroupConfig] = useState(false);
@@ -7082,7 +7077,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [mutedConvs, setMutedConvs] = useState({});
   const [floatEmojis, setFloatEmojis] = useState([]);
   const [showMuteMenu, setShowMuteMenu] = useState(null);
-  const [profileReactions, setProfileReactions] = useState({});
+  const [profileReactions, setProfileReactions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_profile_reactions") || "{}"); } catch { return {}; }
+  });
   const [selectMode, setSelectMode] = useState(false);
   const [selectedMsgs, setSelectedMsgs] = useState([]);
 
@@ -8383,36 +8380,26 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     const photo = isMine ? myPhoto : getUserPhoto(msg.authorId);
                     const rc2 = roleColor[msg.authorRole] || C.atxt;
                     const msgReaction = isMine ? userReaction : null;
-                    const showNameInline = !isMine && activeGroupId;
                     return (
-                      <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", gap:2, flexShrink:0 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer" }}
-                          onClick={() => setViewingProfile(msg.authorId)}>
-                          <div style={{ position:"relative", flexShrink:0 }}>
-                            <div style={{ width:26, height:26, borderRadius:"50%", overflow:"hidden", border:`1.5px solid ${rc2}33` }}>
-                              {photo
-                                ? <img src={photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                                : <div style={{ width:"100%", height:"100%", background:rc2+"1A", color:rc2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700 }}>{ini(msg.authorName||"?")}</div>
-                              }
-                            </div>
-                            {msgReaction && <div style={{ position:"absolute", bottom:-5, [isMine?"right":"left"]:-5, fontSize:13, lineHeight:1, pointerEvents:"none" }}>{msgReaction}</div>}
-                          </div>
-                          {showNameInline && (
-                            <span style={{ color:rc2, fontSize:10, fontWeight:700, whiteSpace:"nowrap" }}>
-                              {groupTrophies[msg.authorId] ? "🏆 " : ""}{msg.authorName?.split(" ")[0]}
-                              {(activeGroup?.admins||[]).includes(msg.authorId) || msg.authorId === (activeGroup?.admId||activeGroup?.createdBy) ? " 👑" : ""}
-                            </span>
-                          )}
+                      <div style={{ position:"relative", flexShrink:0, cursor:"pointer" }}
+                        onClick={() => setViewingProfile(msg.authorId)}>
+                        <div style={{ width:26, height:26, borderRadius:"50%", overflow:"hidden", border:`1.5px solid ${rc2}33` }}>
+                          {photo
+                            ? <img src={photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                            : <div style={{ width:"100%", height:"100%", background:rc2+"1A", color:rc2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700 }}>{ini(msg.authorName||"?")}</div>
+                          }
                         </div>
+                        {msgReaction && <div style={{ position:"absolute", bottom:-5, [isMine?"right":"left"]:-5, fontSize:13, lineHeight:1, pointerEvents:"none" }}>{msgReaction}</div>}
                       </div>
                     );
                   })()}
                   <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems:isMine?"flex-end":"flex-start", position:"relative" }}>
-                    {(!isMine && activeTab==="geral" && !activeGroupId) && (
+                    {(!isMine && (activeTab==="geral" || activeGroupId)) && (
                       <span onClick={()=>setViewingProfile(msg.authorId)}
                         style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2, cursor:"pointer", textDecoration:"underline dotted" }}
                         title="Ver perfil">
-                        {msg.authorName}
+                        {groupTrophies[msg.authorId] ? "🏆 " : ""}{msg.authorName}
+                        {(activeGroup?.admins||[]).includes(msg.authorId) || msg.authorId === (activeGroup?.admId||activeGroup?.createdBy) ? " 👑" : ""}
                       </span>
                     )}
                     <div style={{ display:"flex", alignItems:"center", gap:4, flexDirection:isMine?"row-reverse":"row" }}>
@@ -8745,16 +8732,26 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
               // 50 reactions for profile
               const FIFTY_REACTIONS = ["❤️","🔥","😄","👍","🙏","🥰","🤩","💪","✨","🌟","🎉","💯","🚀","😎","🤗","💎","🏆","👑","🫶","💖","😇","🥳","🤝","💫","🌈","🍀","🌺","⭐","💡","🎯","😅","🤔","😢","😡","💔","👎","🥺","😤","😩","😰","🙄","😬","😮","😱","🫡","🙌","👏","🫂","💌","🎊"];
-              const myReactionsToV = (profileReactions[vId] || []);
+              // ── Querídômetro ─────────────────────────────────────
+              const today = new Date().toISOString().slice(0, 10);
+              const todayKey = `${vId}_${today}`;
+              const myReactionsToV = (profileReactions[todayKey] || []);
               const canReact = myReactionsToV.length < 3;
+              // Emojis recebidos pelo usuário (de todos, salvo no Firestore)
+              const receivedEmojis = vUser.receivedEmojis || {};
 
               const sendProfileReaction = async (emoji) => {
                 if (!canReact) return;
                 const next = [...myReactionsToV, emoji];
-                setProfileReactions(p => ({...p, [vId]: next}));
+                const updated = { ...profileReactions, [todayKey]: next };
+                setProfileReactions(updated);
+                localStorage.setItem("nexp_profile_reactions", JSON.stringify(updated));
                 const bursts = Array.from({length:10},(_,bi)=>({ id:Date.now()+bi, emoji, x:30+Math.random()*240, y:80+Math.random()*180 }));
                 setFloatEmojis(bursts);
                 setTimeout(()=>setFloatEmojis([]), 2200);
+                // Salvar emoji recebido no perfil do destinatário
+                const newReceived = { ...receivedEmojis, [emoji]: (receivedEmojis[emoji] || 0) + 1 };
+                await saveUserProfile(vId, { receivedEmojis: newReceived });
                 if (!isMe) {
                   await sendChatMessage({ text:`${currentUser.name||currentUser.email} deu ${emoji} no seu perfil`, type:"system", toId:vId, authorId:myId, authorName:currentUser.name||currentUser.email });
                 }
@@ -8793,38 +8790,57 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     </div>
                   </div>
 
-                  {/* Bio — from user Firestore data */}
+                  {/* Bio e recado */}
                   {vUser.bio && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"9px 12px", background:C.deep, borderRadius:10, marginBottom:10, textAlign:"center" }}>📝 {vUser.bio}</div>}
                   {vUser.recado && <div style={{ color:C.atxt, fontSize:12, padding:"9px 12px", background:C.abg, borderRadius:10, marginBottom:10, textAlign:"center" }}>💬 {vUser.recado}</div>}
                   {vUser.birthday && <div style={{ color:C.tm, fontSize:11, textAlign:"center", marginBottom:10 }}>🎂 {new Date(vUser.birthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
 
-                  {/* Reaction gift — 50 options, limit 3 */}
+                  {/* Querídômetro — emojis colecionáveis recebidos */}
+                  {Object.keys(receivedEmojis).length > 0 && (
+                    <div style={{ marginBottom:14, padding:"12px 14px", background:C.deep, borderRadius:12, border:`1px solid ${C.b1}` }}>
+                      <div style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8 }}>
+                        💝 Querídômetro
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                        {Object.entries(receivedEmojis).sort((a,b)=>b[1]-a[1]).map(([emoji, count]) => (
+                          <div key={emoji} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, background:C.card, borderRadius:8, padding:"6px 8px", border:`1px solid ${C.b2}`, minWidth:44 }}>
+                            <span style={{ fontSize:20 }}>{emoji}</span>
+                            <span style={{ color:C.atxt, fontSize:10, fontWeight:700 }}>{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dar reação — 3 por dia */}
                   {!isMe && (
                     <div style={{ marginBottom:14 }}>
                       <div style={{ color:C.td, fontSize:10, textAlign:"center", marginBottom:6, fontWeight:600 }}>
-                        🎁 Dar reação · {3-myReactionsToV.length} restante(s)
+                        🎁 Dar reação · {canReact ? `${3-myReactionsToV.length} restante(s) hoje` : "Limite diário atingido"}
                       </div>
                       {myReactionsToV.length > 0 && (
                         <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
                           {myReactionsToV.map((e,i)=>(
                             <span key={i} style={{ fontSize:20, background:C.acc+"15", border:`1px solid ${C.acc}44`, borderRadius:8, padding:"3px 6px" }}>{e}</span>
                           ))}
-                          <button onClick={()=>setProfileReactions(p=>({...p,[vId]:[]}))} style={{ background:"none", border:"none", color:C.td, fontSize:10, cursor:"pointer" }}>limpar</button>
                         </div>
                       )}
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:4, maxHeight:120, overflowY:"auto", justifyContent:"center" }}>
-                        {FIFTY_REACTIONS.map(e=>{
-                          const already = myReactionsToV.includes(e);
-                          return (
-                            <button key={e} onClick={()=>!already&&sendProfileReaction(e)}
-                              style={{ fontSize:20, background:already?C.acc+"22":"transparent", border:already?`2px solid ${C.acc}55`:"2px solid transparent", borderRadius:8, padding:"3px 5px", cursor:(!canReact&&!already)?"not-allowed":"pointer", opacity:(!canReact&&!already)?0.4:1, transition:"transform 0.12s" }}
-                              onMouseEnter={ev=>{ if(canReact||already) ev.currentTarget.style.transform="scale(1.3)"; }}
+                      {canReact ? (
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:4, maxHeight:120, overflowY:"auto", justifyContent:"center" }}>
+                          {FIFTY_REACTIONS.map(e=>(
+                            <button key={e} onClick={()=>sendProfileReaction(e)}
+                              style={{ fontSize:20, background:"transparent", border:"2px solid transparent", borderRadius:8, padding:"3px 5px", cursor:"pointer", transition:"transform 0.12s" }}
+                              onMouseEnter={ev=>ev.currentTarget.style.transform="scale(1.3)"}
                               onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
                               {e}
                             </button>
-                          );
-                        })}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ textAlign:"center", color:C.td, fontSize:11, padding:"10px 0" }}>
+                          ⏰ Volte amanhã para dar mais reações!
+                        </div>
+                      )}
                     </div>
                   )}
                   <button onClick={()=>setViewingProfile(null)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:10, padding:"8px", fontSize:12, cursor:"pointer", width:"100%" }}>Fechar</button>
@@ -8887,7 +8903,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
   const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
-  const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
+  const [theme, setTheme] = useState("Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
   const [shake, setShake] = useState(false);
   const [presence, setPresenceData] = useState({});
@@ -9037,10 +9053,7 @@ export default function App() {
   }, [currentUser]); // eslint-disable-line
 
   // Apply accent theme to module-level C so all components pick it up on re-render
-  const DARK_BASE = { bg:"#080A10", sb:"#08090F", card:"#0F1320", deep:"#0B0D14", b1:"#13161F", b2:"#1A1F2E", tp:"#E8EAEF", ts:"#9CA3AF", tm:"#525870", td:"#2D3348" };
-  const selectedTheme = ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"];
-  const baseColors = selectedTheme.light ? {} : DARK_BASE;
-  Object.assign(C, DARK_BASE, baseColors, selectedTheme);
+  Object.assign(C, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
   // Rebuild S with updated C
   S.card = {
     background: C.card,
@@ -9217,7 +9230,7 @@ export default function App() {
           </div>
         )}
         {page === "config" && (
-          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={(t) => { setTheme(t); localStorage.setItem("nexp_theme", t); }} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
       </div>
 
