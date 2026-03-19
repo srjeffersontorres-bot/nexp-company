@@ -7082,16 +7082,22 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               {activeGroup ? activeGroup.name : activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (tabUser.name || tabUser.email) : "💬 Nexp Chat"}
             </div>
             <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
-              {activeGroup
-                ? `👥 ${(activeGroup.members||[]).length} membros${isGroupAdm ? " · Você é adm" : ""}`
-                : activeTab === "geral"
-                ? `${users.length} membros`
-                : tabUser
-                ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role])
-                : "Selecione uma conversa"}
+              {activeGroup ? (() => {
+                const members = activeGroup.members || [];
+                const onlineCount = members.filter(uid => presence[uid]?.online).length;
+                return `👥 ${members.length} membros · 🟢 ${onlineCount} online${isGroupAdm ? " · Você é adm" : ""}`;
+              })()
+              : activeTab === "geral"
+              ? (() => {
+                  const onlineCount = users.filter(u => presence[u.uid||u.id]?.online).length;
+                  return `${users.length} membros · 🟢 ${onlineCount} online agora`;
+                })()
+              : tabUser
+              ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role])
+              : "Selecione uma conversa"}
             </div>
           </div>
-          {/* Group edit button for adm */}
+          {/* Group settings button for adm */}
           {isGroupAdm && (
             <button onClick={() => { setShowGroupConfig(p=>!p); setEditingGroup(false); }}
               style={{ background:showGroupConfig?C.abg:"transparent", border:showGroupConfig?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showGroupConfig?C.atxt:C.tm, borderRadius:8, padding:"3px 10px", fontSize:13, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }} title="Configurações do grupo">
@@ -7101,6 +7107,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
         </div>
         {/* Controls */}
         <div style={{ display:"flex", gap:5 }}>
+          {/* + button to create group next to minimize */}
+          {canManageGroups && !activeTab && (
+            <button onClick={() => setShowCreateGroup(p=>!p)} title="Criar grupo"
+              style={{ background: showCreateGroup ? C.acc : "rgba(59,110,245,0.18)", border:"none", color: showCreateGroup ? "#fff" : "#3B6EF5", borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, transition:"all 0.15s" }}
+              onMouseEnter={e=>e.currentTarget.style.background=C.acc} onMouseLeave={e=>{ if(!showCreateGroup) e.currentTarget.style.background="rgba(59,110,245,0.18)"; }}>
+              ＋
+            </button>
+          )}
           <button onClick={onMinimize} title="Minimizar" style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
             onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.15)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"}>
             —
@@ -7157,16 +7171,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             );
           })}
 
-          {/* Create group button (mestre/master only) */}
-          {canManageGroups && (
-            <button onClick={() => setShowCreateGroup(p=>!p)}
-              style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:showCreateGroup?C.abg:"transparent", border:`1px dashed ${showCreateGroup?C.atxt:C.b2}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}>
-              <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"11", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>＋</div>
-              <div style={{ color:showCreateGroup?C.atxt:C.tm, fontSize:12.5, fontWeight:600 }}>Criar grupo</div>
-            </button>
-          )}
-
-          {/* Create group form */}
+          {/* Create group form — shows when + button clicked */}
           {showCreateGroup && canManageGroups && (
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px", marginBottom:8 }}>
               <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>Novo Grupo</div>
@@ -7288,13 +7293,94 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     style={{ ...S.input, fontSize:12, flex:1, height:36 }} />
                 </div>
 
-                {/* ── Cor do chat ── */}
-                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6, fontWeight:700 }}>🎨 Cor do chat</div>
-                <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
-                  {[null,"#3B6EF5","#7C3AED","#16A34A","#DC2626","#F59E0B","#EC4899","#0EA5E9","#0F1320"].map(c => (
+                {/* ── Temas do chat ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6, fontWeight:700 }}>🎨 Tema do chat</div>
+                <div style={{ display:"flex", gap:6, marginBottom:6, flexWrap:"wrap" }}>
+                  {/* Cores sólidas */}
+                  {[null,"#3B6EF5","#7C3AED","#16A34A","#DC2626","#F59E0B","#EC4899","#0EA5E9"].map(c => (
                     <button key={c||"default"} onClick={() => gcSetColor(c)}
                       style={{ width:22, height:22, borderRadius:"50%", background: c || C.card, border: groupColor===c ? `3px solid #fff` : `1.5px solid ${C.b2}`, cursor:"pointer", flexShrink:0, boxShadow: groupColor===c ? `0 0 0 1px ${c||C.atxt}` : "none" }} />
                   ))}
+                </div>
+                {/* Temas com gradientes */}
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
+                  {[
+                    { id:"nature",   label:"🌿 Natureza",  bg:"linear-gradient(135deg,#064e3b,#065f46,#047857)" },
+                    { id:"ocean",    label:"🌊 Oceano",    bg:"linear-gradient(135deg,#0c4a6e,#075985,#0369a1)" },
+                    { id:"sunset",   label:"🌅 Pôr do sol",bg:"linear-gradient(135deg,#7c2d12,#9a3412,#c2410c)" },
+                    { id:"galaxy",   label:"🌌 Galáxia",   bg:"linear-gradient(135deg,#1e1b4b,#312e81,#4c1d95)" },
+                    { id:"office",   label:"🏢 Escritório", bg:"linear-gradient(135deg,#1e293b,#334155,#475569)" },
+                    { id:"forest",   label:"🌲 Floresta",  bg:"linear-gradient(135deg,#14532d,#166534,#15803d)" },
+                    { id:"aurora",   label:"✨ Aurora",    bg:"linear-gradient(270deg,#6366f1,#8b5cf6,#ec4899,#6366f1)", animate:true },
+                    { id:"neon",     label:"⚡ Neon",      bg:"linear-gradient(270deg,#0ea5e9,#8b5cf6,#ec4899,#0ea5e9)", animate:true },
+                  ].map(t => (
+                    <button key={t.id} onClick={() => gcSetColor(t.id)}
+                      style={{ background:t.bg, backgroundSize:t.animate?"400% 400%":"auto", animation:t.animate&&groupColor===t.id?"bgShift 3s ease infinite":"none", border: groupColor===t.id ? "2px solid #fff" : `1px solid ${C.b2}`, borderRadius:8, padding:"3px 9px", cursor:"pointer", fontSize:10, color:"#fff", fontWeight:600, flexShrink:0, boxShadow: groupColor===t.id ? "0 0 8px rgba(255,255,255,0.3)" : "none" }}>
+                      {t.label}
+                    </button>
+                  ))}
+                  <button onClick={() => gcSetColor(null)} style={{ background:C.deep, border: groupColor===null ? `2px solid ${C.atxt}` : `1px solid ${C.b2}`, borderRadius:8, padding:"3px 9px", cursor:"pointer", fontSize:10, color:C.tm, fontWeight:600 }}>✕ Padrão</button>
+                </div>
+
+                {/* ── Membros — Adicionar / Remover ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", margin:"10px 0 6px", fontWeight:700 }}>👥 Membros do grupo</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:8, maxHeight:140, overflowY:"auto" }}>
+                  {(activeGroup.members||[]).map(uid => {
+                    const u = users.find(x=>(x.uid||x.id)===uid);
+                    if (!u) return null;
+                    const isCreator2 = uid === (activeGroup.admId || activeGroup.createdBy);
+                    return (
+                      <div key={uid} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 8px", borderRadius:8, background:C.deep, border:`1px solid ${C.b2}` }}>
+                        <div style={{ width:24, height:24, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:C.b2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:C.atxt }}>
+                          {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                        </div>
+                        <span style={{ flex:1, color:C.ts, fontSize:11.5 }}>{u.name||u.email}{isCreator2?" 👑":""}</span>
+                        {!isCreator2 && uid !== myId && (isGroupAdm || ["mestre","master"].includes(currentUser.role)) && (
+                          <button onClick={async () => {
+                            const newMembers = (activeGroup.members||[]).filter(x=>x!==uid);
+                            await setDoc(doc(db,"chatGroups",activeGroup.id),{members:newMembers},{merge:true});
+                          }} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:6, padding:"2px 8px", fontSize:10, cursor:"pointer", fontWeight:600 }}>
+                            Remover
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Adicionar membros */}
+                <div style={{ fontSize:10, color:C.td, marginBottom:5 }}>Adicionar ao grupo:</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:3, maxHeight:100, overflowY:"auto", marginBottom:12 }}>
+                  {users.filter(u => {
+                    const uid = u.uid||u.id;
+                    return uid !== myId && !(activeGroup.members||[]).includes(uid);
+                  }).map(u => {
+                    const uid = u.uid||u.id;
+                    const rc2 = roleColor[u.role]||C.atxt;
+                    return (
+                      <button key={uid} onClick={async () => {
+                        const newMembers = [...(activeGroup.members||[]), uid];
+                        await setDoc(doc(db,"chatGroups",activeGroup.id),{members:newMembers},{merge:true});
+                        // Notify added member
+                        const nid = `notif_addmember_${activeGroup.id}_${uid}_${Date.now()}`;
+                        await setDoc(doc(db,"notifications",nid),{
+                          type:"group_added", userId:uid,
+                          groupId:activeGroup.id, groupName:activeGroup.name,
+                          addedBy:currentUser.name||currentUser.email,
+                          createdAt:Date.now(), read:false,
+                        });
+                      }} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 8px", borderRadius:8, background:C.deep, border:`1px solid ${C.b2}`, cursor:"pointer", textAlign:"left", transition:"all 0.12s" }}
+                        onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background=C.deep}>
+                        <div style={{ width:22, height:22, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:rc2 }}>
+                          {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                        </div>
+                        <span style={{ flex:1, color:C.ts, fontSize:11.5 }}>{u.name||u.email}</span>
+                        <span style={{ color:C.acc, fontSize:11, fontWeight:700 }}>+ Adicionar</span>
+                      </button>
+                    );
+                  })}
+                  {users.filter(u=>!(activeGroup.members||[]).includes(u.uid||u.id)&&(u.uid||u.id)!==myId).length===0 && (
+                    <div style={{ color:C.td, fontSize:11, padding:"4px 8px" }}>Todos os membros já estão no grupo</div>
+                  )}
                 </div>
 
                 {/* ── Toggle switches ── */}
@@ -7342,15 +7428,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   })}
                 </div>
 
-                {/* ── Apagar mensagem individual ── */}
-                {gcDelMsgId && (
-                  <div style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ color:"#F87171", fontSize:11.5, flex:1 }}>Apagar esta mensagem para todos?</span>
-                    <button onClick={() => gcDeleteMsg(gcDelMsgId)} style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:6, padding:"3px 10px", fontSize:11, cursor:"pointer", fontWeight:600 }}>Apagar</button>
-                    <button onClick={() => setGcDelMsgId(null)} style={{ background:"transparent", border:"none", color:C.tm, cursor:"pointer", fontSize:12 }}>✕</button>
-                  </div>
-                )}
-
                 {/* ── Limpar conversa ── */}
                 <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", margin:"6px 0 6px", fontWeight:700 }}>🗑 Limpar conversa</div>
                 <div style={{ display:"flex", gap:6 }}>
@@ -7391,7 +7468,25 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             </div>
           )}
           {/* Messages */}
-          <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5, background: groupColor ? groupColor + "18" : "transparent", transition:"background 0.3s" }}>
+          <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5,
+            background: (() => {
+              if (!groupColor) return "transparent";
+              const THEME_BGAS = {
+                nature:"linear-gradient(135deg,#064e3b22,#065f4622,#04785722)",
+                ocean:"linear-gradient(135deg,#0c4a6e22,#07598522,#03699222)",
+                sunset:"linear-gradient(135deg,#7c2d1222,#9a341222,#c2410c22)",
+                galaxy:"linear-gradient(135deg,#1e1b4b22,#312e8122,#4c1d9522)",
+                office:"linear-gradient(135deg,#1e293b33,#33415533,#47556933)",
+                forest:"linear-gradient(135deg,#14532d22,#16653422,#15803d22)",
+                aurora:"linear-gradient(270deg,#6366f122,#8b5cf622,#ec489922)",
+                neon:"linear-gradient(270deg,#0ea5e922,#8b5cf622,#ec489922)",
+              };
+              return THEME_BGAS[groupColor] || (groupColor + "18");
+            })(),
+            backgroundSize:"400% 400%",
+            animation:["aurora","neon"].includes(groupColor)?"bgShift 4s ease infinite":"none",
+            transition:"background 0.3s",
+          }}>
             {groupOnlyAdmins && !isGroupAdm && (
               <div style={{ textAlign:"center", margin:"10px 0", padding:"8px 16px", background:"#2B1D03", border:"1px solid #F59E0B44", borderRadius:20, color:"#FBBF24", fontSize:11.5, fontWeight:600 }}>
                 🔒 Apenas administradores podem escrever neste grupo
@@ -7449,9 +7544,19 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       </div>
                       {hoveredMsg === msg.id && (
                         <div style={{ position:"relative", display:"flex", flexDirection:"column", gap:3 }}>
-                          {/* Adm can delete any group message */}
+                          {/* Adm can delete any group message — inline confirm */}
                           {activeGroupId && isGroupAdm && (
-                            <button onClick={()=>setGcDelMsgId(msg.id)} style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#F87171" }} title="Apagar para todos">🗑</button>
+                            gcDelMsgId === msg.id ? (
+                              <div style={{ position:"absolute", bottom:26, [isMine?"right":"left"]:0, background:"#2D1515", border:"1px solid #EF444433", borderRadius:10, padding:"7px 10px", zIndex:20, whiteSpace:"nowrap", boxShadow:"0 4px 16px #00000066", display:"flex", flexDirection:"column", gap:6, minWidth:180 }}>
+                                <div style={{ color:"#F87171", fontSize:11, fontWeight:600 }}>Apagar para todos?</div>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <button onClick={() => { gcDeleteMsg(gcDelMsgId); setGcDelMsgId(null); }} style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:6, padding:"4px 12px", fontSize:11, cursor:"pointer", fontWeight:700, flex:1 }}>Apagar</button>
+                                  <button onClick={() => setGcDelMsgId(null)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>Cancelar</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={()=>setGcDelMsgId(msg.id)} style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#F87171" }} title="Apagar para todos">🗑</button>
+                            )
                           )}
                           <button onClick={()=>setReactionPicker(p=>p===msg.id?null:msg.id)} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"50%", width:22, height:22, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 6px #00000044" }}>🙂</button>
                           {reactionPicker===msg.id && (
