@@ -2304,17 +2304,18 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   // Estado local isolado por cliente — usa ref para evitar flash de re-render
   const [reactions, setReactions] = useState(cur.reactions || []);
   const [leadType, setLeadType] = useState(cur.leadType || "FGTS");
-  const lockedId = useRef(cur.id);
+  const lockedId = useRef(null);
 
-  // Sincroniza APENAS quando o ID do cliente realmente muda
+  // Sincroniza apenas quando o ID do cliente muda — evita flash de re-render
+  if (cur.id && cur.id !== lockedId.current) {
+    lockedId.current = cur.id;
+    // Atualização síncrona durante render — segura pois condicionada ao ID
+  }
   useEffect(() => {
-    if (cur.id && cur.id !== lockedId.current) {
-      lockedId.current = cur.id;
-      setReactions(cur.reactions || []);
-      setLeadType(cur.leadType || "FGTS");
-      setDone(false);
-    }
-  }); // sem dependências — roda a cada render mas só muda se ID diferente
+    setReactions(cur.reactions || []);
+    setLeadType(cur.leadType || "FGTS");
+    setDone(false);
+  }, [cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!list.length)
     return (
