@@ -3793,6 +3793,198 @@ function TemasTab({ currentTheme, onTheme }) {
   );
 }
 
+
+function PerfisTab({ users, setUsers, currentUser }) {
+  const [selectedUid, setSelectedUid] = useState(null);
+  const [editData, setEditData] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk] = useState("");
+  const docRef = useRef();
+
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+
+  const visible = users.filter(u => !u.deleted);
+
+  const openProfile = (u) => {
+    const uid = u.uid || u.id;
+    if (selectedUid === uid) { setSelectedUid(null); setEditData(null); return; }
+    setSelectedUid(uid);
+    setEditData({ ...u });
+    setOk("");
+  };
+
+  const saveEdit = async () => {
+    if (!editData) return;
+    setSaving(true);
+    const uid = editData.uid || editData.id;
+    await saveUserProfile(uid, editData);
+    setUsers(us => us.map(u => (u.uid||u.id) === uid ? { ...u, ...editData } : u));
+    setOk("Perfil salvo!"); setSaving(false);
+    setTimeout(() => setOk(""), 3000);
+  };
+
+  const toggleLock = async (u) => {
+    const uid = u.uid || u.id;
+    const updated = { ...u, profileLocked: !u.profileLocked };
+    await saveUserProfile(uid, updated);
+    setUsers(us => us.map(x => (x.uid||x.id) === uid ? updated : x));
+    if (editData && (editData.uid||editData.id) === uid) setEditData(updated);
+  };
+
+  const EF = (k, v) => setEditData(d => ({ ...d, [k]: v }));
+
+  const Field = ({ label, k, type = "text", placeholder = "" }) => (
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ color: C.tm, fontSize: 11, display: "block", marginBottom: 4 }}>{label}</label>
+      <input value={editData?.[k] || ""} onChange={e => EF(k, e.target.value)}
+        type={type} placeholder={placeholder}
+        style={{ ...S.input, fontSize: 12.5 }} />
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
+        {visible.length} perfil{visible.length !== 1 ? "s" : ""} cadastrado{visible.length !== 1 ? "s" : ""}
+      </div>
+
+      {/* ── Profile cards grid ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 12, marginBottom: 20 }}>
+        {visible.map(u => {
+          const uid = u.uid || u.id;
+          const col = roleColor[u.role] || C.atxt;
+          const isSelected = selectedUid === uid;
+          const hasMissingData = !u.cpf || !u.endereco || !u.banco || !u.certificacoes;
+
+          return (
+            <button key={uid} onClick={() => openProfile(u)}
+              style={{
+                background: isSelected ? C.abg : C.card,
+                border: isSelected ? `1.5px solid ${C.atxt}` : hasMissingData ? `1px solid #F59E0B44` : `1px solid ${C.b1}`,
+                borderRadius: 12, padding: "16px 14px", cursor: "pointer", textAlign: "center",
+                transition: "all 0.15s", position: "relative",
+              }}
+              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = C.atxt + "44"; }}
+              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = hasMissingData ? "#F59E0B44" : C.b1; }}
+            >
+              {/* Lock indicator */}
+              {u.profileLocked && (
+                <div style={{ position: "absolute", top: 8, right: 8, fontSize: 11 }}>🔒</div>
+              )}
+              {/* Incomplete badge */}
+              {hasMissingData && (
+                <div style={{ position: "absolute", top: 8, left: 8, background: "#2B1D03", color: "#F59E0B", fontSize: 9, padding: "1px 6px", borderRadius: 6, fontWeight: 700 }}>Incompleto</div>
+              )}
+
+              {/* Avatar */}
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, marginTop: hasMissingData ? 8 : 0 }}>
+                {u.photo
+                  ? <img src={u.photo} alt="" style={{ width: 52, height: 52, borderRadius: "50%", objectFit: "cover", border: `2px solid ${col}44` }} />
+                  : <div style={{ width: 52, height: 52, borderRadius: "50%", background: col + "1A", color: col, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, border: `2px solid ${col}33` }}>{ini(u.name || "?")}</div>
+                }
+              </div>
+              <div style={{ color: C.tp, fontSize: 13, fontWeight: 600, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name || u.email}</div>
+              <span style={{ background: col + "18", color: col, fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 700, border: `1px solid ${col}33` }}>{roleLabel[u.role]}</span>
+
+              {/* Quick data indicators */}
+              <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+                {[["CPF", !!u.cpf], ["End.", !!u.endereco], ["Banco", !!u.banco], ["Cert.", !!u.certificacoes]].map(([label, filled]) => (
+                  <span key={label} style={{ fontSize: 9, color: filled ? "#34D399" : C.td, background: filled ? "#091E12" : C.deep, padding: "1px 5px", borderRadius: 4, border: `1px solid ${filled ? "#34D39922" : C.b1}` }}>{filled ? "✓" : "○"} {label}</span>
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Edit panel ── */}
+      {selectedUid && editData && (
+        <div style={{ ...S.card, padding: "24px 28px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {editData.photo
+                ? <img src={editData.photo} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `2px solid ${roleColor[editData.role] || C.atxt}44` }} />
+                : <div style={{ width: 44, height: 44, borderRadius: "50%", background: (roleColor[editData.role]||C.atxt) + "1A", color: roleColor[editData.role]||C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>{ini(editData.name || "?")}</div>
+              }
+              <div>
+                <div style={{ color: C.tp, fontSize: 14, fontWeight: 700 }}>{editData.name || editData.email}</div>
+                <div style={{ color: C.tm, fontSize: 11.5 }}>{editData.email}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => toggleLock(editData)}
+                style={{ background: editData.profileLocked ? "#2D1515" : C.deep, color: editData.profileLocked ? "#F87171" : C.tm, border: editData.profileLocked ? "1px solid #EF444433" : `1px solid ${C.b2}`, borderRadius: 8, padding: "6px 14px", fontSize: 11.5, cursor: "pointer", fontWeight: 600 }}>
+                {editData.profileLocked ? "🔒 Bloqueado" : "🔓 Bloquear edição"}
+              </button>
+              <button onClick={() => { setSelectedUid(null); setEditData(null); }}
+                style={{ background: C.deep, border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>✕</button>
+            </div>
+          </div>
+
+          {ok && <div style={{ background: "#091E12", border: "1px solid #34D39933", borderRadius: 8, padding: "9px 14px", marginBottom: 16, color: "#34D399", fontSize: 13 }}>✓ {ok}</div>}
+
+          {/* Dados pessoais */}
+          <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, marginBottom: 12, paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>👤 Dados Pessoais</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+            <Field label="Nome completo" k="name" />
+            <Field label="CPF" k="cpf" placeholder="000.000.000-00" />
+          </div>
+
+          <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏠 Endereço</div>
+          <Field label="Endereço completo" k="endereco" placeholder="Rua, número, bairro, cidade, estado" />
+
+          <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏦 Dados Bancários</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+            <Field label="Banco" k="banco" />
+            <Field label="Agência" k="agencia" />
+            <Field label="Conta" k="conta" />
+            <Field label="Chave PIX" k="pixKey" />
+          </div>
+
+          <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏆 Certificações</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+            <Field label="Certificações" k="certificacoes" />
+            <Field label="Vencimento" k="certVencimento" type="date" />
+          </div>
+
+          {/* Document viewer */}
+          {editData.docFile && (
+            <>
+              <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>📄 Documento ({editData.docTipo || "—"})</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.deep, borderRadius: 8, padding: "10px 14px", border: `1px solid ${C.b1}` }}>
+                {editData.docFile.type?.startsWith("image/")
+                  ? <img src={editData.docFile.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6 }} />
+                  : <span style={{ fontSize: 24 }}>📄</span>
+                }
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: C.tp, fontSize: 12.5, fontWeight: 600 }}>{editData.docFile.name}</div>
+                  <div style={{ color: C.td, fontSize: 11 }}>{editData.docTipo}</div>
+                </div>
+                {editData.docFile.type?.startsWith("image/") && (
+                  <a href={editData.docFile.url} target="_blank" rel="noopener noreferrer"
+                    style={{ background: C.abg, color: C.atxt, border: `1px solid ${C.atxt}33`, borderRadius: 7, padding: "5px 12px", fontSize: 11, textDecoration: "none" }}>Ver documento →</a>
+                )}
+              </div>
+            </>
+          )}
+
+          <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
+            <button onClick={saveEdit} disabled={saving}
+              style={{ ...S.btn(C.acc, "#fff"), padding: "10px 28px", fontSize: 13, fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+              {saving ? "Salvando..." : "Salvar alterações"}
+            </button>
+            <button onClick={() => { setSelectedUid(null); setEditData(null); }}
+              style={{ ...S.btn(C.deep, C.tm), padding: "10px 18px", fontSize: 13, border: `1px solid ${C.b2}` }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
   const [tab, setTab] = useState("perfil");
   const tabs = [
@@ -3807,6 +3999,12 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
       label: "Usuários",
       icon: "👤",
       roles: ["mestre", "master"],
+    },
+    {
+      id: "perfis",
+      label: "Perfis",
+      icon: "📋",
+      roles: ["mestre"],
     },
     {
       id: "temas",
@@ -3870,6 +4068,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
             currentUser={currentUser}
           />
         )}
+        {tab === "perfis" && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
       </div>
     </div>
@@ -3877,204 +4076,193 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
 }
 
 function PerfilTab({ users, setUsers, currentUser }) {
-  const uObj = users.find((u) => u.id === currentUser.id) || currentUser;
+  const myId = currentUser.uid || currentUser.id;
+  const uObj = users.find((u) => (u.uid||u.id) === myId) || currentUser;
+  const isLocked = uObj.profileLocked === true;
+  const canLock = currentUser.role === "mestre" || currentUser.role === "master";
+  // Mestre/master can always edit; others blocked if locked
+  const canEdit = canLock || !isLocked;
+
   const [name, setName] = useState(uObj.name || "");
   const [preview, setPreview] = useState(uObj.photo || null);
+
+  // Extended profile fields
+  const [cpf, setCpf]               = useState(uObj.cpf || "");
+  const [endereco, setEndereco]      = useState(uObj.endereco || "");
+  const [banco, setBanco]            = useState(uObj.banco || "");
+  const [agencia, setAgencia]        = useState(uObj.agencia || "");
+  const [conta, setConta]            = useState(uObj.conta || "");
+  const [pixKey, setPixKey]          = useState(uObj.pixKey || "");
+  const [certificacoes, setCertificacoes] = useState(uObj.certificacoes || "");
+  const [certVencimento, setCertVencimento] = useState(uObj.certVencimento || "");
+  const [docTipo, setDocTipo]        = useState(uObj.docTipo || "RG");
+  const [docFile, setDocFile]        = useState(uObj.docFile || null);
+
   const [ok, setOk] = useState(false);
+  const [saving, setSaving] = useState(false);
   const fRef = useRef();
+  const docRef = useRef();
+
   const handleImg = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader(); r.onload = (ev) => setPreview(ev.target.result); r.readAsDataURL(f);
+  };
+  const handleDoc = (e) => {
+    const f = e.target.files[0]; if (!f) return;
     const r = new FileReader();
-    r.onload = (ev) => setPreview(ev.target.result);
+    r.onload = (ev) => setDocFile({ name: f.name, url: ev.target.result, type: f.type });
     r.readAsDataURL(f);
   };
-  const save = () => {
-    setUsers((us) =>
-      us.map((u) =>
-        u.id === currentUser.id ? { ...u, name, photo: preview } : u,
-      ),
-    );
-    setOk(true);
+
+  const save = async () => {
+    setSaving(true);
+    const updated = {
+      ...uObj, name, photo: preview, cpf,
+      endereco, banco, agencia, conta, pixKey,
+      certificacoes, certVencimento, docTipo, docFile,
+    };
+    await saveUserProfile(myId, updated);
+    setUsers(us => us.map(u => (u.uid||u.id) === myId ? { ...u, ...updated } : u));
+    setOk(true); setSaving(false);
     setTimeout(() => setOk(false), 3000);
   };
-  const roleLabel = {
-    mestre: "Mestre",
-    master: "Master",
-    indicado: "Operador",
+
+  const toggleLock = async () => {
+    const updated = { ...uObj, profileLocked: !isLocked };
+    await saveUserProfile(myId, updated);
+    setUsers(us => us.map(u => (u.uid||u.id) === myId ? updated : u));
   };
+
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const rc = roleColor[uObj.role] || C.atxt;
+
+  const Field = ({ label, value, onChange, placeholder, type = "text", readOnly = false }) => (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 5 }}>{label}</label>
+      <input value={value} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
+        type={type} readOnly={readOnly || !canEdit}
+        style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }} />
+    </div>
+  );
+
   return (
-    <div style={{ maxWidth: 500 }}>
-      {ok && (
-        <div
-          style={{
-            background: "#091E12",
-            border: "1px solid #34D39933",
-            borderRadius: 8,
-            padding: "11px 14px",
-            marginBottom: 18,
-            color: "#34D399",
-            fontSize: 13,
-          }}
-        >
-          ✓ Perfil atualizado!
+    <div style={{ maxWidth: 640 }}>
+      {ok && <div style={{ background: "#091E12", border: "1px solid #34D39933", borderRadius: 8, padding: "11px 14px", marginBottom: 18, color: "#34D399", fontSize: 13 }}>✓ Perfil atualizado!</div>}
+      {isLocked && !canLock && (
+        <div style={{ background: "#2B1D03", border: "1px solid #F59E0B44", borderRadius: 8, padding: "11px 14px", marginBottom: 18, color: "#FBBF24", fontSize: 13 }}>
+          🔒 Suas informações foram bloqueadas pelo administrador. Entre em contato para alterações.
         </div>
       )}
-      <div style={{ ...S.card, padding: "30px" }}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ position: "relative", display: "inline-block" }}>
-            {preview ? (
-              <img
-                src={preview}
-                alt=""
-                style={{
-                  width: 90,
-                  height: 90,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  border: `3px solid ${rc}44`,
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 90,
-                  height: 90,
-                  borderRadius: "50%",
-                  background: rc + "1A",
-                  color: rc,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 32,
-                  fontWeight: 700,
-                  border: `3px solid ${rc}44`,
-                  margin: "0 auto",
-                }}
-              >
-                {ini(name || uObj.username || "OP")}
-              </div>
+
+      {/* ── Foto + nome + lock ── */}
+      <div style={{ ...S.card, padding: "24px 28px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            {preview
+              ? <img src={preview} alt="" style={{ width: 76, height: 76, borderRadius: "50%", objectFit: "cover", border: `3px solid ${rc}44` }} />
+              : <div style={{ width: 76, height: 76, borderRadius: "50%", background: rc + "1A", color: rc, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, fontWeight: 700, border: `3px solid ${rc}44` }}>{ini(name || "OP")}</div>
+            }
+            {canEdit && (
+              <button onClick={() => fRef.current?.click()}
+                style={{ position: "absolute", bottom: 0, right: 0, width: 26, height: 26, borderRadius: "50%", background: C.acc, color: "#fff", border: `2px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>+</button>
             )}
-            <button
-              onClick={() => fRef.current && fRef.current.click()}
-              style={{
-                position: "absolute",
-                bottom: 0,
-                right: 0,
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                background: C.acc,
-                color: "#fff",
-                border: `2px solid ${C.bg}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 700,
-              }}
-            >
-              +
+            <input ref={fRef} type="file" accept="image/*" onChange={handleImg} style={{ display: "none" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.tp, fontSize: 15, fontWeight: 700 }}>{uObj.name || uObj.username}</div>
+            <div style={{ color: C.tm, fontSize: 12, marginTop: 3 }}>{uObj.email}</div>
+            <span style={{ background: rc + "18", color: rc, fontSize: 10, padding: "3px 10px", borderRadius: 20, fontWeight: 700, border: `1px solid ${rc}33`, display: "inline-block", marginTop: 5 }}>{roleLabel[uObj.role]}</span>
+          </div>
+          {canLock && (
+            <button onClick={toggleLock}
+              style={{ ...S.btn(isLocked ? "#2D1515" : C.deep, isLocked ? "#F87171" : C.tm), border: isLocked ? "1px solid #EF444433" : `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 11.5, flexShrink: 0 }}>
+              {isLocked ? "🔒 Bloqueado" : "🔓 Bloquear"}
             </button>
-          </div>
-          <input
-            ref={fRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImg}
-            style={{ display: "none" }}
-          />
-          <div style={{ color: C.td, fontSize: 11.5, marginTop: 10 }}>
-            Clique no + para alterar a foto
-          </div>
+          )}
         </div>
-        <div style={{ marginBottom: 14 }}>
-          <label
-            style={{
-              color: C.tm,
-              fontSize: 11.5,
-              display: "block",
-              marginBottom: 5,
-            }}
-          >
-            Nome de exibição
-          </label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Como quer ser chamado"
-            style={{ ...S.input }}
-          />
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <label
-            style={{
-              color: C.tm,
-              fontSize: 11.5,
-              display: "block",
-              marginBottom: 5,
-            }}
-          >
-            Usuário (login)
-          </label>
-          <input
-            value={uObj.email}
-            readOnly
-            style={{ ...S.input, color: C.tm, cursor: "not-allowed" }}
-          />
-        </div>
-        <div style={{ marginBottom: 22 }}>
-          <label
-            style={{
-              color: C.tm,
-              fontSize: 11.5,
-              display: "block",
-              marginBottom: 5,
-            }}
-          >
-            CPF
-          </label>
-          <input
-            value={uObj.cpf || "—"}
-            readOnly
-            style={{ ...S.input, color: C.tm, cursor: "not-allowed" }}
-          />
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <button
-            onClick={save}
-            style={{
-              ...S.btn(C.acc, "#fff"),
-              padding: "11px 28px",
-              fontSize: 14,
-            }}
-          >
-            Salvar alterações
-          </button>
-          <span
-            style={{
-              background: rc + "18",
-              color: rc,
-              fontSize: 11,
-              padding: "4px 12px",
-              borderRadius: 20,
-              fontWeight: 700,
-              border: `1px solid ${rc}33`,
-            }}
-          >
-            {roleLabel[uObj.role]}
-          </span>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Nome completo *" value={name} onChange={setName} placeholder="Nome completo" />
+          <Field label="CPF *" value={cpf} onChange={setCpf} placeholder="000.000.000-00" />
+          <Field label="Usuário (login)" value={uObj.email} readOnly placeholder="" />
         </div>
       </div>
+
+      {/* ── Endereço ── */}
+      <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
+        <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏠 Endereço</div>
+        <Field label="Endereço completo (rua, número, bairro, cidade, estado)" value={endereco} onChange={setEndereco} placeholder="Ex: Rua das Flores, 123, Bairro Centro, Natal - RN" />
+      </div>
+
+      {/* ── Dados bancários ── */}
+      <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
+        <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏦 Dados Bancários</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Banco" value={banco} onChange={setBanco} placeholder="Ex: Banco do Brasil" />
+          <Field label="Agência" value={agencia} onChange={setAgencia} placeholder="Ex: 1234-5" />
+          <Field label="Conta" value={conta} onChange={setConta} placeholder="Ex: 12345-6" />
+          <Field label="Chave PIX" value={pixKey} onChange={setPixKey} placeholder="CPF, email, telefone ou chave aleatória" />
+        </div>
+      </div>
+
+      {/* ── Certificações ── */}
+      <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
+        <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏆 Certificações</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Certificação(ões)" value={certificacoes} onChange={setCertificacoes} placeholder="Ex: Certificação INSS, FGTS..." />
+          <Field label="Data de vencimento" value={certVencimento} onChange={setCertVencimento} type="date" placeholder="" />
+        </div>
+      </div>
+
+      {/* ── Documento ── */}
+      <div style={{ ...S.card, padding: "20px 24px", marginBottom: 20 }}>
+        <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>📄 Documento</div>
+        {/* Type selector */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {["RG", "CNH", "Outro"].map(t => (
+            <button key={t} onClick={() => canEdit && setDocTipo(t)}
+              style={{ background: docTipo === t ? C.abg : C.deep, color: docTipo === t ? C.atxt : C.tm, border: docTipo === t ? `1px solid ${C.atxt}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 16px", fontSize: 12, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: docTipo === t ? 700 : 400 }}>
+              {docTipo === t ? "✓ " : ""}{t}
+            </button>
+          ))}
+        </div>
+        {/* Upload */}
+        {canEdit && (
+          <button onClick={() => docRef.current?.click()}
+            style={{ ...S.btn(C.deep, C.tm), border: `1px dashed ${C.atxt}44`, padding: "10px 18px", fontSize: 12.5, marginBottom: 10, width: "100%" }}>
+            📎 Anexar {docTipo} (imagem ou PDF)
+          </button>
+        )}
+        <input ref={docRef} type="file" accept="image/*,.pdf" onChange={handleDoc} style={{ display: "none" }} />
+        {docFile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.deep, borderRadius: 8, padding: "9px 13px", border: `1px solid ${C.b1}` }}>
+            {docFile.type?.startsWith("image/")
+              ? <img src={docFile.url} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 6 }} />
+              : <span style={{ fontSize: 22 }}>📄</span>
+            }
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: C.tp, fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{docFile.name}</div>
+              <div style={{ color: C.td, fontSize: 11 }}>{docTipo} anexado</div>
+            </div>
+            {docFile.type?.startsWith("image/") && (
+              <a href={docFile.url} target="_blank" rel="noopener noreferrer"
+                style={{ background: C.abg, color: C.atxt, border: `1px solid ${C.atxt}33`, borderRadius: 7, padding: "4px 10px", fontSize: 11, textDecoration: "none" }}>Ver</a>
+            )}
+            {canEdit && (
+              <button onClick={() => setDocFile(null)} style={{ background: "transparent", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 14 }}>✕</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Save button ── */}
+      {canEdit && (
+        <button onClick={save} disabled={saving}
+          style={{ ...S.btn(C.acc, "#fff"), padding: "12px 32px", fontSize: 14, fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+          {saving ? "Salvando..." : "Salvar perfil"}
+        </button>
+      )}
     </div>
   );
 }
@@ -4094,6 +4282,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   const [expandId, setExpandId] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [resetPw, setResetPw] = useState("");
+  const [viewProfileId, setViewProfileId] = useState(null);
   const pRef = useRef();
   const pEditRef = useRef();
 
@@ -4649,6 +4838,35 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                     </button>
                   )}
 
+                  {/* Ver Perfil completo — mestre e master */}
+                  {(currentUser.role === "mestre" || currentUser.role === "master") && (
+                    <button
+                      onClick={() => setViewProfileId(viewProfileId === u.id ? null : u.id)}
+                      style={{
+                        background: viewProfileId === u.id ? C.abg : C.deep,
+                        color: viewProfileId === u.id ? C.atxt : C.tm,
+                        border: viewProfileId === u.id ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+                        borderRadius: 8, padding: "5px 12px", fontSize: 11,
+                        cursor: "pointer", fontWeight: 600, flexShrink: 0,
+                      }}>
+                      {viewProfileId === u.id ? "✕ Fechar" : "👁 Perfil"}
+                    </button>
+                  )}
+
+                  {/* Ver Perfil completo — mestre e master */}
+                  {(currentUser.role === "mestre" || currentUser.role === "master") && (
+                    <button
+                      onClick={() => setViewProfileId(viewProfileId === (u.uid||u.id) ? null : (u.uid||u.id))}
+                      style={{
+                        background: viewProfileId === (u.uid||u.id) ? C.abg : C.deep,
+                        color: viewProfileId === (u.uid||u.id) ? C.atxt : C.tm,
+                        border: viewProfileId === (u.uid||u.id) ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+                        borderRadius: 8, padding: "5px 12px", fontSize: 11,
+                        cursor: "pointer", fontWeight: 600, flexShrink: 0,
+                      }}>
+                      {viewProfileId === (u.uid||u.id) ? "✕ Fechar" : "👁 Perfil"}
+                    </button>
+                  )}
                   {/* Delete button — apenas mestre pode excluir, nunca a si mesmo, nunca outro mestre */}
                   {currentUser.role === "mestre" && !isSelf && u.role !== "mestre" && (
                     <button
@@ -4671,6 +4889,63 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                   )}
                 </div>
 
+
+                {/* ── Full profile view panel (mestre/master) ── */}
+                {viewProfileId === (u.uid||u.id) && (
+                  <div style={{ borderTop: `1px solid ${C.b1}`, padding: "20px 22px", background: C.deep }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                      <div style={{ color: C.atxt, fontSize: 12.5, fontWeight: 700 }}>👁 Perfil de {u.name || u.email}</div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        {/* Lock/Unlock */}
+                        <button onClick={async () => {
+                          const updated = { ...u, profileLocked: !u.profileLocked };
+                          await saveUserProfile(u.uid||u.id, updated);
+                        }}
+                          style={{ background: u.profileLocked ? "#2D1515" : C.card, color: u.profileLocked ? "#F87171" : C.tm, border: u.profileLocked ? "1px solid #EF444433" : `1px solid ${C.b2}`, borderRadius: 8, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
+                          {u.profileLocked ? "🔒 Bloqueado" : "🔓 Bloquear edição"}
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                      {[
+                        ["Nome completo", u.name],
+                        ["CPF", u.cpf],
+                        ["Email (login)", u.email],
+                        ["Endereço", u.endereco],
+                        ["Banco", u.banco],
+                        ["Agência", u.agencia],
+                        ["Conta", u.conta],
+                        ["Chave PIX", u.pixKey],
+                        ["Certificações", u.certificacoes],
+                        ["Vencimento cert.", u.certVencimento],
+                      ].map(([label, val]) => (
+                        <div key={label}>
+                          <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 3 }}>{label}</div>
+                          <div style={{ color: val ? C.tp : C.tm, fontSize: 12.5, fontWeight: val ? 500 : 400 }}>{val || "—"}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {u.docFile && (
+                      <div style={{ marginTop: 16, borderTop: `1px solid ${C.b1}`, paddingTop: 14 }}>
+                        <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>Documento ({u.docTipo || "—"})</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, borderRadius: 8, padding: "9px 13px", border: `1px solid ${C.b1}` }}>
+                          {u.docFile.type?.startsWith("image/")
+                            ? <img src={u.docFile.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.b1}` }} />
+                            : <span style={{ fontSize: 24 }}>📄</span>
+                          }
+                          <div style={{ flex: 1 }}>
+                            <div style={{ color: C.tp, fontSize: 12.5, fontWeight: 600 }}>{u.docFile.name}</div>
+                            <div style={{ color: C.td, fontSize: 11 }}>{u.docTipo}</div>
+                          </div>
+                          {u.docFile.type?.startsWith("image/") && (
+                            <a href={u.docFile.url} target="_blank" rel="noopener noreferrer"
+                              style={{ background: C.abg, color: C.atxt, border: `1px solid ${C.atxt}33`, borderRadius: 7, padding: "5px 12px", fontSize: 11, textDecoration: "none" }}>Ver documento</a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* ── Inline edit panel ── */}
                 {isExpanded && editForm && (
                   <div
