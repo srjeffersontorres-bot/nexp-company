@@ -3799,7 +3799,6 @@ function PerfisTab({ users, setUsers, currentUser }) {
   const [editData, setEditData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState("");
-  const docRef = useRef();
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
