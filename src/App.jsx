@@ -754,255 +754,192 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
   const nav = all.filter((it) => it.roles.includes(user.role));
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
   const isConfig = page === "config";
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [navOpen, setNavOpen] = useState(true);
+  const [navOrder, setNavOrder] = useState(() => nav.map(it => it.id));
+  const [dragId, setDragId] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  const orderedNav = [...nav].sort((a, b) => {
+    const ai = navOrder.indexOf(a.id);
+    const bi = navOrder.indexOf(b.id);
+    if (ai === -1) return 1; if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  const handleDragStart = (id) => setDragId(id);
+  const handleDragOver  = (e, id) => { e.preventDefault(); setDragOver(id); };
+  const handleDrop      = (e, targetId) => {
+    e.preventDefault();
+    if (!dragId || dragId === targetId) { setDragId(null); setDragOver(null); return; }
+    const arr = [...orderedNav.map(x => x.id)];
+    const from = arr.indexOf(dragId); const to = arr.indexOf(targetId);
+    arr.splice(from, 1); arr.splice(to, 0, dragId);
+    setNavOrder(arr); setDragId(null); setDragOver(null);
+  };
+  const handleDragEnd = () => { setDragId(null); setDragOver(null); };
 
   return (
-    <div style={{
-      width: 222, background: C.sb, height: "100vh",
-      display: "flex", flexDirection: "column", padding: "20px 0",
-      flexShrink: 0, borderRight: `1px solid ${C.b1}`, overflow: "hidden",
-    }}>
-      {/* Logo */}
-      <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.b1}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 10,
-            background: `linear-gradient(135deg,${C.lg1},${C.lg2})`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 17, color: "#fff", fontWeight: 700,
-          }}>N</div>
-          <div>
-            <div style={{ color: C.tp, fontWeight: 700, fontSize: 14, letterSpacing: "-0.4px" }}>Nexp Company</div>
-            <div style={{ color: C.td, fontSize: 10, marginTop: 1 }}>Sistema de Leads</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Collapsible nav block */}
-      <div style={{ padding: "10px 8px 4px", flexShrink: 0 }}>
-        {/* Toggle button */}
-        <button
-          onClick={() => setNavOpen(o => !o)}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            width: "100%", padding: "8px 11px", borderRadius: 9,
-            background: navOpen ? C.abg : C.deep,
-            border: `1px solid ${navOpen ? C.atxt + "44" : C.b2}`,
-            color: navOpen ? C.atxt : C.tm,
-            fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.12s",
-          }}
-        >
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ fontSize: 13 }}>☰</span> Menu
-          </span>
-          <span style={{ fontSize: 11, opacity: 0.7 }}>{navOpen ? "▲" : "▼"}</span>
-        </button>
-      </div>
-
-      {/* Nav items — collapsible */}
-      <nav style={{
-        flex: navOpen ? 1 : 0,
-        padding: navOpen ? "4px 8px 6px" : "0 8px",
-        display: "flex", flexDirection: "column", gap: 2,
-        overflowY: "auto", transition: "all 0.2s",
-        maxHeight: navOpen ? "100%" : 0,
-        overflow: navOpen ? "auto" : "hidden",
+    <>
+      {/* Sidebar */}
+      <div style={{
+        width: sidebarOpen ? 222 : 0, background: C.sb, height: "100vh",
+        display: "flex", flexDirection: "column", flexShrink: 0,
+        borderRight: `1px solid ${C.b1}`, overflow: "hidden",
+        transition: "width 0.25s cubic-bezier(.4,0,.2,1)", position: "relative",
       }}>
-        {nav.map((it) => {
-          const active = it.id === "config" ? isConfig : page === it.id;
-          return (
-            <button key={it.id} onClick={() => { setPage(it.id); setNavOpen(false); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 9,
-                padding: "8px 11px", borderRadius: 8, border: "none",
-                cursor: "pointer", textAlign: "left", width: "100%",
-                background: active ? C.abg : "transparent",
-                color: active ? C.atxt : C.tm,
-                fontSize: 12.5, fontWeight: active ? 600 : 400, transition: "all 0.12s",
-              }}
-            >
-              <span style={{ fontSize: 13, width: 17, textAlign: "center" }}>{it.icon}</span>
-              {it.label}
-              {it.id === "premium" && (
-                <span style={{ marginLeft: "auto", background: C.abg, color: C.atxt, fontSize: 9, padding: "1px 5px", borderRadius: 9, border: `1px solid ${C.atxt}33` }}>★</span>
-              )}
+        <div style={{ width: 222, display: "flex", flexDirection: "column", height: "100%", padding: "20px 0" }}>
+
+          {/* Logo */}
+          <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.b1}`, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg,${C.lg1},${C.lg2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, color: "#fff", fontWeight: 700 }}>N</div>
+              <div>
+                <div style={{ color: C.tp, fontWeight: 700, fontSize: 14, letterSpacing: "-0.4px" }}>Nexp Company</div>
+                <div style={{ color: C.td, fontSize: 10, marginTop: 1 }}>Sistema de Leads</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu toggle */}
+          <div style={{ padding: "10px 8px 4px", flexShrink: 0 }}>
+            <button onClick={() => setNavOpen(o => !o)} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              width: "100%", padding: "9px 13px", borderRadius: 10,
+              background: navOpen ? C.abg : C.deep,
+              border: `1px solid ${navOpen ? C.atxt + "44" : C.b2}`,
+              color: navOpen ? C.atxt : C.tm,
+              fontSize: 12.5, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
+            }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 14 }}>☰</span> Menu</span>
+              <span style={{ fontSize: 10, opacity: 0.7, display: "inline-block", transform: navOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>▲</span>
             </button>
-          );
-        })}
-      </nav>
-      {/* Spacer when nav closed */}
-      {!navOpen && <div style={{ flex: 1 }} />}
+            {navOpen && <div style={{ color: C.td, fontSize: 9.5, textAlign: "center", marginTop: 5, opacity: 0.6 }}>⠿ Arraste para reorganizar</div>}
+          </div>
 
-      <div style={{ padding: "0 12px" }}>
+          {/* Nav items */}
+          {navOpen && (
+            <nav style={{ flex: 1, padding: "4px 8px 6px", display: "flex", flexDirection: "column", gap: 3, overflowY: "auto" }}>
+              {orderedNav.map((it) => {
+                const active = it.id === "config" ? isConfig : page === it.id;
+                const isDragging = dragId === it.id;
+                const isOver = dragOver === it.id && dragOver !== dragId;
+                return (
+                  <button key={it.id}
+                    draggable
+                    onDragStart={() => handleDragStart(it.id)}
+                    onDragOver={(e) => handleDragOver(e, it.id)}
+                    onDrop={(e) => handleDrop(e, it.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => { setPage(it.id); setNavOpen(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "9px 13px", borderRadius: 10, cursor: "pointer",
+                      textAlign: "left", width: "100%",
+                      background: active ? C.acc : isOver ? C.abg : C.deep,
+                      color: active ? "#fff" : isOver ? C.atxt : C.ts,
+                      border: active ? "none" : isOver ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+                      fontSize: 12.5, fontWeight: active ? 700 : 400,
+                      opacity: isDragging ? 0.35 : 1,
+                      transform: isOver ? "translateY(-2px) scale(1.02)" : "none",
+                      transition: "all 0.14s cubic-bezier(.4,0,.2,1)",
+                      boxShadow: active ? `0 3px 12px ${C.acc}55` : "none",
+                    }}
+                    onMouseEnter={e => { if (!active) { e.currentTarget.style.background = C.abg; e.currentTarget.style.color = C.atxt; e.currentTarget.style.borderColor = C.atxt + "44"; e.currentTarget.style.transform = "scale(1.02)"; e.currentTarget.style.boxShadow = `0 2px 8px ${C.acc}22`; }}}
+                    onMouseLeave={e => { if (!active) { e.currentTarget.style.background = C.deep; e.currentTarget.style.color = C.ts; e.currentTarget.style.borderColor = C.b2; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}}
+                  >
+                    <span style={{ fontSize: 14, width: 18, textAlign: "center", flexShrink: 0 }}>{it.icon}</span>
+                    <span style={{ flex: 1 }}>{it.label}</span>
+                    {it.id === "premium" && <span style={{ background: active ? "rgba(255,255,255,0.2)" : C.abg, color: active ? "#fff" : C.atxt, fontSize: 9, padding: "1px 5px", borderRadius: 9 }}>★</span>}
+                    <span style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.35)" : C.td, cursor: "grab" }} title="Arrastar">⠿</span>
+                  </button>
+                );
+              })}
+            </nav>
+          )}
 
-        {/* Stories + Chat — separados do nav, acima do perfil */}
-        <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-          {/* Stories */}
-          <button
-            onClick={() => setPage("stories")}
-            style={{
-              display: "flex", alignItems: "center", gap: 9,
-              padding: "9px 11px", borderRadius: 9, width: "100%",
-              border: page === "stories" ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
-              cursor: "pointer", textAlign: "left",
-              background: page === "stories" ? C.abg : C.deep,
-              color: page === "stories" ? C.atxt : C.tm,
-              fontSize: 12.5, fontWeight: page === "stories" ? 600 : 400,
-              transition: "all 0.12s",
-            }}
-          >
-            <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>◎</span>
-            Stories
-          </button>
-          {/* Chat */}
-          <button
-            onClick={() => setPage("chat")}
-            style={{
-              display: "flex", alignItems: "center", gap: 9,
-              padding: "9px 11px", borderRadius: 9, width: "100%",
-              border: page === "chat" ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
-              cursor: "pointer", textAlign: "left",
-              background: page === "chat" ? C.abg : C.deep,
-              color: page === "chat" ? C.atxt : C.tm,
-              fontSize: 12.5, fontWeight: page === "chat" ? 600 : 400,
-              transition: "all 0.12s",
-            }}
-          >
-            <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>💬</span>
-            Chat da Equipe
-            {unreadChat > 0 && (
-              <span style={{
-                marginLeft: "auto", background: "#16A34A", color: "#fff",
-                fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700,
-                animation: "pulse 1.5s infinite",
-              }}>
-                {unreadChat}
-              </span>
-            )}
-          </button>
-        </div>
+          {!navOpen && <div style={{ flex: 1 }} />}
 
-        {/* Perfil do usuário */}
-        <div
-          style={{
-            background: C.deep,
-            borderRadius: 10,
-            padding: "11px 12px",
-            border: `1px solid ${C.b1}`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              {uObj.photo ? (
-                <img src={uObj.photo} alt=""
-                  style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${C.atxt}33` }} />
-              ) : (
-                <div style={{
-                  width: 30, height: 30, borderRadius: "50%",
-                  background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg,
-                  color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 700, border: `1.5px solid ${C.atxt}33`,
-                  animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none",
-                  transition: "background 0.3s",
-                }}>
-                  {ini(uObj.name || "OP")}
+          {/* Bottom: Stories + Chat + Profile + WhatsApp */}
+          <div style={{ padding: "0 12px" }}>
+            <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+              {[{ id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Chat da Equipe", icon:"💬" }].map(item => (
+                <button key={item.id} onClick={() => setPage(item.id)} style={{
+                  display: "flex", alignItems: "center", gap: 9,
+                  padding: "9px 13px", borderRadius: 10, width: "100%",
+                  border: page === item.id ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+                  cursor: "pointer", textAlign: "left",
+                  background: page === item.id ? C.abg : C.deep,
+                  color: page === item.id ? C.atxt : C.tm,
+                  fontSize: 12.5, fontWeight: page === item.id ? 600 : 400, transition: "all 0.14s",
+                  boxShadow: page === item.id ? `0 2px 8px ${C.acc}33` : "none",
+                }}
+                  onMouseEnter={e => { if (page !== item.id) { e.currentTarget.style.background = C.abg; e.currentTarget.style.color = C.atxt; e.currentTarget.style.borderColor = C.atxt + "44"; e.currentTarget.style.transform = "scale(1.01)"; }}}
+                  onMouseLeave={e => { if (page !== item.id) { e.currentTarget.style.background = C.deep; e.currentTarget.style.color = C.tm; e.currentTarget.style.borderColor = C.b2; e.currentTarget.style.transform = "none"; }}}
+                >
+                  <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>{item.icon}</span>
+                  {item.label}
+                  {item.id === "chat" && unreadChat > 0 && (
+                    <span style={{ marginLeft: "auto", background: "#16A34A", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadChat}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* User card */}
+            <div style={{ background: C.deep, borderRadius: 10, padding: "11px 12px", border: `1px solid ${C.b1}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  {uObj.photo
+                    ? <img src={uObj.photo} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${C.atxt}33` }} />
+                    : <div style={{ width: 30, height: 30, borderRadius: "50%", background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg, color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, border: `1.5px solid ${C.atxt}33`, animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>{ini(uObj.name || "OP")}</div>
+                  }
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}` }} />
                 </div>
-              )}
-              {/* Pontinho online */}
-              <div style={{
-                position: "absolute", bottom: 0, right: 0,
-                width: 8, height: 8, borderRadius: "50%",
-                background: "#16A34A",
-                border: `1.5px solid ${C.sb}`,
-              }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: C.ts, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-                {uObj.name || uObj.username}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
+                  <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>{roleLabel[user.role]}<span style={{ color: "#16A34A", fontSize: 9 }}>● online</span></div>
+                </div>
+                <button onClick={() => setPage("stories")} title="Criar story" style={{ width: 20, height: 20, borderRadius: "50%", background: C.acc, color: "#fff", border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: 0 }}>+</button>
               </div>
-              <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                {roleLabel[user.role]}
-                <span style={{ color: "#16A34A", fontSize: 9 }}>● online</span>
-              </div>
+              <button onClick={onLogout} style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 7, padding: "5px 10px", fontSize: 11, cursor: "pointer", width: "100%" }}>Sair</button>
             </div>
-            {/* Botão + para criar story */}
-            <button
-              onClick={() => setPage("stories")}
-              title="Criar story"
-              style={{
-                width: 20, height: 20, borderRadius: "50%",
-                background: C.acc, color: "#fff",
-                border: `1.5px solid ${C.bg}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 700, cursor: "pointer",
-                flexShrink: 0, lineHeight: 1,
-                padding: 0,
-              }}
-            >+</button>
-          </div>
-          <button
-            onClick={onLogout}
-            style={{
-              background: "transparent",
-              border: `1px solid ${C.b2}`,
-              color: C.tm,
-              borderRadius: 7,
-              padding: "5px 10px",
-              fontSize: 11,
-              cursor: "pointer",
-              width: "100%",
-            }}
-          >
-            Sair
-          </button>
-        </div>
 
-        {/* WhatsApp support */}
-        <a
-          href="https://wa.me/5584981323542"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 10,
-            padding: "9px 12px",
-            background: "#0A2918",
-            border: "1px solid #16A34A44",
-            borderRadius: 9,
-            textDecoration: "none",
-            transition: "background 0.12s",
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="#25D366"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z" />
-          </svg>
-          <div>
-            <div
-              style={{
-                color: "#25D366",
-                fontSize: 11,
-                fontWeight: 700,
-                lineHeight: 1.2,
-              }}
-            >
-              Suporte WhatsApp
-            </div>
-            <div style={{ color: "#2D6B47", fontSize: 10, marginTop: 1 }}>
-              (84) 98132-3542
-            </div>
+            {/* WhatsApp */}
+            <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "9px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 9, textDecoration: "none" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
+              <div>
+                <div style={{ color: "#25D366", fontSize: 11, fontWeight: 700, lineHeight: 1.2 }}>Suporte WhatsApp</div>
+                <div style={{ color: "#2D6B47", fontSize: 10, marginTop: 1 }}>(84) 98132-3542</div>
+              </div>
+            </a>
           </div>
-        </a>
+        </div>
       </div>
-    </div>
+
+      {/* Arrow toggle button — fixed on edge */}
+      <button
+        onClick={() => setSidebarOpen(o => !o)}
+        title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
+        style={{
+          position: "fixed", left: sidebarOpen ? 210 : 0, top: "50%",
+          transform: "translateY(-50%)", zIndex: 200,
+          width: 22, height: 50,
+          background: `linear-gradient(135deg,${C.acc},${C.lg2})`,
+          color: "#fff", border: "none",
+          borderRadius: "0 12px 12px 0",
+          cursor: "pointer", fontSize: 12, fontWeight: 700,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "left 0.25s cubic-bezier(.4,0,.2,1), background 0.2s",
+          boxShadow: `3px 0 14px ${C.acc}55`,
+        }}
+        onMouseEnter={e => e.currentTarget.style.width = "28px"}
+        onMouseLeave={e => e.currentTarget.style.width = "22px"}
+      >
+        {sidebarOpen ? "◀" : "▶"}
+      </button>
+    </>
   );
 }
 
