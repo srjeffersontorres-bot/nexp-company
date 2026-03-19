@@ -5680,7 +5680,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [text, setText] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [attachment, setAttachment] = useState(null);
-  const [flashAuthor] = useState(null);
   const [reactionPicker, setReactionPicker] = useState(null);
   const [hoveredMsg, setHoveredMsg] = useState(null);
   const [showQuick, setShowQuick] = useState(false);
