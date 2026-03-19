@@ -6278,6 +6278,342 @@ function AtalhosPage({ currentUser }) {
   );
 }
 
+// ── FloatingChat ───────────────────────────────────────────────
+function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChange, onMinimize, onRestore, onClose, unreadChat }) {
+  const myId = currentUser.uid || currentUser.id;
+  const [activeTab, setActiveTab] = useState(null); // null = inbox, uid = DM, "geral" = geral
+  const [allMessages, setAllMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [attachment, setAttachment] = useState(null);
+  const [flashAuthor, setFlashAuthor] = useState(null);
+  const [reactionPicker, setReactionPicker] = useState(null);
+  const [hoveredMsg, setHoveredMsg] = useState(null);
+  const [showQuick, setShowQuick] = useState(false);
+  const [filter, setFilter] = useState("");
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+  const fileRef = useRef(null);
+  const dragRef = useRef(null);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+
+  const isMestre = currentUser.role === "mestre";
+  const mestreUser = users.find(u => u.role === "mestre");
+  const dmList = isMestre ? users.filter(u => (u.uid||u.id) !== myId) : (mestreUser ? [mestreUser] : []);
+
+  // Default position — bottom right
+  const defaultX = window.innerWidth - 400;
+  const defaultY = 60;
+  const left = pos.x ?? defaultX;
+  const top  = pos.y ?? defaultY;
+
+  // Listen messages
+  useEffect(() => {
+    const unsub = listenChat(setAllMessages);
+    return () => unsub();
+  }, []);
+
+  // Scroll to bottom
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allMessages, activeTab]);
+
+  // Mark read
+  useEffect(() => {
+    if (!activeTab || activeTab === "geral") return;
+    const timer = setTimeout(() => {
+      const unread = allMessages.filter(m => m.toId === myId && m.authorId === activeTab && !m.readAt && m.type !== "shake");
+      unread.forEach(async m => { try { await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true }); } catch(e) {} });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [activeTab]); // eslint-disable-line
+
+  // Drag to move
+  const startDrag = (e) => {
+    e.preventDefault();
+    const rect = dragRef.current.getBoundingClientRect();
+    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const onMove = (ev) => onPosChange({ x: ev.clientX - dragOffset.current.x, y: ev.clientY - dragOffset.current.y });
+    const onUp   = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Touch drag
+  const startTouchDrag = (e) => {
+    const t = e.touches[0];
+    const rect = dragRef.current.getBoundingClientRect();
+    dragOffset.current = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    const onMove = (ev) => { const tt = ev.touches[0]; onPosChange({ x: tt.clientX - dragOffset.current.x, y: tt.clientY - dragOffset.current.y }); };
+    const onEnd  = () => { window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); };
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+  };
+
+  const messages = activeTab === "geral"
+    ? allMessages.filter(m => !m.toId && m.type !== "shake")
+    : allMessages.filter(m => m.type !== "shake" && ((m.authorId === myId && m.toId === activeTab) || (m.authorId === activeTab && m.toId === myId)));
+
+  const unreadDM = (uid) => allMessages.filter(m => m.toId === myId && m.authorId === uid && !m.readAt && m.type !== "shake").length;
+
+  const send = async (msg) => {
+    const content = (msg || text).trim();
+    if (!content && !attachment) return;
+    setText(""); setShowQuick(false); setShowEmoji(false);
+    const payload = { text: content || "", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, ...(activeTab !== "geral" && activeTab && { toId: activeTab }), ...(attachment && { attachment }) };
+    setAttachment(null);
+    await sendChatMessage(payload);
+    inputRef.current?.focus();
+  };
+
+  const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
+
+  const REACTION_EMOJIS = ["❤️","😂","🔥","👍","😮","🎉","💯","😢"];
+  const toggleReaction = async (msgId, emoji) => {
+    setReactionPicker(null);
+    const msg = allMessages.find(m => m.id === msgId); if (!msg) return;
+    const reactions = msg.reactions || {};
+    const us = reactions[emoji] || [];
+    const updated = us.includes(myId) ? us.filter(u => u !== myId) : [...us, myId];
+    const newR = { ...reactions, [emoji]: updated };
+    if (updated.length === 0) delete newR[emoji];
+    await setDoc(doc(db, "chat", msgId), { reactions: newR }, { merge: true });
+  };
+
+  const shake = async () => {
+    if (!activeTab || activeTab === "geral") return;
+    await sendChatMessage({ text: "🔔", type: "shake", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, toId: activeTab });
+  };
+
+  const QUICK_MESSAGES = ["Bom dia, equipe! 🌅","Boa tarde! ☀️","Boa noite! 🌙","Vamos nessa! 🚀","Meta batida! 🏆","Ótimo trabalho! 👏","Aguardando retorno 📞","Reunião em 5 min ⏰","Cliente interessado! 💰","Fechamento confirmado! ✅","Precisando de ajuda 🆘","Tudo certo por aqui 👍"];
+  const filteredQuick = filter ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase())) : QUICK_MESSAGES;
+
+  const tabUser = activeTab && activeTab !== "geral" ? dmList.find(u => (u.uid||u.id) === activeTab) : null;
+  const lastMsgTime = (uid) => {
+    const msgs = allMessages.filter(m => (m.authorId === uid && m.toId === myId) || (m.authorId === myId && m.toId === uid));
+    const last = msgs[msgs.length - 1];
+    if (!last?.createdAt?.seconds) return "";
+    return new Date(last.createdAt.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // ── Minimized pill ──────────────────────────────────────────
+  if (minimized) {
+    return (
+      <div ref={dragRef} onMouseDown={startDrag} onTouchStart={startTouchDrag}
+        style={{ position:"fixed", left, top, zIndex:400, display:"flex", alignItems:"center", gap:8, background:`linear-gradient(135deg,${C.acc},${C.lg2})`, borderRadius:24, padding:"8px 16px", cursor:"grab", boxShadow:`0 4px 20px ${C.acc}55`, userSelect:"none", animation:"fadeIn 0.2s ease" }}>
+        <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 6px #4ade80" }} />
+        <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>Nexp Chat</span>
+        {unreadChat > 0 && <span style={{ background:"#fff", color:C.acc, borderRadius:"50%", width:18, height:18, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadChat}</span>}
+        <button onClick={onRestore} title="Restaurar" style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>▲</button>
+        <button onClick={onClose} title="Fechar" style={{ background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={dragRef} style={{ position:"fixed", left, top, width:380, height:580, zIndex:400, display:"flex", flexDirection:"column", background:C.sb, borderRadius:16, border:`1px solid ${C.b1}`, boxShadow:"0 8px 40px rgba(0,0,0,0.6)", overflow:"hidden", animation:"fadeIn 0.22s ease" }}>
+
+      {/* ── Header ── */}
+      <div onMouseDown={startDrag} onTouchStart={startTouchDrag}
+        style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, cursor:"grab", background:C.sb, flexShrink:0, userSelect:"none" }}>
+        {/* Back button */}
+        {activeTab && (
+          <button onClick={() => setActiveTab(null)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, padding:"0 4px", lineHeight:1, flexShrink:0 }}
+            onMouseEnter={e=>e.currentTarget.style.color=C.tp} onMouseLeave={e=>e.currentTarget.style.color=C.tm}>
+            ‹
+          </button>
+        )}
+        {/* Title */}
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ color:C.tp, fontSize:13.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+            {activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (tabUser.name || tabUser.email) : "💬 Nexp Chat"}
+          </div>
+          <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
+            {activeTab === "geral" ? `${users.length} membros` : tabUser ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role]) : "Selecione uma conversa"}
+          </div>
+        </div>
+        {/* Controls */}
+        <div style={{ display:"flex", gap:5 }}>
+          <button onClick={onMinimize} title="Minimizar" style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.15)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"}>
+            —
+          </button>
+          <button onClick={onClose} title="Fechar" style={{ background:"rgba(239,68,68,0.15)", border:"none", color:"#F87171", borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.3)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}>
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* ── Inbox (no tab selected) ── */}
+      {!activeTab && (
+        <div style={{ flex:1, overflowY:"auto", padding:"8px" }}>
+          {/* Geral */}
+          <button onClick={() => setActiveTab("geral")} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
+            onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🌐</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>Chat Geral</div>
+              <div style={{ color:C.tm, fontSize:11 }}>Todos os membros</div>
+            </div>
+          </button>
+          {/* DMs */}
+          {dmList.map(u => {
+            const uid = u.uid || u.id;
+            const rc = roleColor[u.role] || C.atxt;
+            const unread = unreadDM(uid);
+            const isOnline = presence[uid]?.online;
+            return (
+              <button key={uid} onClick={() => setActiveTab(uid)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
+                onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{ position:"relative", flexShrink:0 }}>
+                  {u.photo ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover" }} /> : <div style={{ width:40, height:40, borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700 }}>{ini(u.name||u.email||"?")}</div>}
+                  {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}` }} />}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name || u.email}</div>
+                  <div style={{ color: isOnline ? "#16A34A" : C.tm, fontSize:11 }}>{isOnline ? "● online" : roleLabel[u.role]}</div>
+                </div>
+                {unread > 0 && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Conversation ── */}
+      {activeTab && (
+        <>
+          {/* Messages */}
+          <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5 }}>
+            {messages.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:C.tm, fontSize:12 }}>Nenhuma mensagem ainda</div>}
+            {messages.map(msg => {
+              const isMine = msg.authorId === myId;
+              const rc = roleColor[msg.authorRole] || C.atxt;
+              const time = msg.createdAt?.seconds ? new Date(msg.createdAt.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
+              const reactions = msg.reactions || {};
+              const hasReactions = Object.keys(reactions).some(e => (reactions[e]||[]).length > 0);
+              return (
+                <div key={msg.id} style={{ display:"flex", flexDirection:isMine?"row-reverse":"row", alignItems:"flex-end", gap:6, position:"relative" }}
+                  onMouseEnter={()=>setHoveredMsg(msg.id)} onMouseLeave={()=>{setHoveredMsg(null);if(reactionPicker===msg.id)setReactionPicker(null);}}>
+                  {!isMine && (
+                    <div style={{ width:26, height:26, borderRadius:"50%", background:flashAuthor===msg.authorId?"#16A34A":rc+"1A", color:flashAuthor===msg.authorId?"#fff":rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{ini(msg.authorName||"?")}</div>
+                  )}
+                  <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems:isMine?"flex-end":"flex-start", position:"relative" }}>
+                    {!isMine && activeTab==="geral" && <span style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2 }}>{msg.authorName}</span>}
+                    <div style={{ display:"flex", alignItems:"center", gap:4, flexDirection:isMine?"row-reverse":"row" }}>
+                      <div style={{ background:isMine?C.acc:C.card, color:isMine?"#fff":C.tp, border:isMine?"none":`1px solid ${C.b1}`, borderRadius:isMine?"16px 16px 4px 16px":"16px 16px 16px 4px", padding:"7px 11px", fontSize:12.5, lineHeight:1.5, wordBreak:"break-word" }}>
+                        {msg.text && <div>{msg.text}</div>}
+                        {msg.attachment && (
+                          <div style={{ marginTop:msg.text?5:0 }}>
+                            {msg.attachment.type?.startsWith("image/") ? <img src={msg.attachment.url} alt="" style={{ maxWidth:140, maxHeight:140, borderRadius:8, display:"block" }} /> : <a href={msg.attachment.url} download={msg.attachment.name} style={{ color:isMine?"#fff":C.atxt, fontSize:11 }}>📎 {msg.attachment.name}</a>}
+                          </div>
+                        )}
+                      </div>
+                      {hoveredMsg === msg.id && (
+                        <div style={{ position:"relative" }}>
+                          <button onClick={()=>setReactionPicker(p=>p===msg.id?null:msg.id)} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"50%", width:22, height:22, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 6px #00000044" }}>🙂</button>
+                          {reactionPicker===msg.id && (
+                            <div style={{ position:"absolute", bottom:26, [isMine?"right":"left"]:0, background:C.card, border:`1px solid ${C.b1}`, borderRadius:22, padding:"5px 8px", display:"flex", gap:3, zIndex:10, boxShadow:"0 4px 16px #00000055", whiteSpace:"nowrap" }}>
+                              {REACTION_EMOJIS.map(e=>(
+                                <button key={e} onClick={()=>toggleReaction(msg.id,e)} style={{ background:(reactions[e]||[]).includes(myId)?C.abg:"transparent", border:"none", borderRadius:"50%", width:28, height:28, fontSize:16, cursor:"pointer" }}>{e}</button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {hasReactions && (
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:3, marginTop:3, justifyContent:isMine?"flex-end":"flex-start" }}>
+                        {Object.entries(reactions).filter(([,u])=>u?.length>0).map(([emoji,us])=>(
+                          <button key={emoji} onClick={()=>toggleReaction(msg.id,emoji)} style={{ background:us.includes(myId)?C.abg:C.deep, border:us.includes(myId)?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:20, padding:"1px 7px", fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+                            <span>{emoji}</span><span style={{ color:us.includes(myId)?C.atxt:C.tm, fontSize:10 }}>{us.length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display:"flex", alignItems:"center", gap:3, marginTop:2 }}>
+                      <span style={{ color:C.td, fontSize:9 }}>{time}</span>
+                      {isMine && activeTab!=="geral" && <span style={{ fontSize:10, fontWeight:700, color:msg.readAt?"#38BDF8":C.td, letterSpacing:"-1px" }} title={msg.readAt?`Visto às ${new Date(msg.readAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`:""}>
+                        {msg.readAt?"✓✓":"✓"}
+                      </span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Quick messages */}
+          {showQuick && (
+            <div style={{ margin:"0 10px 5px", background:C.card, border:`1px solid ${C.b1}`, borderRadius:10, overflow:"hidden", maxHeight:150, display:"flex", flexDirection:"column" }}>
+              <div style={{ padding:"5px 10px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:6 }}>
+                <span style={{ color:C.tm, fontSize:10 }}>⚡ Clique para enviar</span>
+                <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filtrar..." style={{ ...S.input, padding:"2px 7px", fontSize:10, flex:1 }} />
+                <button onClick={()=>{setShowQuick(false);setFilter("");}} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:12 }}>✕</button>
+              </div>
+              <div style={{ overflowY:"auto", flex:1 }}>
+                {filteredQuick.map((m,i)=>(
+                  <div key={i} onClick={()=>send(m)} style={{ padding:"6px 12px", cursor:"pointer", fontSize:11.5, color:C.ts, borderBottom:`1px solid ${C.b1}` }}
+                    onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{m}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Emoji picker */}
+          {showEmoji && (
+            <div style={{ margin:"0 10px 5px", display:"flex", flexWrap:"wrap", gap:4, padding:"6px 10px", background:C.card, borderRadius:10, border:`1px solid ${C.b1}` }}>
+              {["😀","😂","😍","🥰","😎","🤩","🙄","😅","😇","🤗","🔥","⭐","💰","📞","✅","❌","⏳","🤝","💬","🎯","👍","💪","🎉","💎","🏆","✨","🚀","💯"].map(e=>(
+                <button key={e} onClick={()=>setText(t=>t+e)} style={{ background:"none", border:"none", fontSize:17, cursor:"pointer", borderRadius:5, padding:"2px" }}>{e}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Attachment preview */}
+          {attachment && (
+            <div style={{ margin:"0 10px 4px", padding:"5px 10px", background:C.card, borderRadius:8, border:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:8 }}>
+              {attachment.type?.startsWith("image/") ? <img src={attachment.url} alt="" style={{ width:28, height:28, objectFit:"cover", borderRadius:4 }} /> : <span>📎</span>}
+              <span style={{ color:C.ts, fontSize:11, flex:1 }}>{attachment.name}</span>
+              <button onClick={()=>setAttachment(null)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer" }}>✕</button>
+            </div>
+          )}
+
+          {/* Input */}
+          <div style={{ padding:"8px 10px 10px", borderTop:`1px solid ${C.b1}`, flexShrink:0, background:C.sb }}>
+            <div style={{ display:"flex", gap:4, alignItems:"flex-end" }}>
+              <button onClick={()=>{setShowQuick(p=>!p);setFilter("");}} style={{ background:"transparent", border:"none", color:showQuick?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>e.currentTarget.style.color=C.atxt} onMouseLeave={e=>{if(!showQuick)e.currentTarget.style.color=C.tm}}>⚡</button>
+              <button onClick={()=>setShowEmoji(p=>!p)} style={{ background:"transparent", border:"none", color:showEmoji?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>e.currentTarget.style.color=C.atxt} onMouseLeave={e=>{if(!showEmoji)e.currentTarget.style.color=C.tm}}>😊</button>
+              {activeTab !== "geral" && <button onClick={shake} style={{ background:"transparent", border:"none", color:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>{e.currentTarget.style.color="#F87171";}} onMouseLeave={e=>e.currentTarget.style.color=C.tm} title="Chamar atenção">📳</button>}
+              {activeTab !== "geral" && (
+                <>
+                  <button onClick={()=>fileRef.current?.click()} style={{ background:"transparent", border:"none", color:attachment?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0 }}>📎</button>
+                  <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx" onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setAttachment({name:f.name,url:ev.target.result,type:f.type});r.readAsDataURL(f);}} style={{ display:"none" }} />
+                </>
+              )}
+              <textarea ref={inputRef} value={text}
+                onChange={e=>{setText(e.target.value);if(e.target.value.startsWith("/"))setShowQuick(true);}}
+                onKeyDown={handleKey}
+                placeholder={activeTab==="geral"?"Mensagem…":`Para ${tabUser?.name?.split(" ")[0]||"usuário"}…`}
+                rows={1}
+                style={{ ...S.input, flex:1, resize:"none", borderRadius:20, padding:"8px 14px", fontSize:12.5, lineHeight:1.5, border:`1px solid ${text.trim()?C.atxt+"66":C.b2}`, transition:"border-color 0.2s, box-shadow 0.2s", boxShadow:text.trim()?`0 0 0 3px ${C.acc}18`:"none", outline:"none" }}
+                onFocus={e=>{e.target.style.borderColor=C.atxt+"88";e.target.style.boxShadow=`0 0 0 3px ${C.acc}22`;}}
+                onBlur={e=>{e.target.style.borderColor=text.trim()?C.atxt+"66":C.b2;e.target.style.boxShadow=text.trim()?`0 0 0 3px ${C.acc}18`:"none";}}
+              />
+              <button onClick={()=>send()} disabled={!text.trim()&&!attachment}
+                style={{ background:text.trim()||attachment?C.acc:C.deep, color:text.trim()||attachment?"#fff":C.td, border:"none", borderRadius:"50%", width:36, height:36, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", cursor:text.trim()||attachment?"pointer":"not-allowed", fontSize:15, transition:"all 0.2s", transform:text.trim()||attachment?"scale(1)":"scale(0.88)", boxShadow:text.trim()||attachment?`0 3px 10px ${C.acc}55`:"none", opacity:text.trim()||attachment?1:0.4 }}>
+                ➤
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
@@ -6291,6 +6627,8 @@ export default function App() {
   const [presence, setPresenceData] = useState({});
   const [flashUserId, setFlashUserId] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatMinimized, setChatMinimized] = useState(false);
+  const [chatPos, setChatPos] = useState({ x: null, y: null });
   const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
@@ -6542,32 +6880,20 @@ export default function App() {
         )}
       </div>
 
-      {/* ── Chat flutuante estilo Instagram ── */}
+      {/* ── Chat Flutuante ── */}
       {chatOpen && (
-        <>
-          {/* Overlay escuro clicável */}
-          <div
-            onClick={() => setChatOpen(false)}
-            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.35)", zIndex:299, animation:"fadeIn 0.2s ease" }}
-          />
-          {/* Painel deslizante */}
-          <div style={{
-            position: "fixed", right: 0, top: 0, bottom: 0,
-            width: 380, zIndex: 300,
-            background: C.sb, borderLeft: `1px solid ${C.b1}`,
-            display: "flex", flexDirection: "column",
-            animation: "slideInRight 0.28s cubic-bezier(.4,0,.2,1)",
-            boxShadow: "-8px 0 40px rgba(0,0,0,0.5)",
-          }}>
-            <ChatPage
-              currentUser={currentUser}
-              users={users}
-              presence={presence}
-              onClose={() => setChatOpen(false)}
-              floating={true}
-            />
-          </div>
-        </>
+        <FloatingChat
+          currentUser={currentUser}
+          users={users}
+          presence={presence}
+          minimized={chatMinimized}
+          pos={chatPos}
+          onPosChange={setChatPos}
+          onMinimize={() => setChatMinimized(true)}
+          onRestore={() => setChatMinimized(false)}
+          onClose={() => { setChatOpen(false); setChatMinimized(false); }}
+          unreadChat={unreadChat}
+        />
       )}
     </div>
     </>
