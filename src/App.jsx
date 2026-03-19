@@ -752,133 +752,87 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
     },
   ];
   const nav = all.filter((it) => it.roles.includes(user.role));
-  const roleLabel = {
-    mestre: "Mestre",
-    master: "Master",
-    indicado: "Operador",
-  };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
   const isConfig = page === "config";
+  const [navOpen, setNavOpen] = useState(true);
+
   return (
-    <div
-      style={{
-        width: 222,
-        background: C.sb,
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        padding: "20px 0",
-        flexShrink: 0,
-        borderRight: `1px solid ${C.b1}`,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{ padding: "0 16px 20px", borderBottom: `1px solid ${C.b1}` }}
-      >
+    <div style={{
+      width: 222, background: C.sb, height: "100vh",
+      display: "flex", flexDirection: "column", padding: "20px 0",
+      flexShrink: 0, borderRight: `1px solid ${C.b1}`, overflow: "hidden",
+    }}>
+      {/* Logo */}
+      <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.b1}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: `linear-gradient(135deg,${C.lg1},${C.lg2})`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 17,
-              color: "#fff",
-              fontWeight: 700,
-            }}
-          >
-            N
-          </div>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: `linear-gradient(135deg,${C.lg1},${C.lg2})`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 17, color: "#fff", fontWeight: 700,
+          }}>N</div>
           <div>
-            <div
-              style={{
-                color: C.tp,
-                fontWeight: 700,
-                fontSize: 14,
-                letterSpacing: "-0.4px",
-              }}
-            >
-              Nexp Company
-            </div>
-            <div style={{ color: C.td, fontSize: 10, marginTop: 1 }}>
-              Sistema de Leads
-            </div>
+            <div style={{ color: C.tp, fontWeight: 700, fontSize: 14, letterSpacing: "-0.4px" }}>Nexp Company</div>
+            <div style={{ color: C.td, fontSize: 10, marginTop: 1 }}>Sistema de Leads</div>
           </div>
         </div>
       </div>
-      <nav
-        style={{
-          flex: 1,
-          padding: "12px 8px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-          overflowY: "auto",
-        }}
-      >
+
+      {/* Collapsible nav block */}
+      <div style={{ padding: "10px 8px 4px", flexShrink: 0 }}>
+        {/* Toggle button */}
+        <button
+          onClick={() => setNavOpen(o => !o)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            width: "100%", padding: "8px 11px", borderRadius: 9,
+            background: navOpen ? C.abg : C.deep,
+            border: `1px solid ${navOpen ? C.atxt + "44" : C.b2}`,
+            color: navOpen ? C.atxt : C.tm,
+            fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.12s",
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ fontSize: 13 }}>☰</span> Menu
+          </span>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>{navOpen ? "▲" : "▼"}</span>
+        </button>
+      </div>
+
+      {/* Nav items — collapsible */}
+      <nav style={{
+        flex: navOpen ? 1 : 0,
+        padding: navOpen ? "4px 8px 6px" : "0 8px",
+        display: "flex", flexDirection: "column", gap: 2,
+        overflowY: "auto", transition: "all 0.2s",
+        maxHeight: navOpen ? "100%" : 0,
+        overflow: navOpen ? "auto" : "hidden",
+      }}>
         {nav.map((it) => {
           const active = it.id === "config" ? isConfig : page === it.id;
           return (
-            <button
-              key={it.id}
-              onClick={() => setPage(it.id)}
+            <button key={it.id} onClick={() => { setPage(it.id); setNavOpen(false); }}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "8px 11px",
-                borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                textAlign: "left",
-                width: "100%",
+                display: "flex", alignItems: "center", gap: 9,
+                padding: "8px 11px", borderRadius: 8, border: "none",
+                cursor: "pointer", textAlign: "left", width: "100%",
                 background: active ? C.abg : "transparent",
                 color: active ? C.atxt : C.tm,
-                fontSize: 12.5,
-                fontWeight: active ? 600 : 400,
-                transition: "all 0.12s",
+                fontSize: 12.5, fontWeight: active ? 600 : 400, transition: "all 0.12s",
               }}
             >
-              <span style={{ fontSize: 13, width: 17, textAlign: "center" }}>
-                {it.icon}
-              </span>
+              <span style={{ fontSize: 13, width: 17, textAlign: "center" }}>{it.icon}</span>
               {it.label}
               {it.id === "premium" && (
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    background: C.abg,
-                    color: C.atxt,
-                    fontSize: 9,
-                    padding: "1px 5px",
-                    borderRadius: 9,
-                    border: `1px solid ${C.atxt}33`,
-                  }}
-                >
-                  ★
-                </span>
-              )}
-              {it.id === "chat" && unreadChat > 0 && (
-                <span style={{
-                  marginLeft: "auto",
-                  background: "#16A34A",
-                  color: "#fff",
-                  fontSize: 9,
-                  padding: "1px 6px",
-                  borderRadius: 9,
-                  fontWeight: 700,
-                  animation: "pulse 1.5s infinite",
-                }}>
-                  {unreadChat}
-                </span>
+                <span style={{ marginLeft: "auto", background: C.abg, color: C.atxt, fontSize: 9, padding: "1px 5px", borderRadius: 9, border: `1px solid ${C.atxt}33` }}>★</span>
               )}
             </button>
           );
         })}
       </nav>
+      {/* Spacer when nav closed */}
+      {!navOpen && <div style={{ flex: 1 }} />}
+
       <div style={{ padding: "0 12px" }}>
 
         {/* Stories + Chat — separados do nav, acima do perfil */}
@@ -5849,7 +5803,7 @@ function StoriesPage({ currentUser, users }) {
       {/* Header */}
       <div style={{ marginBottom:22 }}>
         <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>Stories</h1>
-        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Atualizações que duram 24h · até 20 stories · 📷 2,5MB · 🎵 1MB</p>
+        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Atualizações que duram 24 horas</p>
       </div>
 
       {/* ── Criar story ── */}
