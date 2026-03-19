@@ -755,7 +755,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
   const isConfig = page === "config";
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [navOpen, setNavOpen] = useState(true);
+  const [navOpen] = useState(true);
   const [navOrder, setNavOrder] = useState(() => nav.map(it => it.id));
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
@@ -788,34 +788,67 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         borderRight: `1px solid ${C.b1}`, overflow: "hidden",
         transition: "width 0.25s cubic-bezier(.4,0,.2,1)", position: "relative",
       }}>
-        <div style={{ width: 222, display: "flex", flexDirection: "column", height: "100%", padding: "20px 0" }}>
+        <div style={{ width: 222, display: "flex", flexDirection: "column", height: "100%" }}>
 
-          {/* Logo */}
-          <div style={{ padding: "0 16px 14px", borderBottom: `1px solid ${C.b1}`, flexShrink: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg,${C.lg1},${C.lg2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, color: "#fff", fontWeight: 700 }}>N</div>
-              <div>
-                <div style={{ color: C.tp, fontWeight: 700, fontSize: 14, letterSpacing: "-0.4px" }}>Nexp Company</div>
-                <div style={{ color: C.td, fontSize: 10, marginTop: 1 }}>Sistema de Leads</div>
+          {/* ── Capa editável ── */}
+          {(() => {
+            const canEdit = user.role === "mestre" || user.role === "master";
+            const [cover, setCover] = React.useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
+            const coverRef = React.useRef(null);
+            const handleCover = (e) => {
+              const f = e.target.files[0]; if (!f) return;
+              const r = new FileReader();
+              r.onload = (ev) => { setCover(ev.target.result); localStorage.setItem("nexp_sidebar_cover", ev.target.result); };
+              r.readAsDataURL(f);
+            };
+            return (
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                {/* Capa */}
+                <div style={{
+                  width: "100%", height: 72,
+                  background: cover ? "transparent" : `linear-gradient(135deg,${C.lg1},${C.lg2})`,
+                  overflow: "hidden", position: "relative",
+                }}>
+                  {cover && <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                  <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
+                  <div style={{ position: "absolute", bottom: 8, left: 12 }}>
+                    <div style={{ color: "#fff", fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.3px", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>Nexp Company</div>
+                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>Sistema de Leads</div>
+                  </div>
+                  {canEdit && (
+                    <button onClick={() => coverRef.current?.click()} style={{
+                      position: "absolute", top: 6, right: 6,
+                      background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.25)",
+                      color: "#fff", borderRadius: 6, padding: "2px 7px", fontSize: 9.5, cursor: "pointer",
+                    }}>
+                      {cover ? "✎ Trocar" : "＋ Capa"}
+                    </button>
+                  )}
+                  <input ref={coverRef} type="file" accept="image/*" onChange={handleCover} style={{ display: "none" }} />
+                </div>
+
+                {/* Linha separação — toggle fica colado à direita dela */}
+                <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${C.b1}`, height: 24 }}>
+                  <div style={{ flex: 1 }} />
+                  <button
+                    onClick={() => setSidebarOpen(o => !o)}
+                    title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
+                    style={{
+                      background: "transparent", border: "none",
+                      color: C.tm, fontSize: 11, cursor: "pointer",
+                      padding: "0 10px", height: "100%",
+                      display: "flex", alignItems: "center",
+                      opacity: 0.7, transition: "opacity 0.15s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                    onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}
+                  >
+                    <span style={{ display: "inline-block", transition: "transform 0.2s" }}>◀</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
-
-          {/* Menu toggle */}
-          <div style={{ padding: "10px 8px 4px", flexShrink: 0 }}>
-            <button onClick={() => setNavOpen(o => !o)} style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              width: "100%", padding: "9px 13px", borderRadius: 10,
-              background: navOpen ? C.abg : C.deep,
-              border: `1px solid ${navOpen ? C.atxt + "44" : C.b2}`,
-              color: navOpen ? C.atxt : C.tm,
-              fontSize: 12.5, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
-            }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 14 }}>☰</span> Menu</span>
-              <span style={{ fontSize: 10, opacity: 0.7, display: "inline-block", transform: navOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }}>▲</span>
-            </button>
-            {navOpen && <div style={{ color: C.td, fontSize: 9.5, textAlign: "center", marginTop: 5, opacity: 0.6 }}>⠿ Arraste para reorganizar</div>}
-          </div>
+            );
+          })()}
 
           {/* Nav items */}
           {navOpen && (
@@ -831,7 +864,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
                     onDragOver={(e) => handleDragOver(e, it.id)}
                     onDrop={(e) => handleDrop(e, it.id)}
                     onDragEnd={handleDragEnd}
-                    onClick={() => { setPage(it.id); setNavOpen(false); }}
+                    onClick={() => { setPage(it.id); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 10,
                       padding: "9px 13px", borderRadius: 10, cursor: "pointer",
@@ -858,7 +891,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
             </nav>
           )}
 
-          {!navOpen && <div style={{ flex: 1 }} />}
+
 
           {/* Bottom: Stories + Chat + Profile + WhatsApp */}
           <div style={{ padding: "0 12px" }}>
@@ -944,27 +977,26 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         </div>
       </div>
 
-      {/* Arrow toggle button — fixed on edge */}
-      <button
-        onClick={() => setSidebarOpen(o => !o)}
-        title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
-        style={{
-          position: "fixed", left: sidebarOpen ? 210 : 0, top: "50%",
-          transform: "translateY(-50%)", zIndex: 200,
-          width: 22, height: 50,
-          background: `linear-gradient(135deg,${C.acc},${C.lg2})`,
-          color: "#fff", border: "none",
-          borderRadius: "0 12px 12px 0",
-          cursor: "pointer", fontSize: 12, fontWeight: 700,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "left 0.25s cubic-bezier(.4,0,.2,1), background 0.2s",
-          boxShadow: `3px 0 14px ${C.acc}55`,
-        }}
-        onMouseEnter={e => e.currentTarget.style.width = "28px"}
-        onMouseLeave={e => e.currentTarget.style.width = "22px"}
-      >
-        {sidebarOpen ? "◀" : "▶"}
-      </button>
+      {/* Botão reabrir — aparece só quando sidebar está fechada */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          title="Abrir menu"
+          style={{
+            position: "fixed", left: 0, top: "50%",
+            transform: "translateY(-50%)", zIndex: 200,
+            width: 22, height: 50,
+            background: `linear-gradient(135deg,${C.acc},${C.lg2})`,
+            color: "#fff", border: "none",
+            borderRadius: "0 12px 12px 0",
+            cursor: "pointer", fontSize: 12, fontWeight: 700,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: `3px 0 14px ${C.acc}55`,
+          }}
+        >
+          ▶
+        </button>
+      )}
     </>
   );
 }
