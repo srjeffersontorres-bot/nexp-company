@@ -703,7 +703,7 @@ function LoginPage({ onLogin }) {
 
 // ── Sidebar ────────────────────────────────────────────────────
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
-  const canEdit = user.role === "mestre" || user.role === "master";
+  const canEdit = user.role === "mestre"; // only mestre can edit cover
   const [cover, setCover] = useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
   const coverRef = useRef(null);
   const handleCover = (e) => {
@@ -741,57 +741,28 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, presence, flashUserId, stories }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
-    {
-      id: "dashboard",
-      label: "Leads Gerais",
-      icon: "▦",
-      roles: ["mestre", "master", "indicado"],
-    },
-    {
-      id: "contacts",
-      label: "Contatos",
-      icon: "◉",
-      roles: ["mestre", "master", "indicado"],
-    },
-    {
-      id: "add",
-      label: "Adicionar",
-      icon: "＋",
-      roles: ["mestre", "master", "indicado"],
-    },
-    {
-      id: "import",
-      label: "Importar",
-      icon: "↑",
-      roles: ["mestre", "master", "indicado"],
-    },
-    {
-      id: "review",
-      label: "Ver Clientes",
-      icon: "▶",
-      roles: ["mestre", "master", "indicado"],
-    },
-    {
-      id: "cstatus",
-      label: "Cliente Status",
-      icon: "⊡",
-      roles: ["mestre", "master", "indicado"],
-    },
-    { id: "leds", label: "Leds", icon: "⬇", roles: ["mestre", "master"] },
-    { id: "atalhos", label: "Atalhos", icon: "🔗", roles: ["mestre", "master", "indicado"] },
-    { id: "premium", label: "Premium Nexp", icon: "★", roles: ["mestre"] },
-    {
-      id: "config",
-      label: "Configurações",
-      icon: "⚙",
-      roles: ["mestre", "master", "indicado"],
-    },
+    { id:"dashboard", label:"Leads Gerais",    icon:"▦", roles:["mestre","master","indicado","visitante"] },
+    { id:"contacts",  label:"Contatos",         icon:"◉", roles:["mestre","master","indicado","visitante"] },
+    { id:"add",       label:"Adicionar",         icon:"＋", roles:["mestre","master","indicado"] },
+    { id:"import",    label:"Importar",           icon:"↑", roles:["mestre","master","indicado"] },
+    { id:"review",    label:"Ver Clientes",       icon:"▶", roles:["mestre","master","indicado","visitante"] },
+    { id:"cstatus",   label:"Cliente Status",     icon:"⊡", roles:["mestre","master","indicado","visitante"] },
+    { id:"leds",      label:"Leds",               icon:"⬇", roles:["mestre","master"] },
+    { id:"atalhos",   label:"Atalhos",             icon:"🔗", roles:["mestre","master","indicado","visitante"] },
+    { id:"premium",   label:"Premium Nexp",       icon:"★", roles:["mestre"] },
+    { id:"config",    label:"Configurações",       icon:"⚙", roles:["mestre","master","indicado"] },
   ];
-  const nav = all.filter((it) => it.roles.includes(user.role));
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+  // For visitante: filter by mestre-controlled tab config
+  const cfg = sysConfig?.visitanteTabs || {};
+  const nav = all.filter(it => {
+    if (!it.roles.includes(user.role)) return false;
+    if (user.role === "visitante") return cfg[it.id] !== false;
+    return true;
+  });
+  const roleLabel = { mestre:"Mestre", master:"Master", indicado:"Operador", visitante:"Visitante" };
   const isConfig = page === "config";
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [navOpen] = useState(true);
@@ -878,7 +849,15 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
           {/* Bottom: Stories + Chat + Profile + WhatsApp */}
           <div style={{ padding: "0 12px" }}>
             <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-              {[{ id:"notificacoes", label:"Notificações", icon:"🔔" }, { id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Nexp Chat", icon:null }].map(item => (
+              {[{ id:"notificacoes", label:"Notificações", icon:"🔔" }, { id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Nexp Chat", icon:null }].filter(item => {
+                // Hide chat based on sysConfig
+                if (item.id === "chat") {
+                  if (user.role === "visitante" && !sysConfig?.visitanteChatEnabled) return false;
+                  if (user.role === "indicado" && !sysConfig?.indicadoChatEnabled) return false;
+                  if (user.role === "master" && !sysConfig?.masterChatEnabled) return false;
+                }
+                return true;
+              }).map(item => (
                 <button key={item.id} onClick={() => setPage(item.id)} style={{
                   display: "flex", alignItems: "center", gap: 9,
                   padding: "9px 13px", borderRadius: 10, width: "100%",
@@ -3815,8 +3794,8 @@ function PerfisTab({ users, setUsers, currentUser }) {
   const [searchPerfil, setSearchPerfil] = useState("");
   const dragId = useRef(null);
 
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
 
   const allUsers = users.filter(u => !u.deleted);
   const allVisible = searchPerfil.trim()
@@ -4093,7 +4072,7 @@ function PerfisTab({ users, setUsers, currentUser }) {
   );
 }
 
-function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
+function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("perfil");
   const tabs = [
     {
@@ -4119,6 +4098,12 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
       label: "Temas",
       icon: "🎨",
       roles: ["mestre", "master", "indicado"],
+    },
+    {
+      id: "permissoes",
+      label: "Permissões",
+      icon: "🔐",
+      roles: ["mestre"],
     },
   ].filter((t) => t.roles.includes(currentUser.role));
   return (
@@ -4178,6 +4163,63 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme }) {
         )}
         {tab === "perfis" && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
+        {tab === "permissoes" && sysConfig && onSysConfig && (
+          <div>
+            <h2 style={{ color:C.tp, fontSize:17, fontWeight:700, marginBottom:20 }}>🔐 Controle de Acesso</h2>
+
+            {/* Chat toggles */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>💬 Chat — Quem pode usar</div>
+              {[
+                { key:"masterChatEnabled",   label:"Master pode usar o chat",   desc:"Desativar impede masters de acessar o Nexp Chat" },
+                { key:"indicadoChatEnabled", label:"Operador pode usar o chat", desc:"Desativar impede operadores de acessar o Nexp Chat" },
+                { key:"visitanteChatEnabled",label:"Visitante pode usar o chat",desc:"Desativar oculta o Nexp Chat para visitantes" },
+              ].map(opt=>(
+                <div key={opt.key} onClick={()=>onSysConfig({...sysConfig,[opt.key]:!sysConfig[opt.key]})}
+                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:10, cursor:"pointer", marginBottom:8, background:sysConfig[opt.key]?C.abg:C.deep, border:`1px solid ${sysConfig[opt.key]?C.atxt+"33":C.b2}`, transition:"all 0.15s" }}>
+                  <div>
+                    <div style={{ color:sysConfig[opt.key]?C.atxt:C.ts, fontSize:13, fontWeight:sysConfig[opt.key]?600:400 }}>{opt.label}</div>
+                    <div style={{ color:C.td, fontSize:11, marginTop:2 }}>{opt.desc}</div>
+                  </div>
+                  <div style={{ width:36, height:20, borderRadius:10, background:sysConfig[opt.key]?C.acc:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                    <div style={{ position:"absolute", top:2, left:sysConfig[opt.key]?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Visitante tabs */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px" }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>👁 Abas visíveis para Visitante</div>
+              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>Controle quais seções o Visitante pode acessar na barra lateral.</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {[
+                  { id:"dashboard", label:"Leads Gerais" },
+                  { id:"contacts",  label:"Contatos" },
+                  { id:"review",    label:"Ver Clientes" },
+                  { id:"cstatus",   label:"Cliente Status" },
+                  { id:"atalhos",   label:"Atalhos" },
+                  { id:"add",       label:"Adicionar" },
+                  { id:"import",    label:"Importar" },
+                  { id:"leds",      label:"Leds" },
+                  { id:"premium",   label:"Premium Nexp" },
+                  { id:"config",    label:"Configurações" },
+                ].map(it=>{
+                  const on = sysConfig.visitanteTabs?.[it.id] !== false;
+                  return (
+                    <div key={it.id} onClick={()=>onSysConfig({...sysConfig, visitanteTabs:{...(sysConfig.visitanteTabs||{}),[it.id]:!on}})}
+                      style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", background:on?C.abg:C.deep, border:`1px solid ${on?C.atxt+"33":C.b2}`, transition:"all 0.15s" }}>
+                      <span style={{ color:on?C.atxt:C.ts, fontSize:13, fontWeight:on?600:400 }}>{it.label}</span>
+                      <div style={{ width:34, height:18, borderRadius:9, background:on?C.acc:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                        <div style={{ position:"absolute", top:1, left:on?16:1, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4278,8 +4320,8 @@ function PerfilTab({ users, setUsers, currentUser }) {
     }
   };
 
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
   const rc = roleColor[uObj.role] || C.atxt;
 
   const [copiedField, setCopiedField] = useState(null);
@@ -4532,8 +4574,9 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     mestre: "Mestre",
     master: "Master",
     indicado: "Operador",
+    visitante: "Visitante",
   };
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setEF = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
@@ -4552,7 +4595,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     setErr("");
     setOk("Criando usuário...");
     try {
-      const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+      const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
       let uid;
       let reativado = false;
 
@@ -4856,9 +4899,9 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                 Nível de acesso
               </label>
               <div style={{ display: "flex", gap: 8 }}>
-                {["master", "indicado"].map((r) => {
+                {["master", "indicado", "visitante"].map((r) => {
                   const sel = form.role === r;
-                  const col = roleColor[r];
+                  const col = (roleColor[r] || "#94a3b8");
                   return (
                     <button
                       key={r}
@@ -4866,9 +4909,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       style={{
                         background: sel ? col + "18" : C.deep,
                         color: sel ? col : C.tm,
-                        border: sel
-                          ? `1px solid ${col}55`
-                          : `1px solid ${C.b2}`,
+                        border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`,
                         borderRadius: 20,
                         padding: "7px 16px",
                         fontSize: 12,
@@ -5888,9 +5929,10 @@ function StoriesPage({ currentUser, users }) {
   const [newFont, setNewFont] = useState("Inter");
   const [comment, setComment] = useState("");
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
-  const [editingCommentIdx, setEditingCommentIdx] = useState(null); // {storyId, idx}
+  const [editingCommentIdx, setEditingCommentIdx] = useState(null);
   const [editCommentText, setEditCommentText] = useState("");
-  const [commentActionIdx, setCommentActionIdx] = useState(null); // {storyId, idx}
+  const [commentActionIdx, setCommentActionIdx] = useState(null);
+  const [storyDeleteConfirm, setStoryDeleteConfirm] = useState(null);
   const [showReactions, setShowReactions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediaErr, setMediaErr] = useState("");
@@ -6109,7 +6151,7 @@ function StoriesPage({ currentUser, users }) {
     return () => clearInterval(t);
   }, []);
 
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
 
   // Group by author, keep all stories
   const byAuthor = {};
@@ -6427,7 +6469,21 @@ function StoriesPage({ currentUser, users }) {
                   currentUser.role === "mestre" ||
                   (currentUser.role === "master" && viewStory.authorRole !== "mestre")
                 ) && (
-                  <button onClick={() => deleteStory(viewStory.id)} style={{ background:"rgba(0,0,0,0.4)", border:"none", color:"#F87171", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }} title="Excluir story">✕</button>
+                  <div style={{ position:"relative" }}>
+                    <button onClick={() => setStoryDeleteConfirm(storyDeleteConfirm===viewStory.id?null:viewStory.id)}
+                      style={{ background:"rgba(0,0,0,0.4)", border:"none", color:"#F87171", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }} title="Excluir story">🗑</button>
+                    {storyDeleteConfirm === viewStory.id && (
+                      <div style={{ position:"absolute", right:0, top:32, background:"#1A0D0D", border:"1px solid #EF444433", borderRadius:10, padding:"8px 10px", zIndex:30, boxShadow:"0 4px 16px #00000088", display:"flex", flexDirection:"column", gap:7, minWidth:130 }}>
+                        <div style={{ color:"#F87171", fontSize:11, fontWeight:700 }}>Excluir story?</div>
+                        <div style={{ display:"flex", gap:5 }}>
+                          <button onClick={()=>{ deleteStory(viewStory.id); setStoryDeleteConfirm(null); }}
+                            style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:7, padding:"4px 10px", fontSize:11, cursor:"pointer", fontWeight:700, flex:1 }}>Excluir</button>
+                          <button onClick={()=>setStoryDeleteConfirm(null)}
+                            style={{ background:"transparent", border:`1px solid #ffffff33`, color:"#fff", borderRadius:7, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>Não</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -6567,12 +6623,12 @@ function StoriesPage({ currentUser, users }) {
                           {/* Like / Dislike / Actions */}
                           <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
                             <button onClick={()=>toggleCommentLike("like")}
-                              style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iLiked?C.acc:C.tm, fontSize:12 }}>
-                              {iLiked?"👍":"👍"} <span style={{ fontSize:10 }}>{likes.length||""}</span>
+                              style={{ background:iLiked?C.acc+"20":"none", border:iLiked?`1px solid ${C.acc}44`:"1px solid transparent", borderRadius:12, padding:"2px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, color:iLiked?C.acc:C.tm, fontSize:11, fontWeight:iLiked?600:400, transition:"all 0.15s" }}>
+                              👍 <span>Curtir</span>{likes.length>0&&<span style={{fontSize:10,opacity:0.7}}>· {likes.length}</span>}
                             </button>
                             <button onClick={()=>toggleCommentLike("dislike")}
-                              style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iDisliked?"#F87171":C.tm, fontSize:12 }}>
-                              {iDisliked?"👎":"👎"} <span style={{ fontSize:10 }}>{dislikes.length||""}</span>
+                              style={{ background:iDisliked?"#F8717120":"none", border:iDisliked?"1px solid #F8717144":"1px solid transparent", borderRadius:12, padding:"2px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, color:iDisliked?"#F87171":C.tm, fontSize:11, fontWeight:iDisliked?600:400, transition:"all 0.15s" }}>
+                              👎 <span>Não curtir</span>{dislikes.length>0&&<span style={{fontSize:10,opacity:0.7}}>· {dislikes.length}</span>}
                             </button>
                             {isMineComment && (
                               <div style={{ position:"relative", marginLeft:"auto" }}>
@@ -6813,8 +6869,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const dragRef = useRef(null);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
+  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
+  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
 
   const getUserPhoto = (uid) => users.find(u => (u.uid||u.id) === uid)?.photo || null;
   const myPhoto = getUserPhoto(myId) || currentUser.photo || null;
@@ -7404,7 +7460,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   return `${users.length} membros · 🟢 ${onlineCount} online agora`;
                 })()
               : tabUser
-              ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role])
+              ? (
+                <span style={{ display:"flex", alignItems:"center", gap:4 }}>
+                  <span style={{ width:7, height:7, borderRadius:"50%", background: presence[activeTab]?.online ? "#16A34A" : C.b2, display:"inline-block", flexShrink:0 }} />
+                  <span style={{ color: presence[activeTab]?.online ? "#16A34A" : C.tm }}>
+                    {presence[activeTab]?.online ? "online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role]}
+                  </span>
+                </span>
+              )
               : "Seu mensageiro de trabalho"}
             </div>
           </div>
@@ -7425,7 +7488,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           {/* Group settings button for adm */}
           {isGroupAdm && (
             <button onClick={() => { setShowGroupConfig(p=>!p); setEditingGroup(false); }}
-              style={{ background:showGroupConfig?C.abg:"transparent", border:showGroupConfig?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showGroupConfig?C.atxt:C.tm, borderRadius:8, padding:"3px 10px", fontSize:13, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }} title="Configurações do grupo">
+              style={{ background:showGroupConfig?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.08)", border:"none", color:showGroupConfig?C.atxt:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }} title="Configurações do grupo">
               ⚙
             </button>
           )}
@@ -7984,6 +8047,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       <button key={uid} onClick={async () => {
                         const newMembers = [...(activeGroup.members||[]), uid];
                         await setDoc(doc(db,"chatGroups",activeGroup.id),{members:newMembers},{merge:true});
+                        const addedUser = users.find(x=>(x.uid||x.id)===uid);
+                        // System message in group
+                        await sendChatMessage({ text:`${addedUser?.name||"Usuário"} agora faz parte do grupo`, type:"system", groupId:activeGroup.id, authorId:myId, authorName:currentUser.name||currentUser.email });
                         const nid = `notif_addmember_${activeGroup.id}_${uid}_${Date.now()}`;
                         await setDoc(doc(db,"notifications",nid),{ type:"group_added", userId:uid, groupId:activeGroup.id, groupName:activeGroup.name, addedBy:currentUser.name||currentUser.email, createdAt:Date.now(), read:false });
                       }} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 10px", borderRadius:10, background:C.deep, border:`1px solid ${C.b2}`, cursor:"pointer", textAlign:"left", transition:"all 0.12s" }}
@@ -8166,7 +8232,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   })()}
                   <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems:isMine?"flex-end":"flex-start", position:"relative" }}>
                     {(!isMine && (activeTab==="geral" || activeGroupId)) && (
-                      <span style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2 }}>
+                      <span onClick={()=>setViewingProfile(msg.authorId)}
+                        style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2, cursor:"pointer", textDecoration:"underline dotted" }}
+                        title="Ver perfil">
                         {groupTrophies[msg.authorId] ? "🏆 " : ""}{msg.authorName}
                         {(activeGroup?.admins||[]).includes(msg.authorId) || msg.authorId === (activeGroup?.admId||activeGroup?.createdBy) ? " 👑" : ""}
                       </span>
@@ -8471,88 +8539,96 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
       {/* ── User Profile View ── */}
       {viewingProfile && (
-        <div style={{ position:"absolute", inset:0, zIndex:70, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, animation:"fadeIn 0.2s ease" }}
+        <div style={{ position:"absolute", inset:0, zIndex:70, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, animation:"fadeIn 0.2s ease", overflowY:"auto" }}
           onClick={()=>setViewingProfile(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:C.sb, border:`1px solid ${C.b1}`, borderRadius:16, padding:"22px", maxWidth:300, width:"90%", boxShadow:"0 12px 48px rgba(0,0,0,0.8)" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.sb, border:`1px solid ${C.b1}`, borderRadius:16, padding:"20px", maxWidth:310, width:"92%", maxHeight:"90%", overflowY:"auto", boxShadow:"0 12px 48px rgba(0,0,0,0.8)" }}>
             {(() => {
               const vUser = users.find(u=>(u.uid||u.id)===viewingProfile) || (viewingProfile===myId ? currentUser : null);
               if (!vUser) return null;
               const vId = vUser.uid||vUser.id;
               const rc2 = roleColor[vUser.role]||C.atxt;
               const isOnlineV = presence[vId]?.online;
-              const GOOD_REACTIONS = ["❤️","👍","😄","🔥","🙏"];
-              const BAD_REACTIONS  = ["😡","💔","👎"];
+              const isMe = vId === myId;
+
+              // 50 reactions for profile
+              const FIFTY_REACTIONS = ["❤️","🔥","😄","👍","🙏","🥰","🤩","💪","✨","🌟","🎉","💯","🚀","😎","🤗","💎","🏆","👑","🫶","💖","😇","🥳","🤝","💫","🌈","🍀","🌺","⭐","💡","🎯","😅","🤔","😢","😡","💔","👎","🥺","😤","😩","😰","🙄","😬","😮","😱","🫡","🙌","👏","🫂","💌","🎊"];
+              const myReactionsToV = (profileReactions[vId] || []);
+              const canReact = myReactionsToV.length < 3;
+
               const sendProfileReaction = async (emoji) => {
-                setProfileReactions(p => ({...p, [vId]: emoji}));
-                // Floating emoji burst
-                const bursts = Array.from({length:10},(_,i)=>({
-                  id: Date.now()+i, emoji,
-                  x: 30 + Math.random()*200,
-                  y: 100 + Math.random()*200,
-                }));
+                if (!canReact) return;
+                const next = [...myReactionsToV, emoji];
+                setProfileReactions(p => ({...p, [vId]: next}));
+                const bursts = Array.from({length:10},(_,bi)=>({ id:Date.now()+bi, emoji, x:30+Math.random()*240, y:80+Math.random()*180 }));
                 setFloatEmojis(bursts);
                 setTimeout(()=>setFloatEmojis([]), 2200);
-                setViewingProfile(null);
-                // Send notification in conversation
-                if (vId !== myId) {
-                  await sendChatMessage({
-                    text:`${currentUser.name||currentUser.email} reagiu ao seu perfil com ${emoji}`,
-                    type:"system",
-                    toId: vId,
-                    authorId: myId,
-                    authorName: currentUser.name||currentUser.email,
-                  });
+                if (!isMe) {
+                  await sendChatMessage({ text:`${currentUser.name||currentUser.email} deu ${emoji} no seu perfil`, type:"system", toId:vId, authorId:myId, authorName:currentUser.name||currentUser.email });
                 }
               };
+
               return (
                 <>
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:16 }}>
+                  {/* Header */}
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, marginBottom:14 }}>
                     <div style={{ position:"relative" }}>
-                      <div style={{ width:72, height:72, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2px solid ${rc2}44` }}>
-                        {vUser.photo ? <img src={vUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <div style={{ width:"100%", height:"100%", background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontWeight:700, color:rc2 }}>{ini(vUser.name||"?")}</div>}
+                      <div style={{ width:80, height:80, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2.5px solid ${rc2}44` }}>
+                        {vUser.photo ? <img src={vUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <div style={{ width:"100%", height:"100%", background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, fontWeight:700, color:rc2 }}>{ini(vUser.name||"?")}</div>}
                       </div>
-                      {userReaction && vId===myId && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:22 }}>{userReaction}</div>}
-                      {profileReactions[vId] && <div style={{ position:"absolute", bottom:-6, left:-6, fontSize:20 }}>{profileReactions[vId]}</div>}
+                      {/* My reaction display */}
+                      {isMe && userReaction && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:22 }}>{userReaction}</div>}
+                      {/* Reactions received */}
+                      {myReactionsToV.length > 0 && !isMe && (
+                        <div style={{ position:"absolute", bottom:-6, right:-6, display:"flex", gap:1 }}>
+                          {myReactionsToV.map((e,i)=><span key={i} style={{ fontSize:16 }}>{e}</span>)}
+                        </div>
+                      )}
                     </div>
                     <div style={{ textAlign:"center" }}>
-                      <div style={{ color:C.tp, fontSize:15, fontWeight:700, animation:"nameReveal 0.4s ease" }}>{vUser.name||vUser.email}</div>
-                      <div style={{ color:rc2, fontSize:11, marginTop:2 }}>{roleLabel[vUser.role]}</div>
-                      <div style={{ color:isOnlineV?"#16A34A":C.tm, fontSize:11, marginTop:2 }}>
-                        {isOnlineV ? "🟢 Online agora" : lastMsgTime(vId) ? `👁 Visto às ${lastMsgTime(vId)}` : ""}
+                      <div style={{ color:C.tp, fontSize:16, fontWeight:700, animation:"nameReveal 0.4s ease" }}>{vUser.name||vUser.email}</div>
+                      <div style={{ color:rc2, fontSize:11.5, marginTop:2 }}>{roleLabel[vUser.role]}</div>
+                      <div style={{ color:isOnlineV?"#16A34A":C.tm, fontSize:11.5, marginTop:4, display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
+                        <span style={{ width:7, height:7, borderRadius:"50%", background:isOnlineV?"#16A34A":C.b2, display:"inline-block" }} />
+                        {isOnlineV ? "Online agora" : lastMsgTime(vId) ? `Visto às ${lastMsgTime(vId)}` : "Offline"}
                       </div>
                     </div>
                   </div>
-                  {userBio && vId===myId && <div style={{ color:C.ts, fontSize:12, textAlign:"center", marginBottom:10, fontStyle:"italic", background:C.deep, borderRadius:10, padding:"8px 12px" }}>📝 {userBio}</div>}
-                  {userRecado && vId===myId && <div style={{ color:C.atxt, fontSize:12, textAlign:"center", marginBottom:10, background:C.abg, borderRadius:10, padding:"8px 12px" }}>💬 {userRecado}</div>}
-                  {userBirthday && vId===myId && <div style={{ color:C.tm, fontSize:11, textAlign:"center", marginBottom:10 }}>🎂 {new Date(userBirthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long"})}</div>}
-                  {/* 8 reactions: 5 good + 3 bad */}
-                  {vId !== myId && (
+
+                  {/* Bio — only shown to others */}
+                  {userBio && isMe && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"9px 12px", background:C.deep, borderRadius:10, marginBottom:10, textAlign:"center" }}>📝 {userBio}</div>}
+                  {userRecado && isMe && <div style={{ color:C.atxt, fontSize:12, padding:"9px 12px", background:C.abg, borderRadius:10, marginBottom:10, textAlign:"center" }}>💬 {userRecado}</div>}
+                  {userBirthday && isMe && <div style={{ color:C.tm, fontSize:11, textAlign:"center", marginBottom:10 }}>🎂 {new Date(userBirthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
+
+                  {/* Reaction gift — 50 options, limit 3 */}
+                  {!isMe && (
                     <div style={{ marginBottom:14 }}>
-                      <div style={{ color:C.td, fontSize:10, textAlign:"center", marginBottom:8 }}>Reagir ao perfil</div>
-                      <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:6 }}>
-                        {GOOD_REACTIONS.map(e=>(
-                          <button key={e} onClick={()=>sendProfileReaction(e)}
-                            style={{ fontSize:22, background:profileReactions[vId]===e?C.abg:"transparent", border:profileReactions[vId]===e?`2px solid ${C.atxt}44`:"2px solid transparent", borderRadius:8, padding:"4px", cursor:"pointer", transition:"transform 0.15s" }}
-                            onMouseEnter={ev=>ev.currentTarget.style.transform="scale(1.35)"}
-                            onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
-                            {e}
-                          </button>
-                        ))}
+                      <div style={{ color:C.td, fontSize:10, textAlign:"center", marginBottom:6, fontWeight:600 }}>
+                        🎁 Dar reação · {3-myReactionsToV.length} restante(s)
                       </div>
-                      <div style={{ display:"flex", justifyContent:"center", gap:6 }}>
-                        {BAD_REACTIONS.map(e=>(
-                          <button key={e} onClick={()=>sendProfileReaction(e)}
-                            style={{ fontSize:22, background:profileReactions[vId]===e?C.abg:"transparent", border:profileReactions[vId]===e?`2px solid ${C.atxt}44`:"2px solid transparent", borderRadius:8, padding:"4px", cursor:"pointer", transition:"transform 0.15s" }}
-                            onMouseEnter={ev=>ev.currentTarget.style.transform="scale(1.35)"}
-                            onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
-                            {e}
-                          </button>
-                        ))}
+                      {myReactionsToV.length > 0 && (
+                        <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:8, flexWrap:"wrap" }}>
+                          {myReactionsToV.map((e,i)=>(
+                            <span key={i} style={{ fontSize:20, background:C.acc+"15", border:`1px solid ${C.acc}44`, borderRadius:8, padding:"3px 6px" }}>{e}</span>
+                          ))}
+                          <button onClick={()=>setProfileReactions(p=>({...p,[vId]:[]}))} style={{ background:"none", border:"none", color:C.td, fontSize:10, cursor:"pointer" }}>limpar</button>
+                        </div>
+                      )}
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4, maxHeight:120, overflowY:"auto", justifyContent:"center" }}>
+                        {FIFTY_REACTIONS.map(e=>{
+                          const already = myReactionsToV.includes(e);
+                          return (
+                            <button key={e} onClick={()=>!already&&sendProfileReaction(e)}
+                              style={{ fontSize:20, background:already?C.acc+"22":"transparent", border:already?`2px solid ${C.acc}55`:"2px solid transparent", borderRadius:8, padding:"3px 5px", cursor:(!canReact&&!already)?"not-allowed":"pointer", opacity:(!canReact&&!already)?0.4:1, transition:"transform 0.12s" }}
+                              onMouseEnter={ev=>{ if(canReact||already) ev.currentTarget.style.transform="scale(1.3)"; }}
+                              onMouseLeave={ev=>ev.currentTarget.style.transform="scale(1)"}>
+                              {e}
+                            </button>
+                          );
+                        })}
                       </div>
-                      {profileReactions[vId] && <div style={{ textAlign:"center", color:C.acc, fontSize:11, marginTop:6 }}>✓ Enviado {profileReactions[vId]}</div>}
                     </div>
                   )}
-                  <button onClick={()=>setViewingProfile(null)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:10, padding:"7px", fontSize:12, cursor:"pointer", width:"100%" }}>Fechar</button>
+                  <button onClick={()=>setViewingProfile(null)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:10, padding:"8px", fontSize:12, cursor:"pointer", width:"100%" }}>Fechar</button>
                 </>
               );
             })()}
@@ -8624,6 +8700,13 @@ export default function App() {
   const [unreadNotif, setUnreadNotif] = useState(0);
   const [unreadStories, setUnreadStories] = useState(0);
   const lastChatCount = useRef(0);
+  // System config — mestre controls what others can access
+  const [sysConfig, setSysConfig] = useState({
+    masterChatEnabled: true,     // mestre can disable chat for masters
+    indicadoChatEnabled: true,   // master can disable chat for indicados
+    visitanteChatEnabled: true,
+    visitanteTabs: { dashboard:true, contacts:true, add:false, import:false, review:true, cstatus:true, leds:false, atalhos:true, premium:false, config:false },
+  });
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
   const setPageAndSave = (p) => {
@@ -8891,6 +8974,7 @@ export default function App() {
         presence={presence}
         flashUserId={flashUserId}
         stories={chatStories}
+        sysConfig={sysConfig}
       />
       <div style={{ flex: 1, overflowY: "auto", height: "100vh" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
@@ -8931,32 +9015,38 @@ export default function App() {
           </div>
         )}
         {page === "config" && (
-          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} />
+          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
       </div>
 
       {/* ── Chat Flutuante ── */}
-      {chatOpen && (
-        <FloatingChat
-          currentUser={currentUser}
-          users={users}
-          presence={presence}
-          minimized={chatMinimized}
-          pos={chatPos}
-          onPosChange={setChatPos}
-          onMinimize={() => setChatMinimized(true)}
-          onRestore={() => setChatMinimized(false)}
-          onClose={() => { setChatOpen(false); setChatMinimized(false); }}
-          unreadChat={unreadChat}
-          stories={chatStories}
-          onOpenStory={(uid) => {
-            setChatOpen(false);
-            setPage("stories");
-            sessionStorage.setItem("nexp_page", "stories");
-            sessionStorage.setItem("nexp_story_uid", uid);
-          }}
-        />
-      )}
+      {chatOpen && (() => {
+        const role = currentUser?.role;
+        if (role === "visitante" && !sysConfig?.visitanteChatEnabled) return null;
+        if (role === "indicado" && !sysConfig?.indicadoChatEnabled) return null;
+        if (role === "master" && !sysConfig?.masterChatEnabled) return null;
+        return (
+          <FloatingChat
+            currentUser={currentUser}
+            users={users}
+            presence={presence}
+            minimized={chatMinimized}
+            pos={chatPos}
+            onPosChange={setChatPos}
+            onMinimize={() => setChatMinimized(true)}
+            onRestore={() => setChatMinimized(false)}
+            onClose={() => { setChatOpen(false); setChatMinimized(false); }}
+            unreadChat={unreadChat}
+            stories={chatStories}
+            onOpenStory={(uid) => {
+              setChatOpen(false);
+              setPage("stories");
+              sessionStorage.setItem("nexp_page", "stories");
+              sessionStorage.setItem("nexp_story_uid", uid);
+            }}
+          />
+        );
+      })()}
     </div>
     </>
   );
