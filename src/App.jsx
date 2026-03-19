@@ -6248,15 +6248,23 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   // Scroll to bottom
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allMessages, activeTab]);
 
-  // Mark read
+  // Mark read — fires when tab changes OR when new messages arrive in the open tab
   useEffect(() => {
     if (!activeTab || activeTab === "geral") return;
     const timer = setTimeout(() => {
-      const unread = allMessages.filter(m => m.toId === myId && m.authorId === activeTab && !m.readAt && m.type !== "shake");
-      unread.forEach(async m => { try { await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true }); } catch(e) {} });
-    }, 1500);
+      // DM: mark messages from the other person
+      if (!activeTab.startsWith("grp:")) {
+        const unread = allMessages.filter(m => m.toId === myId && m.authorId === activeTab && !m.readAt && m.type !== "shake");
+        unread.forEach(async m => { try { await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true }); } catch(e) {} });
+      } else {
+        // Group: mark all group messages not from me
+        const groupId = activeTab.slice(4);
+        const unread = allMessages.filter(m => m.groupId === groupId && m.authorId !== myId && !m.readAt && m.type !== "shake");
+        unread.forEach(async m => { try { await setDoc(doc(db, "chat", m.id), { readAt: new Date().toISOString() }, { merge: true }); } catch(e) {} });
+      }
+    }, 800);
     return () => clearTimeout(timer);
-  }, [activeTab]); // eslint-disable-line
+  }, [activeTab, allMessages]); // eslint-disable-line
 
   // Drag to move
   const startDrag = (e) => {
@@ -6949,12 +6957,14 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     const myId = currentUser.uid || currentUser.id;
+    // -1 = primeira carga ainda não aconteceu; ignora shake/flash na inicialização
+    lastChatCount.current = -1;
     const unsub = listenChat((msgs) => {
       const relevant = msgs.filter(m => !m.toId || m.toId === myId);
       const newCount = relevant.length;
 
-      // ── Shake: detecta SEMPRE, em qualquer página ──
-      if (newCount > lastChatCount.current) {
+      // ── Shake: só detecta após a primeira carga (lastChatCount >= 0) ──
+      if (lastChatCount.current >= 0 && newCount > lastChatCount.current) {
         const newMsgs = relevant.slice(lastChatCount.current);
         const shakeSignal = newMsgs.find(m => m.type === "shake" && m.toId === myId);
         if (shakeSignal) {
