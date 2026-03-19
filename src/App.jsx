@@ -4182,8 +4182,17 @@ function PerfilTab({ users, setUsers, currentUser }) {
 
   const [ok, setOk] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Password change
+  const [showPwChange, setShowPwChange] = useState(false);
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwErr, setPwErr] = useState("");
+  const [pwOk, setPwOk] = useState("");
   const fRef = useRef();
   const docRef = useRef();
+
+  // Operator count — users this person created
+  const operatorsCreated = users.filter(u => u.createdBy === myId && !u.deleted).length;
 
   const handleImg = (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -4214,6 +4223,30 @@ function PerfilTab({ users, setUsers, currentUser }) {
     const updated = { ...uObj, profileLocked: !isLocked };
     await saveUserProfile(myId, updated);
     setUsers(us => us.map(u => (u.uid||u.id) === myId ? updated : u));
+  };
+
+  const changePassword = async () => {
+    setPwErr(""); setPwOk("");
+    if (!newPw.trim()) { setPwErr("Digite a nova senha."); return; }
+    if (newPw.length < 6) { setPwErr("A senha deve ter pelo menos 6 caracteres."); return; }
+    if (newPw !== confirmPw) { setPwErr("As senhas não coincidem."); return; }
+    try {
+      const { updatePassword: fbUpdatePw } = await import("firebase/auth");
+      const { auth: fbAuth } = await import("./firebase");
+      if (fbAuth.currentUser) {
+        await fbUpdatePw(fbAuth.currentUser, newPw);
+        setPwOk("Senha alterada com sucesso!"); setNewPw(""); setConfirmPw("");
+        setTimeout(() => { setPwOk(""); setShowPwChange(false); }, 3000);
+      } else {
+        setPwErr("Sessão expirada. Faça login novamente.");
+      }
+    } catch (e) {
+      if (e.code === "auth/requires-recent-login") {
+        setPwErr("Por segurança, faça logout e login novamente antes de alterar a senha.");
+      } else {
+        setPwErr("Erro ao alterar senha: " + e.message);
+      }
+    }
   };
 
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
@@ -4274,13 +4307,24 @@ function PerfilTab({ users, setUsers, currentUser }) {
             <div style={{ color: C.tp, fontSize: 15, fontWeight: 700 }}>{uObj.name || uObj.username}</div>
             <div style={{ color: C.tm, fontSize: 12, marginTop: 3 }}>{uObj.email}</div>
             <span style={{ background: rc + "18", color: rc, fontSize: 10, padding: "3px 10px", borderRadius: 20, fontWeight: 700, border: `1px solid ${rc}33`, display: "inline-block", marginTop: 5 }}>{roleLabel[uObj.role]}</span>
+            {operatorsCreated > 0 && (
+              <span style={{ background: C.abg, color: C.atxt, fontSize: 10, padding: "3px 10px", borderRadius: 20, fontWeight: 600, border: `1px solid ${C.atxt}33`, display: "inline-block", marginTop: 5, marginLeft: 6 }}>
+                👥 {operatorsCreated} operador{operatorsCreated !== 1 ? "es" : ""} criado{operatorsCreated !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
-          {canLock && (
-            <button onClick={toggleLock}
-              style={{ ...S.btn(isLocked ? "#2D1515" : C.deep, isLocked ? "#F87171" : C.tm), border: isLocked ? "1px solid #EF444433" : `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 11.5, flexShrink: 0 }}>
-              {isLocked ? "🔒 Bloqueado" : "🔓 Bloquear"}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+            <button onClick={() => setShowPwChange(p => !p)}
+              style={{ ...S.btn(showPwChange ? C.abg : C.deep, showPwChange ? C.atxt : C.tm), border: showPwChange ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`, padding: "6px 12px", fontSize: 11.5 }}>
+              🔑 Alterar senha
             </button>
-          )}
+            {canLock && (
+              <button onClick={toggleLock}
+                style={{ ...S.btn(isLocked ? "#2D1515" : C.deep, isLocked ? "#F87171" : C.tm), border: isLocked ? "1px solid #EF444433" : `1px solid ${C.b2}`, padding: "6px 12px", fontSize: 11.5 }}>
+                {isLocked ? "🔒 Bloqueado" : "🔓 Bloquear"}
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -4289,6 +4333,40 @@ function PerfilTab({ users, setUsers, currentUser }) {
           <Field label="Usuário (login)" value={uObj.email} readOnly placeholder="" />
         </div>
       </div>
+
+      {/* ── Alterar senha ── */}
+      {showPwChange && (
+        <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16, border: `1px solid ${C.atxt}33` }}>
+          <div style={{ color: C.atxt, fontSize: 12.5, fontWeight: 700, marginBottom: 14 }}>🔑 Alterar Senha</div>
+          {pwErr && <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "9px 13px", marginBottom: 12, color: "#F87171", fontSize: 12.5 }}>⚠ {pwErr}</div>}
+          {pwOk && <div style={{ background: "#091E12", border: "1px solid #34D39933", borderRadius: 8, padding: "9px 13px", marginBottom: 12, color: "#34D399", fontSize: 12.5 }}>✓ {pwOk}</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+            <div>
+              <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 5 }}>Nova senha</label>
+              <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                style={{ ...S.input }} />
+            </div>
+            <div>
+              <label style={{ color: C.tm, fontSize: 11.5, display: "block", marginBottom: 5 }}>Confirmar nova senha</label>
+              <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                placeholder="Repita a senha"
+                onKeyDown={e => e.key === "Enter" && changePassword()}
+                style={{ ...S.input }} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={changePassword}
+              style={{ ...S.btn(C.acc, "#fff"), padding: "9px 22px", fontSize: 13, fontWeight: 700 }}>
+              Confirmar alteração
+            </button>
+            <button onClick={() => { setShowPwChange(false); setNewPw(""); setConfirmPw(""); setPwErr(""); }}
+              style={{ ...S.btn(C.deep, C.tm), padding: "9px 14px", fontSize: 12, border: `1px solid ${C.b2}` }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Endereço ── */}
       <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
@@ -4951,21 +5029,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       }}
                     >
                       {isExpanded ? "✕ Fechar" : "✏ Editar"}
-                    </button>
-                  )}
-
-                  {/* Ver Perfil completo — mestre e master */}
-                  {(currentUser.role === "mestre" || currentUser.role === "master") && (
-                    <button
-                      onClick={() => setViewProfileId(viewProfileId === u.id ? null : u.id)}
-                      style={{
-                        background: viewProfileId === u.id ? C.abg : C.deep,
-                        color: viewProfileId === u.id ? C.atxt : C.tm,
-                        border: viewProfileId === u.id ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
-                        borderRadius: 8, padding: "5px 12px", fontSize: 11,
-                        cursor: "pointer", fontWeight: 600, flexShrink: 0,
-                      }}>
-                      {viewProfileId === u.id ? "✕ Fechar" : "👁 Perfil"}
                     </button>
                   )}
 
