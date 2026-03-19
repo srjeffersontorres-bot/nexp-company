@@ -5888,6 +5888,9 @@ function StoriesPage({ currentUser, users }) {
   const [newFont, setNewFont] = useState("Inter");
   const [comment, setComment] = useState("");
   const [showCommentEmoji, setShowCommentEmoji] = useState(false);
+  const [editingCommentIdx, setEditingCommentIdx] = useState(null); // {storyId, idx}
+  const [editCommentText, setEditCommentText] = useState("");
+  const [commentActionIdx, setCommentActionIdx] = useState(null); // {storyId, idx}
   const [showReactions, setShowReactions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediaErr, setMediaErr] = useState("");
@@ -6502,18 +6505,98 @@ function StoriesPage({ currentUser, users }) {
                 ? <div style={{ textAlign:"center", padding:"24px 0", color:C.tm, fontSize:12 }}>Seja o primeiro a comentar!</div>
                 : (viewStory.comments||[]).map((c, i) => {
                     const rc2 = roleColor[c.userRole]||C.atxt;
+                    const isMineComment = c.userId === myId;
+                    const isEditing = editingCommentIdx?.storyId === viewStory.id && editingCommentIdx?.idx === i;
+                    const showActions = commentActionIdx?.storyId === viewStory.id && commentActionIdx?.idx === i;
+                    const likes = c.likes || [];
+                    const dislikes = c.dislikes || [];
+                    const iLiked = likes.includes(myId);
+                    const iDisliked = dislikes.includes(myId);
+
+                    const toggleCommentLike = async (type) => {
+                      const comments = (viewStory.comments||[]).map((cm,ci) => {
+                        if (ci !== i) return cm;
+                        const lk = cm.likes||[]; const dl = cm.dislikes||[];
+                        if (type === "like") {
+                          return {...cm, likes: lk.includes(myId)?lk.filter(x=>x!==myId):[...lk.filter(x=>x!==myId),myId], dislikes: dl.filter(x=>x!==myId)};
+                        } else {
+                          return {...cm, dislikes: dl.includes(myId)?dl.filter(x=>x!==myId):[...dl.filter(x=>x!==myId),myId], likes: lk.filter(x=>x!==myId)};
+                        }
+                      });
+                      await setDoc(doc(db,"stories",viewStory.id),{comments},{merge:true});
+                    };
+
+                    const deleteComment = async () => {
+                      const comments = (viewStory.comments||[]).filter((_,ci)=>ci!==i);
+                      await setDoc(doc(db,"stories",viewStory.id),{comments},{merge:true});
+                      setCommentActionIdx(null);
+                    };
+
+                    const saveEditComment = async () => {
+                      if (!editCommentText.trim()) return;
+                      const comments = (viewStory.comments||[]).map((cm,ci)=>ci===i?{...cm,text:editCommentText.trim(),edited:true}:cm);
+                      await setDoc(doc(db,"stories",viewStory.id),{comments},{merge:true});
+                      setEditingCommentIdx(null); setEditCommentText("");
+                    };
+
                     return (
-                      <div key={i} style={{ display:"flex", gap:9 }}>
+                      <div key={i} style={{ display:"flex", gap:9, position:"relative" }}>
                         <div style={{ width:28, height:28, borderRadius:"50%", overflow:"hidden", flexShrink:0, border:`1.5px solid ${rc2}44` }}>
                           {c.userPhoto
                             ? <img src={c.userPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
                             : <div style={{ width:"100%", height:"100%", background:rc2+"1A", color:rc2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700 }}>{ini(c.userName||"?")}</div>
                           }
                         </div>
-                        <div>
-                          <div style={{ color:rc2, fontSize:10.5, fontWeight:700 }}>{c.userName}</div>
-                          <div style={{ color:C.ts, fontSize:12.5, marginTop:2, lineHeight:1.4 }}>{c.text}</div>
-                          <div style={{ color:C.td, fontSize:9.5, marginTop:3 }}>{new Date(c.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <div style={{ color:rc2, fontSize:10.5, fontWeight:700 }}>{c.userName}</div>
+                            <div style={{ color:C.td, fontSize:9.5 }}>{new Date(c.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
+                            {c.edited && <span style={{ color:C.td, fontSize:9 }}>(editado)</span>}
+                          </div>
+                          {isEditing ? (
+                            <div style={{ display:"flex", gap:5, marginTop:4 }}>
+                              <input value={editCommentText} onChange={e=>setEditCommentText(e.target.value)}
+                                onKeyDown={e=>e.key==="Enter"&&saveEditComment()}
+                                style={{ ...S.input, padding:"4px 8px", fontSize:12, flex:1 }} autoFocus />
+                              <button onClick={saveEditComment} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✓</button>
+                              <button onClick={()=>{setEditingCommentIdx(null);setEditCommentText("");}} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:6, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>✕</button>
+                            </div>
+                          ) : (
+                            <div style={{ color:C.ts, fontSize:12.5, marginTop:2, lineHeight:1.4 }}>{c.text}</div>
+                          )}
+                          {/* Like / Dislike / Actions */}
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
+                            <button onClick={()=>toggleCommentLike("like")}
+                              style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iLiked?C.acc:C.tm, fontSize:12 }}>
+                              {iLiked?"👍":"👍"} <span style={{ fontSize:10 }}>{likes.length||""}</span>
+                            </button>
+                            <button onClick={()=>toggleCommentLike("dislike")}
+                              style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iDisliked?"#F87171":C.tm, fontSize:12 }}>
+                              {iDisliked?"👎":"👎"} <span style={{ fontSize:10 }}>{dislikes.length||""}</span>
+                            </button>
+                            {isMineComment && (
+                              <div style={{ position:"relative", marginLeft:"auto" }}>
+                                <button onClick={()=>setCommentActionIdx(showActions?null:{storyId:viewStory.id,idx:i})}
+                                  style={{ background:"none", border:"none", cursor:"pointer", color:C.td, fontSize:12, padding:"0 4px" }}>•••</button>
+                                {showActions && (
+                                  <div style={{ position:"absolute", right:0, bottom:22, background:C.card, border:`1px solid ${C.b1}`, borderRadius:10, padding:"4px", zIndex:20, boxShadow:"0 4px 16px rgba(0,0,0,0.5)", minWidth:110 }}>
+                                    <button onClick={()=>{setEditingCommentIdx({storyId:viewStory.id,idx:i});setEditCommentText(c.text);setCommentActionIdx(null);}}
+                                      style={{ display:"block", width:"100%", textAlign:"left", padding:"6px 10px", background:"none", border:"none", color:C.ts, fontSize:12, cursor:"pointer", borderRadius:6 }}
+                                      onMouseEnter={e=>e.currentTarget.style.background=C.abg}
+                                      onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                                      ✏ Editar
+                                    </button>
+                                    <button onClick={deleteComment}
+                                      style={{ display:"block", width:"100%", textAlign:"left", padding:"6px 10px", background:"none", border:"none", color:"#F87171", fontSize:12, cursor:"pointer", borderRadius:6 }}
+                                      onMouseEnter={e=>e.currentTarget.style.background="#2D1515"}
+                                      onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                                      🗑 Excluir
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -6798,41 +6881,81 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [geralTheme, setGeralTheme] = useState(null);
   const [geralDelMsgId, setGeralDelMsgId] = useState(null);
   const [geralClearInput, setGeralClearInput] = useState("");
-  const [mutedConvs, setMutedConvs] = useState({}); // {uid: expiresAt|"forever"}
-  const [floatEmojis, setFloatEmojis] = useState([]); // [{id,emoji,x,y}]
-  const [showMuteMenu, setShowMuteMenu] = useState(null); // uid of conv showing mute menu
-  const [profileReactions, setProfileReactions] = useState({}); // {uid: emoji} — reactions received on profile
+  const [mutedConvs, setMutedConvs] = useState({});
+  const [floatEmojis, setFloatEmojis] = useState([]);
+  const [showMuteMenu, setShowMuteMenu] = useState(null);
+  const [profileReactions, setProfileReactions] = useState({});
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedMsgs, setSelectedMsgs] = useState([]);
 
   // ── Sound utils ────────────────────────────────────────────
   const playSound = (type) => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
       if (type === "ping") {
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
         o.frequency.setValueAtTime(880, ctx.currentTime);
         o.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.1);
         g.gain.setValueAtTime(0.3, ctx.currentTime);
         g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
         o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.25);
       } else if (type === "group") {
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
         o.frequency.setValueAtTime(440, ctx.currentTime);
         o.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
         o.frequency.setValueAtTime(550, ctx.currentTime + 0.2);
         g.gain.setValueAtTime(0.25, ctx.currentTime);
         g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
         o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.35);
+      } else if (type === "bird") {
+        // Pássaro: trinado rápido subindo e descendo
+        const notes = [1047,1319,1568,1319,1047,1319];
+        notes.forEach((freq, i) => {
+          const o = ctx.createOscillator(); const g = ctx.createGain();
+          o.type = "sine";
+          o.connect(g); g.connect(ctx.destination);
+          const t = ctx.currentTime + i * 0.07;
+          o.frequency.setValueAtTime(freq, t);
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(0.2, t + 0.03);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+          o.start(t); o.stop(t + 0.1);
+        });
       }
     } catch(e) {}
   };
 
-  const isMuted = (uid) => {
-    const m = mutedConvs[uid];
+  const isMuted = (key) => {
+    const m = mutedConvs[key];
     if (!m) return false;
     if (m === "forever") return true;
     return Date.now() < m;
   };
+
+  const MuteMenu = ({ convKey, isMestreUser, onClose }) => (
+    <div style={{ position:"absolute", right:0, top:50, background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"6px", zIndex:200, boxShadow:"0 4px 20px rgba(0,0,0,0.6)", minWidth:165 }}
+      onMouseLeave={onClose}>
+      <div style={{ color:C.tm, fontSize:10, padding:"4px 8px", fontWeight:600, marginBottom:4 }}>🔇 Silenciar por</div>
+      {[{label:"8 horas",val:8*3600000},{label:"24 horas",val:24*3600000},{label:"1 semana",val:7*24*3600000},{label:"Para sempre",val:"forever"}].map(opt=>(
+        <button key={opt.label} onClick={()=>{
+          setMutedConvs(p=>({...p,[convKey]:opt.val==="forever"?"forever":Date.now()+opt.val}));
+          onClose();
+        }} style={{ display:"block", width:"100%", textAlign:"left", padding:"6px 10px", background:"transparent", border:"none", color:C.ts, fontSize:12, cursor:"pointer", borderRadius:8 }}
+          onMouseEnter={e=>e.currentTarget.style.background=C.abg}
+          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+          {opt.label}
+        </button>
+      ))}
+      {isMuted(convKey) && (
+        <button onClick={()=>{setMutedConvs(p=>{const n={...p};delete n[convKey];return n;});onClose();}}
+          style={{ display:"block", width:"100%", textAlign:"left", padding:"6px 10px", background:"transparent", border:"none", color:C.acc, fontSize:12, cursor:"pointer", borderRadius:8, fontWeight:600, borderTop:`1px solid ${C.b1}`, marginTop:4 }}>
+          🔔 Ativar som
+        </button>
+      )}
+    </div>
+  );
 
   // Derive group settings from activeGroup doc
   const groupOnlyAdmins = activeGroup?.onlyAdmins === true;
@@ -6854,8 +6977,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       const forMe = msgs.filter(m => m.type !== "shake" && m.authorId !== myId && (!m.toId || m.toId === myId));
       if (prevMsgCount.current > 0 && forMe.length > prevMsgCount.current) {
         const latest = forMe[forMe.length - 1];
-        if (!isMuted(latest?.authorId || "geral")) {
-          if (latest?.groupId) { playSound("group"); }
+        const convKey = latest?.groupId || (latest?.toId ? latest.authorId : "geral");
+        if (!isMuted(convKey)) {
+          if (!latest?.toId && !latest?.groupId) { playSound("bird"); }
+          else if (latest?.groupId) { playSound("group"); }
           else { playSound("ping"); }
         }
       }
@@ -7283,11 +7408,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               : "Seu mensageiro de trabalho"}
             </div>
           </div>
-          {/* DM settings button */}
+          {/* DM settings button — person icon */}
           {activeTab && !activeGroupId && activeTab !== "geral" && (
-            <button onClick={() => setShowDMSettings(p=>!p)} title="Configurações da conversa"
-              style={{ background:showDMSettings?C.abg:"transparent", border:showDMSettings?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showDMSettings?C.atxt:C.tm, borderRadius:8, padding:"3px 9px", fontSize:13, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }}>
-              ⚙
+            <button onClick={() => setShowDMSettings(p=>!p)} title="Perfil da conversa"
+              style={{ background:showDMSettings?C.abg:"transparent", border:showDMSettings?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showDMSettings?C.atxt:C.tm, borderRadius:8, padding:"3px 9px", fontSize:15, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }}>
+              👤
             </button>
           )}
           {/* Geral settings button */}
@@ -7347,14 +7472,23 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           </div>
           {/* Geral — hide if search active and doesn't match */}
           {(!searchChat || "chat geral".includes(searchChat.toLowerCase()) || "geral".includes(searchChat.toLowerCase())) && (
-          <button onClick={() => setActiveTab("geral")} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
-            onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🌍</div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>Chat Geral</div>
-              <div style={{ color:C.tm, fontSize:11 }}>Todos os membros</div>
+          <div style={{ position:"relative", marginBottom:6 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <button onClick={() => setActiveTab("geral")} style={{ flex:1, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", textAlign:"left", transition:"all 0.14s" }}
+                onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🌍</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:600, display:"flex", alignItems:"center", gap:5 }}>Chat Geral {isMuted("geral")&&<span style={{fontSize:10,opacity:0.5}}>🔇</span>}</div>
+                  <div style={{ color:C.tm, fontSize:11 }}>Todos os membros</div>
+                </div>
+              </button>
+              <div style={{ position:"relative" }}>
+                <button onClick={e=>{e.stopPropagation();setShowMuteMenu(showMuteMenu==="geral"?null:"geral");}}
+                  style={{ background:"transparent", border:`1px solid ${C.b2}`, color:isMuted("geral")?C.atxt:C.td, borderRadius:8, width:24, height:24, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>—</button>
+                {showMuteMenu === "geral" && <MuteMenu convKey="geral" isMestreUser={false} onClose={()=>setShowMuteMenu(null)} />}
+              </div>
             </div>
-          </button>
+          </div>
           )}
 
           {/* Groups section */}
@@ -7363,19 +7497,30 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           )}
           {groups.filter(g => !searchChat || (g.name||"").toLowerCase().includes(searchChat.toLowerCase())).map(g => {
             const unread = unreadGroup(g.id);
+            const gKey = "grp:" + g.id;
+            const gMuted = isMuted(gKey);
             return (
-              <button key={g.id} onClick={() => { setActiveTab("grp:" + g.id); setEditingGroup(false); }}
-                style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
-                onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, overflow:"hidden", border:`1px solid ${C.b1}` }}>
-                  {g.photo ? <img src={g.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : "👥"}
+              <div key={g.id} style={{ position:"relative", marginBottom:6 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                  <button onClick={() => { setActiveTab(gKey); setEditingGroup(false); }}
+                    style={{ flex:1, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", textAlign:"left", transition:"all 0.14s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, overflow:"hidden", border:`1px solid ${C.b1}` }}>
+                      {g.photo ? <img src={g.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : "👥"}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"flex", alignItems:"center", gap:5 }}>{g.name}{gMuted&&<span style={{fontSize:10,opacity:0.5}}>🔇</span>}</div>
+                      <div style={{ color:C.tm, fontSize:11 }}>{(g.members||[]).length} membros</div>
+                    </div>
+                    {unread > 0 && !gMuted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
+                  </button>
+                  <div style={{ position:"relative" }}>
+                    <button onClick={e=>{e.stopPropagation();setShowMuteMenu(showMuteMenu===gKey?null:gKey);}}
+                      style={{ background:"transparent", border:`1px solid ${C.b2}`, color:gMuted?C.atxt:C.td, borderRadius:8, width:24, height:24, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>—</button>
+                    {showMuteMenu === gKey && <MuteMenu convKey={gKey} isMestreUser={false} onClose={()=>setShowMuteMenu(null)} />}
+                  </div>
                 </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{g.name}</div>
-                  <div style={{ color:C.tm, fontSize:11 }}>{(g.members||[]).length} membros</div>
-                </div>
-                {unread > 0 && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
-              </button>
+              </div>
             );
           })}
 
@@ -7601,22 +7746,26 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             <div style={{ position:"absolute", inset:0, zIndex:50, background:C.sb, display:"flex", flexDirection:"column", borderRadius:16, overflow:"hidden" }}>
               <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                 <button onClick={()=>setShowDMSettings(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, lineHeight:1 }}>‹</button>
-                <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>⚙ Configurações da conversa</div>
+                <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>👤 Perfil da conversa</div>
               </div>
               <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
 
                 {/* Last seen */}
                 {tabUser && (
-                  <div style={{ ...S.card, padding:"14px", borderRadius:12, marginBottom:18, display:"flex", alignItems:"center", gap:12 }}>
-                    <div style={{ width:42, height:42, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:C.atxt, flexShrink:0 }}>
-                      {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
-                    </div>
-                    <div>
-                      <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{tabUser.name||tabUser.email}</div>
-                      <div style={{ color: presence[activeTab]?.online ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
-                        {presence[activeTab]?.online ? "🟢 Online agora" : lastMsgTime(activeTab) ? `👁 Visto por último às ${lastMsgTime(activeTab)}` : "Nunca visto"}
+                  <div style={{ ...S.card, padding:"14px", borderRadius:12, marginBottom:18 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10, cursor:"pointer" }} onClick={()=>setViewingProfile(tabUser.uid||tabUser.id)}>
+                      <div style={{ width:50, height:50, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.atxt, flexShrink:0, border:`2px solid ${C.b1}` }}>
+                        {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
+                      </div>
+                      <div>
+                        <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
+                        <div style={{ color: presence[activeTab]?.online ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
+                          {presence[activeTab]?.online ? "🟢 Online agora" : lastMsgTime(activeTab) ? `👁 Visto por último às ${lastMsgTime(activeTab)}` : "Nunca visto"}
+                        </div>
                       </div>
                     </div>
+                    {userBio && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"8px 10px", background:C.deep, borderRadius:8, marginBottom:8 }}>📝 {userBio}</div>}
+                    {userBirthday && <div style={{ color:C.tm, fontSize:11 }}>🎂 {new Date(userBirthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
                   </div>
                 )}
 
@@ -7660,6 +7809,26 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   ))}
                 </div>
                 {autoDeleteDM && <div style={{ color:C.tm, fontSize:11, marginBottom:18 }}>⚠ Mensagens apagadas automaticamente {autoDeleteDM==="close"?"ao fechar":"a cada "+autoDeleteDM}.</div>}
+
+                {/* Clear conversation */}
+                <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:14, marginBottom:4 }}>
+                  <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🧹 Limpar conversa</div>
+                  <p style={{ color:C.tm, fontSize:11.5, marginBottom:10 }}>Apaga apenas o histórico para você, o outro usuário continua vendo.</p>
+                  <button onClick={() => setConfirmModal({
+                    title:"Limpar conversa",
+                    body:"Limpar todo o histórico desta conversa para você?\nO outro usuário não será afetado.",
+                    onConfirm: async () => {
+                      const myMsgs = allMessages.filter(m => m.authorId === myId && (m.toId===activeTab));
+                      setDeletingMsgIds(myMsgs.map(m=>m.id));
+                      setTimeout(async()=>{
+                        for(const m of myMsgs){try{await deleteDoc(doc(db,"chat",m.id));}catch(e){}}
+                        setDeletingMsgIds([]);
+                      },600);
+                    }
+                  })} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:12.5, cursor:"pointer", width:"100%", textAlign:"left", marginBottom:8 }}>
+                    🧹 Limpar meu histórico
+                  </button>
+                </div>
 
                 {/* Delete conversation */}
                 <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
@@ -7860,6 +8029,29 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               </div>
             </div>
           )}
+          {/* Select mode toolbar */}
+          {selectMode && (
+            <div style={{ padding:"8px 14px", background:C.abg, borderBottom:`1px solid ${C.atxt}33`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+              <span style={{ color:C.atxt, fontSize:12, fontWeight:600, flex:1 }}>
+                {selectedMsgs.length > 0 ? `${selectedMsgs.length} selecionada(s)` : "Selecione mensagens"}
+              </span>
+              {selectedMsgs.length > 0 && (
+                <button onClick={async () => {
+                  setDeletingMsgIds([...selectedMsgs]);
+                  setTimeout(async () => {
+                    for (const id of selectedMsgs) { try { await deleteDoc(doc(db,"chat",id)); } catch(e) {} }
+                    setDeletingMsgIds([]); setSelectedMsgs([]); setSelectMode(false);
+                  }, 500);
+                }} style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                  🗑 Excluir
+                </button>
+              )}
+              <button onClick={() => { setSelectMode(false); setSelectedMsgs([]); }}
+                style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
+                Cancelar
+              </button>
+            </div>
+          )}
           {/* Messages */}
           <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5,
             background: (() => {
@@ -7936,9 +8128,25 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                 <div key={msg.id} style={{ display:"flex", flexDirection:isMine?"row-reverse":"row", alignItems:"flex-end", gap:6, position:"relative",
                   animation: deletingMsgIds.includes(msg.id) ? "dissolve 0.5s ease forwards" : "none",
                   pointerEvents: deletingMsgIds.includes(msg.id) ? "none" : "auto",
+                  background: selectMode && selectedMsgs.includes(msg.id) ? C.acc+"15" : "transparent",
+                  borderRadius: 10, padding: selectMode ? "2px 4px" : "0",
+                  transition: "background 0.15s",
                 }}
-                  onMouseEnter={()=>setHoveredMsg(msg.id)} onMouseLeave={()=>{setHoveredMsg(null);if(reactionPicker===msg.id)setReactionPicker(null);}}>
-                  {/* Avatar — clickable to view profile */}
+                  onMouseEnter={()=>{ if(!selectMode) setHoveredMsg(msg.id); }}
+                  onMouseLeave={()=>{if(!selectMode){setHoveredMsg(null);if(reactionPicker===msg.id)setReactionPicker(null);}}}
+                  onClick={() => {
+                    if (selectMode && isMine) {
+                      setSelectedMsgs(p => p.includes(msg.id) ? p.filter(x=>x!==msg.id) : [...p, msg.id]);
+                    }
+                  }}>
+                  {/* Select checkbox */}
+                  {selectMode && isMine && (
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, width:20 }}>
+                      <div style={{ width:16, height:16, borderRadius:4, border:`2px solid ${selectedMsgs.includes(msg.id)?C.acc:C.b2}`, background:selectedMsgs.includes(msg.id)?C.acc:"transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, color:"#fff", transition:"all 0.15s" }}>
+                        {selectedMsgs.includes(msg.id)?"✓":""}
+                      </div>
+                    </div>
+                  )}
                   {(() => {
                     const photo = isMine ? myPhoto : getUserPhoto(msg.authorId);
                     const rc2 = roleColor[msg.authorRole] || C.atxt;
@@ -7989,6 +8197,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                               <button onClick={()=>{ activeGroupId ? setGcDelMsgId(msg.id) : setGeralDelMsgId(msg.id); setReactionPicker(null); }} style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#F87171" }} title="Apagar para todos">🗑</button>
                             )
                           ) : null}
+                          {isMine && !selectMode && (
+                            <button onClick={()=>{setSelectMode(true); setSelectedMsgs([msg.id]);}} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }} title="Selecionar">☑</button>
+                          )}
                           <button onClick={()=>setReactionPicker(p=>p===msg.id?null:msg.id)} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"50%", width:22, height:22, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 6px #00000044" }}>🙂</button>
                           {reactionPicker===msg.id && (
                             <div style={{ position:"absolute", bottom:26, [isMine?"right":"left"]:0, background:C.card, border:`1px solid ${C.b1}`, borderRadius:22, padding:"5px 8px", display:"flex", gap:3, zIndex:10, boxShadow:"0 4px 16px #00000055", whiteSpace:"nowrap" }}>
