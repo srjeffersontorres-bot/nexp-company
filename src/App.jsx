@@ -714,7 +714,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   };
   return (
     <div style={{ position: "relative", flexShrink: 0 }}>
-      <div style={{ width: "100%", height: 72, background: cover ? "transparent" : `linear-gradient(135deg,${C.lg1},${C.lg2})`, overflow: "hidden", position: "relative" }}>
+      <div style={{ width: "100%", height: 120, background: cover ? "transparent" : `linear-gradient(135deg,${C.lg1},${C.lg2})`, overflow: "hidden", position: "relative" }}>
         {cover && <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
         <div style={{ position: "absolute", bottom: 8, left: 12 }}>
@@ -4165,27 +4165,70 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
         {tab === "permissoes" && sysConfig && onSysConfig && (
           <div>
-            <h2 style={{ color:C.tp, fontSize:17, fontWeight:700, marginBottom:20 }}>🔐 Controle de Acesso</h2>
+            <h2 style={{ color:C.tp, fontSize:17, fontWeight:700, marginBottom:6 }}>🔐 Controle de Acesso</h2>
+            <p style={{ color:C.tm, fontSize:13, marginBottom:20 }}>Configure permissões por papel (todos de uma vez) ou por usuário individualmente.</p>
 
-            {/* Chat toggles */}
+            {/* Role-level chat toggles */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>💬 Chat — Quem pode usar</div>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>💬 Chat por papel</div>
               {[
-                { key:"masterChatEnabled",   label:"Master pode usar o chat",   desc:"Desativar impede masters de acessar o Nexp Chat" },
-                { key:"indicadoChatEnabled", label:"Operador pode usar o chat", desc:"Desativar impede operadores de acessar o Nexp Chat" },
-                { key:"visitanteChatEnabled",label:"Visitante pode usar o chat",desc:"Desativar oculta o Nexp Chat para visitantes" },
+                { key:"masterChatEnabled",   label:"Master pode usar o chat",    col:"#94a3b8" },
+                { key:"indicadoChatEnabled", label:"Operador pode usar o chat",  col:"#34D399" },
+                { key:"visitanteChatEnabled",label:"Visitante pode usar o chat", col:"#60a5fa" },
               ].map(opt=>(
                 <div key={opt.key} onClick={()=>onSysConfig({...sysConfig,[opt.key]:!sysConfig[opt.key]})}
-                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:10, cursor:"pointer", marginBottom:8, background:sysConfig[opt.key]?C.abg:C.deep, border:`1px solid ${sysConfig[opt.key]?C.atxt+"33":C.b2}`, transition:"all 0.15s" }}>
-                  <div>
-                    <div style={{ color:sysConfig[opt.key]?C.atxt:C.ts, fontSize:13, fontWeight:sysConfig[opt.key]?600:400 }}>{opt.label}</div>
-                    <div style={{ color:C.td, fontSize:11, marginTop:2 }}>{opt.desc}</div>
-                  </div>
-                  <div style={{ width:36, height:20, borderRadius:10, background:sysConfig[opt.key]?C.acc:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:10, cursor:"pointer", marginBottom:8, background:sysConfig[opt.key]?C.abg:C.deep, border:`1px solid ${sysConfig[opt.key]?opt.col+"44":C.b2}`, transition:"all 0.15s" }}>
+                  <span style={{ color:sysConfig[opt.key]?opt.col:C.ts, fontSize:13, fontWeight:sysConfig[opt.key]?600:400 }}>{opt.label}</span>
+                  <div style={{ width:36, height:20, borderRadius:10, background:sysConfig[opt.key]?opt.col:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
                     <div style={{ position:"absolute", top:2, left:sysConfig[opt.key]?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Per-user individual chat control */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>👤 Chat por usuário (individual)</div>
+              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>Sobrescreve a configuração de papel para usuários específicos.</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {users.filter(u=>u.role!=="mestre").map(u=>{
+                  const uid = u.uid||u.id;
+                  const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
+                  const col = roleColor2[u.role]||C.atxt;
+                  const key = `userChat_${uid}`;
+                  const override = sysConfig.userOverrides?.[uid];
+                  const chatOn = override !== undefined ? override.chat : (
+                    u.role==="master"?sysConfig.masterChatEnabled:u.role==="indicado"?sysConfig.indicadoChatEnabled:sysConfig.visitanteChatEnabled
+                  );
+                  return (
+                    <div key={uid} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:C.deep, border:`1px solid ${C.b2}` }}>
+                      <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:col+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:col }}>
+                        {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ color:C.tp, fontSize:12.5, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name||u.email}</div>
+                        <div style={{ color:col, fontSize:10 }}>{u.role}</div>
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ color:C.td, fontSize:11 }}>Chat</span>
+                        <div onClick={()=>{
+                          const prev = sysConfig.userOverrides||{};
+                          onSysConfig({...sysConfig, userOverrides:{...prev,[uid]:{...(prev[uid]||{}),chat:!chatOn}}});
+                        }} style={{ width:36, height:20, borderRadius:10, background:chatOn?C.acc:C.b2, position:"relative", transition:"background 0.2s", cursor:"pointer", flexShrink:0 }}>
+                          <div style={{ position:"absolute", top:2, left:chatOn?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                        </div>
+                        {override !== undefined && (
+                          <button onClick={()=>{
+                            const prev = {...(sysConfig.userOverrides||{})};
+                            delete prev[uid];
+                            onSysConfig({...sysConfig,userOverrides:prev});
+                          }} style={{ background:"none", border:"none", color:C.td, fontSize:10, cursor:"pointer" }} title="Resetar para padrão do papel">↺</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Visitante tabs */}
@@ -4194,16 +4237,11 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
               <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>Controle quais seções o Visitante pode acessar na barra lateral.</div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {[
-                  { id:"dashboard", label:"Leads Gerais" },
-                  { id:"contacts",  label:"Contatos" },
-                  { id:"review",    label:"Ver Clientes" },
-                  { id:"cstatus",   label:"Cliente Status" },
-                  { id:"atalhos",   label:"Atalhos" },
-                  { id:"add",       label:"Adicionar" },
-                  { id:"import",    label:"Importar" },
-                  { id:"leds",      label:"Leds" },
-                  { id:"premium",   label:"Premium Nexp" },
-                  { id:"config",    label:"Configurações" },
+                  { id:"dashboard", label:"Leads Gerais" }, { id:"contacts", label:"Contatos" },
+                  { id:"review",    label:"Ver Clientes" }, { id:"cstatus",  label:"Cliente Status" },
+                  { id:"atalhos",   label:"Atalhos" },      { id:"add",      label:"Adicionar" },
+                  { id:"import",    label:"Importar" },     { id:"leds",     label:"Leds" },
+                  { id:"premium",   label:"Premium Nexp" }, { id:"config",   label:"Configurações" },
                 ].map(it=>{
                   const on = sysConfig.visitanteTabs?.[it.id] !== false;
                   return (
@@ -5917,7 +5955,7 @@ const STORY_EMOJIS = [
 ];
 const STORY_EMOJI_REACTIONS = ["❤️","😂","🔥","👍","😮","🎉","💯","😢"];
 
-function StoriesPage({ currentUser, users }) {
+function StoriesPage({ currentUser, users, onGoToDM }) {
   const myId = currentUser.uid || currentUser.id;
   const myProfile = users.find(u => (u.uid || u.id) === myId) || currentUser;
   const [stories, setStories] = useState([]);
@@ -5933,6 +5971,7 @@ function StoriesPage({ currentUser, users }) {
   const [editCommentText, setEditCommentText] = useState("");
   const [commentActionIdx, setCommentActionIdx] = useState(null);
   const [storyDeleteConfirm, setStoryDeleteConfirm] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [showReactions, setShowReactions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediaErr, setMediaErr] = useState("");
@@ -6097,6 +6136,23 @@ function StoriesPage({ currentUser, users }) {
       return;
     }
     const commentText = comment.trim();
+    // If replying to a specific comment, add as reply
+    if (replyingTo !== null) {
+      const comments = (story.comments||[]).map((cm,ci) => {
+        if (ci !== replyingTo.idx) return cm;
+        const replies = [...(cm.replies||[]), {
+          userId: myId,
+          userName: currentUser.name||currentUser.email,
+          userPhoto: myProfile.photo||null,
+          text: commentText,
+          createdAt: Date.now(),
+        }];
+        return { ...cm, replies };
+      });
+      await setDoc(doc(db,"stories",story.id),{comments},{merge:true});
+      setComment(""); setReplyingTo(null); setShowCommentEmoji(false);
+      return;
+    }
     const comments = [...(story.comments || []), {
       userId: myId,
       userName: currentUser.name || currentUser.email,
@@ -6623,13 +6679,29 @@ function StoriesPage({ currentUser, users }) {
                           {/* Like / Dislike / Actions */}
                           <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5 }}>
                             <button onClick={()=>toggleCommentLike("like")}
-                              style={{ background:iLiked?C.acc+"20":"none", border:iLiked?`1px solid ${C.acc}44`:"1px solid transparent", borderRadius:12, padding:"2px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, color:iLiked?C.acc:C.tm, fontSize:11, fontWeight:iLiked?600:400, transition:"all 0.15s" }}>
-                              👍 <span>Curtir</span>{likes.length>0&&<span style={{fontSize:10,opacity:0.7}}>· {likes.length}</span>}
+                              style={{ background:iLiked?C.acc+"25":"transparent", border:"none", borderRadius:20, padding:"3px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iLiked?C.acc:C.tm, fontSize:14, fontWeight:iLiked?700:400, transition:"all 0.15s" }}>
+                              <span style={{ filter: iLiked ? "none" : "brightness(0) invert(1)", opacity: iLiked?1:0.6 }}>👍</span>
+                              {likes.length > 0 && <span style={{ fontSize:10 }}>{likes.length}</span>}
                             </button>
                             <button onClick={()=>toggleCommentLike("dislike")}
-                              style={{ background:iDisliked?"#F8717120":"none", border:iDisliked?"1px solid #F8717144":"1px solid transparent", borderRadius:12, padding:"2px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:4, color:iDisliked?"#F87171":C.tm, fontSize:11, fontWeight:iDisliked?600:400, transition:"all 0.15s" }}>
-                              👎 <span>Não curtir</span>{dislikes.length>0&&<span style={{fontSize:10,opacity:0.7}}>· {dislikes.length}</span>}
+                              style={{ background:iDisliked?"#F8717125":"transparent", border:"none", borderRadius:20, padding:"3px 8px", cursor:"pointer", display:"flex", alignItems:"center", gap:3, color:iDisliked?"#F87171":C.tm, fontSize:14, fontWeight:iDisliked?700:400, transition:"all 0.15s" }}>
+                              <span style={{ filter: iDisliked ? "none" : "brightness(0) invert(1)", opacity: iDisliked?1:0.6 }}>👎</span>
+                              {dislikes.length > 0 && <span style={{ fontSize:10 }}>{dislikes.length}</span>}
                             </button>
+                            <button onClick={()=>{ setReplyingTo({idx:i, userName:c.userName}); setComment(`@${c.userName} `); }}
+                              style={{ background:"none", border:"none", color:C.tm, fontSize:11, cursor:"pointer", padding:"2px 6px", borderRadius:8 }}
+                              onMouseEnter={e=>e.currentTarget.style.color=C.atxt}
+                              onMouseLeave={e=>e.currentTarget.style.color=C.tm}>
+                              ↩ Responder
+                            </button>
+                            {/* Go to DM with this commenter */}
+                            {c.userId !== myId && onGoToDM && (
+                              <button onClick={()=>onGoToDM(c.userId)}
+                                style={{ background:"none", border:"none", color:C.acc, fontSize:11, cursor:"pointer", padding:"2px 6px", borderRadius:8 }}
+                                title="Ir para conversa">
+                                💬
+                              </button>
+                            )}
                             {isMineComment && (
                               <div style={{ position:"relative", marginLeft:"auto" }}>
                                 <button onClick={()=>setCommentActionIdx(showActions?null:{storyId:viewStory.id,idx:i})}
@@ -6653,6 +6725,23 @@ function StoriesPage({ currentUser, users }) {
                               </div>
                             )}
                           </div>
+                          {/* Replies */}
+                          {(c.replies||[]).length > 0 && (
+                            <div style={{ marginTop:8, paddingLeft:12, borderLeft:`2px solid ${C.b1}`, display:"flex", flexDirection:"column", gap:6 }}>
+                              {(c.replies).map((rep,ri)=>(
+                                <div key={ri} style={{ display:"flex", gap:7 }}>
+                                  <div style={{ width:20, height:20, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:C.b2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:C.atxt }}>
+                                    {rep.userPhoto ? <img src={rep.userPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(rep.userName||"?")}
+                                  </div>
+                                  <div>
+                                    <span style={{ color:C.atxt, fontSize:10.5, fontWeight:700 }}>{rep.userName} </span>
+                                    <span style={{ color:C.ts, fontSize:11.5 }}>{rep.text}</span>
+                                    <div style={{ color:C.td, fontSize:9.5 }}>{new Date(rep.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -6661,6 +6750,14 @@ function StoriesPage({ currentUser, users }) {
             </div>
             {/* Comment input */}
             <div style={{ padding:"10px 14px", borderTop:`1px solid ${C.b1}`, flexShrink:0 }}>
+              {/* Reply indicator */}
+              {replyingTo && (
+                <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 10px", background:C.abg, borderRadius:8, marginBottom:8, border:`1px solid ${C.atxt}33` }}>
+                  <span style={{ color:C.atxt, fontSize:11.5, flex:1 }}>↩ Respondendo <b>{replyingTo.userName}</b></span>
+                  <button onClick={()=>{ setReplyingTo(null); setComment(""); }}
+                    style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:14, lineHeight:1 }}>✕</button>
+                </div>
+              )}
               {showCommentEmoji && (
                 <div style={{ display:"flex", flexWrap:"wrap", gap:3, marginBottom:8, padding:"8px 10px", background:C.deep, borderRadius:10, border:`1px solid ${C.b1}`, maxHeight:120, overflowY:"auto" }}>
                   {STORY_EMOJIS.map(e => (
@@ -6680,7 +6777,7 @@ function StoriesPage({ currentUser, users }) {
                 </button>
                 <input value={comment} onChange={e=>setComment(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&addComment(viewStory)}
-                  placeholder="Comentar..." style={{ ...S.input, padding:"7px 11px", fontSize:12.5, flex:1 }} />
+                  placeholder={replyingTo ? `Responder ${replyingTo.userName}...` : "Comentar..."} style={{ ...S.input, padding:"7px 11px", fontSize:12.5, flex:1 }} autoFocus={!!replyingTo} />
                 <button onClick={() => addComment(viewStory)} disabled={!comment.trim()}
                   style={{ ...S.btn(comment.trim()?C.acc:C.deep, comment.trim()?"#fff":C.td), padding:"7px 12px", fontSize:13, opacity:comment.trim()?1:0.5, flexShrink:0 }}>
                   ➤
@@ -6923,13 +7020,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [dmTheme, setDmTheme] = useState(null);
   const [userReaction, setUserReaction] = useState(null);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [userCoverPhoto, setUserCoverPhoto] = useState(currentUser.coverPhoto||null);
   const [autoDeleteDM, setAutoDeleteDM] = useState(null); // null|"close"|"8h"|"24h"|"48h"|"7d"|"30d"
   const [confirmModal, setConfirmModal] = useState(null); // {title, body, onConfirm}
   const [deletingMsgIds, setDeletingMsgIds] = useState([]); // for dissolve anim
-  const [userBio, setUserBio] = useState("");
-  const [userRecado, setUserRecado] = useState("");
-  const [userRecadoExpiry, setUserRecadoExpiry] = useState(null);
-  const [userBirthday, setUserBirthday] = useState("");
+  const [userBio, setUserBio] = useState(currentUser.bio||"");
+  const [userRecado, setUserRecado] = useState(currentUser.recado||"");
+  const [userRecadoExpiry, setUserRecadoExpiry] = useState(currentUser.recadoExpiry||null);
+  const [userBirthday, setUserBirthday] = useState(currentUser.birthday||"");
   const [viewingProfile, setViewingProfile] = useState(null);
   const [showGeralSettings, setShowGeralSettings] = useState(false);
   const [geralOnlyAdmins, setGeralOnlyAdmins] = useState(false);
@@ -7462,9 +7560,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               : tabUser
               ? (
                 <span style={{ display:"flex", alignItems:"center", gap:4 }}>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background: presence[activeTab]?.online ? "#16A34A" : C.b2, display:"inline-block", flexShrink:0 }} />
-                  <span style={{ color: presence[activeTab]?.online ? "#16A34A" : C.tm }}>
-                    {presence[activeTab]?.online ? "online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role]}
+                  <span style={{ width:7, height:7, borderRadius:"50%", background: presence[activeTab]?.online ? "#16A34A" : "#FBBF24", display:"inline-block", flexShrink:0, boxShadow: presence[activeTab]?.online?"0 0 5px #16A34A88":"0 0 5px #FBBF2488" }} />
+                  <span style={{ color: presence[activeTab]?.online ? "#16A34A" : "#FBBF24" }}>
+                    {presence[activeTab]?.online ? "online agora" : "offline"}
                   </span>
                 </span>
               )
@@ -8095,6 +8193,30 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               </div>
             </div>
           )}
+          {/* Group member avatar strip with names */}
+          {activeGroupId && activeGroup && (
+            <div style={{ display:"flex", gap:12, padding:"8px 14px", borderBottom:`1px solid ${C.b1}`, overflowX:"auto", flexShrink:0, background:C.sb }}>
+              {(activeGroup.members||[]).slice(0,10).map(uid => {
+                const u = users.find(x=>(x.uid||x.id)===uid);
+                if (!u) return null;
+                const rc2 = roleColor[u.role]||C.atxt;
+                const online = presence[uid]?.online;
+                return (
+                  <div key={uid} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", flexShrink:0 }}
+                    onClick={()=>setViewingProfile(uid)}>
+                    <div style={{ position:"relative" }}>
+                      <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", background:rc2+"1A", border:`1.5px solid ${rc2}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:rc2 }}>
+                        {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                      </div>
+                      <div style={{ position:"absolute", bottom:-1, right:-1, width:8, height:8, borderRadius:"50%", background:online?"#16A34A":"#FBBF24", border:`1.5px solid ${C.sb}` }} />
+                    </div>
+                    <span style={{ color:C.tm, fontSize:9, whiteSpace:"nowrap", maxWidth:40, overflow:"hidden", textOverflow:"ellipsis" }}>{(u.name||u.email).split(" ")[0]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Select mode toolbar */}
           {selectMode && (
             <div style={{ padding:"8px 14px", background:C.abg, borderBottom:`1px solid ${C.atxt}33`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
@@ -8378,10 +8500,23 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>👤 Meu Perfil</div>
           </div>
           <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
-            {/* Photo + name */}
+            {/* Cover + Photo */}
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, marginBottom:22 }}>
-              <div style={{ position:"relative", cursor:"pointer" }} onClick={()=>document.getElementById("profilePhotoInput").click()}>
-                <div style={{ width:80, height:80, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2.5px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:C.atxt }}>
+              {/* Cover photo */}
+              <div style={{ width:"100%", height:90, borderRadius:12, overflow:"hidden", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, position:"relative", marginBottom:-30 }}>
+                {userCoverPhoto && <img src={userCoverPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}
+                <label style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.55)", border:"1px solid rgba(255,255,255,0.25)", color:"#fff", borderRadius:8, padding:"3px 9px", fontSize:10, cursor:"pointer" }}>
+                  🖼 Capa
+                  <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
+                    const f=e.target.files[0]; if(!f) return;
+                    const r=new FileReader();
+                    r.onload=async ev=>{ setUserCoverPhoto(ev.target.result); try{ await saveUserProfile(myId,{...currentUser,coverPhoto:ev.target.result}); }catch(e2){} };
+                    r.readAsDataURL(f);
+                  }} />
+                </label>
+              </div>
+              <div style={{ position:"relative", cursor:"pointer", zIndex:1 }} onClick={()=>document.getElementById("profilePhotoInput").click()}>
+                <div style={{ width:80, height:80, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`3px solid ${C.sb}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:C.atxt }}>
                   {currentUser.photo ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(currentUser.name||"?")}
                 </div>
                 {userReaction && <div style={{ position:"absolute", bottom:-6, right:-6, fontSize:26, lineHeight:1 }}>{userReaction}</div>}
@@ -8390,7 +8525,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <input id="profilePhotoInput" type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
                 const f=e.target.files[0]; if(!f) return;
                 const r=new FileReader();
-                r.onload=async ev=>{ try { await saveUserProfile({...currentUser, photo:ev.target.result}); } catch(e2){} };
+                r.onload=async ev=>{ try { await saveUserProfile(myId, {...currentUser, photo:ev.target.result}); } catch(e2){} };
                 r.readAsDataURL(f);
               }} />
               <div style={{ textAlign:"center" }}>
@@ -8402,11 +8537,13 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             {/* Recado */}
             <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>💬 Recado</div>
             <div style={{ ...S.card, padding:"12px", borderRadius:12, marginBottom:16 }}>
-              <textarea value={userRecado} onChange={e=>setUserRecado(e.target.value)} placeholder="Escreva um recado que aparecerá no seu perfil..." rows={2}
+              <textarea value={userRecado} onChange={e=>setUserRecado(e.target.value)}
+                onBlur={async()=>{ try{ await saveUserProfile(myId,{...currentUser,recado:userRecado,recadoExpiry:userRecadoExpiry}); }catch(e2){} }}
+                placeholder="Escreva um recado que aparecerá no seu perfil..." rows={2}
                 style={{ ...S.input, resize:"none", fontSize:12.5, marginBottom:8 }} />
               <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                 {[{id:null,label:"Sem expirar"},{id:"8h",label:"8 horas"},{id:"12h",label:"12 horas"},{id:"24h",label:"24 horas"}].map(opt=>(
-                  <button key={String(opt.id)} onClick={()=>setUserRecadoExpiry(opt.id)}
+                  <button key={String(opt.id)} onClick={async()=>{ setUserRecadoExpiry(opt.id); try{ await saveUserProfile(myId,{...currentUser,recado:userRecado,recadoExpiry:opt.id}); }catch(e2){} }}
                     style={{ background:userRecadoExpiry===opt.id?C.acc:C.deep, color:userRecadoExpiry===opt.id?"#fff":C.ts, border:userRecadoExpiry===opt.id?"none":`1px solid ${C.b2}`, borderRadius:8, padding:"4px 10px", cursor:"pointer", fontSize:11, fontWeight:userRecadoExpiry===opt.id?700:400, transition:"all 0.15s" }}>
                     {opt.label}
                   </button>
@@ -8416,12 +8553,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
             {/* Bio */}
             <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>📝 Biografia</div>
-            <textarea value={userBio} onChange={e=>setUserBio(e.target.value)} placeholder="Fale um pouco sobre você..." rows={3}
+            <textarea value={userBio} onChange={e=>setUserBio(e.target.value)}
+              onBlur={async()=>{ try{ await saveUserProfile(myId,{...currentUser,bio:userBio}); }catch(e2){} }}
+              placeholder="Fale um pouco sobre você..." rows={3}
               style={{ ...S.input, resize:"vertical", fontSize:12.5, marginBottom:16, borderRadius:10 }} />
 
             {/* Birthday */}
             <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>🎂 Data de aniversário</div>
-            <input type="date" value={userBirthday} onChange={e=>setUserBirthday(e.target.value)}
+            <input type="date" value={userBirthday} onChange={async e=>{ setUserBirthday(e.target.value); try{ await saveUserProfile(myId,{...currentUser,birthday:e.target.value}); }catch(e2){} }}
               style={{ ...S.input, fontSize:12.5, marginBottom:16, borderRadius:10 }} />
 
             {/* Reaction */}
@@ -8569,8 +8708,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
               return (
                 <>
+                  {/* Cover photo */}
+                  {vUser.coverPhoto && (
+                    <div style={{ height:70, borderRadius:"12px 12px 0 0", overflow:"hidden", margin:"-20px -20px 8px", width:"calc(100% + 40px)" }}>
+                      <img src={vUser.coverPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    </div>
+                  )}
                   {/* Header */}
-                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, marginBottom:14 }}>
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, marginBottom:14, marginTop: vUser.coverPhoto ? 8 : 0 }}>
                     <div style={{ position:"relative" }}>
                       <div style={{ width:80, height:80, borderRadius:"50%", overflow:"hidden", background:C.deep, border:`2.5px solid ${rc2}44` }}>
                         {vUser.photo ? <img src={vUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <div style={{ width:"100%", height:"100%", background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, fontWeight:700, color:rc2 }}>{ini(vUser.name||"?")}</div>}
@@ -8587,17 +8732,17 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     <div style={{ textAlign:"center" }}>
                       <div style={{ color:C.tp, fontSize:16, fontWeight:700, animation:"nameReveal 0.4s ease" }}>{vUser.name||vUser.email}</div>
                       <div style={{ color:rc2, fontSize:11.5, marginTop:2 }}>{roleLabel[vUser.role]}</div>
-                      <div style={{ color:isOnlineV?"#16A34A":C.tm, fontSize:11.5, marginTop:4, display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
-                        <span style={{ width:7, height:7, borderRadius:"50%", background:isOnlineV?"#16A34A":C.b2, display:"inline-block" }} />
-                        {isOnlineV ? "Online agora" : lastMsgTime(vId) ? `Visto às ${lastMsgTime(vId)}` : "Offline"}
+                      <div style={{ color:isOnlineV?"#16A34A":"#FBBF24", fontSize:11.5, marginTop:4, display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
+                        <span style={{ width:8, height:8, borderRadius:"50%", background:isOnlineV?"#16A34A":"#FBBF24", display:"inline-block", boxShadow: isOnlineV?"0 0 6px #16A34A88":"0 0 6px #FBBF2488" }} />
+                        {isOnlineV ? "Online agora" : "Offline"}
                       </div>
                     </div>
                   </div>
 
-                  {/* Bio — only shown to others */}
-                  {userBio && isMe && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"9px 12px", background:C.deep, borderRadius:10, marginBottom:10, textAlign:"center" }}>📝 {userBio}</div>}
-                  {userRecado && isMe && <div style={{ color:C.atxt, fontSize:12, padding:"9px 12px", background:C.abg, borderRadius:10, marginBottom:10, textAlign:"center" }}>💬 {userRecado}</div>}
-                  {userBirthday && isMe && <div style={{ color:C.tm, fontSize:11, textAlign:"center", marginBottom:10 }}>🎂 {new Date(userBirthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
+                  {/* Bio — from user Firestore data */}
+                  {vUser.bio && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"9px 12px", background:C.deep, borderRadius:10, marginBottom:10, textAlign:"center" }}>📝 {vUser.bio}</div>}
+                  {vUser.recado && <div style={{ color:C.atxt, fontSize:12, padding:"9px 12px", background:C.abg, borderRadius:10, marginBottom:10, textAlign:"center" }}>💬 {vUser.recado}</div>}
+                  {vUser.birthday && <div style={{ color:C.tm, fontSize:11, textAlign:"center", marginBottom:10 }}>🎂 {new Date(vUser.birthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
 
                   {/* Reaction gift — 50 options, limit 3 */}
                   {!isMe && (
@@ -9003,7 +9148,7 @@ export default function App() {
           <NotificacoesPage currentUser={currentUser} users={users} />
         )}
         {page === "stories" && (
-          <StoriesPage currentUser={currentUser} users={users} />
+          <StoriesPage currentUser={currentUser} users={users} onGoToDM={(uid)=>{ setChatOpen(true); sessionStorage.setItem("nexp_dm_uid", uid); }} />
         )}
         {page === "premium" && currentUser.role === "mestre" && (
           <PremiumNexp contacts={contacts} setContacts={setContacts} />
@@ -9022,9 +9167,15 @@ export default function App() {
       {/* ── Chat Flutuante ── */}
       {chatOpen && (() => {
         const role = currentUser?.role;
-        if (role === "visitante" && !sysConfig?.visitanteChatEnabled) return null;
-        if (role === "indicado" && !sysConfig?.indicadoChatEnabled) return null;
-        if (role === "master" && !sysConfig?.masterChatEnabled) return null;
+        const uid = currentUser?.uid || currentUser?.id;
+        const override = sysConfig?.userOverrides?.[uid];
+        // Per-user override takes priority
+        if (override !== undefined && override.chat === false) return null;
+        if (override === undefined) {
+          if (role === "visitante" && !sysConfig?.visitanteChatEnabled) return null;
+          if (role === "indicado" && !sysConfig?.indicadoChatEnabled) return null;
+          if (role === "master" && !sysConfig?.masterChatEnabled) return null;
+        }
         return (
           <FloatingChat
             currentUser={currentUser}
