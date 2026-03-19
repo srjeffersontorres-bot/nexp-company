@@ -6990,7 +6990,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     await setDoc(doc(db, "chatGroups", activeGroup.id), patch, { merge: true });
   };
 
-  const gcToggleLock = () => gcUpdate({ locked: !groupLocked });
   const gcToggleOnlyAdmins = () => gcUpdate({ onlyAdmins: !groupOnlyAdmins });
 
   const gcSetColor = (color) => gcUpdate({ color });
@@ -7019,8 +7018,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
   const gcClearAll = async () => {
     setGcClearPwErr("");
-    // Verify mestre password stored in profile
-    const mestreProfile = users.find(u => u.role === "mestre");
     // Simple check: require the group adm to type "CONFIRMAR" for safety
     if (gcClearPwInput.trim().toUpperCase() !== "CONFIRMAR") {
       setGcClearPwErr("Digite CONFIRMAR para limpar todas as mensagens.");
