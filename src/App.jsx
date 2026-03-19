@@ -5907,30 +5907,37 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             const rc = roleColor[u.role] || C.atxt;
             const unread = unreadDM(uid);
             const isOnline = presence[uid]?.online;
-            const userHasStory = hasStory(uid);
             return (
               <button key={uid} onClick={() => setActiveTab(uid)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
                 onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div style={{ position:"relative", flexShrink:0 }}>
-                  {/* Story ring — gradient quando não visto, cinza quando visto */}
-                  <div
-                    onClick={e => { e.stopPropagation(); if(userHasStory && onOpenStory) onOpenStory(uid); }}
-                    style={{
-                      width:44, height:44, borderRadius:"50%", padding:2, boxSizing:"border-box",
-                      background: userHasStory ? "linear-gradient(135deg,#3B6EF5,#7C3AED,#F5376B)" : "transparent",
-                      border: !userHasStory ? `1.5px solid ${rc}33` : "none",
-                      cursor: userHasStory ? "pointer" : "default",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                    }}
-                  >
-                    {/* Gap */}
-                    <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:C.sb, padding:2, boxSizing:"border-box" }}>
-                      {u.photo
-                        ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block" }} />
-                        : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{ini(u.name||u.email||"?")}</div>
-                      }
-                    </div>
-                  </div>
+                  {/* Ring igual ao Stories — gradiente se não visto, cinza se visto */}
+                  {(() => {
+                    const now = Date.now();
+                    const userStories = (stories||[]).filter(s => s.authorId === uid && s.expiresAt > now);
+                    const allViewed = userStories.length > 0 && userStories.every(s => (s.views||[]).includes(myId));
+                    const showRing = userStories.length > 0;
+                    return (
+                      <div
+                        onClick={e => { e.stopPropagation(); if(showRing && onOpenStory) onOpenStory(uid); }}
+                        style={{
+                          width:44, height:44, borderRadius:"50%", padding:2, boxSizing:"border-box",
+                          background: showRing && !allViewed ? "linear-gradient(135deg,#3B6EF5,#7C3AED,#F5376B)" : "transparent",
+                          border: !showRing ? `1.5px solid ${rc}33` : allViewed ? `2px solid ${C.b2}` : "none",
+                          cursor: showRing ? "pointer" : "default",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                          transition:"all 0.3s",
+                        }}
+                      >
+                        <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:C.sb, padding: showRing && !allViewed ? 2 : 0, boxSizing:"border-box" }}>
+                          {u.photo
+                            ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block" }} />
+                            : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{ini(u.name||u.email||"?")}</div>
+                          }
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
