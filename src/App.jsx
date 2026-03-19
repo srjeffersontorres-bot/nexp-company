@@ -4194,7 +4194,6 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
                   const uid = u.uid||u.id;
                   const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
                   const col = roleColor2[u.role]||C.atxt;
-                  const key = `userChat_${uid}`;
                   const override = sysConfig.userOverrides?.[uid];
                   const chatOn = override !== undefined ? override.chat : (
                     u.role==="master"?sysConfig.masterChatEnabled:u.role==="indicado"?sysConfig.indicadoChatEnabled:sysConfig.visitanteChatEnabled
