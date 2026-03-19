@@ -702,7 +702,7 @@ function LoginPage({ onLogin }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, flashUserId }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, flashUserId, stories }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     {
@@ -890,10 +890,29 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
             <div style={{ background: C.deep, borderRadius: 10, padding: "11px 12px", border: `1px solid ${C.b1}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
                 <div style={{ position: "relative", flexShrink: 0 }}>
-                  {uObj.photo
-                    ? <img src={uObj.photo} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${C.atxt}33` }} />
-                    : <div style={{ width: 30, height: 30, borderRadius: "50%", background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg, color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, border: `1.5px solid ${C.atxt}33`, animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>{ini(uObj.name || "OP")}</div>
-                  }
+                  {/* Story ring on profile */}
+                  {(() => {
+                    const myId = uObj.uid || uObj.id;
+                    const now = Date.now();
+                    const iHaveStory = (stories||[]).some(s => s.authorId === myId && s.expiresAt > now);
+                    return (
+                      <div
+                        onClick={() => iHaveStory && setPage("stories")}
+                        style={{
+                          width:32, height:32, borderRadius:"50%", padding: iHaveStory ? 2 : 0, boxSizing:"border-box",
+                          background: iHaveStory ? "linear-gradient(135deg,#3B6EF5,#7C3AED,#F5376B)" : "transparent",
+                          cursor: iHaveStory ? "pointer" : "default",
+                          display:"flex", alignItems:"center", justifyContent:"center",
+                        }}>
+                        <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: iHaveStory ? C.sb : "transparent", padding: iHaveStory ? 1 : 0, boxSizing:"border-box" }}>
+                          {uObj.photo
+                            ? <img src={uObj.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block", border: !iHaveStory ? `1.5px solid ${C.atxt}33` : "none" }} />
+                            : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg, color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>{ini(uObj.name || "OP")}</div>
+                          }
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}` }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -5145,46 +5164,60 @@ function StoriesPage({ currentUser, users }) {
   const StoryAvatar = ({ authorId, authorName, authorPhoto, authorStories: aStories, isMe }) => {
     const allViewed = aStories.every(s => (s.views||[]).includes(myId));
     const isActive = viewingAuthor === authorId;
-    const rc = roleColor[aStories[0]?.authorRole] || C.atxt;
+    const hasStories = aStories.length > 0;
+    // Ring: gradient azul/roxo = não visto | cinza = visto | sem borda = sem story
+    const ringStyle = hasStories
+      ? allViewed
+        ? { border: `2.5px solid ${C.b2}` }
+        : { border: "none", background: "linear-gradient(135deg,#3B6EF5,#7C3AED,#F5376B)" }
+      : { border: `2px dashed ${C.atxt}44` };
+
     return (
-      <button onClick={() => isMe && myStories.length === 0 ? setCreating(true) : openAuthor(authorId)}
-        style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer", flexShrink:0 }}>
-        <div style={{ position:"relative", width:68, height:68 }}>
-          {/* Ring */}
+      <button
+        onClick={() => isMe && myStories.length === 0 ? setCreating(true) : openAuthor(authorId)}
+        style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer", flexShrink:0 }}
+      >
+        <div style={{ position:"relative", width:72, height:72 }}>
+          {/* Outer ring */}
           <div style={{
             position:"absolute", inset:0, borderRadius:"50%",
-            background: isActive
-              ? `linear-gradient(135deg,${C.acc},${C.atxt})`
-              : (!allViewed && aStories.length > 0)
-                ? `linear-gradient(135deg,#3B6EF5,#7C3AED)`
-                : "transparent",
-            border: (allViewed || aStories.length === 0) ? `2px solid ${C.b2}` : "none",
-            padding: 3,
-          }} />
-          {/* Avatar */}
-          <div style={{
-            position:"absolute", inset:3, borderRadius:"50%",
-            background: C.deep, overflow:"hidden",
-            border: `2px solid ${C.bg}`,
-            display:"flex", alignItems:"center", justifyContent:"center",
+            ...ringStyle,
+            padding: hasStories && !allViewed ? 3 : 2,
+            boxSizing:"border-box",
+            transition:"all 0.3s",
           }}>
-            {authorPhoto
-              ? <img src={authorPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-              : <span style={{ fontSize:18, fontWeight:700, color: isMe ? C.atxt : rc }}>{ini(authorName||"?")}</span>
-            }
+            {/* Gap between ring and photo */}
+            <div style={{
+              width:"100%", height:"100%", borderRadius:"50%",
+              background: C.bg,
+              padding: hasStories && !allViewed ? 2 : 0,
+              boxSizing:"border-box",
+            }}>
+              {/* Photo */}
+              <div style={{ width:"100%", height:"100%", borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                {authorPhoto
+                  ? <img src={authorPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                  : <span style={{ fontSize:20, fontWeight:700, color: isMe ? C.atxt : (roleColor[aStories[0]?.authorRole]||C.atxt) }}>{ini(authorName||"?")}</span>
+                }
+              </div>
+            </div>
           </div>
-          {/* Badge count > 1 */}
+          {/* Story count badge */}
           {aStories.length > 1 && (
-            <div style={{ position:"absolute", top:0, right:0, background:C.acc, color:"#fff", borderRadius:"50%", width:18, height:18, fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}` }}>
+            <div style={{ position:"absolute", top:1, right:1, background:C.acc, color:"#fff", borderRadius:"50%", width:18, height:18, fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}`, zIndex:2 }}>
               {aStories.length}
             </div>
           )}
           {/* + button when no stories (own avatar) */}
           {isMe && myStories.length === 0 && (
-            <div style={{ position:"absolute", bottom:0, right:0, width:22, height:22, borderRadius:"50%", background:C.acc, border:`2px solid ${C.bg}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#fff", fontWeight:700 }}>+</div>
+            <div style={{ position:"absolute", bottom:0, right:0, width:22, height:22, borderRadius:"50%", background:C.acc, border:`2px solid ${C.bg}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:"#fff", fontWeight:700, zIndex:2 }}>+</div>
+          )}
+          {/* Active indicator */}
+          {isActive && (
+            <div style={{ position:"absolute", inset:-2, borderRadius:"50%", border:`2px solid ${C.atxt}`, pointerEvents:"none" }} />
           )}
         </div>
-        <span style={{ color: isActive ? C.atxt : C.tm, fontSize:11, fontWeight: isActive ? 600 : 400, maxWidth:64, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+        <span style={{ color: isActive ? C.atxt : C.tm, fontSize:11, fontWeight: isActive ? 600 : 400, maxWidth:72, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
           {isMe ? "Você" : (authorName||"?").split(" ")[0]}
         </span>
       </button>
@@ -5879,17 +5912,24 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <button key={uid} onClick={() => setActiveTab(uid)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
                 onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div style={{ position:"relative", flexShrink:0 }}>
-                  {/* Story ring — exact avatar size, clickable */}
+                  {/* Story ring — gradient quando não visto, cinza quando visto */}
                   <div
                     onClick={e => { e.stopPropagation(); if(userHasStory && onOpenStory) onOpenStory(uid); }}
-                    style={{ width:40, height:40, borderRadius:"50%", position:"relative", cursor: userHasStory ? "pointer" : "default" }}
+                    style={{
+                      width:44, height:44, borderRadius:"50%", padding:2, boxSizing:"border-box",
+                      background: userHasStory ? "linear-gradient(135deg,#3B6EF5,#7C3AED,#F5376B)" : "transparent",
+                      border: !userHasStory ? `1.5px solid ${rc}33` : "none",
+                      cursor: userHasStory ? "pointer" : "default",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                    }}
                   >
-                    {u.photo
-                      ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", border: userHasStory ? "2.5px solid #16A34A" : `1.5px solid ${rc}33`, boxShadow: userHasStory ? "0 0 0 2px #16A34A88, 0 0 10px #16A34A55" : "none", animation: userHasStory ? "storyRing 1.8s ease infinite" : "none" }} />
-                      : <div style={{ width:40, height:40, borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border: userHasStory ? "2.5px solid #16A34A" : `1.5px solid ${rc}33`, boxShadow: userHasStory ? "0 0 0 2px #16A34A88, 0 0 10px #16A34A55" : "none", animation: userHasStory ? "storyRing 1.8s ease infinite" : "none" }}>{ini(u.name||u.email||"?")}</div>
-                    }
-                    {/* Sparkle badge */}
-                    {userHasStory && <span style={{ position:"absolute", top:-4, right:-4, fontSize:11, lineHeight:1 }}>✨</span>}
+                    {/* Gap */}
+                    <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:C.sb, padding:2, boxSizing:"border-box" }}>
+                      {u.photo
+                        ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block" }} />
+                        : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{ini(u.name||u.email||"?")}</div>
+                      }
+                    </div>
                   </div>
                   {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                 </div>
@@ -6297,6 +6337,7 @@ export default function App() {
         unreadChat={unreadChat}
         presence={presence}
         flashUserId={flashUserId}
+        stories={chatStories}
       />
       <div style={{ flex: 1, overflowY: "auto", height: "100vh" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
