@@ -6767,7 +6767,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [gcDelMsgId, setGcDelMsgId] = useState(null);
 
   // Derive group settings from activeGroup doc
-  const groupLocked     = activeGroup?.locked === true;
   const groupOnlyAdmins = activeGroup?.onlyAdmins === true;
   const groupColor      = activeGroup?.color || null;
   const groupTrophies   = activeGroup?.trophies || {};
