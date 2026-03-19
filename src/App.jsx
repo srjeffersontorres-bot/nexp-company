@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from "firebase/auth";
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import {
   auth,
@@ -4231,15 +4231,10 @@ function PerfilTab({ users, setUsers, currentUser }) {
     if (newPw.length < 6) { setPwErr("A senha deve ter pelo menos 6 caracteres."); return; }
     if (newPw !== confirmPw) { setPwErr("As senhas não coincidem."); return; }
     try {
-      const { updatePassword: fbUpdatePw } = await import("firebase/auth");
-      const { auth: fbAuth } = await import("./firebase");
-      if (fbAuth.currentUser) {
-        await fbUpdatePw(fbAuth.currentUser, newPw);
-        setPwOk("Senha alterada com sucesso!"); setNewPw(""); setConfirmPw("");
-        setTimeout(() => { setPwOk(""); setShowPwChange(false); }, 3000);
-      } else {
-        setPwErr("Sessão expirada. Faça login novamente.");
-      }
+      if (!auth.currentUser) { setPwErr("Sessão expirada. Faça login novamente."); return; }
+      await updatePassword(auth.currentUser, newPw);
+      setPwOk("Senha alterada com sucesso!"); setNewPw(""); setConfirmPw("");
+      setTimeout(() => { setPwOk(""); setShowPwChange(false); }, 3000);
     } catch (e) {
       if (e.code === "auth/requires-recent-login") {
         setPwErr("Por segurança, faça logout e login novamente antes de alterar a senha.");
