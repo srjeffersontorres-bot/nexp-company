@@ -4918,41 +4918,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 }
 
 // ── Chat Page ──────────────────────────────────────────────────
-const QUICK_MESSAGES = [
-  "🔥 Hoje vai ser incrível, vamos com tudo pessoal!",
-  "🌅 Novo dia, novas oportunidades!",
-  "💪 Foco total hoje, vamos bater as metas!",
-  "🚀 Equipe unida, ninguém nos para!",
-  "⭐ Cada cliente é uma chance de fazer a diferença!",
-  "💰 Vendas feitas com propósito mudam vidas!",
-  "🎯 Mira no alvo, hoje é dia de fechar negócio!",
-  "🏆 Campeões não desistem, bora que bora!",
-  "✨ Acredite no seu potencial e vá em frente!",
-  "📈 Resultado não vem do acaso, vem do esforço!",
-  "💡 Uma boa conversa pode mudar o dia do cliente!",
-  "🤝 Atendimento com excelência é o nosso padrão!",
-  "🌟 Você é capaz de mais do que imagina!",
-  "🎉 Cada SIM é uma vitória que devemos celebrar!",
-  "📞 Liga pro cliente, oportunidade não espera!",
-  "💎 Qualidade no atendimento gera fidelidade!",
-  "🔑 A chave do sucesso é não parar de tentar!",
-  "🌈 Dificuldades existem para nos fortalecer!",
-  "⚡ Energia boa atrai resultados bons!",
-  "🎯 Foca no que você pode controlar: seu esforço!",
-  "👊 Time forte, resultados fortes!",
-  "🏅 Persistência é a mãe do sucesso!",
-  "💬 Uma boa escuta vale mais que mil palavras!",
-  "🌍 Nosso trabalho transforma a vida das pessoas!",
-  "🔔 Alerta de oportunidade: é hoje o dia!",
-  "🤩 Anime-se! O melhor cliente está por vir!",
-  "📊 Números sobem quando o time se une!",
-  "🧠 Trabalhe com estratégia, não só com força!",
-  "🌻 Plante dedicação e colha resultados!",
-  "🎊 Parabéns a todos pelo esforço de cada dia!",
-];
-
-const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","✅","👏","😎","🤝","💰","🏆","🎯"];
-
 
 // ── Stories ────────────────────────────────────────────────────
 const STORY_EMOJIS = [
