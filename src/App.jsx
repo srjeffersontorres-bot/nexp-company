@@ -5752,8 +5752,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   };
 
   const messages = activeTab === "geral"
-    ? allMessages.filter(m => !m.toId && m.type !== "shake")
-    : allMessages.filter(m => m.type !== "shake" && ((m.authorId === myId && m.toId === activeTab) || (m.authorId === activeTab && m.toId === myId)));
+    ? allMessages.filter(m => !m.toId)
+    : allMessages.filter(m => (m.authorId === myId && m.toId === activeTab) || (m.authorId === activeTab && m.toId === myId));
 
   const unreadDM = (uid) => allMessages.filter(m => m.toId === myId && m.authorId === uid && !m.readAt && m.type !== "shake").length;
 
@@ -5781,9 +5781,19 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     await setDoc(doc(db, "chat", msgId), { reactions: newR }, { merge: true });
   };
 
+  const shakeCountRef = useRef(0);
   const shake = async () => {
     if (!activeTab || activeTab === "geral") return;
-    await sendChatMessage({ text: "🔔", type: "shake", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, toId: activeTab });
+    shakeCountRef.current += 1;
+    const count = shakeCountRef.current;
+    await sendChatMessage({
+      text: `📳 ${currentUser.name || currentUser.email} chamou sua atenção${count > 1 ? ` (${count} vezes)` : " (1 vez)"}`,
+      type: "shake",
+      authorId: myId,
+      authorName: currentUser.name || currentUser.email,
+      authorRole: currentUser.role,
+      toId: activeTab,
+    });
   };
 
   const QUICK_MESSAGES = ["Bom dia, equipe! 🌅","Boa tarde! ☀️","Boa noite! 🌙","Vamos nessa! 🚀","Meta batida! 🏆","Ótimo trabalho! 👏","Aguardando retorno 📞","Reunião em 5 min ⏰","Cliente interessado! 💰","Fechamento confirmado! ✅","Precisando de ajuda 🆘","Tudo certo por aqui 👍"];
@@ -5869,20 +5879,17 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <button key={uid} onClick={() => setActiveTab(uid)} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
                 onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div style={{ position:"relative", flexShrink:0 }}>
-                  {/* Story ring */}
-                  {userHasStory && (
-                    <div
-                      onClick={e => { e.stopPropagation(); if(onOpenStory) onOpenStory(uid); }}
-                      style={{ position:"absolute", inset:-3, borderRadius:"50%", animation:"storyRing 1.8s ease infinite", cursor:"pointer", zIndex:1 }}
-                      title="Ver story"
-                    >
-                      <span style={{ position:"absolute", top:-4, right:-2, fontSize:10 }}>✨</span>
-                    </div>
-                  )}
-                  <div style={{ position:"relative", zIndex:2 }}>
-                    {u.photo ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", border: userHasStory ? "2px solid #16A34A" : "none" }} />
-                      : <div style={{ width:40, height:40, borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border: userHasStory ? "2px solid #16A34A" : "none" }}>{ini(u.name||u.email||"?")}</div>
+                  {/* Story ring — exact avatar size, clickable */}
+                  <div
+                    onClick={e => { e.stopPropagation(); if(userHasStory && onOpenStory) onOpenStory(uid); }}
+                    style={{ width:40, height:40, borderRadius:"50%", position:"relative", cursor: userHasStory ? "pointer" : "default" }}
+                  >
+                    {u.photo
+                      ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", border: userHasStory ? "2.5px solid #16A34A" : `1.5px solid ${rc}33`, boxShadow: userHasStory ? "0 0 0 2px #16A34A88, 0 0 10px #16A34A55" : "none", animation: userHasStory ? "storyRing 1.8s ease infinite" : "none" }} />
+                      : <div style={{ width:40, height:40, borderRadius:"50%", background:rc+"1A", color:rc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border: userHasStory ? "2.5px solid #16A34A" : `1.5px solid ${rc}33`, boxShadow: userHasStory ? "0 0 0 2px #16A34A88, 0 0 10px #16A34A55" : "none", animation: userHasStory ? "storyRing 1.8s ease infinite" : "none" }}>{ini(u.name||u.email||"?")}</div>
                     }
+                    {/* Sparkle badge */}
+                    {userHasStory && <span style={{ position:"absolute", top:-4, right:-4, fontSize:11, lineHeight:1 }}>✨</span>}
                   </div>
                   {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                 </div>
@@ -5904,6 +5911,17 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5 }}>
             {messages.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:C.tm, fontSize:12 }}>Nenhuma mensagem ainda</div>}
             {messages.map(msg => {
+              // Shake messages — centered notification
+              if (msg.type === "shake") {
+                return (
+                  <div key={msg.id} style={{ display:"flex", justifyContent:"center", margin:"4px 0" }}>
+                    <div style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:20, padding:"5px 14px", fontSize:11.5, color:"#F87171", fontWeight:600, textAlign:"center" }}>
+                      {msg.text}
+                    </div>
+                  </div>
+                );
+              }
+
               const isMine = msg.authorId === myId;
               const rc = roleColor[msg.authorRole] || C.atxt;
               const time = msg.createdAt?.seconds ? new Date(msg.createdAt.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) : "";
