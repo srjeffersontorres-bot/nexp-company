@@ -6753,8 +6753,24 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   // Active group object
   const activeGroupId = activeTab?.startsWith("grp:") ? activeTab.slice(4) : null;
   const activeGroup = activeGroupId ? groups.find(g => g.id === activeGroupId) : null;
-  const isGroupAdm = activeGroup && (activeGroup.admId === myId || activeGroup.createdBy === myId);
+  const isGroupAdm = activeGroup && (
+    activeGroup.admId === myId ||
+    activeGroup.createdBy === myId ||
+    (activeGroup.admins || []).includes(myId)
+  );
   const canShakeInGroup = activeGroup && canManageGroups;
+
+  // Group config panel states
+  const [showGroupConfig, setShowGroupConfig] = useState(false);
+  const [gcClearPwInput, setGcClearPwInput] = useState("");
+  const [gcClearPwErr, setGcClearPwErr] = useState("");
+  const [gcDelMsgId, setGcDelMsgId] = useState(null);
+
+  // Derive group settings from activeGroup doc
+  const groupLocked     = activeGroup?.locked === true;
+  const groupOnlyAdmins = activeGroup?.onlyAdmins === true;
+  const groupColor      = activeGroup?.color || null;
+  const groupTrophies   = activeGroup?.trophies || {};
 
   // Default position — bottom right
   const defaultX = window.innerWidth - 400;
@@ -6968,6 +6984,55 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   // ── Unread group msgs ────────────────────────────────────────
   const unreadGroup = (groupId) => allMessages.filter(m => m.groupId === groupId && m.authorId !== myId && !m.readAt && m.type !== "shake").length;
 
+  // ── Group config helpers ─────────────────────────────────────
+  const gcUpdate = async (patch) => {
+    if (!activeGroup) return;
+    await setDoc(doc(db, "chatGroups", activeGroup.id), patch, { merge: true });
+  };
+
+  const gcToggleLock = () => gcUpdate({ locked: !groupLocked });
+  const gcToggleOnlyAdmins = () => gcUpdate({ onlyAdmins: !groupOnlyAdmins });
+
+  const gcSetColor = (color) => gcUpdate({ color });
+
+  const gcToggleTrophy = (uid) => {
+    const cur = { ...groupTrophies };
+    if (cur[uid]) delete cur[uid]; else cur[uid] = true;
+    gcUpdate({ trophies: cur });
+  };
+
+  const gcAddAdmin = (uid) => {
+    const cur = [...(activeGroup?.admins || [])];
+    if (!cur.includes(uid)) cur.push(uid);
+    gcUpdate({ admins: cur });
+  };
+
+  const gcRemoveAdmin = (uid) => {
+    const cur = (activeGroup?.admins || []).filter(x => x !== uid);
+    gcUpdate({ admins: cur });
+  };
+
+  const gcDeleteMsg = async (msgId) => {
+    await deleteDoc(doc(db, "chat", msgId));
+    setGcDelMsgId(null);
+  };
+
+  const gcClearAll = async () => {
+    setGcClearPwErr("");
+    // Verify mestre password stored in profile
+    const mestreProfile = users.find(u => u.role === "mestre");
+    // Simple check: require the group adm to type "CONFIRMAR" for safety
+    if (gcClearPwInput.trim().toUpperCase() !== "CONFIRMAR") {
+      setGcClearPwErr("Digite CONFIRMAR para limpar todas as mensagens.");
+      return;
+    }
+    const groupMsgs = allMessages.filter(m => m.groupId === activeGroupId);
+    for (const m of groupMsgs) {
+      try { await deleteDoc(doc(db, "chat", m.id)); } catch(e) {}
+    }
+    setGcClearPwInput(""); setGcClearPwErr("");
+  };
+
   const QUICK_MESSAGES = ["Bom dia, equipe! 🌅","Boa tarde! ☀️","Boa noite! 🌙","Vamos nessa! 🚀","Meta batida! 🏆","Ótimo trabalho! 👏","Aguardando retorno 📞","Reunião em 5 min ⏰","Cliente interessado! 💰","Fechamento confirmado! ✅","Precisando de ajuda 🆘","Tudo certo por aqui 👍"];
   const filteredQuick = filter ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase())) : QUICK_MESSAGES;
 
@@ -7031,10 +7096,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             </div>
           </div>
           {/* Group edit button for adm */}
-          {isGroupAdm && !editingGroup && (
-            <button onClick={() => { setEditingGroup(true); setEditGroupName(activeGroup.name); setEditGroupPhoto(null); }}
-              style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"3px 8px", fontSize:11, cursor:"pointer", flexShrink:0 }} title="Editar grupo">
-              ✏
+          {isGroupAdm && (
+            <button onClick={() => { setShowGroupConfig(p=>!p); setEditingGroup(false); }}
+              style={{ background:showGroupConfig?C.abg:"transparent", border:showGroupConfig?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, color:showGroupConfig?C.atxt:C.tm, borderRadius:8, padding:"3px 10px", fontSize:13, cursor:"pointer", flexShrink:0, transition:"all 0.15s" }} title="Configurações do grupo">
+              ⚙
             </button>
           )}
         </div>
@@ -7206,6 +7271,105 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       {/* ── Conversation ── */}
       {activeTab && (
         <>
+          {/* ── Group config panel (adm only) ── */}
+          {showGroupConfig && isGroupAdm && activeGroup && (
+            <div style={{ borderBottom:`1px solid ${C.b1}`, background:C.card, flexShrink:0, maxHeight:380, overflowY:"auto" }}>
+              <style>{`@keyframes gcFade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
+              <div style={{ animation:"gcFade 0.18s ease", padding:"10px 14px" }}>
+
+                {/* ── Nome + Foto ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6, fontWeight:700 }}>✏ Nome e foto</div>
+                <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                  <div onClick={() => editGroupPhotoRef.current?.click()}
+                    style={{ width:36, height:36, borderRadius:"50%", background:C.deep, border:`1.5px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
+                    {activeGroup.photo ? <img src={activeGroup.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontSize:16 }}>📷</span>}
+                  </div>
+                  <input ref={editGroupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
+                    onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>{setEditGroupPhoto(ev.target.result); gcUpdate({ photo: ev.target.result });}; r.readAsDataURL(f); }} />
+                  <input value={editGroupName} onChange={e=>setEditGroupName(e.target.value)}
+                    onBlur={()=>{ if(editGroupName.trim() && editGroupName !== activeGroup.name) saveGroupEdit(); }}
+                    placeholder={activeGroup.name}
+                    style={{ ...S.input, fontSize:12, flex:1, height:36 }} />
+                </div>
+
+                {/* ── Cor do chat ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6, fontWeight:700 }}>🎨 Cor do chat</div>
+                <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
+                  {[null,"#3B6EF5","#7C3AED","#16A34A","#DC2626","#F59E0B","#EC4899","#0EA5E9","#0F1320"].map(c => (
+                    <button key={c||"default"} onClick={() => gcSetColor(c)}
+                      style={{ width:22, height:22, borderRadius:"50%", background: c || C.card, border: groupColor===c ? `3px solid #fff` : `1.5px solid ${C.b2}`, cursor:"pointer", flexShrink:0, boxShadow: groupColor===c ? `0 0 0 1px ${c||C.atxt}` : "none" }} />
+                  ))}
+                </div>
+
+                {/* ── Toggle switches ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6, fontWeight:700 }}>🔧 Permissões</div>
+                {[
+                  { label:"🔒 Travar conversa (só adms escrevem)", val:groupOnlyAdmins, fn:gcToggleOnlyAdmins, color:"#F87171" },
+                ].map(({ label, val, fn, color }) => (
+                  <div key={label} onClick={fn} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"7px 10px", borderRadius:8, cursor:"pointer", marginBottom:6, background:val?color+"15":C.deep, border:val?`1px solid ${color}44`:`1px solid ${C.b2}`, transition:"all 0.15s" }}>
+                    <span style={{ color: val ? color : C.ts, fontSize:11.5, fontWeight: val ? 600 : 400 }}>{label}</span>
+                    <div style={{ width:32, height:18, borderRadius:9, background:val?color:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                      <div style={{ position:"absolute", top:2, left: val?14:2, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px #00000055" }} />
+                    </div>
+                  </div>
+                ))}
+
+                {/* ── Adms ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", margin:"10px 0 6px", fontWeight:700 }}>👑 Administradores</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4, marginBottom:10 }}>
+                  {(activeGroup.members||[]).map(uid => {
+                    const u = users.find(x=>(x.uid||x.id)===uid);
+                    if (!u) return null;
+                    const isCreator = uid === (activeGroup.admId || activeGroup.createdBy);
+                    const isAdm = isCreator || (activeGroup.admins||[]).includes(uid);
+                    const isSelf2 = uid === myId;
+                    return (
+                      <div key={uid} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 8px", borderRadius:8, background:isAdm?C.abg:C.deep, border:isAdm?`1px solid ${C.atxt}33`:`1px solid ${C.b2}` }}>
+                        <div style={{ width:24, height:24, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:C.b2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:C.atxt }}>
+                          {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                        </div>
+                        <span style={{ flex:1, color:isAdm?C.atxt:C.ts, fontSize:11.5, fontWeight:isAdm?600:400 }}>{u.name||u.email}{isCreator?" 👑":""}{groupTrophies[uid]?" 🏆":""}</span>
+                        {!isSelf2 && !isCreator && (
+                          <button onClick={() => isAdm ? gcRemoveAdmin(uid) : gcAddAdmin(uid)}
+                            style={{ background:isAdm?"#2D1515":C.abg, color:isAdm?"#F87171":C.atxt, border:isAdm?"1px solid #EF444433":`1px solid ${C.atxt}33`, borderRadius:6, padding:"2px 8px", fontSize:10, cursor:"pointer", fontWeight:600 }}>
+                            {isAdm ? "Remover adm" : "+ Adm"}
+                          </button>
+                        )}
+                        {!isSelf2 && (
+                          <button onClick={() => gcToggleTrophy(uid)}
+                            style={{ background:"transparent", border:"none", fontSize:14, cursor:"pointer", opacity:groupTrophies[uid]?1:0.4 }} title={groupTrophies[uid]?"Tirar troféu":"Dar troféu"}>
+                            🏆
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ── Apagar mensagem individual ── */}
+                {gcDelMsgId && (
+                  <div style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:8, display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ color:"#F87171", fontSize:11.5, flex:1 }}>Apagar esta mensagem para todos?</span>
+                    <button onClick={() => gcDeleteMsg(gcDelMsgId)} style={{ background:"#EF4444", color:"#fff", border:"none", borderRadius:6, padding:"3px 10px", fontSize:11, cursor:"pointer", fontWeight:600 }}>Apagar</button>
+                    <button onClick={() => setGcDelMsgId(null)} style={{ background:"transparent", border:"none", color:C.tm, cursor:"pointer", fontSize:12 }}>✕</button>
+                  </div>
+                )}
+
+                {/* ── Limpar conversa ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", margin:"6px 0 6px", fontWeight:700 }}>🗑 Limpar conversa</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <input value={gcClearPwInput} onChange={e=>{setGcClearPwInput(e.target.value);setGcClearPwErr("");}}
+                    placeholder='Digite "CONFIRMAR" para apagar tudo'
+                    style={{ ...S.input, fontSize:11.5, flex:1 }} />
+                  <button onClick={gcClearAll}
+                    style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"6px 12px", fontSize:11.5, cursor:"pointer", fontWeight:600, flexShrink:0 }}>
+                    Limpar
+                  </button>
+                </div>
+                {gcClearPwErr && <div style={{ color:"#F87171", fontSize:11, marginTop:4 }}>⚠ {gcClearPwErr}</div>}
+              </div>
+            </div>
+          )}
           {/* Group edit panel */}
           {editingGroup && isGroupAdm && (
             <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, background:C.card, flexShrink:0 }}>
@@ -7231,7 +7395,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             </div>
           )}
           {/* Messages */}
-          <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5 }}>
+          <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5, background: groupColor ? groupColor + "18" : "transparent", transition:"background 0.3s" }}>
+            {groupOnlyAdmins && !isGroupAdm && (
+              <div style={{ textAlign:"center", margin:"10px 0", padding:"8px 16px", background:"#2B1D03", border:"1px solid #F59E0B44", borderRadius:20, color:"#FBBF24", fontSize:11.5, fontWeight:600 }}>
+                🔒 Apenas administradores podem escrever neste grupo
+              </div>
+            )}
             {messages.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:C.tm, fontSize:12 }}>Nenhuma mensagem ainda</div>}
             {messages.map(msg => {
               // Shake messages — centered notification
@@ -7267,7 +7436,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     );
                   })()}
                   <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems:isMine?"flex-end":"flex-start", position:"relative" }}>
-                    {!isMine && activeTab==="geral" && <span style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2 }}>{msg.authorName}</span>}
+                    {(!isMine && (activeTab==="geral" || activeGroupId)) && (
+                      <span style={{ color:rc, fontSize:9.5, fontWeight:700, marginBottom:2 }}>
+                        {groupTrophies[msg.authorId] ? "🏆 " : ""}{msg.authorName}
+                        {(activeGroup?.admins||[]).includes(msg.authorId) || msg.authorId === (activeGroup?.admId||activeGroup?.createdBy) ? " 👑" : ""}
+                      </span>
+                    )}
                     <div style={{ display:"flex", alignItems:"center", gap:4, flexDirection:isMine?"row-reverse":"row" }}>
                       <div style={{ background:isMine?C.acc:C.card, color:isMine?"#fff":C.tp, border:isMine?"none":`1px solid ${C.b1}`, borderRadius:isMine?"16px 16px 4px 16px":"16px 16px 16px 4px", padding:"7px 11px", fontSize:12.5, lineHeight:1.5, wordBreak:"break-word" }}>
                         {msg.text && <div>{msg.text}</div>}
@@ -7278,7 +7452,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         )}
                       </div>
                       {hoveredMsg === msg.id && (
-                        <div style={{ position:"relative" }}>
+                        <div style={{ position:"relative", display:"flex", flexDirection:"column", gap:3 }}>
+                          {/* Adm can delete any group message */}
+                          {activeGroupId && isGroupAdm && (
+                            <button onClick={()=>setGcDelMsgId(msg.id)} style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:"50%", width:22, height:22, fontSize:10, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"#F87171" }} title="Apagar para todos">🗑</button>
+                          )}
                           <button onClick={()=>setReactionPicker(p=>p===msg.id?null:msg.id)} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"50%", width:22, height:22, fontSize:11, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 6px #00000044" }}>🙂</button>
                           {reactionPicker===msg.id && (
                             <div style={{ position:"absolute", bottom:26, [isMine?"right":"left"]:0, background:C.card, border:`1px solid ${C.b1}`, borderRadius:22, padding:"5px 8px", display:"flex", gap:3, zIndex:10, boxShadow:"0 4px 16px #00000055", whiteSpace:"nowrap" }}>
@@ -7365,10 +7543,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <textarea ref={inputRef} value={text}
                 onChange={e=>{setText(e.target.value);if(e.target.value.startsWith("/"))setShowQuick(true);}}
                 onKeyDown={handleKey}
-                placeholder={activeGroup ? `Mensagem no ${activeGroup.name}…` : activeTab==="geral" ? "Mensagem…" : `Para ${tabUser?.name?.split(" ")[0]||"usuário"}…`}
+                disabled={groupOnlyAdmins && !isGroupAdm}
+                placeholder={groupOnlyAdmins && !isGroupAdm ? "🔒 Apenas adms podem escrever" : activeGroup ? `Mensagem no ${activeGroup.name}…` : activeTab==="geral" ? "Mensagem…" : `Para ${tabUser?.name?.split(" ")[0]||"usuário"}…`}
                 rows={1}
-                style={{ ...S.input, flex:1, resize:"none", borderRadius:20, padding:"8px 14px", fontSize:12.5, lineHeight:1.5, border:`1px solid ${text.trim()?C.atxt+"66":C.b2}`, transition:"border-color 0.2s, box-shadow 0.2s", boxShadow:text.trim()?`0 0 0 3px ${C.acc}18`:"none", outline:"none" }}
-                onFocus={e=>{e.target.style.borderColor=C.atxt+"88";e.target.style.boxShadow=`0 0 0 3px ${C.acc}22`;}}
+                style={{ ...S.input, flex:1, resize:"none", borderRadius:20, padding:"8px 14px", fontSize:12.5, lineHeight:1.5, border:`1px solid ${text.trim()?C.atxt+"66":C.b2}`, transition:"border-color 0.2s, box-shadow 0.2s", boxShadow:text.trim()?`0 0 0 3px ${C.acc}18`:"none", outline:"none", opacity: groupOnlyAdmins && !isGroupAdm ? 0.5 : 1, cursor: groupOnlyAdmins && !isGroupAdm ? "not-allowed" : "text" }}
+                onFocus={e=>{if(!(groupOnlyAdmins&&!isGroupAdm)){e.target.style.borderColor=C.atxt+"88";e.target.style.boxShadow=`0 0 0 3px ${C.acc}22`;}}}
                 onBlur={e=>{e.target.style.borderColor=text.trim()?C.atxt+"66":C.b2;e.target.style.boxShadow=text.trim()?`0 0 0 3px ${C.acc}18`:"none";}}
               />
               <button onClick={()=>send()} disabled={!text.trim()&&!attachment}
