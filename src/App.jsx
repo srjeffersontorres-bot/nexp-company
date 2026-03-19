@@ -702,6 +702,45 @@ function LoginPage({ onLogin }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────
+function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
+  const canEdit = user.role === "mestre" || user.role === "master";
+  const [cover, setCover] = useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
+  const coverRef = useRef(null);
+  const handleCover = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = (ev) => { setCover(ev.target.result); localStorage.setItem("nexp_sidebar_cover", ev.target.result); };
+    r.readAsDataURL(f);
+  };
+  return (
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <div style={{ width: "100%", height: 72, background: cover ? "transparent" : `linear-gradient(135deg,${C.lg1},${C.lg2})`, overflow: "hidden", position: "relative" }}>
+        {cover && <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
+        <div style={{ position: "absolute", bottom: 8, left: 12 }}>
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.3px", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>Nexp Company</div>
+          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>Sistema de Leads</div>
+        </div>
+        {canEdit && (
+          <button onClick={() => coverRef.current?.click()} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 6, padding: "2px 7px", fontSize: 9.5, cursor: "pointer" }}>
+            {cover ? "✎ Trocar" : "＋ Capa"}
+          </button>
+        )}
+        <input ref={coverRef} type="file" accept="image/*" onChange={handleCover} style={{ display: "none" }} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${C.b1}`, height: 24 }}>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
+          style={{ background: "transparent", border: "none", color: C.tm, fontSize: 11, cursor: "pointer", padding: "0 10px", height: "100%", display: "flex", alignItems: "center", opacity: 0.7, transition: "opacity 0.15s" }}
+          onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+          onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}>
+          <span style={{ display: "inline-block", transition: "transform 0.2s" }}>◀</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, flashUserId, stories }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
@@ -791,64 +830,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
         <div style={{ width: 222, display: "flex", flexDirection: "column", height: "100%" }}>
 
           {/* ── Capa editável ── */}
-          {(() => {
-            const canEdit = user.role === "mestre" || user.role === "master";
-            const [cover, setCover] = React.useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
-            const coverRef = React.useRef(null);
-            const handleCover = (e) => {
-              const f = e.target.files[0]; if (!f) return;
-              const r = new FileReader();
-              r.onload = (ev) => { setCover(ev.target.result); localStorage.setItem("nexp_sidebar_cover", ev.target.result); };
-              r.readAsDataURL(f);
-            };
-            return (
-              <div style={{ position: "relative", flexShrink: 0 }}>
-                {/* Capa */}
-                <div style={{
-                  width: "100%", height: 72,
-                  background: cover ? "transparent" : `linear-gradient(135deg,${C.lg1},${C.lg2})`,
-                  overflow: "hidden", position: "relative",
-                }}>
-                  {cover && <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
-                  <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
-                  <div style={{ position: "absolute", bottom: 8, left: 12 }}>
-                    <div style={{ color: "#fff", fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.3px", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>Nexp Company</div>
-                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>Sistema de Leads</div>
-                  </div>
-                  {canEdit && (
-                    <button onClick={() => coverRef.current?.click()} style={{
-                      position: "absolute", top: 6, right: 6,
-                      background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.25)",
-                      color: "#fff", borderRadius: 6, padding: "2px 7px", fontSize: 9.5, cursor: "pointer",
-                    }}>
-                      {cover ? "✎ Trocar" : "＋ Capa"}
-                    </button>
-                  )}
-                  <input ref={coverRef} type="file" accept="image/*" onChange={handleCover} style={{ display: "none" }} />
-                </div>
-
-                {/* Linha separação — toggle fica colado à direita dela */}
-                <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${C.b1}`, height: 24 }}>
-                  <div style={{ flex: 1 }} />
-                  <button
-                    onClick={() => setSidebarOpen(o => !o)}
-                    title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
-                    style={{
-                      background: "transparent", border: "none",
-                      color: C.tm, fontSize: 11, cursor: "pointer",
-                      padding: "0 10px", height: "100%",
-                      display: "flex", alignItems: "center",
-                      opacity: 0.7, transition: "opacity 0.15s",
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                    onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}
-                  >
-                    <span style={{ display: "inline-block", transition: "transform 0.2s" }}>◀</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
+          <SidebarCover user={user} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
           {/* Nav items */}
           {navOpen && (
