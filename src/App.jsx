@@ -5016,6 +5016,7 @@ function StoriesPage({ currentUser, users }) {
   const [showReactions, setShowReactions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mediaErr, setMediaErr] = useState("");
+  const [blockedAlert, setBlockedAlert] = useState(false);
 
   const FONTS = [
     { name: "Inter",     label: "Padrão",    style: "'Inter',sans-serif" },
@@ -5153,7 +5154,8 @@ function StoriesPage({ currentUser, users }) {
   const addComment = async (story) => {
     if (!comment.trim()) return;
     if (containsOffensiveContent(comment)) {
-      alert("⚠ Comentário bloqueado: contém palavras ofensivas, racistas ou homofóbicas. Por favor, mantenha o respeito com todos.");
+      setBlockedAlert(true);
+      setTimeout(() => setBlockedAlert(false), 4000);
       return;
     }
     const comments = [...(story.comments || []), {
@@ -5282,6 +5284,39 @@ function StoriesPage({ currentUser, users }) {
 
   return (
     <div style={{ padding:"28px 36px", height:"100%", boxSizing:"border-box" }}>
+      {/* ── Alerta de comentário bloqueado ── */}
+      <style>{`
+        @keyframes blinkAlert {
+          0%,100%{opacity:1;box-shadow:0 0 18px #3B6EF599}
+          50%{opacity:0.55;box-shadow:0 0 36px #3B6EF5cc}
+        }
+      `}</style>
+      {blockedAlert && (
+        <div style={{
+          position:"fixed", top:28, left:"50%", transform:"translateX(-50%)",
+          background:"linear-gradient(135deg,#0D1A3E,#1a2e6e)",
+          border:"1.5px solid #3B6EF5",
+          borderRadius:14,
+          padding:"18px 30px",
+          zIndex:9999,
+          minWidth:320,
+          maxWidth:420,
+          textAlign:"center",
+          animation:"blinkAlert 0.7s ease-in-out 5",
+          boxShadow:"0 4px 32px #3B6EF566",
+        }}>
+          <div style={{ fontSize:22, marginBottom:8 }}>🚫</div>
+          <div style={{ color:"#fff", fontWeight:700, fontSize:14.5, marginBottom:6 }}>
+            Seu comentário foi bloqueado
+          </div>
+          <div style={{ color:"#93B4F5", fontSize:13, lineHeight:1.5, marginBottom:10 }}>
+            Contém palavras ofensivas, por favor respeite todos os usuários, você poderá ser restringido e até mesmo banido.
+          </div>
+          <div style={{ color:"#4F8EF7", fontSize:11.5, fontWeight:600, opacity:0.8 }}>
+            Suporte — Nexp
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{ marginBottom:22 }}>
         <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>Stories</h1>
@@ -5800,6 +5835,25 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const isMestre = currentUser.role === "mestre";
   const mestreUser = users.find(u => u.role === "mestre");
   const dmList = isMestre ? users.filter(u => (u.uid||u.id) !== myId) : (mestreUser ? [mestreUser] : []);
+  const canManageGroups = currentUser.role === "mestre" || currentUser.role === "master";
+
+  // Group states
+  const [groups, setGroups] = useState([]);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupPhoto, setGroupPhoto] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const groupPhotoRef = useRef(null);
+  const [editingGroup, setEditingGroup] = useState(false);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupPhoto, setEditGroupPhoto] = useState(null);
+  const editGroupPhotoRef = useRef(null);
+
+  // Active group object
+  const activeGroupId = activeTab?.startsWith("grp:") ? activeTab.slice(4) : null;
+  const activeGroup = activeGroupId ? groups.find(g => g.id === activeGroupId) : null;
+  const isGroupAdm = activeGroup && (activeGroup.admId === myId || activeGroup.createdBy === myId);
+  const canShakeInGroup = activeGroup && canManageGroups;
 
   // Default position — bottom right
   const defaultX = window.innerWidth - 400;
@@ -5812,6 +5866,16 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     const unsub = listenChat(setAllMessages);
     return () => unsub();
   }, []);
+
+  // Listen groups
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "chatGroups"), (snap) => {
+      const gs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Only show groups where I am a member
+      setGroups(gs.filter(g => (g.members || []).includes(myId)));
+    });
+    return () => unsub();
+  }, []); // eslint-disable-line
 
   // Scroll to bottom
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allMessages, activeTab]);
@@ -5866,7 +5930,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   };
 
   const messages = activeTab === "geral"
-    ? allMessages.filter(m => !m.toId)
+    ? allMessages.filter(m => !m.toId && !m.groupId)
+    : activeGroupId
+    ? allMessages.filter(m => m.groupId === activeGroupId)
     : allMessages.filter(m => (m.authorId === myId && m.toId === activeTab) || (m.authorId === activeTab && m.toId === myId));
 
   const unreadDM = (uid) => allMessages.filter(m => m.toId === myId && m.authorId === uid && !m.readAt && m.type !== "shake").length;
@@ -5875,7 +5941,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     const content = (msg || text).trim();
     if (!content && !attachment) return;
     setText(""); setShowQuick(false); setShowEmoji(false);
-    const payload = { text: content || "", authorId: myId, authorName: currentUser.name || currentUser.email, authorRole: currentUser.role, ...(activeTab !== "geral" && activeTab && { toId: activeTab }), ...(attachment && { attachment }) };
+    const payload = {
+      text: content || "",
+      authorId: myId,
+      authorName: currentUser.name || currentUser.email,
+      authorRole: currentUser.role,
+      ...(activeGroupId ? { groupId: activeGroupId } : activeTab !== "geral" && activeTab ? { toId: activeTab } : {}),
+      ...(attachment && { attachment }),
+    };
     setAttachment(null);
     await sendChatMessage(payload);
     inputRef.current?.focus();
@@ -5897,6 +5970,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
   const shakeCountRef = useRef(0);
   const shake = async () => {
+    if (!canManageGroups) return;
     if (!activeTab || activeTab === "geral") return;
     shakeCountRef.current += 1;
     const count = shakeCountRef.current;
@@ -5906,9 +5980,41 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       authorId: myId,
       authorName: currentUser.name || currentUser.email,
       authorRole: currentUser.role,
-      toId: activeTab,
+      ...(activeGroupId ? { groupId: activeGroupId } : { toId: activeTab }),
     });
   };
+
+  // ── Create group ─────────────────────────────────────────────
+  const createGroup = async () => {
+    if (!groupName.trim() || groupMembers.length === 0) return;
+    const id = "grp_" + Date.now();
+    await setDoc(doc(db, "chatGroups", id), {
+      id,
+      name: groupName.trim(),
+      photo: groupPhoto || null,
+      admId: myId,
+      createdBy: myId,
+      createdByName: currentUser.name || currentUser.email,
+      members: [...new Set([myId, ...groupMembers])],
+      createdAt: Date.now(),
+    });
+    setShowCreateGroup(false);
+    setGroupName(""); setGroupPhoto(null); setGroupMembers([]);
+    setActiveTab("grp:" + id);
+  };
+
+  // ── Save group edits ─────────────────────────────────────────
+  const saveGroupEdit = async () => {
+    if (!activeGroup) return;
+    await setDoc(doc(db, "chatGroups", activeGroup.id), {
+      name: editGroupName.trim() || activeGroup.name,
+      photo: editGroupPhoto !== null ? editGroupPhoto : activeGroup.photo,
+    }, { merge: true });
+    setEditingGroup(false);
+  };
+
+  // ── Unread group msgs ────────────────────────────────────────
+  const unreadGroup = (groupId) => allMessages.filter(m => m.groupId === groupId && m.authorId !== myId && !m.readAt && m.type !== "shake").length;
 
   const QUICK_MESSAGES = ["Bom dia, equipe! 🌅","Boa tarde! ☀️","Boa noite! 🌙","Vamos nessa! 🚀","Meta batida! 🏆","Ótimo trabalho! 👏","Aguardando retorno 📞","Reunião em 5 min ⏰","Cliente interessado! 💰","Fechamento confirmado! ✅","Precisando de ajuda 🆘","Tudo certo por aqui 👍"];
   const filteredQuick = filter ? QUICK_MESSAGES.filter(m => m.toLowerCase().includes(filter.toLowerCase())) : QUICK_MESSAGES;
@@ -5949,13 +6055,36 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           </button>
         )}
         {/* Title */}
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ color:C.tp, fontSize:13.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-            {activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (tabUser.name || tabUser.email) : "💬 Nexp Chat"}
+        <div style={{ flex:1, minWidth:0, display:"flex", alignItems:"center", gap:8 }}>
+          {/* Group photo in header */}
+          {activeGroup && (
+            <div style={{ width:30, height:30, borderRadius:"50%", flexShrink:0, overflow:"hidden", background:C.acc+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>
+              {activeGroup.photo
+                ? <img src={activeGroup.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                : "👥"}
+            </div>
+          )}
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ color:C.tp, fontSize:13.5, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+              {activeGroup ? activeGroup.name : activeTab === "geral" ? "Chat Geral 🌐" : tabUser ? (tabUser.name || tabUser.email) : "💬 Nexp Chat"}
+            </div>
+            <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
+              {activeGroup
+                ? `👥 ${(activeGroup.members||[]).length} membros${isGroupAdm ? " · Você é adm" : ""}`
+                : activeTab === "geral"
+                ? `${users.length} membros`
+                : tabUser
+                ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role])
+                : "Selecione uma conversa"}
+            </div>
           </div>
-          <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
-            {activeTab === "geral" ? `${users.length} membros` : tabUser ? (presence[activeTab]?.online ? "● online agora" : lastMsgTime(activeTab) ? `Visto ${lastMsgTime(activeTab)}` : roleLabel[tabUser.role]) : "Selecione uma conversa"}
-          </div>
+          {/* Group edit button for adm */}
+          {isGroupAdm && !editingGroup && (
+            <button onClick={() => { setEditingGroup(true); setEditGroupName(activeGroup.name); setEditGroupPhoto(null); }}
+              style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"3px 8px", fontSize:11, cursor:"pointer", flexShrink:0 }} title="Editar grupo">
+              ✏
+            </button>
+          )}
         </div>
         {/* Controls */}
         <div style={{ display:"flex", gap:5 }}>
@@ -5982,6 +6111,88 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <div style={{ color:C.tm, fontSize:11 }}>Todos os membros</div>
             </div>
           </button>
+
+          {/* Groups section */}
+          {groups.length > 0 && (
+            <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", padding:"6px 4px 4px", marginTop:4 }}>Grupos</div>
+          )}
+          {groups.map(g => {
+            const unread = unreadGroup(g.id);
+            return (
+              <button key={g.id} onClick={() => { setActiveTab("grp:" + g.id); setEditingGroup(false); }}
+                style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
+                onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, overflow:"hidden", border:`1px solid ${C.b1}` }}>
+                  {g.photo ? <img src={g.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : "👥"}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{g.name}</div>
+                  <div style={{ color:C.tm, fontSize:11 }}>{(g.members||[]).length} membros</div>
+                </div>
+                {unread > 0 && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
+              </button>
+            );
+          })}
+
+          {/* Create group button (mestre/master only) */}
+          {canManageGroups && (
+            <button onClick={() => setShowCreateGroup(p=>!p)}
+              style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:10, background:showCreateGroup?C.abg:"transparent", border:`1px dashed ${showCreateGroup?C.atxt:C.b2}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}>
+              <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"11", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>＋</div>
+              <div style={{ color:showCreateGroup?C.atxt:C.tm, fontSize:12.5, fontWeight:600 }}>Criar grupo</div>
+            </button>
+          )}
+
+          {/* Create group form */}
+          {showCreateGroup && canManageGroups && (
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px", marginBottom:8 }}>
+              <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>Novo Grupo</div>
+              {/* Group photo */}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                <div onClick={() => groupPhotoRef.current?.click()}
+                  style={{ width:48, height:48, borderRadius:"50%", background:C.deep, border:`2px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
+                  {groupPhoto ? <img src={groupPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontSize:20 }}>📷</span>}
+                </div>
+                <input ref={groupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
+                  onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>setGroupPhoto(ev.target.result); r.readAsDataURL(f); }} />
+                <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Nome do grupo..."
+                  style={{ ...S.input, fontSize:12.5, flex:1 }} />
+              </div>
+              {/* Member selection */}
+              <div style={{ color:C.tm, fontSize:11, marginBottom:6 }}>Membros:</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:120, overflowY:"auto", marginBottom:12 }}>
+                {users.filter(u=>(u.uid||u.id)!==myId).map(u => {
+                  const uid = u.uid || u.id;
+                  const sel = groupMembers.includes(uid);
+                  return (
+                    <button key={uid} onClick={() => setGroupMembers(p => sel ? p.filter(x=>x!==uid) : [...p, uid])}
+                      style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 8px", borderRadius:8, background:sel?C.abg:C.deep, border:sel?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, cursor:"pointer", textAlign:"left" }}>
+                      <div style={{ width:24, height:24, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:(roleColor[u.role]||C.atxt)+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:roleColor[u.role]||C.atxt }}>
+                        {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                      </div>
+                      <span style={{ color:sel?C.atxt:C.ts, fontSize:12, flex:1 }}>{u.name || u.email}</span>
+                      {sel && <span style={{ color:C.atxt, fontSize:12 }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={createGroup} disabled={!groupName.trim() || groupMembers.length===0}
+                  style={{ ...S.btn(groupName.trim()&&groupMembers.length>0?C.acc:C.deep, groupName.trim()&&groupMembers.length>0?"#fff":C.td), padding:"7px 16px", fontSize:12, flex:1, opacity:groupName.trim()&&groupMembers.length>0?1:0.5 }}>
+                  Criar grupo
+                </button>
+                <button onClick={()=>{setShowCreateGroup(false);setGroupName("");setGroupPhoto(null);setGroupMembers([]);}}
+                  style={{ ...S.btn(C.deep,C.tm), padding:"7px 12px", fontSize:12, border:`1px solid ${C.b2}` }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* DMs section */}
+          {dmList.length > 0 && (
+            <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", padding:"6px 4px 4px", marginTop:2 }}>Mensagens diretas</div>
+          )}
           {/* DMs */}
           {dmList.map(u => {
             const uid = u.uid || u.id;
@@ -6033,6 +6244,30 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       {/* ── Conversation ── */}
       {activeTab && (
         <>
+          {/* Group edit panel */}
+          {editingGroup && isGroupAdm && (
+            <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, background:C.card, flexShrink:0 }}>
+              <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:10 }}>✏ Editar grupo</div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <div onClick={() => editGroupPhotoRef.current?.click()}
+                  style={{ width:44, height:44, borderRadius:"50%", background:C.deep, border:`2px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
+                  {editGroupPhoto
+                    ? <img src={editGroupPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    : activeGroup?.photo
+                    ? <img src={activeGroup.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                    : <span style={{ fontSize:18 }}>📷</span>}
+                </div>
+                <input ref={editGroupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
+                  onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>setEditGroupPhoto(ev.target.result); r.readAsDataURL(f); }} />
+                <input value={editGroupName} onChange={e=>setEditGroupName(e.target.value)}
+                  placeholder="Nome do grupo..." style={{ ...S.input, fontSize:12.5, flex:1 }} />
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={saveGroupEdit} style={{ ...S.btn(C.acc,"#fff"), padding:"6px 14px", fontSize:12, flex:1 }}>Salvar</button>
+                <button onClick={()=>setEditingGroup(false)} style={{ ...S.btn(C.deep,C.tm), padding:"6px 12px", fontSize:12, border:`1px solid ${C.b2}` }}>Cancelar</button>
+              </div>
+            </div>
+          )}
           {/* Messages */}
           <div style={{ flex:1, overflowY:"auto", padding:"10px 14px", display:"flex", flexDirection:"column", gap:5 }}>
             {messages.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:C.tm, fontSize:12 }}>Nenhuma mensagem ainda</div>}
@@ -6155,7 +6390,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             <div style={{ display:"flex", gap:4, alignItems:"flex-end" }}>
               <button onClick={()=>{setShowQuick(p=>!p);setFilter("");}} style={{ background:"transparent", border:"none", color:showQuick?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>e.currentTarget.style.color=C.atxt} onMouseLeave={e=>{if(!showQuick)e.currentTarget.style.color=C.tm}}>⚡</button>
               <button onClick={()=>setShowEmoji(p=>!p)} style={{ background:"transparent", border:"none", color:showEmoji?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>e.currentTarget.style.color=C.atxt} onMouseLeave={e=>{if(!showEmoji)e.currentTarget.style.color=C.tm}}>😊</button>
-              {activeTab !== "geral" && <button onClick={shake} style={{ background:"transparent", border:"none", color:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>{e.currentTarget.style.color="#F87171";}} onMouseLeave={e=>e.currentTarget.style.color=C.tm} title="Chamar atenção">📳</button>}
+              {/* Shake: in DMs always visible, in groups only mestre/master */}
+              {activeTab !== "geral" && (activeGroupId ? canShakeInGroup : true) && (
+                <button onClick={shake} style={{ background:"transparent", border:"none", color:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>{e.currentTarget.style.color="#F87171";}} onMouseLeave={e=>e.currentTarget.style.color=C.tm} title="Chamar atenção">📳</button>
+              )}
               {activeTab !== "geral" && (
                 <>
                   <button onClick={()=>fileRef.current?.click()} style={{ background:"transparent", border:"none", color:attachment?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0 }}>📎</button>
@@ -6165,7 +6403,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <textarea ref={inputRef} value={text}
                 onChange={e=>{setText(e.target.value);if(e.target.value.startsWith("/"))setShowQuick(true);}}
                 onKeyDown={handleKey}
-                placeholder={activeTab==="geral"?"Mensagem…":`Para ${tabUser?.name?.split(" ")[0]||"usuário"}…`}
+                placeholder={activeGroup ? `Mensagem no ${activeGroup.name}…` : activeTab==="geral" ? "Mensagem…" : `Para ${tabUser?.name?.split(" ")[0]||"usuário"}…`}
                 rows={1}
                 style={{ ...S.input, flex:1, resize:"none", borderRadius:20, padding:"8px 14px", fontSize:12.5, lineHeight:1.5, border:`1px solid ${text.trim()?C.atxt+"66":C.b2}`, transition:"border-color 0.2s, box-shadow 0.2s", boxShadow:text.trim()?`0 0 0 3px ${C.acc}18`:"none", outline:"none" }}
                 onFocus={e=>{e.target.style.borderColor=C.atxt+"88";e.target.style.boxShadow=`0 0 0 3px ${C.acc}22`;}}
