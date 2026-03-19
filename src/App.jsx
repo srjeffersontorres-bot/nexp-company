@@ -5036,8 +5036,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                           </div>
                         );
                       };
-                      const addr = [u.rua, u.numero, u.cidade, u.uf].filter(Boolean).join(", ");
-                      const addrFull = [u.cep ? `CEP ${u.cep}` : null, addr, u.complemento].filter(Boolean).join(" · ");
                       return (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                           <CopyField label="Nome completo" val={u.name} />
