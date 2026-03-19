@@ -6744,6 +6744,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [groupName, setGroupName] = useState("");
   const [groupPhoto, setGroupPhoto] = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
+  const [groupNewSearch, setGroupNewSearch] = useState("");
+  const [groupNewTheme, setGroupNewTheme] = useState(null);
   const groupPhotoRef = useRef(null);
   const [editingGroup, setEditingGroup] = useState(false);
   const [editGroupName, setEditGroupName] = useState("");
@@ -6918,6 +6920,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       id,
       name: finalName,
       photo: groupPhoto || null,
+      color: groupNewTheme || null,
       admId: myId,
       createdBy: myId,
       createdByName: currentUser.name || currentUser.email,
@@ -6943,7 +6946,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       });
     }
     setShowCreateGroup(false);
-    setGroupName(""); setGroupPhoto(null); setGroupMembers([]);
+    setGroupName(""); setGroupPhoto(null); setGroupMembers([]); setGroupNewSearch(""); setGroupNewTheme(null);
     setActiveTab("grp:" + id);
   };
 
@@ -7128,7 +7131,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
       {/* ── Inbox (no tab selected) ── */}
       {!activeTab && (
-        <div style={{ flex:1, overflowY:"auto", padding:"8px" }}>
+        <div style={{ flex:1, overflowY:"auto", padding:"8px", position:"relative" }}>
           {/* Search bar */}
           <div style={{ position:"relative", marginBottom:8 }}>
             <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:12, pointerEvents:"none" }}>🔍</span>
@@ -7171,48 +7174,131 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             );
           })}
 
-          {/* Create group form — shows when + button clicked */}
+          {/* Create group form — fullscreen panel */}
           {showCreateGroup && canManageGroups && (
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px", marginBottom:8 }}>
-              <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>Novo Grupo</div>
-              {/* Group photo */}
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                <div onClick={() => groupPhotoRef.current?.click()}
-                  style={{ width:48, height:48, borderRadius:"50%", background:C.deep, border:`2px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
-                  {groupPhoto ? <img src={groupPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontSize:20 }}>📷</span>}
-                </div>
-                <input ref={groupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
-                  onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>setGroupPhoto(ev.target.result); r.readAsDataURL(f); }} />
-                <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Nome do grupo..."
-                  style={{ ...S.input, fontSize:12.5, flex:1 }} />
-              </div>
-              {/* Member selection */}
-              <div style={{ color:C.tm, fontSize:11, marginBottom:6 }}>Membros:</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:120, overflowY:"auto", marginBottom:12 }}>
-                {users.filter(u=>(u.uid||u.id)!==myId).map(u => {
-                  const uid = u.uid || u.id;
-                  const sel = groupMembers.includes(uid);
-                  return (
-                    <button key={uid} onClick={() => setGroupMembers(p => sel ? p.filter(x=>x!==uid) : [...p, uid])}
-                      style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 8px", borderRadius:8, background:sel?C.abg:C.deep, border:sel?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, cursor:"pointer", textAlign:"left" }}>
-                      <div style={{ width:24, height:24, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:(roleColor[u.role]||C.atxt)+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:roleColor[u.role]||C.atxt }}>
-                        {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
-                      </div>
-                      <span style={{ color:sel?C.atxt:C.ts, fontSize:12, flex:1 }}>{u.name || u.email}</span>
-                      {sel && <span style={{ color:C.atxt, fontSize:12 }}>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ display:"flex", gap:6 }}>
+            <div style={{ position:"absolute", inset:0, zIndex:50, background:C.sb, display:"flex", flexDirection:"column", borderRadius:16, overflow:"hidden" }}>
+              {/* Header */}
+              <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+                <button onClick={()=>{setShowCreateGroup(false);setGroupName("");setGroupPhoto(null);setGroupMembers([]);setGroupNewSearch("");setGroupNewTheme(null);}}
+                  style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, padding:"0 4px", lineHeight:1 }}>‹</button>
+                <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>Novo Grupo</div>
                 <button onClick={createGroup} disabled={!groupName.trim() || groupMembers.length===0}
-                  style={{ ...S.btn(groupName.trim()&&groupMembers.length>0?C.acc:C.deep, groupName.trim()&&groupMembers.length>0?"#fff":C.td), padding:"7px 16px", fontSize:12, flex:1, opacity:groupName.trim()&&groupMembers.length>0?1:0.5 }}>
-                  Criar grupo
+                  style={{ background:groupName.trim()&&groupMembers.length>0?C.acc:C.deep, color:groupName.trim()&&groupMembers.length>0?"#fff":C.td, border:"none", borderRadius:8, padding:"6px 14px", fontSize:12.5, fontWeight:700, cursor:groupName.trim()&&groupMembers.length>0?"pointer":"not-allowed", opacity:groupName.trim()&&groupMembers.length>0?1:0.5, transition:"all 0.2s" }}>
+                  Salvar
                 </button>
-                <button onClick={()=>{setShowCreateGroup(false);setGroupName("");setGroupPhoto(null);setGroupMembers([]);}}
-                  style={{ ...S.btn(C.deep,C.tm), padding:"7px 12px", fontSize:12, border:`1px solid ${C.b2}` }}>
-                  Cancelar
-                </button>
+              </div>
+
+              <div style={{ flex:1, overflowY:"auto", padding:"14px" }}>
+
+                {/* ── Foto + Nome ── */}
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+                  <div onClick={() => groupPhotoRef.current?.click()} style={{ position:"relative", width:64, height:64, borderRadius:"50%", background:C.deep, border:`2.5px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0, transition:"border-color 0.2s" }}
+                    onMouseEnter={e=>e.currentTarget.style.borderColor=C.atxt} onMouseLeave={e=>e.currentTarget.style.borderColor=C.atxt+"55"}>
+                    {groupPhoto
+                      ? <img src={groupPhoto} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                      : <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                          <span style={{ fontSize:22 }}>📷</span>
+                          <span style={{ color:C.td, fontSize:9 }}>Foto</span>
+                        </div>
+                    }
+                    {groupPhoto && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center", opacity:0, transition:"opacity 0.2s" }} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0"}><span style={{ fontSize:16 }}>✏</span></div>}
+                  </div>
+                  <input ref={groupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
+                    onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>setGroupPhoto(ev.target.result); r.readAsDataURL(f); }} />
+                  <div style={{ flex:1 }}>
+                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Nome do grupo *</label>
+                    <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Ex: Equipe Vendas..."
+                      style={{ ...S.input, fontSize:13, border:`1px solid ${groupName.trim()?C.atxt+"66":C.b2}`, borderRadius:10, transition:"border-color 0.2s" }}
+                      onFocus={e=>e.target.style.borderColor=C.atxt+"88"} onBlur={e=>e.target.style.borderColor=groupName.trim()?C.atxt+"66":C.b2} />
+                  </div>
+                </div>
+
+                {/* ── Temas ── */}
+                <div style={{ marginBottom:18 }}>
+                  <div style={{ color:C.tm, fontSize:11, marginBottom:8 }}>🎨 Tema do grupo</div>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {[
+                      { id:null,      label:"Padrão",      bg:C.card },
+                      { id:"nature",  label:"🌿 Natureza", bg:"linear-gradient(135deg,#064e3b,#065f46)" },
+                      { id:"ocean",   label:"🌊 Oceano",   bg:"linear-gradient(135deg,#0c4a6e,#075985)" },
+                      { id:"sunset",  label:"🌅 Por do sol",bg:"linear-gradient(135deg,#7c2d12,#c2410c)" },
+                      { id:"galaxy",  label:"🌌 Galáxia",  bg:"linear-gradient(135deg,#1e1b4b,#4c1d95)" },
+                      { id:"office",  label:"🏢 Escritório",bg:"linear-gradient(135deg,#1e293b,#475569)" },
+                      { id:"forest",  label:"🌲 Floresta", bg:"linear-gradient(135deg,#14532d,#15803d)" },
+                      { id:"aurora",  label:"✨ Aurora",   bg:"linear-gradient(270deg,#6366f1,#8b5cf6,#ec4899)" },
+                      { id:"neon",    label:"⚡ Neon",     bg:"linear-gradient(270deg,#0ea5e9,#8b5cf6,#ec4899)" },
+                    ].map(t => {
+                      const sel = groupNewTheme === t.id;
+                      return (
+                        <button key={String(t.id)} onClick={() => setGroupNewTheme(t.id)}
+                          style={{ background:t.bg, backgroundSize:"200% 200%", border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"5px 11px", cursor:"pointer", fontSize:10.5, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.25)" : "none", transition:"all 0.15s" }}>
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Membros adicionados ── */}
+                {groupMembers.length > 0 && (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ color:C.tm, fontSize:11, marginBottom:8 }}>✅ Adicionados ({groupMembers.length})</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {groupMembers.map(uid => {
+                        const u = users.find(x=>(x.uid||x.id)===uid);
+                        if (!u) return null;
+                        const rc2 = roleColor[u.role]||C.atxt;
+                        return (
+                          <div key={uid} style={{ display:"flex", alignItems:"center", gap:6, background:C.acc+"15", border:`1px solid ${C.acc}44`, borderRadius:20, padding:"4px 8px 4px 4px" }}>
+                            <div style={{ width:22, height:22, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:rc2 }}>
+                              {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                            </div>
+                            <span style={{ color:C.atxt, fontSize:11.5, fontWeight:600, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(u.name||u.email).split(" ")[0]}</span>
+                            <button onClick={() => setGroupMembers(p=>p.filter(x=>x!==uid))}
+                              style={{ background:"rgba(239,68,68,0.15)", border:"none", color:"#F87171", borderRadius:"50%", width:16, height:16, fontSize:9, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontWeight:700 }}>−</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Busca + lista de usuários ── */}
+                <div style={{ color:C.tm, fontSize:11, marginBottom:8 }}>👤 Adicionar membros</div>
+                <input value={groupNewSearch} onChange={e=>setGroupNewSearch(e.target.value)}
+                  placeholder="🔍 Buscar por nome..." style={{ ...S.input, fontSize:12.5, marginBottom:10, borderRadius:10 }} />
+                <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                  {users.filter(u => {
+                    const uid = u.uid||u.id;
+                    if (uid === myId) return false;
+                    if (!groupNewSearch.trim()) return true;
+                    return (u.name||u.email||"").toLowerCase().includes(groupNewSearch.toLowerCase());
+                  }).map(u => {
+                    const uid = u.uid||u.id;
+                    const added = groupMembers.includes(uid);
+                    const rc2 = roleColor[u.role]||C.atxt;
+                    return (
+                      <div key={uid} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", borderRadius:10, background: added ? C.acc+"12" : C.deep, border: added ? `1px solid ${C.acc}44` : `1px solid ${C.b2}`, transition:"all 0.15s" }}>
+                        <div style={{ width:34, height:34, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:rc2+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:rc2 }}>
+                          {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ color: added ? C.atxt : C.tp, fontSize:13, fontWeight: added ? 600 : 400, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name||u.email}</div>
+                          <div style={{ color:rc2, fontSize:10 }}>{roleLabel[u.role]}</div>
+                        </div>
+                        <button onClick={() => setGroupMembers(p => added ? p.filter(x=>x!==uid) : [...p,uid])}
+                          style={{
+                            width:28, height:28, borderRadius:"50%", border:"none", cursor:"pointer", flexShrink:0, fontSize:16, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s",
+                            background: added ? "rgba(239,68,68,0.15)" : C.acc,
+                            color: added ? "#F87171" : "#fff",
+                          }}>
+                          {added ? "−" : "+"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
               </div>
             </div>
           )}
