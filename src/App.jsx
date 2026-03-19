@@ -4953,7 +4953,7 @@ const QUICK_MESSAGES = [
 
 const CHAT_EMOJIS = ["👍","🔥","❤️","😄","🎉","💪","⭐","🚀","✅","👏","😎","🤝","💰","🏆","🎯"];
 
-function ChatPage({ currentUser, users, presence }) {
+function ChatPage({ currentUser, users, presence, onClose, floating }) {
   const myId = currentUser.uid || currentUser.id;
   const isMestre = currentUser.role === "mestre";
 
@@ -5106,20 +5106,41 @@ function ChatPage({ currentUser, users, presence }) {
   ).length;
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: C.bg, animation: shakeLocal ? "shake 0.6s ease" : "none" }}>
+    <div style={{ display: "flex", height: floating ? "100%" : "100vh", background: C.bg, animation: shakeLocal ? "shake 0.6s ease" : "none", flexDirection: "column" }}>
 
-      {/* ── Sidebar de conversas ── */}
-      <div style={{ width: 220, borderRight: `1px solid ${C.b1}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        {/* Header */}
-        <div style={{ padding: "16px 14px 10px", borderBottom: `1px solid ${C.b1}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 22 }}>🧑‍💻</span>
+      {/* ── Header quando flutuante ── */}
+      {floating && (
+        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, background: C.sb }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:20 }}>💬</span>
             <div>
-              <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>CHAT CORBAN</div>
-              <div style={{ color: C.tm, fontSize: 10 }}>Equipe em tempo real</div>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>Chat da Equipe</div>
+              <div style={{ color:C.tm, fontSize:10 }}>Mensagens em tempo real</div>
             </div>
           </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:20, lineHeight:1, padding:"4px 8px", borderRadius:8 }}
+            onMouseEnter={e=>e.currentTarget.style.color=C.tp}
+            onMouseLeave={e=>e.currentTarget.style.color=C.tm}>✕</button>
         </div>
+      )}
+
+      {/* ── Main area ── */}
+      <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
+
+      {/* ── Sidebar de conversas ── */}
+      <div style={{ width: floating ? 140 : 220, borderRight: `1px solid ${C.b1}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        {/* Header */}
+        {!floating && (
+          <div style={{ padding: "16px 14px 10px", borderBottom: `1px solid ${C.b1}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 22 }}>🧑‍💻</span>
+              <div>
+                <div style={{ color: C.tp, fontSize: 13, fontWeight: 700 }}>CHAT CORBAN</div>
+                <div style={{ color: C.tm, fontSize: 10 }}>Equipe em tempo real</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Lista de conversas */}
         <div style={{ flex: 1, overflowY: "auto" }}>
@@ -5414,50 +5435,91 @@ function ChatPage({ currentUser, users, presence }) {
         )}
 
         {/* Input */}
-        <div style={{ padding: "8px 20px 14px", borderTop: `1px solid ${C.b1}`, flexShrink: 0 }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }}
-              style={{ background: showQuick ? C.abg : C.deep, border: `1px solid ${showQuick ? C.atxt + "44" : C.b2}`, color: showQuick ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>⚡</button>
-            <button onClick={() => setShowEmoji(p => !p)}
-              style={{ background: showEmoji ? C.abg : C.deep, border: `1px solid ${showEmoji ? C.atxt + "44" : C.b2}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>😊</button>
-            {/* Botão nudge estilo MSN — só aparece em DM */}
+        {/* ── Input bar moderno ── */}
+        <div style={{
+          padding: floating ? "8px 12px 10px" : "8px 20px 14px",
+          borderTop: `1px solid ${C.b1}`, flexShrink: 0,
+          background: floating ? C.sb : C.bg,
+        }}>
+          {/* Botões de ação */}
+          <div style={{ display: "flex", gap: 5, alignItems: "flex-end" }}>
+            {/* ⚡ Atalhos */}
+            <button onClick={() => { setShowQuick(p => !p); setFilter(""); }} title="Mensagens rápidas"
+              style={{ background: showQuick ? C.abg : "transparent", border: `1px solid ${showQuick ? C.atxt + "55" : "transparent"}`, color: showQuick ? C.atxt : C.tm, borderRadius: 10, padding: "7px 9px", cursor: "pointer", fontSize: 15, flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={e=>{e.currentTarget.style.background=C.abg;e.currentTarget.style.color=C.atxt;}}
+              onMouseLeave={e=>{if(!showQuick){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.tm;}}}>
+              ⚡
+            </button>
+            {/* 😊 Emojis */}
+            <button onClick={() => setShowEmoji(p => !p)} title="Emojis"
+              style={{ background: showEmoji ? C.abg : "transparent", border: `1px solid ${showEmoji ? C.atxt + "55" : "transparent"}`, color: showEmoji ? C.atxt : C.tm, borderRadius: 10, padding: "7px 9px", cursor: "pointer", fontSize: 15, flexShrink: 0, transition: "all 0.15s" }}
+              onMouseEnter={e=>{e.currentTarget.style.background=C.abg;e.currentTarget.style.color=C.atxt;}}
+              onMouseLeave={e=>{if(!showEmoji){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.tm;}}}>
+              😊
+            </button>
+            {/* 📳 Nudge — só DM */}
             {tab !== "geral" && (
-              <button
-                onClick={shake}
-                title="Chamar atenção (nudge)"
-                style={{
-                  background: C.deep,
-                  border: `1px solid ${C.b2}`,
-                  color: C.tm,
-                  borderRadius: 9,
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  fontSize: 14,
-                  flexShrink: 0,
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = "#2D1515"; e.currentTarget.style.borderColor = "#EF444433"; e.currentTarget.style.color = "#F87171"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = C.deep; e.currentTarget.style.borderColor = C.b2; e.currentTarget.style.color = C.tm; }}
-              >
+              <button onClick={shake} title="Chamar atenção"
+                style={{ background: "transparent", border: "1px solid transparent", color: C.tm, borderRadius: 10, padding: "7px 9px", cursor: "pointer", fontSize: 15, flexShrink: 0, transition: "all 0.15s" }}
+                onMouseEnter={e=>{e.currentTarget.style.background="#2D1515";e.currentTarget.style.borderColor="#EF444433";e.currentTarget.style.color="#F87171";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="transparent";e.currentTarget.style.color=C.tm;}}>
                 📳
               </button>
             )}
+            {/* 📎 Anexo — só DM */}
             {tab !== "geral" && (
-              <button onClick={() => fileRef.current?.click()}
-                style={{ background: attachment ? C.abg : C.deep, border: `1px solid ${attachment ? C.atxt + "44" : C.b2}`, color: attachment ? C.atxt : C.tm, borderRadius: 9, padding: "8px 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>📎</button>
+              <button onClick={() => fileRef.current?.click()} title="Anexar arquivo"
+                style={{ background: attachment ? C.abg : "transparent", border: `1px solid ${attachment ? C.atxt+"55" : "transparent"}`, color: attachment ? C.atxt : C.tm, borderRadius: 10, padding: "7px 9px", cursor: "pointer", fontSize: 15, flexShrink: 0, transition: "all 0.15s" }}
+                onMouseEnter={e=>{e.currentTarget.style.background=C.abg;e.currentTarget.style.color=C.atxt;}}
+                onMouseLeave={e=>{if(!attachment){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.tm;}}}>
+                📎
+              </button>
             )}
             <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={handleFile} style={{ display: "none" }} />
-            <textarea ref={inputRef} value={text}
-              onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
-              onKeyDown={handleKey}
-              placeholder={tab === "geral" ? "Mensagem para a equipe... (/ para atalhos)" : `Mensagem para ${tabUser?.name || "usuário"}...`}
-              rows={1}
-              style={{ ...S.input, flex: 1, resize: "none", borderRadius: 9, padding: "8px 12px", fontSize: 13, lineHeight: 1.5 }} />
+
+            {/* Caixa de texto */}
+            <div style={{ flex:1, position:"relative" }}>
+              <textarea ref={inputRef} value={text}
+                onChange={e => { setText(e.target.value); if (e.target.value.startsWith("/")) setShowQuick(true); }}
+                onKeyDown={handleKey}
+                placeholder={tab === "geral" ? "Mensagem para a equipe…" : `Para ${tabUser?.name?.split(" ")[0] || "usuário"}…`}
+                rows={1}
+                style={{
+                  ...S.input, flex: 1, resize: "none",
+                  borderRadius: 20, padding: "9px 16px",
+                  fontSize: 13, lineHeight: 1.5,
+                  border: `1px solid ${text.trim() ? C.atxt + "66" : C.b2}`,
+                  background: C.deep,
+                  transition: "border-color 0.2s, box-shadow 0.2s",
+                  boxShadow: text.trim() ? `0 0 0 3px ${C.acc}18` : "none",
+                  outline: "none",
+                }}
+                onFocus={e=>{e.target.style.borderColor=C.atxt+"88";e.target.style.boxShadow=`0 0 0 3px ${C.acc}22`;}}
+                onBlur={e=>{e.target.style.borderColor=text.trim()?C.atxt+"66":C.b2;e.target.style.boxShadow=text.trim()?`0 0 0 3px ${C.acc}18`:"none";}}
+              />
+            </div>
+
+            {/* Botão enviar */}
             <button onClick={() => send()} disabled={!text.trim() && !attachment}
-              style={{ ...S.btn(text.trim() || attachment ? C.acc : C.deep, text.trim() || attachment ? "#fff" : C.td), padding: "8px 14px", fontSize: 14, flexShrink: 0, opacity: text.trim() || attachment ? 1 : 0.5 }}>➤</button>
+              style={{
+                background: text.trim() || attachment ? C.acc : C.deep,
+                color: text.trim() || attachment ? "#fff" : C.td,
+                border: "none", borderRadius: "50%",
+                width: 38, height: 38, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: text.trim() || attachment ? "pointer" : "not-allowed",
+                fontSize: 16, fontWeight: 700,
+                opacity: text.trim() || attachment ? 1 : 0.4,
+                transition: "all 0.2s cubic-bezier(.4,0,.2,1)",
+                transform: text.trim() || attachment ? "scale(1)" : "scale(0.9)",
+                boxShadow: text.trim() || attachment ? `0 3px 12px ${C.acc}55` : "none",
+              }}>
+              ➤
+            </button>
           </div>
-          <div style={{ color: C.td, fontSize: 10, marginTop: 3 }}>Enter para enviar · Shift+Enter nova linha · / para atalhos</div>
+          {!floating && <div style={{ color: C.td, fontSize: 9, marginTop: 4, paddingLeft: 4 }}>Enter enviar · Shift+Enter nova linha</div>}
         </div>
+      </div>
       </div>
     </div>
   );
@@ -6228,10 +6290,12 @@ export default function App() {
   const [shake, setShake] = useState(false);
   const [presence, setPresenceData] = useState({});
   const [flashUserId, setFlashUserId] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const lastChatCount = useRef(0);
 
-  // Salva a página ativa ao trocar
+  // Salva a página ativa ao trocar — chat vira painel flutuante
   const setPageAndSave = (p) => {
+    if (p === "chat") { setChatOpen(true); return; }
     sessionStorage.setItem("nexp_page", p);
     setPage(p);
   };
@@ -6403,6 +6467,14 @@ export default function App() {
           50%{background-position:100% 50%}
           100%{background-position:0% 50%}
         }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to   { transform: translateX(0);    opacity: 1; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #1A1F2E; border-radius: 4px; }
@@ -6456,32 +6528,47 @@ export default function App() {
         {page === "stories" && (
           <StoriesPage currentUser={currentUser} users={users} />
         )}
-        {page === "chat" && (
-          <ChatPage currentUser={currentUser} users={users} presence={presence} />
-        )}
         {page === "premium" && currentUser.role === "mestre" && (
           <PremiumNexp contacts={contacts} setContacts={setContacts} />
         )}
         {page === "premium" && currentUser.role !== "mestre" && (
           <div style={{ padding: "60px 36px", textAlign: "center" }}>
-            <div style={{ fontSize: 36, opacity: 0.3, marginBottom: 12 }}>
-              🔒
-            </div>
-            <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>
-              Acesso restrito ao Mestre.
-            </div>
+            <div style={{ fontSize: 36, opacity: 0.3, marginBottom: 12 }}>🔒</div>
+            <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>Acesso restrito ao Mestre.</div>
           </div>
         )}
         {page === "config" && (
-          <ConfigPage
-            users={users}
-            setUsers={setUsers}
-            currentUser={currentUser}
-            theme={theme}
-            onTheme={setTheme}
-          />
+          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} />
         )}
       </div>
+
+      {/* ── Chat flutuante estilo Instagram ── */}
+      {chatOpen && (
+        <>
+          {/* Overlay escuro clicável */}
+          <div
+            onClick={() => setChatOpen(false)}
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.35)", zIndex:299, animation:"fadeIn 0.2s ease" }}
+          />
+          {/* Painel deslizante */}
+          <div style={{
+            position: "fixed", right: 0, top: 0, bottom: 0,
+            width: 380, zIndex: 300,
+            background: C.sb, borderLeft: `1px solid ${C.b1}`,
+            display: "flex", flexDirection: "column",
+            animation: "slideInRight 0.28s cubic-bezier(.4,0,.2,1)",
+            boxShadow: "-8px 0 40px rgba(0,0,0,0.5)",
+          }}>
+            <ChatPage
+              currentUser={currentUser}
+              users={users}
+              presence={presence}
+              onClose={() => setChatOpen(false)}
+              floating={true}
+            />
+          </div>
+        </>
+      )}
     </div>
     </>
   );
