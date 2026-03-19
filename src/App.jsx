@@ -741,7 +741,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, flashUserId, stories }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, presence, flashUserId, stories }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     {
@@ -878,7 +878,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
           {/* Bottom: Stories + Chat + Profile + WhatsApp */}
           <div style={{ padding: "0 12px" }}>
             <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-              {[{ id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Chat da Equipe", icon:"💬" }].map(item => (
+              {[{ id:"notificacoes", label:"Notificações", icon:"🔔" }, { id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Chat da Equipe", icon:"💬" }].map(item => (
                 <button key={item.id} onClick={() => setPage(item.id)} style={{
                   display: "flex", alignItems: "center", gap: 9,
                   padding: "9px 13px", borderRadius: 10, width: "100%",
@@ -896,6 +896,9 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, presence, f
                   {item.label}
                   {item.id === "chat" && unreadChat > 0 && (
                     <span style={{ marginLeft: "auto", background: "#16A34A", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadChat}</span>
+                  )}
+                  {item.id === "notificacoes" && unreadNotif > 0 && (
+                    <span style={{ marginLeft: "auto", background: "#F59E0B", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadNotif}</span>
                   )}
                 </button>
               ))}
@@ -4960,6 +4963,175 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 // ── Chat Page ──────────────────────────────────────────────────
 
 // ── Stories ────────────────────────────────────────────────────
+// ── Notificações ───────────────────────────────────────────────
+function NotificacoesPage({ currentUser, users }) {
+  const myId = currentUser.uid || currentUser.id;
+  const [notifs, setNotifs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
+      const all = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(n => n.toId === myId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+      setNotifs(all);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []); // eslint-disable-line
+
+  // Mark all as read when page opens
+  useEffect(() => {
+    const markAll = async () => {
+      const unread = notifs.filter(n => !n.readAt);
+      for (const n of unread) {
+        await setDoc(doc(db, "notifications", n.id), { readAt: Date.now() }, { merge: true });
+      }
+    };
+    if (notifs.length > 0) markAll();
+  }, [notifs.length]); // eslint-disable-line
+
+  const deleteNotif = async (id) => {
+    await deleteDoc(doc(db, "notifications", id));
+  };
+
+  const clearAll = async () => {
+    if (!window.confirm("Limpar todas as notificações?")) return;
+    for (const n of notifs) {
+      await deleteDoc(doc(db, "notifications", n.id));
+    }
+  };
+
+  const timeAgo = (ts) => {
+    const diff = Date.now() - ts;
+    const m = Math.floor(diff / 60000);
+    const h = Math.floor(diff / 3600000);
+    const d = Math.floor(diff / 86400000);
+    if (d > 0) return `há ${d}d`;
+    if (h > 0) return `há ${h}h`;
+    if (m > 0) return `há ${m}min`;
+    return "agora";
+  };
+
+  const notifIcon = (type) => {
+    if (type === "like") return "❤️";
+    if (type === "comment") return "💬";
+    if (type === "group_add") return "👥";
+    if (type === "group_rename") return "✏️";
+    return "🔔";
+  };
+
+  const notifColor = (type) => {
+    if (type === "like") return "#F472B6";
+    if (type === "comment") return C.atxt;
+    if (type === "group_add") return "#34D399";
+    if (type === "group_rename") return "#FBBF24";
+    return C.atxt;
+  };
+
+  const notifText = (n) => {
+    if (n.type === "like") return (
+      <span><strong style={{ color: C.tp }}>{n.fromName}</strong> curtiu seu story com {n.emoji}{n.storyText ? <span style={{ color: C.td }}> · "{n.storyText.slice(0, 30)}{n.storyText.length > 30 ? "…" : ""}"</span> : ""}</span>
+    );
+    if (n.type === "comment") return (
+      <span><strong style={{ color: C.tp }}>{n.fromName}</strong> comentou no seu story{n.commentText ? <span>: <em style={{ color: C.ts }}>"{n.commentText.slice(0, 40)}{n.commentText.length > 40 ? "…" : ""}"</em></span> : ""}</span>
+    );
+    if (n.type === "group_add") return (
+      <span><strong style={{ color: C.tp }}>{n.fromName}</strong> adicionou você ao grupo <strong style={{ color: "#34D399" }}>{n.groupName}</strong></span>
+    );
+    if (n.type === "group_rename") return (
+      <span><strong style={{ color: C.tp }}>{n.fromName}</strong> renomeou o grupo de <strong style={{ color: "#FBBF24" }}>{n.oldName}</strong> para <strong style={{ color: "#FBBF24" }}>{n.groupName}</strong></span>
+    );
+    return <span>Nova notificação</span>;
+  };
+
+  return (
+    <div style={{ padding: "28px 36px", minHeight: "100%", background: C.bg }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+        <div>
+          <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Notificações 🔔</h1>
+          <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Suas curtidas, comentários e atividades de grupo</p>
+        </div>
+        {notifs.length > 0 && (
+          <button onClick={clearAll}
+            style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 8, padding: "7px 14px", fontSize: 12, cursor: "pointer" }}>
+            🗑 Limpar tudo
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: C.tm, fontSize: 13 }}>Carregando...</div>
+      )}
+
+      {!loading && notifs.length === 0 && (
+        <div style={{ ...S.card, padding: "60px 36px", textAlign: "center" }}>
+          <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 14 }}>🔔</div>
+          <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>Nenhuma notificação ainda</div>
+          <div style={{ color: C.td, fontSize: 12, marginTop: 6 }}>Quando alguém curtir ou comentar seu story, ou te adicionar a um grupo, vai aparecer aqui.</div>
+        </div>
+      )}
+
+      {!loading && notifs.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 680 }}>
+          {notifs.map(n => {
+            const color = notifColor(n.type);
+            const isUnread = !n.readAt;
+            return (
+              <div key={n.id} style={{
+                ...S.card,
+                padding: "14px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: 13,
+                border: isUnread ? `1px solid ${color}44` : `1px solid ${C.b1}`,
+                background: isUnread ? color + "0A" : C.card,
+                transition: "all 0.2s",
+                position: "relative",
+              }}>
+                {/* Unread dot */}
+                {isUnread && (
+                  <div style={{ position: "absolute", top: 10, right: 10, width: 7, height: 7, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}88` }} />
+                )}
+
+                {/* From photo + icon badge */}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}44`, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {n.fromPhoto
+                      ? <img src={n.fromPhoto} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <span style={{ color, fontSize: 15, fontWeight: 700 }}>{(n.fromName || "?").charAt(0).toUpperCase()}</span>
+                    }
+                  </div>
+                  <div style={{ position: "absolute", bottom: -2, right: -2, width: 18, height: 18, borderRadius: "50%", background: C.card, border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>
+                    {notifIcon(n.type)}
+                  </div>
+                </div>
+
+                {/* Text */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: C.ts, fontSize: 13, lineHeight: 1.5 }}>
+                    {notifText(n)}
+                  </div>
+                  <div style={{ color: C.td, fontSize: 11, marginTop: 4 }}>{timeAgo(n.createdAt)}</div>
+                </div>
+
+                {/* Delete */}
+                <button onClick={() => deleteNotif(n.id)}
+                  style={{ background: "transparent", border: "none", color: C.td, cursor: "pointer", fontSize: 14, padding: "4px 6px", borderRadius: 6, flexShrink: 0, transition: "color 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.color = "#EF4444"}
+                  onMouseLeave={e => e.currentTarget.style.color = C.td}
+                  title="Remover">✕</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Filtro de palavras ofensivas ──────────────────────────────
 const OFFENSIVE_WORDS = [
   // Palavrões gerais
@@ -5144,10 +5316,28 @@ function StoriesPage({ currentUser, users }) {
     setShowReactions(false);
     const reactions = story.reactions || {};
     const users2 = reactions[emoji] || [];
-    const updated = users2.includes(myId) ? users2.filter(u => u !== myId) : [...users2, myId];
+    const isAdding = !users2.includes(myId);
+    const updated = isAdding ? [...users2, myId] : users2.filter(u => u !== myId);
     const newR = { ...reactions, [emoji]: updated };
     if (updated.length === 0) delete newR[emoji];
     await setDoc(doc(db, "stories", story.id), { reactions: newR }, { merge: true });
+    // Notif: só quando curtindo, não quando remove, e não para si mesmo
+    if (isAdding && story.authorId !== myId) {
+      const nid = "notif_like_" + story.id + "_" + myId + "_" + emoji;
+      await setDoc(doc(db, "notifications", nid), {
+        id: nid,
+        type: "like",
+        toId: story.authorId,
+        fromId: myId,
+        fromName: currentUser.name || currentUser.email,
+        fromPhoto: myProfile.photo || null,
+        emoji,
+        storyId: story.id,
+        storyText: story.text || "",
+        createdAt: Date.now(),
+        readAt: null,
+      }, { merge: true });
+    }
   };
 
   // ── Comments ─────────────────────────────────────────────────
@@ -5158,15 +5348,33 @@ function StoriesPage({ currentUser, users }) {
       setTimeout(() => setBlockedAlert(false), 4000);
       return;
     }
+    const commentText = comment.trim();
     const comments = [...(story.comments || []), {
       userId: myId,
       userName: currentUser.name || currentUser.email,
       userRole: currentUser.role,
       userPhoto: myProfile.photo || null,
-      text: comment.trim(),
+      text: commentText,
       createdAt: Date.now(),
     }];
     await setDoc(doc(db, "stories", story.id), { comments }, { merge: true });
+    // Notif de comentário (não notifica a si mesmo)
+    if (story.authorId !== myId) {
+      const nid = "notif_comment_" + story.id + "_" + myId + "_" + Date.now();
+      await setDoc(doc(db, "notifications", nid), {
+        id: nid,
+        type: "comment",
+        toId: story.authorId,
+        fromId: myId,
+        fromName: currentUser.name || currentUser.email,
+        fromPhoto: myProfile.photo || null,
+        commentText,
+        storyId: story.id,
+        storyText: story.text || "",
+        createdAt: Date.now(),
+        readAt: null,
+      });
+    }
     setComment(""); setShowCommentEmoji(false);
   };
 
@@ -5988,16 +6196,36 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const createGroup = async () => {
     if (!groupName.trim() || groupMembers.length === 0) return;
     const id = "grp_" + Date.now();
+    const finalName = groupName.trim();
+    const allMembers = [...new Set([myId, ...groupMembers])];
     await setDoc(doc(db, "chatGroups", id), {
       id,
-      name: groupName.trim(),
+      name: finalName,
       photo: groupPhoto || null,
       admId: myId,
       createdBy: myId,
       createdByName: currentUser.name || currentUser.email,
-      members: [...new Set([myId, ...groupMembers])],
+      members: allMembers,
       createdAt: Date.now(),
     });
+    // Notif para cada membro adicionado (exceto o criador)
+    for (const memberId of groupMembers) {
+      if (memberId === myId) continue;
+      const nid = "notif_groupadd_" + id + "_" + memberId;
+      await setDoc(doc(db, "notifications", nid), {
+        id: nid,
+        type: "group_add",
+        toId: memberId,
+        fromId: myId,
+        fromName: currentUser.name || currentUser.email,
+        fromPhoto: currentUser.photo || null,
+        groupId: id,
+        groupName: finalName,
+        groupPhoto: groupPhoto || null,
+        createdAt: Date.now(),
+        readAt: null,
+      });
+    }
     setShowCreateGroup(false);
     setGroupName(""); setGroupPhoto(null); setGroupMembers([]);
     setActiveTab("grp:" + id);
@@ -6006,10 +6234,33 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   // ── Save group edits ─────────────────────────────────────────
   const saveGroupEdit = async () => {
     if (!activeGroup) return;
+    const newName = editGroupName.trim() || activeGroup.name;
+    const nameChanged = newName !== activeGroup.name;
     await setDoc(doc(db, "chatGroups", activeGroup.id), {
-      name: editGroupName.trim() || activeGroup.name,
+      name: newName,
       photo: editGroupPhoto !== null ? editGroupPhoto : activeGroup.photo,
     }, { merge: true });
+    // Notif de renomeação para todos os membros (exceto o próprio adm)
+    if (nameChanged) {
+      for (const memberId of (activeGroup.members || [])) {
+        if (memberId === myId) continue;
+        const nid = "notif_grouprename_" + activeGroup.id + "_" + Date.now() + "_" + memberId;
+        await setDoc(doc(db, "notifications", nid), {
+          id: nid,
+          type: "group_rename",
+          toId: memberId,
+          fromId: myId,
+          fromName: currentUser.name || currentUser.email,
+          fromPhoto: currentUser.photo || null,
+          groupId: activeGroup.id,
+          oldName: activeGroup.name,
+          groupName: newName,
+          groupPhoto: activeGroup.photo || null,
+          createdAt: Date.now(),
+          readAt: null,
+        });
+      }
+    }
     setEditingGroup(false);
   };
 
@@ -6437,6 +6688,7 @@ export default function App() {
   const [chatMinimized, setChatMinimized] = useState(false);
   const [chatPos, setChatPos] = useState({ x: null, y: null });
   const [chatStories, setChatStories] = useState([]);
+  const [unreadNotif, setUnreadNotif] = useState(0);
   const lastChatCount = useRef(0);
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
@@ -6484,6 +6736,20 @@ export default function App() {
     const unsub = onSnapshot(collection(db, "stories"), (snap) => {
       const now = Date.now();
       setChatStories(snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.expiresAt>now));
+    });
+    return () => unsub();
+  }, [currentUser]); // eslint-disable-line
+
+  // ── Ouvir notificações do usuário atual ───────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
+      const notifs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(n => n.toId === myId);
+      const unread = notifs.filter(n => !n.readAt).length;
+      setUnreadNotif(unread);
     });
     return () => unsub();
   }, [currentUser]); // eslint-disable-line
@@ -6659,6 +6925,7 @@ export default function App() {
         users={users}
         onLogout={logout}
         unreadChat={unreadChat}
+        unreadNotif={unreadNotif}
         presence={presence}
         flashUserId={flashUserId}
         stories={chatStories}
@@ -6685,6 +6952,9 @@ export default function App() {
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
+        )}
+        {page === "notificacoes" && (
+          <NotificacoesPage currentUser={currentUser} users={users} />
         )}
         {page === "stories" && (
           <StoriesPage currentUser={currentUser} users={users} />
