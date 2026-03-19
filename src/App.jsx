@@ -3801,12 +3801,25 @@ function PerfisTab({ users, setUsers, currentUser }) {
   const [ok, setOk] = useState("");
   const [cardOrder, setCardOrder] = useState([]);
   const [dragOver, setDragOver] = useState(null);
+  const [searchPerfil, setSearchPerfil] = useState("");
   const dragId = useRef(null);
 
   const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399" };
   const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador" };
 
-  const allVisible = users.filter(u => !u.deleted);
+  const allUsers = users.filter(u => !u.deleted);
+  const allVisible = searchPerfil.trim()
+    ? allUsers.filter(u => {
+        const q = searchPerfil.toLowerCase();
+        return (
+          (u.name || "").toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q) ||
+          (u.cpf || "").includes(q) ||
+          (u.role || "").toLowerCase().includes(q) ||
+          (u.cidade || "").toLowerCase().includes(q)
+        );
+      })
+    : allUsers;
   // Apply custom order
   const visible = cardOrder.length > 0
     ? [...allVisible].sort((a, b) => {
@@ -3889,8 +3902,18 @@ function PerfisTab({ users, setUsers, currentUser }) {
 
   return (
     <div>
-      <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
-        {visible.length} perfil{visible.length !== 1 ? "s" : ""} cadastrado{visible.length !== 1 ? "s" : ""}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
+        <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, flexShrink:0 }}>
+          {visible.length} perfil{visible.length !== 1 ? "s" : ""} cadastrado{visible.length !== 1 ? "s" : ""}
+          {searchPerfil && allUsers.length !== visible.length && <span style={{ color:C.td, fontSize:11, fontWeight:400 }}> de {allUsers.length}</span>}
+        </div>
+        <div style={{ position:"relative", flex:1, maxWidth:260 }}>
+          <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:13, pointerEvents:"none" }}>🔍</span>
+          <input value={searchPerfil} onChange={e=>setSearchPerfil(e.target.value)}
+            placeholder="Buscar por nome, email, CPF, cidade..."
+            style={{ ...S.input, paddingLeft:30, fontSize:12, padding:"6px 10px 6px 28px" }} />
+          {searchPerfil && <button onClick={()=>setSearchPerfil("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:13, lineHeight:1 }}>✕</button>}
+        </div>
       </div>
 
       {/* ── Profile cards grid ── */}
@@ -4472,15 +4495,27 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   const [editForm, setEditForm] = useState(null);
   const [resetPw, setResetPw] = useState("");
   const [viewProfileId, setViewProfileId] = useState(null);
+  const [searchUser, setSearchUser] = useState("");
   const pRef = useRef();
   const pEditRef = useRef();
 
   const canSeeAll = currentUser.role === "mestre";
-  const visible = users.filter(
+  const allVisible = users.filter(
     (u) =>
       !u.deleted &&
       (canSeeAll || u.createdBy === currentUser.id || u.id === currentUser.id),
   );
+  const visible = searchUser.trim()
+    ? allVisible.filter(u => {
+        const q = searchUser.toLowerCase();
+        return (
+          (u.name || "").toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q) ||
+          (u.cpf || "").includes(q) ||
+          (u.role || "").toLowerCase().includes(q)
+        );
+      })
+    : allVisible;
 
   const roleLabel = {
     mestre: "Mestre",
@@ -4654,8 +4689,18 @@ function UsuariosTab({ users, setUsers, currentUser }) {
           marginBottom: 18,
         }}
       >
-        <div style={{ color: C.ts, fontSize: 13 }}>
-          {visible.length} usuário{visible.length !== 1 ? "s" : ""}
+        <div style={{ display:"flex", alignItems:"center", gap:8, flex:1 }}>
+          <div style={{ color: C.ts, fontSize: 13, flexShrink:0 }}>
+            {visible.length} usuário{visible.length !== 1 ? "s" : ""}
+            {searchUser && allVisible.length !== visible.length && <span style={{ color:C.td, fontSize:11 }}> de {allVisible.length}</span>}
+          </div>
+          <div style={{ position:"relative", flex:1, maxWidth:220 }}>
+            <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:13, pointerEvents:"none" }}>🔍</span>
+            <input value={searchUser} onChange={e=>setSearchUser(e.target.value)}
+              placeholder="Buscar usuário..."
+              style={{ ...S.input, paddingLeft:30, fontSize:12, padding:"6px 10px 6px 28px" }} />
+            {searchUser && <button onClick={()=>setSearchUser("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:13, lineHeight:1 }}>✕</button>}
+          </div>
         </div>
         <button
           onClick={() => {
@@ -5440,6 +5485,7 @@ function NotificacoesPage({ currentUser, users }) {
   const [broadcastEmoji, setBroadcastEmoji] = useState("📢");
   const [broadcastColor, setBroadcastColor] = useState("#F59E0B");
   const [sending, setSending] = useState(false);
+  const [searchNotif, setSearchNotif] = useState("");
   const markedRef = useRef(false);
 
   useEffect(() => {
@@ -5571,8 +5617,21 @@ function NotificacoesPage({ currentUser, users }) {
     { label: "Roxo", color: "#C084FC" },
   ];
 
-  const broadcasts = notifs.filter(n => n.broadcast);
-  const personal = notifs.filter(n => !n.broadcast);
+  const filteredNotifs = searchNotif.trim()
+    ? notifs.filter(n => {
+        const q = searchNotif.toLowerCase();
+        return (
+          (n.fromName || "").toLowerCase().includes(q) ||
+          (n.text || "").toLowerCase().includes(q) ||
+          (n.commentText || "").toLowerCase().includes(q) ||
+          (n.groupName || "").toLowerCase().includes(q) ||
+          (n.storyText || "").toLowerCase().includes(q) ||
+          (n.type || "").toLowerCase().includes(q)
+        );
+      })
+    : notifs;
+  const broadcasts = filteredNotifs.filter(n => n.broadcast);
+  const personal = filteredNotifs.filter(n => !n.broadcast);
 
   return (
     <div style={{ padding: "28px 36px", minHeight: "100%", background: C.bg }}>
@@ -5582,7 +5641,15 @@ function NotificacoesPage({ currentUser, users }) {
           <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>Notificações 🔔</h1>
           <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>Avisos, curtidas, comentários e atividades de grupo</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems:"center" }}>
+          {/* Search */}
+          <div style={{ position:"relative" }}>
+            <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:13, pointerEvents:"none" }}>🔍</span>
+            <input value={searchNotif} onChange={e=>setSearchNotif(e.target.value)}
+              placeholder="Buscar notificação..."
+              style={{ ...S.input, paddingLeft:28, fontSize:12, padding:"7px 10px 7px 28px", width:200 }} />
+            {searchNotif && <button onClick={()=>setSearchNotif("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:12, lineHeight:1 }}>✕</button>}
+          </div>
           {isMestre && (
             <button onClick={() => setShowBroadcastForm(p => !p)}
               style={{ ...S.btn(showBroadcastForm ? C.abg : "#2B1D03", showBroadcastForm ? C.atxt : "#FBBF24"), border: `1px solid #F59E0B44`, padding: "7px 14px", fontSize: 12, fontWeight: 700 }}>
@@ -5701,8 +5768,10 @@ function NotificacoesPage({ currentUser, users }) {
       {!loading && personal.length === 0 && broadcasts.length === 0 && (
         <div style={{ ...S.card, padding: "60px 36px", textAlign: "center" }}>
           <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 14 }}>🔔</div>
-          <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>Nenhuma notificação ainda</div>
-          <div style={{ color: C.td, fontSize: 12, marginTop: 6 }}>Quando alguém curtir ou comentar seu story, ou te adicionar a um grupo, vai aparecer aqui.</div>
+          <div style={{ color: C.tm, fontSize: 14, fontWeight: 600 }}>
+            {searchNotif ? `Nenhuma notificação encontrada para "${searchNotif}"` : "Nenhuma notificação ainda"}
+          </div>
+          {!searchNotif && <div style={{ color: C.td, fontSize: 12, marginTop: 6 }}>Quando alguém curtir ou comentar seu story, ou te adicionar a um grupo, vai aparecer aqui.</div>}
         </div>
       )}
 
@@ -6670,6 +6739,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
   // Group states
   const [groups, setGroups] = useState([]);
+  const [searchChat, setSearchChat] = useState("");
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupPhoto, setGroupPhoto] = useState(null);
@@ -6984,7 +7054,16 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
       {/* ── Inbox (no tab selected) ── */}
       {!activeTab && (
         <div style={{ flex:1, overflowY:"auto", padding:"8px" }}>
-          {/* Geral */}
+          {/* Search bar */}
+          <div style={{ position:"relative", marginBottom:8 }}>
+            <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:12, pointerEvents:"none" }}>🔍</span>
+            <input value={searchChat} onChange={e=>setSearchChat(e.target.value)}
+              placeholder="Buscar conversa..."
+              style={{ ...S.input, paddingLeft:28, fontSize:12, padding:"7px 10px 7px 28px" }} />
+            {searchChat && <button onClick={()=>setSearchChat("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:12, lineHeight:1 }}>✕</button>}
+          </div>
+          {/* Geral — hide if search active and doesn't match */}
+          {(!searchChat || "chat geral".includes(searchChat.toLowerCase()) || "geral".includes(searchChat.toLowerCase())) && (
           <button onClick={() => setActiveTab("geral")} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", marginBottom:6, textAlign:"left", transition:"all 0.14s" }}
             onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
             <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", color:C.acc, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>🌐</div>
@@ -6993,12 +7072,13 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <div style={{ color:C.tm, fontSize:11 }}>Todos os membros</div>
             </div>
           </button>
+          )}
 
           {/* Groups section */}
           {groups.length > 0 && (
             <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", padding:"6px 4px 4px", marginTop:4 }}>Grupos</div>
           )}
-          {groups.map(g => {
+          {groups.filter(g => !searchChat || (g.name||"").toLowerCase().includes(searchChat.toLowerCase())).map(g => {
             const unread = unreadGroup(g.id);
             return (
               <button key={g.id} onClick={() => { setActiveTab("grp:" + g.id); setEditingGroup(false); }}
@@ -7072,11 +7152,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           )}
 
           {/* DMs section */}
-          {dmList.length > 0 && (
+          {dmList.filter(u => !searchChat || (u.name||u.email||"").toLowerCase().includes(searchChat.toLowerCase())).length > 0 && (
             <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", padding:"6px 4px 4px", marginTop:2 }}>Mensagens diretas</div>
           )}
           {/* DMs */}
-          {dmList.map(u => {
+          {dmList.filter(u => !searchChat || (u.name||u.email||"").toLowerCase().includes(searchChat.toLowerCase())).map(u => {
             const uid = u.uid || u.id;
             const rc = roleColor[u.role] || C.atxt;
             const unread = unreadDM(uid);
