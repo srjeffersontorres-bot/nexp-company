@@ -7758,7 +7758,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
         });
       }
     }
-    setEditingGroup(false);
   };
 
   // ── Unread group msgs ────────────────────────────────────────
@@ -7999,7 +7998,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
           )}
           {/* Group settings button for adm */}
           {isGroupAdm && (
-            <button onClick={() => { setShowGroupConfig(p=>!p); setEditingGroup(false); }}
+            <button onClick={() => { setShowGroupConfig(p=>!p); }}
               style={{ background:showGroupConfig?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.08)", border:"none", color:showGroupConfig?C.atxt:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }} title="Configurações do grupo">
               ⚙
             </button>
@@ -8077,7 +8076,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             return (
               <div key={g.id} style={{ position:"relative", marginBottom:6 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                  <button onClick={() => { setActiveTab(gKey); setEditingGroup(false); }}
+                  <button onClick={() => { setActiveTab(gKey); }}
                     style={{ flex:1, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:"transparent", border:`1px solid ${C.b1}`, cursor:"pointer", textAlign:"left", transition:"all 0.14s" }}
                     onMouseEnter={e=>e.currentTarget.style.background=C.abg} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <div style={{ width:40, height:40, borderRadius:"50%", background:C.acc+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, overflow:"hidden", border:`1px solid ${C.b1}` }}>
