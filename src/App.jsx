@@ -10376,10 +10376,7 @@ function V8DigitalTab({ currentUser }) {
   const [aba, setAba] = useState("config");
 
   // Credenciais — client_id e audience são fixos conforme documentação V8
-  const V8_CLIENT_ID = "DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn";
-  const V8_AUDIENCE  = "https://bff.v8sistema.com";
-  const V8_AUTH_URL  = "https://auth.v8sistema.com/oauth/token";
-  const V8_BFF_URL   = "https://bff.v8sistema.com";
+  // (usadas no proxy /api/v8proxy.js — não expostas no frontend)
 
   const [savedUser, setSavedUser] = useState(() => localStorage.getItem("nexp_v8_user") || "");
   const [credForm,  setCredForm]  = useState({ username: savedUser, password: "" });
@@ -10390,6 +10387,9 @@ function V8DigitalTab({ currentUser }) {
 
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
+  // Todas as chamadas passam pelo proxy Vercel para resolver CORS
+  const PROXY = "/api/v8proxy";
+
   const autenticar = async () => {
     if (!credForm.username || !credForm.password) {
       setAuthErr("Preencha e-mail e senha."); return;
@@ -10398,17 +10398,17 @@ function V8DigitalTab({ currentUser }) {
     try {
       localStorage.setItem("nexp_v8_user", credForm.username);
       setSavedUser(credForm.username);
-      const body = new URLSearchParams({
-        grant_type: "password",
-        username:   credForm.username,
-        password:   credForm.password,
-        audience:   V8_AUDIENCE,
-        scope:      "openid profile email offline_access",
-        client_id:  V8_CLIENT_ID,
+
+      const res  = await fetch(PROXY, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          action:  "auth",
+          payload: { username: credForm.username, password: credForm.password },
+        }),
       });
-      const res  = await fetch(V8_AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error_description || data.message || `Erro ${res.status}: ${JSON.stringify(data)}`);
+      if (!res.ok) throw new Error(data.error_description || data.message || data.error || `Erro ${res.status}`);
       setToken(data.access_token);
       setTokenExp(Date.now() + ((data.expires_in || 3600) - 60) * 1000);
       setAba("fgts");
@@ -10418,11 +10418,16 @@ function V8DigitalTab({ currentUser }) {
 
   const apiFetch = async (path, method="GET", body=null) => {
     if (!isTokenValid) throw new Error("Token expirado. Reautentique.");
-    const opts = { method, headers:{ "Authorization":`Bearer ${token}`, "Content-Type":"application/json" } };
-    if (body) opts.body = JSON.stringify(body);
-    const res  = await fetch(`${V8_BFF_URL}${path}`, opts);
+    const res  = await fetch(PROXY, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        action:  "bff",
+        payload: { path, method, token, body },
+      }),
+    });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}: ${JSON.stringify(data)}`);
+    if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}`);
     return data;
   };
 
