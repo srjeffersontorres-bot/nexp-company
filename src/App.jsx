@@ -1216,42 +1216,6 @@ function LoginPage({ onLogin }) {
         ))}
       </svg>
 
-      {/* ── CLIMA no canto superior direito ── */}
-      {weather && (
-        <div style={{
-          position:"absolute", top:18, right:22, zIndex:10,
-          background:"rgba(8,10,18,0.6)", backdropFilter:"blur(16px)",
-          borderRadius:14, padding:"10px 16px",
-          border:"1px solid rgba(255,255,255,0.1)",
-          display:"flex", alignItems:"center", gap:10,
-          minWidth:180,
-        }}>
-          <span style={{ fontSize:24 }}>
-            {isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}
-          </span>
-          <div>
-            {cityName && (
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10.5, marginBottom:2, display:"flex", alignItems:"center", gap:3 }}>
-                <span>📍</span>{cityName}
-              </div>
-            )}
-            <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>
-              {Math.round(weather.temperature)}°C
-            </div>
-            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10 }}>
-              {isRain?"Chuvoso":isCloudy?"Nublado":isNight?"Noite":isMorning?"Manhã":isAfternoon?"Tarde":"Entardecer"}
-            </div>
-            {forecast && (
-              <div style={{ display:"flex", gap:8, marginTop:3 }}>
-                <span style={{ color:"#F87171", fontSize:10 }}>↑{forecast.tmax}°</span>
-                <span style={{ color:"#60A5FA", fontSize:10 }}>↓{forecast.tmin}°</span>
-                {forecast.rain>0 && <span style={{ color:"#93C5FD", fontSize:10 }}>💧{forecast.rain}%</span>}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Lado esquerdo: formulário com transparência ── */}
       <div style={{ flex:"0 0 auto", width:"min(380px,90vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease" }}>
         {/* Card com transparência */}
@@ -1348,10 +1312,9 @@ function LoginPage({ onLogin }) {
         </a>
       </div>
 
-      {/* ── Lado direito: robô + frase motivacional lado a lado ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:24, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease" }}>
-        {/* Robô AO LADO da frase motivacional */}
-        <div style={{ display:"flex", alignItems:"center", gap:20, maxWidth:480 }}>
+      {/* ── Lado direito: robô + frase motivacional + clima ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", paddingTop:32, gap:20, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:20, maxWidth:520 }}>
           <div style={{ flexShrink:0, animation:"robotFloat 3s ease-in-out infinite" }}>
             <NexpRobot size={100} showFaceOnly={false} />
           </div>
@@ -1359,719 +1322,285 @@ function LoginPage({ onLogin }) {
             <div style={{ color:"rgba(79,142,247,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
             <div style={{ color:"rgba(255,255,255,0.88)", fontSize:13.5, lineHeight:1.6, fontStyle:"italic" }}>{frase}</div>
           </div>
+          {weather && (
+            <div style={{ flexShrink:0, background:"rgba(8,10,18,0.6)", backdropFilter:"blur(16px)", borderRadius:14, padding:"10px 14px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:80 }}>
+              <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
+              <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{Math.round(weather.temperature)}°C</div>
+              {cityName && <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9.5, textAlign:"center" }}>📍 {cityName}</div>}
+              {forecast && (
+                <div style={{ display:"flex", gap:5, marginTop:2 }}>
+                  <span style={{ color:"#F87171", fontSize:9.5 }}>↑{forecast.tmax}°</span>
+                  <span style={{ color:"#60A5FA", fontSize:9.5 }}>↓{forecast.tmin}°</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ── WhatsApp Multi-Contas ──────────────────────────────────────
-const WA_ICON = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
-  </svg>
-);
+const INTERNET_TABS = [
+  {
+    id: "whatsapp", label: "WhatsApp",
+    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>),
+    url: "https://web.whatsapp.com", color: "#25D366", fallback: "https://web.whatsapp.com",
+  },
+  {
+    id: "instagram", label: "Instagram",
+    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>),
+    url: "https://www.instagram.com/", color: "#E1306C", fallback: "https://www.instagram.com/accounts/login/",
+  },
+  {
+    id: "chatgpt", label: "ChatGPT",
+    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.677l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0L4.01 14.15A4.485 4.485 0 0 1 2.34 7.896zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.816 2.801a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.393-.677zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.816-2.771a4.493 4.493 0 0 1 6.675 4.663zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.494 4.494 0 0 1 7.375-3.453l-.142.08-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/></svg>),
+    url: "https://chatgpt.com/", color: "#10A37F", fallback: "https://chatgpt.com/",
+  },
+  {
+    id: "claude", label: "Claude",
+    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/></svg>),
+    url: "https://claude.ai/", color: "#CC785C", fallback: "https://claude.ai/",
+  },
+];
 
-function WhatsAppContasPage() {
-  // ── Config do servidor ──────────────────────────────────────
-  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("nexp_wpp_server") || "");
-  const [editingServer, setEditingServer] = useState(!localStorage.getItem("nexp_wpp_server"));
-  const [serverInput, setServerInput]     = useState(localStorage.getItem("nexp_wpp_server") || "");
+// ── Janela flutuante interna para Internet ─────────────────────
+function InternetFloatWindow({ tab, onMinimize, onClose }) {
+  const [url, setUrl] = useState(tab.url);
+  const [inputUrl, setInputUrl] = useState(tab.url);
+  const [loading, setLoading] = useState(true);
+  const iframeRef = useRef(null);
 
-  // ── Estado das contas e mensagens ───────────────────────────
-  const [accounts, setAccounts]         = useState([]);   // [{id, label, status, phone, name, qr}]
-  const [allMessages, setAllMessages]   = useState([]);   // [{...msg, accountLabel}] unificadas
-  const [conversations, setConversations] = useState({}); // {accountId_jid: {name,msgs,unread,accountId,accountLabel}}
-  const [activeConv, setActiveConv]     = useState(null); // {accountId, jid, name}
-  const [convMsgs, setConvMsgs]         = useState([]);
-  const [inputText, setInputText]       = useState("");
-  const [sending, setSending]           = useState(false);
-  const [connected, setConnected]       = useState(false);
-  const [wsError, setWsError]           = useState("");
-
-  // ── Adicionar conta ─────────────────────────────────────────
-  const [showAdd, setShowAdd]     = useState(false);
-  const [novaLabel, setNovaLabel] = useState("");
-  const [addLoading, setAddLoading] = useState(false);
-
-  // ── Vista ───────────────────────────────────────────────────
-  const [view, setView]     = useState("inbox"); // "inbox" | "accounts" | "conv"
-  const [filterAcc, setFilterAcc] = useState("all");
-
-  const wsRef      = useRef(null);
-  const reconnTimer = useRef(null);
-  const msgsEndRef = useRef(null);
-
-  const httpBase = serverUrl ? serverUrl.replace(/^ws/, "http").replace(/\/$/, "") : "";
-
-  // ── Conecta ao WebSocket ─────────────────────────────────────
-  const connectWS = (url) => {
-    if (!url) return;
-    const wsUrl = url.startsWith("http") ? url.replace(/^http/, "ws") : url;
-    try {
-      const ws = new window.WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setConnected(true);
-        setWsError("");
-        clearTimeout(reconnTimer.current);
-      };
-
-      ws.onmessage = (e) => {
-        try {
-          const { event, data } = JSON.parse(e.data);
-          handleWSEvent(event, data);
-        } catch {}
-      };
-
-      ws.onclose = () => {
-        setConnected(false);
-        reconnTimer.current = setTimeout(() => connectWS(url), 4000);
-      };
-
-      ws.onerror = () => {
-        setWsError("Não foi possível conectar ao servidor. Verifique a URL e se o servidor está rodando.");
-        setConnected(false);
-      };
-    } catch(e) {
-      setWsError("URL inválida: " + e.message);
-    }
-  };
-
-  const handleWSEvent = (event, data) => {
-    switch(event) {
-      case "snapshot":
-        setAccounts(data || []);
-        break;
-      case "qr":
-        setAccounts(p => p.map(a => a.id === data.accountId ? { ...a, status:"qr", qr:data.qr } : a));
-        break;
-      case "connected":
-        setAccounts(p => p.map(a => a.id === data.accountId ? { ...a, status:"connected", phone:data.phone, name:data.name, qr:null } : a));
-        break;
-      case "disconnected":
-        setAccounts(p => p.map(a => a.id === data.accountId ? { ...a, status: data.willReconnect ? "reconnecting" : "disconnected", qr:null } : a));
-        break;
-      case "account_removed":
-        setAccounts(p => p.filter(a => a.id !== data.accountId));
-        break;
-      case "message": {
-        const msg = data.message;
-        if (!msg) break;
-        const accLabel = accounts.find(a => a.id === msg.accountId)?.label || msg.accountId;
-        const enriched = { ...msg, accountLabel: accLabel, _key: msg.id + msg.accountId };
-        setAllMessages(p => {
-          const next = [...p, enriched].sort((a,b) => b.timestamp - a.timestamp);
-          return next.slice(0, 500);
-        });
-        const convKey = msg.accountId + "___" + (msg.fromMe ? msg.to : msg.from);
-        const jid     = msg.fromMe ? msg.to : msg.from;
-        setConversations(p => {
-          const prev = p[convKey] || { jid, name: msg.pushName || jid.replace("@s.whatsapp.net",""), msgs:[], unread:0, accountId: msg.accountId, accountLabel: accLabel };
-          return { ...p, [convKey]: { ...prev, msgs:[...prev.msgs, msg].slice(-100), lastMsg:msg, unread: msg.fromMe ? prev.unread : prev.unread+1, name: msg.pushName || prev.name } };
-        });
-        setConvMsgs(p => {
-          if (activeConv && activeConv.convKey === convKey) return [...p, msg];
-          return p;
-        });
-        break;
-      }
-      case "chats_loaded": {
-        const chats = data.chats || [];
-        const accLabel = accounts.find(a => a.id === data.accountId)?.label || data.accountId;
-        setConversations(p => {
-          const next = { ...p };
-          chats.forEach(c => {
-            const k = data.accountId + "___" + c.jid;
-            if (!next[k]) next[k] = { jid:c.jid, name:c.name||c.jid.replace("@s.whatsapp.net",""), msgs:[], unread:c.unread||0, accountId:data.accountId, accountLabel:accLabel, lastMsg:null };
-          });
-          return next;
-        });
-        break;
-      }
-    }
-  };
+  // Tenta carregar no iframe; se bloquear mostra aviso
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
-    if (serverUrl) connectWS(serverUrl);
-    return () => {
-      clearTimeout(reconnTimer.current);
-      wsRef.current?.close();
-    };
-  }, [serverUrl]); // eslint-disable-line
+    setBlocked(false);
+    setLoading(true);
+    setUrl(tab.url);
+    setInputUrl(tab.url);
+  }, [tab.id]); // eslint-disable-line
 
-  useEffect(() => {
-    msgsEndRef.current?.scrollIntoView({ behavior:"smooth" });
-  }, [convMsgs]);
-
-  // Atualiza labels nas mensagens quando accounts mudam
-  useEffect(() => {
-    setAllMessages(p => p.map(m => ({ ...m, accountLabel: accounts.find(a=>a.id===m.accountId)?.label || m.accountId })));
-    setConversations(p => {
-      const next = {...p};
-      Object.keys(next).forEach(k => {
-        const acc = accounts.find(a => a.id === next[k].accountId);
-        if (acc) next[k] = { ...next[k], accountLabel: acc.label };
-      });
-      return next;
-    });
-  }, [accounts]); // eslint-disable-line
-
-  const saveServer = () => {
-    const url = serverInput.trim().replace(/\/$/, "");
-    if (!url) return;
-    localStorage.setItem("nexp_wpp_server", url);
-    setServerUrl(url);
-    setEditingServer(false);
+  const navigate = () => {
+    let u = inputUrl.trim();
+    if (!u.startsWith("http")) u = "https://" + u;
+    setUrl(u);
+    setBlocked(false);
+    setLoading(true);
   };
-
-  const addAccount = async () => {
-    if (!novaLabel.trim() || !httpBase) return;
-    setAddLoading(true);
-    try {
-      const r = await fetch(`${httpBase}/api/accounts`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ label: novaLabel.trim() }) });
-      const d = await r.json();
-      if (d.id) {
-        setAccounts(p => [...p, { id:d.id, label:d.label, status:"connecting", qr:null }]);
-        setNovaLabel(""); setShowAdd(false);
-        setView("accounts");
-      }
-    } catch(e) { alert("Erro ao adicionar conta: " + e.message); }
-    setAddLoading(false);
-  };
-
-  const removeAccount = async (id) => {
-    if (!window.confirm("Remover esta conta? A sessão será apagada.")) return;
-    await fetch(`${httpBase}/api/accounts/${id}`, { method:"DELETE" }).catch(()=>{});
-    setAccounts(p => p.filter(a => a.id !== id));
-  };
-
-  const sendMessage = async () => {
-    if (!inputText.trim() || !activeConv || sending) return;
-    setSending(true);
-    try {
-      await fetch(`${httpBase}/api/send`, { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ accountId: activeConv.accountId, jid: activeConv.jid, text: inputText.trim() }) });
-      setInputText("");
-    } catch(e) { alert("Erro ao enviar: " + e.message); }
-    setSending(false);
-  };
-
-  const openConv = async (convKey, conv) => {
-    setActiveConv({ ...conv, convKey });
-    setView("conv");
-    // Carrega histórico via API
-    try {
-      const r = await fetch(`${httpBase}/api/messages/${conv.accountId}/${encodeURIComponent(conv.jid)}`);
-      const msgs = await r.json();
-      setConvMsgs(msgs);
-    } catch { setConvMsgs(conv.msgs || []); }
-    // Zera unread
-    setConversations(p => ({ ...p, [convKey]: { ...p[convKey], unread:0 } }));
-  };
-
-  const fmtTime = (ts) => {
-    if (!ts) return "";
-    const d = new Date(ts * 1000);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    if (isToday) return d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-    return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
-  };
-
-  const accColor = (id) => {
-    const colors = ["#25D366","#0EA5E9","#8B5CF6","#F59E0B","#EF4444","#EC4899","#34D399","#FB923C"];
-    const idx = [...(id||"")].reduce((a,c)=>a+c.charCodeAt(0),0) % colors.length;
-    return colors[idx];
-  };
-
-  const statusDot = (status) => {
-    const map = { connected:"#16A34A", qr:"#F59E0B", connecting:"#60A5FA", reconnecting:"#FBBF24", disconnected:"#EF4444" };
-    return map[status] || C.td;
-  };
-
-  const statusLabel = { connected:"Conectado", qr:"Aguardando QR", connecting:"Conectando...", reconnecting:"Reconectando...", disconnected:"Desconectado" };
-
-  // Filtro de conversas
-  const convList = Object.entries(conversations)
-    .filter(([,c]) => filterAcc === "all" || c.accountId === filterAcc)
-    .sort(([,a],[,b]) => (b.lastMsg?.timestamp||0) - (a.lastMsg?.timestamp||0));
-
-  const totalUnread = convList.reduce((s,[,c]) => s + (c.unread||0), 0);
-
-  // ── Configuração do servidor ─────────────────────────────────
-  if (editingServer) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"100vh", background:C.bg, padding:32 }}>
-      <div style={{ background:C.card, borderRadius:18, border:"1px solid #25D36633", padding:"36px 40px", maxWidth:480, width:"100%" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:26 }}>
-          <div style={{ width:48, height:48, borderRadius:12, background:"#0A2918", border:"1.5px solid #25D36644", display:"flex", alignItems:"center", justifyContent:"center", color:"#25D366", fontSize:24 }}>{WA_ICON}</div>
-          <div>
-            <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>Conectar ao Servidor</div>
-            <div style={{ color:C.td, fontSize:12, marginTop:2 }}>WhatsApp Multi-Contas</div>
-          </div>
-        </div>
-
-        <div style={{ color:C.ts, fontSize:13, lineHeight:1.7, marginBottom:22 }}>
-          Insira a URL do servidor backend Baileys.<br/>
-          <span style={{ color:C.td, fontSize:11.5 }}>Ex: <code style={{ background:C.deep, padding:"1px 6px", borderRadius:4 }}>wss://meu-servidor.railway.app</code></span>
-        </div>
-
-        <input value={serverInput} onChange={e=>setServerInput(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&saveServer()}
-          placeholder="wss://seu-servidor.railway.app"
-          style={{ ...S.input, marginBottom:14, fontSize:13, fontFamily:"monospace" }} autoFocus />
-
-        {wsError && <div style={{ color:"#F87171", fontSize:12, marginBottom:12 }}>⚠ {wsError}</div>}
-
-        <button onClick={saveServer} disabled={!serverInput.trim()}
-          style={{ ...S.btn("#25D366","#fff"), width:"100%", padding:"12px", fontSize:14, fontWeight:700, borderRadius:10, marginBottom:16, opacity:!serverInput.trim()?0.5:1 }}>
-          🔗 Conectar
-        </button>
-
-        <div style={{ background:C.deep, borderRadius:10, padding:"14px 16px", border:`1px solid ${C.b1}` }}>
-          <div style={{ color:C.tm, fontSize:11.5, fontWeight:700, marginBottom:8 }}>📦 Como subir o servidor?</div>
-          <div style={{ color:C.td, fontSize:11, lineHeight:1.8 }}>
-            1. Baixe a pasta <code style={{ background:C.card, padding:"1px 5px", borderRadius:3, fontSize:10.5 }}>wpp-server/</code> que foi gerada<br/>
-            2. Suba no <strong style={{color:C.ts}}>Railway</strong>, <strong style={{color:C.ts}}>Render</strong> ou qualquer VPS<br/>
-            3. Cole a URL pública aqui e conecte<br/>
-            4. O README inclui instruções completas
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
-    <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C.bg }}>
-
-      {/* ── Painel Esquerdo: Conversas ── */}
-      <div style={{ width:320, flexShrink:0, borderRight:`1px solid ${C.b1}`, display:"flex", flexDirection:"column", background:C.sb }}>
-
-        {/* Header */}
-        <div style={{ padding:"14px 16px", borderBottom:`1px solid ${C.b1}`, flexShrink:0 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span style={{ color:"#25D366", fontSize:18 }}>{WA_ICON}</span>
-              <span style={{ color:C.tp, fontSize:14, fontWeight:800 }}>WhatsApp</span>
-              {totalUnread > 0 && <span style={{ background:"#25D366", color:"#fff", borderRadius:"50%", minWidth:18, height:18, fontSize:10, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px" }}>{totalUnread}</span>}
-            </div>
-            <div style={{ display:"flex", gap:5 }}>
-              <div style={{ width:8, height:8, borderRadius:"50%", background:connected?"#16A34A":"#EF4444", boxShadow:connected?"0 0 6px #16A34A88":"none", marginTop:4 }} title={connected?"Servidor conectado":"Servidor desconectado"} />
-              <button onClick={()=>setShowAdd(p=>!p)} title="Adicionar conta"
-                style={{ background:showAdd?C.abg:C.deep, border:`1px solid ${showAdd?C.atxt:C.b2}`, color:showAdd?C.atxt:C.tm, borderRadius:7, width:28, height:28, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>＋</button>
-              <button onClick={()=>setView(view==="accounts"?"inbox":"accounts")} title="Gerenciar contas"
-                style={{ background:view==="accounts"?C.abg:C.deep, border:`1px solid ${view==="accounts"?C.atxt:C.b2}`, color:view==="accounts"?C.atxt:C.tm, borderRadius:7, width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>⚙</button>
-              <button onClick={()=>setEditingServer(true)} title="Configurar servidor"
-                style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.td, borderRadius:7, width:28, height:28, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", justifyContent:"center" }}>🔗</button>
-            </div>
+    <div style={{
+      position:"fixed", top:0, left:0, right:0, bottom:0,
+      zIndex:800, display:"flex", flexDirection:"column",
+      background:C.bg, animation:"fadeIn 0.2s ease",
+    }}>
+      {/* Barra superior */}
+      <div style={{
+        display:"flex", alignItems:"center", gap:8,
+        padding:"8px 12px", background:C.sb,
+        borderBottom:`1px solid ${C.b1}`, flexShrink:0,
+      }}>
+        {/* Ícone + nome */}
+        <div style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
+          <div style={{ width:28, height:28, borderRadius:8, background:tab.color+"22", color:tab.color, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            {tab.icon}
           </div>
-
-          {/* Adicionar conta inline */}
-          {showAdd && (
-            <div style={{ background:C.deep, borderRadius:10, padding:"12px", border:"1px solid #25D36633", marginBottom:8 }}>
-              <input value={novaLabel} onChange={e=>setNovaLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addAccount()}
-                placeholder="Nome da conta (ex: Principal, Suporte...)"
-                style={{ ...S.input, marginBottom:8, fontSize:12 }} autoFocus />
-              <button onClick={addAccount} disabled={!novaLabel.trim()||addLoading}
-                style={{ ...S.btn("#25D366","#fff"), width:"100%", padding:"8px", fontSize:12, fontWeight:700, borderRadius:8, opacity:(!novaLabel.trim()||addLoading)?0.5:1 }}>
-                {addLoading?"Adicionando...":"＋ Adicionar e escanear QR"}
-              </button>
-            </div>
-          )}
-
-          {/* Filtro por conta */}
-          {accounts.length > 1 && (
-            <div style={{ display:"flex", gap:4, overflowX:"auto", paddingBottom:2 }}>
-              <button onClick={()=>setFilterAcc("all")} style={{ flexShrink:0, padding:"3px 10px", borderRadius:20, border:`1px solid ${filterAcc==="all"?C.atxt:C.b2}`, background:filterAcc==="all"?C.abg:C.deep, color:filterAcc==="all"?C.atxt:C.tm, fontSize:11, cursor:"pointer", fontWeight:filterAcc==="all"?700:400 }}>Todas</button>
-              {accounts.map(a => (
-                <button key={a.id} onClick={()=>setFilterAcc(a.id)} style={{ flexShrink:0, padding:"3px 10px", borderRadius:20, border:`1px solid ${filterAcc===a.id?accColor(a.id)+"88":C.b2}`, background:filterAcc===a.id?accColor(a.id)+"22":C.deep, color:filterAcc===a.id?accColor(a.id):C.tm, fontSize:11, cursor:"pointer", fontWeight:filterAcc===a.id?700:400 }}>{a.label}</button>
-              ))}
-            </div>
-          )}
+          <span style={{ color:tab.color, fontSize:13, fontWeight:700 }}>{tab.label}</span>
         </div>
 
-        {/* Lista de conversas */}
-        <div style={{ flex:1, overflowY:"auto" }}>
-          {view === "accounts" ? (
-            /* Gerenciar contas */
-            <div style={{ padding:"8px" }}>
-              <div style={{ color:C.td, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px", padding:"6px 8px", marginBottom:4 }}>Contas cadastradas</div>
-              {accounts.length === 0 && <div style={{ color:C.tm, fontSize:12, padding:"20px 12px", textAlign:"center" }}>Nenhuma conta. Clique em ＋ para adicionar.</div>}
-              {accounts.map(a => (
-                <div key={a.id} style={{ background:C.deep, borderRadius:10, padding:"12px", marginBottom:8, border:`1px solid ${accColor(a.id)}33` }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: a.qr ? 12 : 0 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <div style={{ width:36, height:36, borderRadius:10, background:accColor(a.id)+"22", border:`1.5px solid ${accColor(a.id)}55`, display:"flex", alignItems:"center", justifyContent:"center", color:accColor(a.id), fontSize:18, flexShrink:0 }}>{WA_ICON}</div>
-                      <div>
-                        <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{a.label}</div>
-                        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
-                          <span style={{ width:7, height:7, borderRadius:"50%", background:statusDot(a.status), display:"inline-block" }} />
-                          <span style={{ color:C.td, fontSize:10.5 }}>{statusLabel[a.status]||a.status}</span>
-                          {a.phone && <span style={{ color:C.td, fontSize:10 }}>· +{a.phone}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={()=>removeAccount(a.id)} style={{ background:"transparent", border:"none", color:"#EF4444", cursor:"pointer", fontSize:13, padding:"4px 6px", borderRadius:6 }}>🗑</button>
-                  </div>
-                  {/* QR Code */}
-                  {a.qr && (
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8 }}>📱 Escaneie com o WhatsApp</div>
-                      <img src={a.qr} alt="QR Code" style={{ width:200, height:200, borderRadius:10, border:"3px solid #25D36644", background:"#fff" }} />
-                      <div style={{ color:C.td, fontSize:10.5, marginTop:6 }}>Abra o WhatsApp → Aparelhos conectados → Conectar aparelho</div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            /* Caixa de entrada unificada */
-            <>
-              {convList.length === 0 && (
-                <div style={{ padding:"40px 16px", textAlign:"center" }}>
-                  <div style={{ fontSize:40, marginBottom:12, opacity:0.3 }}>{WA_ICON}</div>
-                  <div style={{ color:C.tm, fontSize:13, fontWeight:600, marginBottom:6 }}>
-                    {accounts.filter(a=>a.status==="connected").length === 0 ? "Nenhuma conta conectada" : "Aguardando mensagens..."}
-                  </div>
-                  <div style={{ color:C.td, fontSize:11.5 }}>
-                    {accounts.length === 0 ? "Clique em ＋ para adicionar uma conta" : "As conversas aparecerão aqui"}
-                  </div>
-                </div>
-              )}
-              {convList.map(([key, conv]) => {
-                const isActive = activeConv?.convKey === key;
-                const col = accColor(conv.accountId);
-                return (
-                  <button key={key} onClick={() => openConv(key, conv)}
-                    style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"11px 14px", background:isActive?C.abg:C.sb, border:"none", borderBottom:`1px solid ${C.b1}`, cursor:"pointer", textAlign:"left", transition:"background 0.12s" }}
-                    onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background=C.deep; }}
-                    onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background=C.sb; }}
-                  >
-                    {/* Avatar */}
-                    <div style={{ width:40, height:40, borderRadius:"50%", background:col+"22", border:`1.5px solid ${col}55`, display:"flex", alignItems:"center", justifyContent:"center", color:col, fontWeight:700, fontSize:15, flexShrink:0 }}>
-                      {conv.name?.[0]?.toUpperCase() || "?"}
-                    </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:3 }}>
-                        <span style={{ color:C.tp, fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:140 }}>{conv.name || conv.jid?.replace("@s.whatsapp.net","")}</span>
-                        <span style={{ color:C.td, fontSize:10.5, flexShrink:0, marginLeft:6 }}>{fmtTime(conv.lastMsg?.timestamp)}</span>
-                      </div>
-                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                        <span style={{ color:C.tm, fontSize:11.5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:160 }}>
-                          {conv.lastMsg?.fromMe && <span style={{ color:C.td }}>Você: </span>}
-                          {conv.lastMsg?.text || conv.lastMsg?.media?.type || ""}
-                        </span>
-                        <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
-                          <span style={{ background:col+"22", color:col, borderRadius:4, padding:"1px 5px", fontSize:9, fontWeight:700, border:`1px solid ${col}33` }}>{conv.accountLabel}</span>
-                          {conv.unread > 0 && <span style={{ background:"#25D366", color:"#fff", borderRadius:"50%", minWidth:17, height:17, fontSize:9.5, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{conv.unread}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </>
-          )}
+        {/* Barra de URL */}
+        <div style={{ flex:1, display:"flex", gap:6, alignItems:"center" }}>
+          <input
+            value={inputUrl}
+            onChange={e => setInputUrl(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && navigate()}
+            style={{ ...S.input, flex:1, padding:"6px 10px", fontSize:12, borderRadius:8 }}
+          />
+          <button onClick={navigate}
+            style={{ background:tab.color, color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+            Ir
+          </button>
+        </div>
+
+        {/* Botões */}
+        <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+          <button onClick={() => window.open(url,"_blank")}
+            title="Abrir no navegador"
+            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer" }}>
+            ↗
+          </button>
+          <button onClick={onMinimize}
+            title="Minimizar"
+            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer" }}>
+            ─
+          </button>
+          <button onClick={onClose}
+            title="Fechar"
+            style={{ background:"#2D1515", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer", fontWeight:700 }}>
+            ✕
+          </button>
         </div>
       </div>
 
-      {/* ── Painel Direito: Conversa ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-        {!activeConv ? (
-          <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
-            <div style={{ fontSize:60, opacity:0.15 }}>{WA_ICON}</div>
-            <div style={{ color:C.tm, fontSize:15, fontWeight:700 }}>Selecione uma conversa</div>
-            <div style={{ color:C.td, fontSize:12 }}>As mensagens de todas as contas aparecem na caixa de entrada unificada</div>
-            {!connected && serverUrl && (
-              <div style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:10, padding:"10px 18px", color:"#F87171", fontSize:12, marginTop:8 }}>
-                ⚠ Servidor desconectado. Tentando reconectar...
-              </div>
-            )}
+      {/* Conteúdo */}
+      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
+        {loading && !blocked && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, zIndex:2, flexDirection:"column", gap:12 }}>
+            <div style={{ width:36, height:36, border:`3px solid ${tab.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+            <span style={{ color:C.tm, fontSize:13 }}>Carregando {tab.label}...</span>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
+        )}
+
+        {!blocked ? (
+          <iframe
+            ref={iframeRef}
+            src={url}
+            title={tab.label}
+            onLoad={() => setLoading(false)}
+            onError={() => { setBlocked(true); setLoading(false); }}
+            style={{ width:"100%", height:"100%", border:"none", display:"block" }}
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
+          />
         ) : (
-          <>
-            {/* Header da conversa */}
-            <div style={{ padding:"12px 18px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:12, background:C.sb, flexShrink:0 }}>
-              <button onClick={()=>{ setActiveConv(null); setView("inbox"); }} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>‹</button>
-              <div style={{ width:36, height:36, borderRadius:"50%", background:accColor(activeConv.accountId)+"22", border:`1.5px solid ${accColor(activeConv.accountId)}55`, display:"flex", alignItems:"center", justifyContent:"center", color:accColor(activeConv.accountId), fontWeight:700, fontSize:16, flexShrink:0 }}>
-                {activeConv.name?.[0]?.toUpperCase() || "?"}
-              </div>
-              <div style={{ flex:1 }}>
-                <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{activeConv.name}</div>
-                <div style={{ color:C.td, fontSize:11 }}>via <span style={{ color:accColor(activeConv.accountId) }}>{activeConv.accountLabel}</span> · {activeConv.jid?.replace("@s.whatsapp.net","").replace("@g.us"," (grupo)")}</div>
-              </div>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:16, padding:40 }}>
+            <div style={{ fontSize:48 }}>🔒</div>
+            <div style={{ color:C.tp, fontSize:18, fontWeight:700 }}>{tab.label} bloqueou a incorporação</div>
+            <div style={{ color:C.tm, fontSize:13, textAlign:"center", maxWidth:420, lineHeight:1.7 }}>
+              Este site não permite ser aberto dentro de outros sistemas por segurança.<br/>
+              Clique abaixo para abrir em uma nova aba do navegador.
             </div>
-
-            {/* Mensagens */}
-            <div style={{ flex:1, overflowY:"auto", padding:"16px 20px", display:"flex", flexDirection:"column", gap:6 }}>
-              {convMsgs.map((m, i) => (
-                <div key={m.id || i} style={{ display:"flex", justifyContent: m.fromMe ? "flex-end" : "flex-start" }}>
-                  <div style={{ maxWidth:"70%", background: m.fromMe ? C.acc+"EE" : C.card, borderRadius: m.fromMe ? "14px 14px 4px 14px" : "14px 14px 14px 4px", padding:"9px 13px", boxShadow:`0 1px 4px rgba(0,0,0,0.2)` }}>
-                    {!m.fromMe && m.pushName && <div style={{ color: accColor(activeConv.accountId), fontSize:10.5, fontWeight:700, marginBottom:3 }}>{m.pushName}</div>}
-                    {m.media && <div style={{ color:C.td, fontSize:11, fontStyle:"italic", marginBottom:m.text?4:0 }}>📎 {m.media.type === "image" ? "Imagem" : m.media.type === "video" ? "Vídeo" : m.media.type === "audio" ? (m.media.ptt ? "🎤 Áudio" : "🎵 Música") : m.media.type === "sticker" ? "🎨 Sticker" : "📄 Documento"}</div>}
-                    {m.text && <div style={{ color: m.fromMe ? "#fff" : C.tp, fontSize:13.5, lineHeight:1.5, wordBreak:"break-word" }}>{m.text}</div>}
-                    <div style={{ color: m.fromMe ? "rgba(255,255,255,0.5)" : C.td, fontSize:10, marginTop:4, textAlign:"right" }}>{fmtTime(m.timestamp)}</div>
-                  </div>
-                </div>
-              ))}
-              <div ref={msgsEndRef} />
-            </div>
-
-            {/* Input de envio */}
-            <div style={{ padding:"12px 16px", borderTop:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-end", background:C.sb, flexShrink:0 }}>
-              <textarea value={inputText} onChange={e=>setInputText(e.target.value)}
-                onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendMessage(); }}}
-                placeholder={`Mensagem para ${activeConv.name}...`} rows={1}
-                style={{ ...S.input, flex:1, resize:"none", minHeight:40, maxHeight:120, overflowY:"auto", padding:"10px 14px", fontSize:13, lineHeight:1.5 }} />
-              <button onClick={sendMessage} disabled={!inputText.trim()||sending}
-                style={{ ...S.btn("#25D366","#fff"), padding:"10px 18px", fontSize:14, fontWeight:700, borderRadius:10, flexShrink:0, opacity:(!inputText.trim()||sending)?0.5:1 }}>
-                {sending ? "⏳" : "➤"}
-              </button>
-            </div>
-          </>
+            <button onClick={() => window.open(tab.url, "_blank")}
+              style={{ background:tab.color, color:"#fff", border:"none", borderRadius:10, padding:"12px 28px", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:8, boxShadow:`0 4px 18px ${tab.color}44` }}>
+              {tab.icon} Abrir {tab.label} no navegador
+            </button>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-
-// ── Internet Page ──────────────────────────────────────────────
-const INTERNET_TABS = [
-  {
-    id: "whatsapp",
-    label: "WhatsApp",
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
-      </svg>
-    ),
-    url: "https://web.whatsapp.com",
-    color: "#25D366",
-    fallback: "https://web.whatsapp.com",
-  },
-  {
-    id: "instagram",
-    label: "Instagram",
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-      </svg>
-    ),
-    url: "https://www.instagram.com/",
-    color: "#E1306C",
-    fallback: "https://www.instagram.com/accounts/login/",
-  },
-  {
-    id: "chatgpt",
-    label: "ChatGPT",
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.677l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0L4.01 14.15A4.485 4.485 0 0 1 2.34 7.896zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.816 2.801a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.393-.677zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.816-2.771a4.493 4.493 0 0 1 6.675 4.663zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.494 4.494 0 0 1 7.375-3.453l-.142.08-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/>
-      </svg>
-    ),
-    url: "https://chatgpt.com/",
-    color: "#10A37F",
-    fallback: "https://chatgpt.com/",
-  },
-  {
-    id: "claude",
-    label: "Claude",
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128-4.72-2.648-.23-.08h-.064l-.016.016v.048l.016.032.784 2.184-.784 2.2-.016.032v.048l.016.016h.064l.23-.08v-.016zm14.582-1.678c.48-.287.5-.96.02-1.247l-4.72-2.647-.24-.064-.096.096-.24.672.896 2.496.416.016 4.72-2.647-.016.016-.016.016.096.096.48.256.224.128-.08.208-.784 2.2-.16.352.176-.128.064.16v.16l.016.016v-.048l-.016-.032-.784-2.184.784-2.2.016-.032V10.7l-.016-.016h-.064l-.23.08-4.72 2.647-.08.23.08.128 4.72 2.648.23.08h.064l.016-.016v-.048l-.016-.032-.784-2.184.784-2.2.016-.032v-.048l-.016-.016h-.064l-.23.08zm0 0"/>
-        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/>
-      </svg>
-    ),
-    url: "https://claude.ai/",
-    color: "#CC785C",
-    fallback: "https://claude.ai/",
-  },
-];
-
 function InternetPage() {
+  // Estado por aba: null | "open" | "minimized"
+  const [windows, setWindows] = useState({});
   const [activeTab, setActiveTab] = useState("whatsapp");
-  // Guarda referência da janela aberta por cada aba
-  const winRefs = useRef({});
-  // Estado visual: "closed" | "open"
-  const [winState, setWinState] = useState({});
-  const tab = INTERNET_TABS.find(t => t.id === activeTab);
 
-  // Verifica a cada 800ms se a janela ainda está aberta
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const next = {};
-      INTERNET_TABS.forEach(t => {
-        const w = winRefs.current[t.id];
-        next[t.id] = w && !w.closed ? "open" : "closed";
-      });
-      setWinState(next);
-    }, 800);
-    return () => clearInterval(interval);
-  }, []);
-
-  const openTab = (t) => {
-    setActiveTab(t.id);
-    const existing = winRefs.current[t.id];
-    if (existing && !existing.closed) {
-      existing.focus();
-      return;
-    }
-    // Calcula posição e tamanho: ocupa a maior parte da tela deixando a sidebar visível
-    const sw = window.screen.width;
-    const sh = window.screen.height;
-    const w  = Math.round(sw * 0.72);
-    const h  = Math.round(sh * 0.92);
-    const left = Math.round((sw - w) / 2);
-    const top  = Math.round((sh - h) / 2);
-    const win = window.open(
-      t.url,
-      `nexp_${t.id}`,
-      `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes`
-    );
-    winRefs.current[t.id] = win;
-    setWinState(s => ({ ...s, [t.id]: "open" }));
+  const openWindow = (id) => {
+    setWindows(w => ({ ...w, [id]: "open" }));
+    setActiveTab(id);
   };
+  const minimizeWindow = (id) => setWindows(w => ({ ...w, [id]: "minimized" }));
+  const restoreWindow  = (id) => { setWindows(w => ({ ...w, [id]: "open" })); setActiveTab(id); };
+  const closeWindow    = (id) => setWindows(w => ({ ...w, [id]: null }));
 
-  const closeTab = (t) => {
-    const w = winRefs.current[t.id];
-    if (w && !w.closed) w.close();
-    winRefs.current[t.id] = null;
-    setWinState(s => ({ ...s, [t.id]: "closed" }));
-  };
+  const openCount = INTERNET_TABS.filter(t => windows[t.id] === "open").length;
+  const activeOpenTab = INTERNET_TABS.find(t => t.id === activeTab && windows[t.id] === "open");
 
-  const focusTab = (t) => {
-    const w = winRefs.current[t.id];
-    if (w && !w.closed) w.focus();
-  };
+  // FABs das janelas minimizadas — posicionadas em linha acima do botão de chat
+  const minimized = INTERNET_TABS.filter(t => windows[t.id] === "minimized");
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden", background:C.bg }}>
+    <>
+      {/* Janela aberta por cima de tudo */}
+      {activeOpenTab && (
+        <InternetFloatWindow
+          key={activeOpenTab.id}
+          tab={activeOpenTab}
+          onMinimize={() => minimizeWindow(activeOpenTab.id)}
+          onClose={() => closeWindow(activeOpenTab.id)}
+        />
+      )}
 
-      {/* Tab bar */}
-      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 16px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0, flexWrap:"wrap" }}>
-        <span style={{ color:C.atxt, fontSize:13, fontWeight:800, marginRight:4 }}>🌐 Internet</span>
-        {INTERNET_TABS.map(t => {
-          const active = t.id === activeTab;
-          const isOpen = winState[t.id] === "open";
-          return (
-            <button key={t.id}
-              onClick={() => active && isOpen ? focusTab(t) : openTab(t)}
-              style={{
-                display:"flex", alignItems:"center", gap:7,
-                padding:"7px 16px", borderRadius:9, cursor:"pointer",
-                background: active ? t.color + "22" : C.deep,
-                color: active ? t.color : C.tm,
-                border: active ? `1.5px solid ${t.color}55` : `1px solid ${C.b2}`,
-                fontSize:12.5, fontWeight: active ? 700 : 400,
-                transition:"all 0.15s",
-                boxShadow: active ? `0 2px 10px ${t.color}33` : "none",
-                position:"relative",
-              }}
-              onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background=C.abg; e.currentTarget.style.color=C.atxt; }}}
-              onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background=C.deep; e.currentTarget.style.color=C.tm; }}}
-            >
-              <span style={{ color: active ? t.color : "inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
-              {t.label}
-              {/* Indicador verde se aberta */}
-              {isOpen && (
-                <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", marginLeft:2, boxShadow:"0 0 6px #16A34A88" }} />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* FABs das janelas minimizadas */}
+      {minimized.map((t, i) => (
+        <button key={t.id}
+          onClick={() => restoreWindow(t.id)}
+          title={`Restaurar ${t.label}`}
+          style={{
+            position:"fixed", right:22, bottom: 90 + i * 62, zIndex:600,
+            width:50, height:50, borderRadius:"50%",
+            background:`linear-gradient(135deg,${t.color},${t.color}cc)`,
+            border:"none", cursor:"pointer",
+            boxShadow:`0 4px 18px ${t.color}66`,
+            display:"flex", alignItems:"center", justifyContent:"center",
+            color:"#fff", transition:"transform 0.18s, box-shadow 0.18s",
+            animation:"fadeIn 0.3s ease",
+          }}
+          onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.12)"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)"; }}
+        >
+          <span style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>{t.icon}</span>
+          {/* Botão fechar no FAB */}
+          <span
+            onClick={e=>{ e.stopPropagation(); closeWindow(t.id); }}
+            title="Fechar"
+            style={{ position:"absolute", top:-4, right:-4, width:16, height:16, borderRadius:"50%", background:"#EF4444", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", border:"2px solid #080A10" }}>
+            ✕
+          </span>
+        </button>
+      ))}
 
-      {/* Área principal — cards de cada aba */}
-      <div style={{ flex:1, overflowY:"auto", padding:"32px 40px", display:"flex", flexDirection:"column", gap:20 }}>
-
-        {/* Card da aba ativa */}
-        {(() => {
-          const t = tab;
-          if (!t) return null;
-          const isOpen = winState[t.id] === "open";
-          return (
-            <div style={{ background:C.card, borderRadius:16, border:`1px solid ${t.color}33`, padding:"32px 36px", maxWidth:560, boxShadow:`0 4px 32px ${t.color}11` }}>
-              <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
-                <div style={{ width:56, height:56, borderRadius:14, background:t.color+"22", border:`1.5px solid ${t.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:t.color }}>
-                  {t.icon}
-                </div>
-                <div>
-                  <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>{t.label}</div>
-                  <div style={{ color:C.td, fontSize:12, marginTop:3 }}>{t.url}</div>
-                </div>
-                {isOpen && (
-                  <span style={{ marginLeft:"auto", background:"#0A2918", color:"#34D399", border:"1px solid #16A34A44", borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:5 }}>
-                    <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                    Aberta
-                  </span>
-                )}
-              </div>
-
-              <div style={{ color:C.ts, fontSize:13, lineHeight:1.7, marginBottom:24 }}>
-                {t.id === "whatsapp" && "Abre o WhatsApp Web em uma janela separada. Escaneie o QR code para conectar ou continue onde parou."}
-                {t.id === "instagram" && "Abre o Instagram em uma janela separada. Faça login e acesse seu feed normalmente."}
-                {t.id === "chatgpt" && "Abre o ChatGPT em uma janela separada. Use a IA da OpenAI para auxílio nas suas tarefas."}
-                {t.id === "claude" && "Abre o Claude (Anthropic) em uma janela separada. Converse com a IA para ajuda em qualquer tarefa."}
-              </div>
-
-              <div style={{ display:"flex", gap:10 }}>
-                {!isOpen ? (
-                  <button onClick={() => openTab(t)}
-                    style={{ ...S.btn(t.color, "#fff"), padding:"11px 28px", fontSize:14, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:8, boxShadow:`0 4px 18px ${t.color}44` }}>
-                    {t.icon} Abrir {t.label}
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={() => focusTab(t)}
-                      style={{ ...S.btn(t.color, "#fff"), padding:"11px 22px", fontSize:13, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:7 }}>
-                      🔍 Trazer para frente
-                    </button>
-                    <button onClick={() => closeTab(t)}
-                      style={{ ...S.btn("transparent", "#F87171"), padding:"11px 18px", fontSize:13, fontWeight:600, borderRadius:10, border:"1px solid #EF444433" }}>
-                      ✕ Fechar
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Grid de atalhos rápidos para todas as abas */}
-        <div>
-          <div style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>Todas as ferramentas</div>
-          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-            {INTERNET_TABS.map(t => {
-              const isOpen = winState[t.id] === "open";
-              return (
-                <button key={t.id}
-                  onClick={() => { setActiveTab(t.id); isOpen ? focusTab(t) : openTab(t); }}
-                  style={{ display:"flex", alignItems:"center", gap:9, padding:"10px 18px", borderRadius:10, cursor:"pointer",
-                    background: isOpen ? t.color+"18" : C.deep,
-                    color: isOpen ? t.color : C.tm,
-                    border: isOpen ? `1px solid ${t.color}44` : `1px solid ${C.b2}`,
-                    fontSize:12.5, fontWeight: isOpen ? 700 : 400, transition:"all 0.15s" }}>
-                  <span style={{ color:"inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
-                  {t.label}
-                  {isOpen && <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block" }} />}
-                </button>
-              );
-            })}
-          </div>
+      {/* Página Internet */}
+      <div style={{ padding:"30px 36px", maxWidth:860 }}>
+        <div style={{ marginBottom:24 }}>
+          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>🌐 Internet</h1>
+          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>
+            Abra sites dentro do sistema. {openCount > 0 ? `${openCount} janela${openCount>1?"s":""} aberta${openCount>1?"s":""}` : "Nenhuma janela aberta"}
+          </p>
         </div>
 
-        {/* Aviso explicativo */}
-        <div style={{ background:C.deep, borderRadius:10, padding:"14px 18px", border:`1px solid ${C.b1}`, maxWidth:560 }}>
-          <div style={{ color:C.td, fontSize:11.5, lineHeight:1.7 }}>
-            ℹ️ <strong style={{ color:C.tm }}>Por que abre em janela separada?</strong><br/>
-            WhatsApp, Instagram, ChatGPT e Claude bloqueiam incorporação direta por segurança (<code style={{ background:C.card, padding:"1px 5px", borderRadius:4, fontSize:10.5 }}>X-Frame-Options</code>).
-            A janela aberta fica vinculada a esta aba — você pode fechá-la por aqui quando quiser.
-          </div>
+        {/* Grid de ferramentas */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14 }}>
+          {INTERNET_TABS.map(t => {
+            const state = windows[t.id];
+            return (
+              <div key={t.id} style={{ background:C.card, border:`1px solid ${state ? t.color+"44" : C.b1}`, borderRadius:14, padding:"22px 20px", display:"flex", flexDirection:"column", gap:12, transition:"all 0.15s", boxShadow: state ? `0 4px 20px ${t.color}22` : "none" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:40, height:40, borderRadius:10, background:t.color+"22", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>
+                    {t.icon}
+                  </div>
+                  <div>
+                    <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{t.label}</div>
+                    {state === "open" && <div style={{ color:"#34D399", fontSize:10, fontWeight:600 }}>● Aberto</div>}
+                    {state === "minimized" && <div style={{ color:"#FBBF24", fontSize:10, fontWeight:600 }}>● Minimizado</div>}
+                    {!state && <div style={{ color:C.td, fontSize:10 }}>Fechado</div>}
+                  </div>
+                </div>
+
+                <div style={{ display:"flex", gap:7 }}>
+                  {!state && (
+                    <button onClick={() => openWindow(t.id)}
+                      style={{ flex:1, background:t.color, color:"#fff", border:"none", borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      Abrir
+                    </button>
+                  )}
+                  {state === "minimized" && (
+                    <button onClick={() => restoreWindow(t.id)}
+                      style={{ flex:1, background:t.color+"22", color:t.color, border:`1px solid ${t.color}44`, borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      Restaurar
+                    </button>
+                  )}
+                  {state === "open" && (
+                    <button onClick={() => minimizeWindow(t.id)}
+                      style={{ flex:1, background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 0", fontSize:12, cursor:"pointer" }}>
+                      Minimizar
+                    </button>
+                  )}
+                  {state && (
+                    <button onClick={() => closeWindow(t.id)}
+                      style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"8px 10px", fontSize:12, cursor:"pointer" }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -2113,7 +1642,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
     { id:"internet",   label:"Internet",        icon:"🌐", roles:["mestre","master","indicado","visitante"] },
-    { id:"wppcontas",  label:"WhatsApp",         icon:"💬", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
     { id:"config",     label:"Configurações",   icon:"⊞", roles:["mestre","master","indicado"] },
   ];
@@ -2597,6 +2125,11 @@ function CCard({ contact, onUpdate, onDelete }) {
               </button>
             )}
             {contact.phone ? " · " + contact.phone : ""}
+            {contact.hasWhatsapp && (
+              <span title="WhatsApp validado" style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", width:14, height:14, borderRadius:"50%", background:"#25D366", flexShrink:0 }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52z"/></svg>
+              </span>
+            )}
           </div>
         </div>
         <LeadBadge c={contact} />
@@ -6028,159 +5561,67 @@ function PerfilTab({ users, setUsers, currentUser }) {
 }
 
 // Subcomponente isolado para exibir/redefinir senha no painel de edição
-function EditPasswordPanel({ savedPw, doReset }) {
-  const [showCurr, setShowCurr]     = useState(false);
-  // step: "idle" | "typing" | "confirm" | "done"
-  const [step, setStep]             = useState("idle");
-  const [newPw, setNewPw]           = useState("");
-  const [confirmPw, setConfirmPw]   = useState("");
-  const [showNew, setShowNew]       = useState(false);
-  const [showConf, setShowConf]     = useState(false);
-  const [msg, setMsg]               = useState("");
-  const [busy, setBusy]             = useState(false);
+function EditPasswordPanel({ savedPw, userEmail }) {
+  const [showCurr, setShowCurr]   = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailMsg, setEmailMsg]   = useState("");
 
-  const startReset = () => { setStep("typing"); setNewPw(""); setConfirmPw(""); setMsg(""); };
-  const cancelReset = () => { setStep("idle"); setNewPw(""); setConfirmPw(""); setMsg(""); };
-
-  const goConfirm = () => {
-    if (!newPw.trim() || newPw.length < 6) { setMsg("Mínimo 6 caracteres."); return; }
-    setStep("confirm"); setConfirmPw(""); setMsg("");
-  };
-
-  const finalize = async () => {
-    if (newPw !== confirmPw) { setMsg("As senhas não coincidem. Verifique e tente novamente."); return; }
-    setBusy(true); setMsg("");
+  const sendResetEmail = async () => {
+    if (!userEmail) { setEmailMsg("❌ Email do usuário não encontrado."); return; }
+    setEmailBusy(true); setEmailMsg("");
     try {
-      await doReset(newPw);
-      setMsg("✅ Senha alterada com sucesso!");
-      setStep("done");
-      setTimeout(() => { setStep("idle"); setMsg(""); }, 3000);
+      const { sendPasswordResetEmail } = await import("firebase/auth");
+      const { auth: fbAuth } = await import("./firebase");
+      await sendPasswordResetEmail(fbAuth, userEmail);
+      setEmailSent(true);
+      setEmailMsg("✅ Email de redefinição enviado para " + userEmail);
     } catch(e) {
-      setMsg("❌ Erro: " + e.message);
-      setStep("typing");
-    } finally { setBusy(false); }
+      const code = e.code || "";
+      if (code === "auth/user-not-found") setEmailMsg("❌ Email não encontrado no sistema.");
+      else if (code === "auth/invalid-email") setEmailMsg("❌ Email inválido.");
+      else setEmailMsg("❌ Erro: " + e.message);
+    }
+    setEmailBusy(false);
   };
 
   return (
     <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
-
-      {/* ── Senha atual ── */}
       <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", marginBottom:14, border:`1px solid ${C.b1}` }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-          <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>
-            🔑 Senha atual
-          </span>
-          <button onClick={() => setShowCurr(p => !p)}
-            style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
-            {showCurr ? "🙈 Ocultar" : "👁 Mostrar senha"}
+          <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha do usuário</span>
+          <button onClick={() => setShowCurr(p => !p)} style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11 }}>
+            {showCurr ? "🙈 Ocultar" : "👁 Ver senha"}
           </button>
         </div>
         {showCurr ? (
           <div style={{ color:"#34D399", fontSize:14, fontWeight:700, fontFamily:"monospace", letterSpacing:2, background:C.card, borderRadius:7, padding:"9px 12px", wordBreak:"break-all" }}>
-            {savedPw || (
-              <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0, fontSize:12 }}>
-                Senha não cadastrada — defina uma abaixo
-              </span>
-            )}
+            {savedPw || <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0, fontSize:12 }}>Senha não cadastrada</span>}
           </div>
         ) : (
           <div style={{ color:C.tm, fontSize:15, fontFamily:"monospace", letterSpacing:3 }}>••••••••</div>
         )}
       </div>
-
-      {/* ── Redefinir senha ── */}
       <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", border:`1px solid #FBBF2433` }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: step === "idle" ? 0 : 10 }}>
-          <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px" }}>
-            🔄 Redefinir senha
-          </div>
-          {step === "idle" && (
-            <button onClick={startReset}
-              style={{ background:C.card, border:`1px solid #FBBF2444`, color:"#FBBF24", borderRadius:7, padding:"5px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
-              ✏ Alterar
-            </button>
-          )}
-          {(step === "typing" || step === "confirm") && (
-            <button onClick={cancelReset}
-              style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:11 }}>
-              ✕ Cancelar
-            </button>
-          )}
+        <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>📧 Redefinir senha por email</div>
+        <div style={{ color:C.ts, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
+          Enviar link de redefinição para: <span style={{ color:C.atxt, fontWeight:600 }}>{userEmail || "—"}</span>
         </div>
-
-        {/* PASSO 1 — digitar nova senha */}
-        {step === "typing" && (
-          <div>
-            <div style={{ color:C.ts, fontSize:11, marginBottom:7 }}>Digite a nova senha:</div>
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-              <div style={{ position:"relative", flex:1 }}>
-                <input
-                  autoFocus
-                  value={newPw}
-                  onChange={e => { setNewPw(e.target.value); setMsg(""); }}
-                  onKeyDown={e => e.key === "Enter" && goConfirm()}
-                  type={showNew ? "text" : "password"}
-                  placeholder="Nova senha (mín. 6 caracteres)"
-                  style={{ ...S.input, background:C.card, padding:"9px 40px 9px 12px", fontSize:12.5, fontFamily:"monospace" }}
-                />
-                <button onClick={() => setShowNew(p => !p)}
-                  style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:14 }}>
-                  {showNew ? "🙈" : "👁"}
-                </button>
-              </div>
-              <button onClick={goConfirm}
-                style={{ ...S.btn("#F59E0B","#000"), padding:"9px 18px", fontSize:13, flexShrink:0, fontWeight:700, borderRadius:9, whiteSpace:"nowrap" }}>
-                Continuar →
-              </button>
-            </div>
-            {msg && <div style={{ color:"#F87171", fontSize:11, marginTop:5 }}>{msg}</div>}
+        {emailMsg && (
+          <div style={{ color: emailSent ? "#34D399" : "#F87171", fontSize:12, marginBottom:10, background: emailSent ? "#091E12" : "#2D1515", borderRadius:8, padding:"8px 12px", border:`1px solid ${emailSent ? "#34D39933" : "#EF444433"}` }}>
+            {emailMsg}
           </div>
         )}
-
-        {/* PASSO 2 — confirmar senha */}
-        {step === "confirm" && (
-          <div>
-            <div style={{ color:"#FBBF24", fontSize:11.5, fontWeight:600, marginBottom:7 }}>
-              🔐 Digite novamente a senha:
-            </div>
-            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-              <div style={{ position:"relative", flex:1 }}>
-                <input
-                  autoFocus
-                  value={confirmPw}
-                  onChange={e => { setConfirmPw(e.target.value); setMsg(""); }}
-                  onKeyDown={e => e.key === "Enter" && finalize()}
-                  type={showConf ? "text" : "password"}
-                  placeholder="Digite novamente a nova senha"
-                  style={{ ...S.input, background:C.card, padding:"9px 40px 9px 12px", fontSize:12.5, fontFamily:"monospace",
-                    border: msg ? "1px solid #EF4444" : `1px solid ${C.b2}` }}
-                />
-                <button onClick={() => setShowConf(p => !p)}
-                  style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:14 }}>
-                  {showConf ? "🙈" : "👁"}
-                </button>
-              </div>
-              <button onClick={finalize} disabled={busy}
-                style={{ ...S.btn("#16A34A","#fff"), padding:"9px 18px", fontSize:13, flexShrink:0, fontWeight:700, borderRadius:9, whiteSpace:"nowrap", opacity:busy?0.6:1 }}>
-                {busy ? "⏳..." : "✅ Confirmar"}
-              </button>
-            </div>
-            {msg && <div style={{ color:"#F87171", fontSize:11, marginTop:5 }}>{msg}</div>}
-            <div style={{ color:C.td, fontSize:10.5, marginTop:5 }}>
-              Digite a nova senha novamente para confirmar a alteração definitiva.
-            </div>
-          </div>
-        )}
-
-        {/* PASSO 3 — sucesso */}
-        {step === "done" && (
-          <div style={{ color:"#34D399", fontSize:12.5, fontWeight:600, marginTop:4 }}>{msg}</div>
-        )}
-
-        {step === "idle" && (
-          <div style={{ color:C.td, fontSize:10.5, marginTop:6 }}>
-            A senha será atualizada no Firebase Auth e salva para consulta futura.
-          </div>
+        {!emailSent ? (
+          <button onClick={sendResetEmail} disabled={emailBusy}
+            style={{ background:"#D97706", color:"#000", border:"none", borderRadius:8, padding:"9px 20px", fontSize:12.5, fontWeight:700, cursor:emailBusy?"not-allowed":"pointer", opacity:emailBusy?0.7:1 }}>
+            {emailBusy ? "⏳ Enviando..." : "📧 Enviar email de redefinição"}
+          </button>
+        ) : (
+          <button onClick={() => { setEmailSent(false); setEmailMsg(""); }}
+            style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 16px", fontSize:12, cursor:"pointer" }}>
+            Enviar novamente
+          </button>
         )}
       </div>
     </div>
@@ -6201,7 +5642,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   const [ok, setOk] = useState("");
   const [expandId, setExpandId] = useState(null);
   const [editForm, setEditForm] = useState(null);
-  const [resetPw, setResetPw] = useState("");
+  const [resetPw, setResetPw] = useState(""); // eslint-disable-line no-unused-vars
   const [viewProfileId, setViewProfileId] = useState(null);
   const [searchUser, setSearchUser] = useState("");
   const pRef = useRef();
@@ -6385,7 +5826,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   };
 
 
-  const doReset = async (newPassword) => {
+  const doReset = async (newPassword) => { // eslint-disable-line no-unused-vars
     const pw = (newPassword || resetPw || "").trim();
     if (!pw || pw.length < 6) {
       throw new Error("A senha deve ter pelo menos 6 caracteres.");
@@ -7402,7 +6843,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       !isSelf && (
                         <EditPasswordPanel
                           savedPw={editForm.password || u.password || null}
-                          doReset={doReset}
+                          userEmail={editForm.email || u.email || null}
                         />
                       )}
                   </div>
@@ -13066,7 +12507,6 @@ export default function App() {
         {page === "simulador" && <SimuladorPage />}
         {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
         {page === "internet" && <InternetPage />}
-        {page === "wppcontas" && <WhatsAppContasPage />}
       </div>
 
       {/* ── Chat Flutuante + FAB ── */}
