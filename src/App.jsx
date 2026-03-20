@@ -10371,8 +10371,509 @@ function SimuladorPage() {
   );
 }
 
+// ── V8 Digital — aba integrada ────────────────────────────────
+function V8DigitalTab({ currentUser }) {
+  const [aba, setAba] = useState("config");
+
+  // Credenciais — client_id e audience são fixos conforme documentação V8
+  const V8_CLIENT_ID = "DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn";
+  const V8_AUDIENCE  = "https://bff.v8sistema.com";
+  const V8_AUTH_URL  = "https://auth.v8sistema.com/oauth/token";
+  const V8_BFF_URL   = "https://bff.v8sistema.com";
+
+  const [savedUser, setSavedUser] = useState(() => localStorage.getItem("nexp_v8_user") || "");
+  const [credForm,  setCredForm]  = useState({ username: savedUser, password: "" });
+  const [token,     setToken]     = useState(null);
+  const [tokenExp,  setTokenExp]  = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authErr,   setAuthErr]   = useState("");
+
+  const isTokenValid = token && tokenExp && Date.now() < tokenExp;
+
+  const autenticar = async () => {
+    if (!credForm.username || !credForm.password) {
+      setAuthErr("Preencha e-mail e senha."); return;
+    }
+    setAuthLoading(true); setAuthErr("");
+    try {
+      localStorage.setItem("nexp_v8_user", credForm.username);
+      setSavedUser(credForm.username);
+      const body = new URLSearchParams({
+        grant_type: "password",
+        username:   credForm.username,
+        password:   credForm.password,
+        audience:   V8_AUDIENCE,
+        scope:      "openid profile email offline_access",
+        client_id:  V8_CLIENT_ID,
+      });
+      const res  = await fetch(V8_AUTH_URL, { method:"POST", headers:{ "Content-Type":"application/x-www-form-urlencoded" }, body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error_description || data.message || `Erro ${res.status}: ${JSON.stringify(data)}`);
+      setToken(data.access_token);
+      setTokenExp(Date.now() + ((data.expires_in || 3600) - 60) * 1000);
+      setAba("fgts");
+    } catch(e) { setAuthErr(e.message); }
+    setAuthLoading(false);
+  };
+
+  const apiFetch = async (path, method="GET", body=null) => {
+    if (!isTokenValid) throw new Error("Token expirado. Reautentique.");
+    const opts = { method, headers:{ "Authorization":`Bearer ${token}`, "Content-Type":"application/json" } };
+    if (body) opts.body = JSON.stringify(body);
+    const res  = await fetch(`${V8_BFF_URL}${path}`, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}: ${JSON.stringify(data)}`);
+    return data;
+  };
+
+  // ── FGTS tab ───────────────────────────────────────────────
+  const FGTSTab = () => {
+    const [subAba, setSubAba] = useState("simular");
+    const [cpf, setCpf]     = useState("");
+    const [simRes, setSimRes] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState("");
+    // Proposta
+    const [propForm, setPropForm] = useState({ cpf:"", tableId:"", bankId:"", conta:"", agencia:"", tipoConta:"corrente" });
+    const [propRes, setPropRes]   = useState(null);
+    // Operações
+    const [ops, setOps] = useState(null);
+    const [opsLoading, setOpsLoading] = useState(false);
+
+    const fmtCpf = v => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
+    const fmtBr  = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+
+    const simular = async () => {
+      const c = cpf.replace(/\D/g,"");
+      if (c.length !== 11) { setErr("CPF inválido."); return; }
+      setLoading(true); setErr(""); setSimRes(null);
+      try {
+        // 1. Consultar saldo
+        const saldo = await apiFetch(`/fgts/saldo?cpf=${c}`);
+        // 2. Simular
+        const sim   = await apiFetch(`/fgts/simular?cpf=${c}`);
+        setSimRes({ saldo, sim });
+      } catch(e) { setErr(e.message); }
+      setLoading(false);
+    };
+
+    const criarProposta = async () => {
+      const c = propForm.cpf.replace(/\D/g,"");
+      if (c.length !== 11) { setErr("CPF inválido."); return; }
+      setLoading(true); setErr(""); setPropRes(null);
+      try {
+        const res = await apiFetch("/fgts/proposta", "POST", { cpf:c, tableId:propForm.tableId, bankId:propForm.bankId, conta:propForm.conta, agencia:propForm.agencia, tipoConta:propForm.tipoConta });
+        setPropRes(res);
+      } catch(e) { setErr(e.message); }
+      setLoading(false);
+    };
+
+    const listarOps = async () => {
+      setOpsLoading(true); setErr("");
+      try { const res = await apiFetch("/fgts/operacoes"); setOps(res); }
+      catch(e) { setErr(e.message); }
+      setOpsLoading(false);
+    };
+
+    const statusColor = s => ({ APROVADO:"#34D399", PENDENTE:"#FBBF24", CANCELADO:"#F87171", AGUARDANDO:"#60A5FA" }[s?.toUpperCase()] || C.tm);
+
+    return (
+      <div>
+        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${C.b1}`, paddingBottom:"-1px" }}>
+          {[{v:"simular",l:"🔍 Simular FGTS"},{v:"proposta",l:"📄 Digitar Proposta"},{v:"operacoes",l:"📋 Acompanhamento"}].map(t=>(
+            <button key={t.v} onClick={()=>setSubAba(t.v)}
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"8px 16px", fontSize:12.5, fontWeight:subAba===t.v?700:400, color:subAba===t.v?C.atxt:C.tm, borderBottom:subAba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+
+        {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {err}</div>}
+
+        {/* SIMULAR */}
+        {subAba === "simular" && (
+          <div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Consulte o saldo FGTS e simule os valores disponíveis para antecipação.</div>
+            <div style={{ display:"flex", gap:10, alignItems:"flex-end", marginBottom:20 }}>
+              <div style={{ flex:"0 0 220px" }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
+                <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&simular()} />
+              </div>
+              <button onClick={simular} disabled={loading||cpf.replace(/\D/g,"").length!==11}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 22px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading||cpf.replace(/\D/g,"").length!==11?0.5:1 }}>
+                {loading?"⏳ Consultando...":"Simular →"}
+              </button>
+            </div>
+            {simRes && (
+              <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                {simRes.saldo && (
+                  <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"16px 20px" }}>
+                    <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>💰 Saldo FGTS</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:10 }}>
+                      {Object.entries(simRes.saldo).filter(([,v])=>v!==null&&v!=="").map(([k,v])=>(
+                        <div key={k} style={{ background:C.deep, borderRadius:8, padding:"9px 12px" }}>
+                          <div style={{ color:C.td, fontSize:9.5, textTransform:"uppercase", marginBottom:3 }}>{k.replace(/_/g," ")}</div>
+                          <div style={{ color:C.tp, fontSize:12.5, fontWeight:600 }}>{typeof v==="number"&&k.toLowerCase().includes("valor")?fmtBr(v):String(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {simRes.sim && (
+                  <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px" }}>
+                    <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>📊 Simulação</div>
+                    <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simRes.sim, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PROPOSTA */}
+        {subAba === "proposta" && (
+          <div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Preencha os dados para digitar uma nova proposta de FGTS.</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
+              {[{f:"cpf",l:"CPF *",ph:"000.000.000-00"},{f:"tableId",l:"ID da Tabela *",ph:"Ex: TAB001"},{f:"bankId",l:"ID do Banco *",ph:"Ex: 033"},{f:"conta",l:"Conta *",ph:"Número da conta"},{f:"agencia",l:"Agência *",ph:"Ex: 0001"}].map(({f,l,ph})=>(
+                <div key={f}>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{l}</label>
+                  <input value={propForm[f]} onChange={e=>setPropForm(p=>({...p,[f]:f==="cpf"?fmtCpf(e.target.value):e.target.value}))} placeholder={ph} style={{ ...S.input }} />
+                </div>
+              ))}
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta *</label>
+                <select value={propForm.tipoConta} onChange={e=>setPropForm(p=>({...p,tipoConta:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
+                  <option value="corrente">Corrente</option>
+                  <option value="poupanca">Poupança</option>
+                </select>
+              </div>
+            </div>
+            <button onClick={criarProposta} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
+              {loading?"⏳ Enviando...":"📤 Enviar Proposta"}
+            </button>
+            {propRes && (
+              <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px", marginTop:16 }}>
+                <div style={{ color:"#34D399", fontSize:13, fontWeight:700, marginBottom:8 }}>✅ Proposta enviada!</div>
+                <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(propRes, null, 2)}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* OPERAÇÕES */}
+        {subAba === "operacoes" && (
+          <div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+              <div style={{ color:C.tm, fontSize:12.5 }}>Acompanhe todas as operações de FGTS em andamento.</div>
+              <button onClick={listarOps} disabled={opsLoading}
+                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                {opsLoading?"⏳ Carregando...":"↻ Atualizar"}
+              </button>
+            </div>
+            {!ops && !opsLoading && (
+              <div style={{ textAlign:"center", padding:"30px 0", color:C.tm }}>
+                <div style={{ fontSize:28, marginBottom:8, opacity:0.4 }}>📋</div>
+                <div>Clique em Atualizar para carregar as operações</div>
+              </div>
+            )}
+            {ops && (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {(Array.isArray(ops) ? ops : ops.data || []).length === 0 && <div style={{ color:C.tm, textAlign:"center", padding:"20px 0" }}>Nenhuma operação encontrada.</div>}
+                {(Array.isArray(ops) ? ops : ops.data || []).map((op, i) => (
+                  <div key={i} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:11, padding:"12px 16px", display:"flex", gap:14, alignItems:"center" }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:4 }}>
+                        <span style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{op.cpf || op.nome || `Op. ${i+1}`}</span>
+                        {op.status && <span style={{ background:statusColor(op.status)+"22", color:statusColor(op.status), fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 8px" }}>{op.status}</span>}
+                      </div>
+                      <div style={{ color:C.td, fontSize:11 }}>{op.id ? `ID: ${op.id}` : ""} {op.createdAt ? `· ${new Date(op.createdAt).toLocaleDateString("pt-BR")}` : ""}</div>
+                    </div>
+                    {op.valor && <div style={{ color:C.atxt, fontSize:15, fontWeight:800, flexShrink:0 }}>{fmtBr(op.valor)}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── CLT tab ────────────────────────────────────────────────
+  const CLTTab = () => {
+    const [subAba, setSubAba] = useState("simular");
+    const [err, setErr]   = useState("");
+    const [loading, setLoading] = useState(false);
+    // Simular
+    const [simForm, setSimForm] = useState({ cpf:"", salario:"", prazo:"24" });
+    const [simRes, setSimRes]   = useState(null);
+    // Proposta
+    const [propForm, setPropForm] = useState({ cpf:"", nome:"", salario:"", prazo:"24", banco:"", agencia:"", conta:"", tipoConta:"corrente", valorSolicitado:"" });
+    const [propRes,  setPropRes]  = useState(null);
+    // Operações
+    const [ops, setOps]         = useState(null);
+    const [opsLoading, setOpsLoading] = useState(false);
+
+    const fmtCpf = v => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
+    const fmtBr  = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+
+    const simular = async () => {
+      const c = simForm.cpf.replace(/\D/g,"");
+      if (c.length !== 11) { setErr("CPF inválido."); return; }
+      setLoading(true); setErr(""); setSimRes(null);
+      try {
+        const res = await apiFetch("/clt/simular", "POST", { cpf:c, salario:parseFloat(simForm.salario)||0, prazo:parseInt(simForm.prazo)||24 });
+        setSimRes(res);
+      } catch(e) { setErr(e.message); }
+      setLoading(false);
+    };
+
+    const criarProposta = async () => {
+      const c = propForm.cpf.replace(/\D/g,"");
+      if (c.length !== 11) { setErr("CPF inválido."); return; }
+      setLoading(true); setErr(""); setPropRes(null);
+      try {
+        const res = await apiFetch("/clt/proposta", "POST", { cpf:c, nome:propForm.nome, salario:parseFloat(propForm.salario)||0, prazo:parseInt(propForm.prazo)||24, banco:propForm.banco, agencia:propForm.agencia, conta:propForm.conta, tipoConta:propForm.tipoConta, valorSolicitado:parseFloat(propForm.valorSolicitado)||0 });
+        setPropRes(res);
+      } catch(e) { setErr(e.message); }
+      setLoading(false);
+    };
+
+    const listarOps = async () => {
+      setOpsLoading(true); setErr("");
+      try { const res = await apiFetch("/clt/operacoes"); setOps(res); }
+      catch(e) { setErr(e.message); }
+      setOpsLoading(false);
+    };
+
+    const statusColor = s => ({ APROVADO:"#34D399", PENDENTE:"#FBBF24", CANCELADO:"#F87171", AGUARDANDO:"#60A5FA" }[s?.toUpperCase()] || C.tm);
+
+    return (
+      <div>
+        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${C.b1}`, paddingBottom:"-1px" }}>
+          {[{v:"simular",l:"🔍 Simular CLT"},{v:"proposta",l:"📄 Digitar Proposta"},{v:"operacoes",l:"📋 Acompanhamento"}].map(t=>(
+            <button key={t.v} onClick={()=>setSubAba(t.v)}
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"8px 16px", fontSize:12.5, fontWeight:subAba===t.v?700:400, color:subAba===t.v?C.atxt:C.tm, borderBottom:subAba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+
+        {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {err}</div>}
+
+        {/* SIMULAR */}
+        {subAba === "simular" && (
+          <div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Simule crédito CLT informando CPF, salário e prazo desejado.</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:12, alignItems:"flex-end", marginBottom:20 }}>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF *</label>
+                <input value={simForm.cpf} onChange={e=>setSimForm(p=>({...p,cpf:fmtCpf(e.target.value)}))} placeholder="000.000.000-00" style={{ ...S.input }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Salário (R$)</label>
+                <input value={simForm.salario} onChange={e=>setSimForm(p=>({...p,salario:e.target.value}))} placeholder="Ex: 3.500,00" style={{ ...S.input }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Prazo</label>
+                <select value={simForm.prazo} onChange={e=>setSimForm(p=>({...p,prazo:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
+                  {[6,8,12,18,24,36,48].map(n=><option key={n} value={n}>{n}x</option>)}
+                </select>
+              </div>
+              <button onClick={simular} disabled={loading}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1, whiteSpace:"nowrap" }}>
+                {loading?"⏳":"Simular →"}
+              </button>
+            </div>
+            {simRes && (
+              <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px" }}>
+                <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>📊 Resultado da Simulação CLT</div>
+                {simRes.valorLiberado && (
+                  <div style={{ background:C.abg, borderRadius:10, padding:"14px 18px", marginBottom:12, textAlign:"center" }}>
+                    <div style={{ color:C.tm, fontSize:11, marginBottom:4 }}>Valor Liberado</div>
+                    <div style={{ color:C.atxt, fontSize:32, fontWeight:900 }}>{fmtBr(simRes.valorLiberado)}</div>
+                    {simRes.parcela && <div style={{ color:C.td, fontSize:12, marginTop:4 }}>{simForm.prazo}x de {fmtBr(simRes.parcela)}</div>}
+                  </div>
+                )}
+                <pre style={{ color:C.ts, fontSize:11, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simRes, null, 2)}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PROPOSTA */}
+        {subAba === "proposta" && (
+          <div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Preencha todos os dados para digitação da proposta CLT.</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:16 }}>
+              {[
+                {f:"cpf",l:"CPF *",ph:"000.000.000-00"},
+                {f:"nome",l:"Nome completo *",ph:"Ex: João da Silva"},
+                {f:"salario",l:"Salário (R$) *",ph:"Ex: 3.500,00"},
+                {f:"valorSolicitado",l:"Valor solicitado (R$) *",ph:"Ex: 10.000,00"},
+                {f:"banco",l:"Banco *",ph:"Ex: 033"},
+                {f:"agencia",l:"Agência *",ph:"Ex: 0001"},
+                {f:"conta",l:"Conta *",ph:"Número da conta"},
+              ].map(({f,l,ph})=>(
+                <div key={f}>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{l}</label>
+                  <input value={propForm[f]} onChange={e=>setPropForm(p=>({...p,[f]:f==="cpf"?fmtCpf(e.target.value):e.target.value}))} placeholder={ph} style={{ ...S.input }} />
+                </div>
+              ))}
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Prazo *</label>
+                <select value={propForm.prazo} onChange={e=>setPropForm(p=>({...p,prazo:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
+                  {[6,8,12,18,24,36,48].map(n=><option key={n} value={n}>{n}x</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta *</label>
+                <select value={propForm.tipoConta} onChange={e=>setPropForm(p=>({...p,tipoConta:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
+                  <option value="corrente">Corrente</option>
+                  <option value="poupanca">Poupança</option>
+                </select>
+              </div>
+            </div>
+            <button onClick={criarProposta} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
+              {loading?"⏳ Enviando...":"📤 Enviar Proposta CLT"}
+            </button>
+            {propRes && (
+              <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px", marginTop:16 }}>
+                <div style={{ color:"#34D399", fontSize:13, fontWeight:700, marginBottom:8 }}>✅ Proposta CLT enviada!</div>
+                <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(propRes, null, 2)}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* OPERAÇÕES */}
+        {subAba === "operacoes" && (
+          <div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+              <div style={{ color:C.tm, fontSize:12.5 }}>Acompanhe todas as operações de crédito CLT.</div>
+              <button onClick={listarOps} disabled={opsLoading}
+                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                {opsLoading?"⏳ Carregando...":"↻ Atualizar"}
+              </button>
+            </div>
+            {!ops && !opsLoading && (
+              <div style={{ textAlign:"center", padding:"30px 0", color:C.tm }}>
+                <div style={{ fontSize:28, marginBottom:8, opacity:0.4 }}>📋</div>
+                <div>Clique em Atualizar para carregar as operações</div>
+              </div>
+            )}
+            {ops && (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {(Array.isArray(ops) ? ops : ops.data || []).length === 0 && <div style={{ color:C.tm, textAlign:"center", padding:"20px 0" }}>Nenhuma operação encontrada.</div>}
+                {(Array.isArray(ops) ? ops : ops.data || []).map((op, i) => (
+                  <div key={i} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:11, padding:"12px 16px", display:"flex", gap:14, alignItems:"center" }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:4 }}>
+                        <span style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{op.nome || op.cpf || `Op. ${i+1}`}</span>
+                        {op.status && <span style={{ background:statusColor(op.status)+"22", color:statusColor(op.status), fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 8px" }}>{op.status}</span>}
+                      </div>
+                      <div style={{ color:C.td, fontSize:11 }}>{op.id ? `ID: ${op.id}` : ""} {op.prazo ? `· ${op.prazo}x` : ""} {op.createdAt ? `· ${new Date(op.createdAt).toLocaleDateString("pt-BR")}` : ""}</div>
+                    </div>
+                    {op.valorLiberado && <div style={{ color:C.atxt, fontSize:15, fontWeight:800, flexShrink:0 }}>{fmtBr(op.valorLiberado)}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Header com status do token */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#fff", fontSize:14 }}>V8</div>
+            <div>
+              <div style={{ color:C.tp, fontSize:15, fontWeight:800 }}>V8 Digital</div>
+              <div style={{ color:C.td, fontSize:10.5 }}>FGTS · CLT · API Oficial</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {isTokenValid
+            ? <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:8, padding:"6px 12px" }}>
+                <div style={{ width:7, height:7, borderRadius:"50%", background:"#34D399", animation:"pulse 1.5s infinite" }} />
+                <span style={{ color:"#34D399", fontSize:11.5, fontWeight:600 }}>Autenticado</span>
+              </div>
+            : <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"6px 12px" }}>
+                <span style={{ color:"#F87171", fontSize:11.5 }}>Não autenticado</span>
+              </div>
+          }
+          <button onClick={()=>setAba("config")} style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:11.5 }}>⚙ Credenciais</button>
+        </div>
+      </div>
+
+      {/* Abas principais */}
+      {isTokenValid && (
+        <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:22 }}>
+          {[{v:"fgts",l:"🏦 FGTS — Saque Aniversário"},{v:"clt",l:"💼 CLT — Crédito Privato"}].map(t=>(
+            <button key={t.v} onClick={()=>setAba(t.v)}
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, fontWeight:aba===t.v?700:400, color:aba===t.v?C.atxt:C.tm, borderBottom:aba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Configurar credenciais */}
+      {(aba === "config" || !isTokenValid) && (
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"22px 24px" }}>
+          <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
+          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>
+            Use o seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8 Digital.
+          </div>
+
+          {/* Credenciais fixas — informativo */}
+          <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:9, padding:"10px 14px", marginBottom:16, fontSize:11 }}>
+            <div style={{ color:C.td, marginBottom:3 }}>🔒 <b style={{ color:C.ts }}>Configuração automática:</b></div>
+            <div style={{ color:C.td }}>Auth: <span style={{ color:C.tm }}>https://auth.v8sistema.com/oauth/token</span></div>
+            <div style={{ color:C.td }}>Audience: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
+            <div style={{ color:C.td }}>Client ID: <span style={{ color:C.tm }}>DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn</span></div>
+          </div>
+
+          {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label>
+              <input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} />
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label>
+              <input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} />
+            </div>
+          </div>
+          <button onClick={autenticar} disabled={authLoading}
+            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1, boxShadow:`0 4px 16px ${C.acc}44` }}>
+            {authLoading ? "⏳ Autenticando..." : "🔐 Entrar na V8 Digital →"}
+          </button>
+          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>
+            O e-mail é salvo para facilitar o próximo acesso. A senha nunca é armazenada.
+          </div>
+        </div>
+      )}
+
+      {isTokenValid && aba === "fgts" && <FGTSTab />}
+      {isTokenValid && aba === "clt"  && <CLTTab />}
+    </div>
+  );
+}
+
 // ── APIs Bancos ────────────────────────────────────────────────
 function ApisBancosPage({ currentUser }) {
+  const [aba, setAba] = useState("geral");
   const isMestre = currentUser.role === "mestre";
   const [apis, setApis] = useState(() => {
     try { return JSON.parse(localStorage.getItem("nexp_bank_apis") || "[]"); } catch { return []; }
@@ -10393,7 +10894,6 @@ function ApisBancosPage({ currentUser }) {
     setShowAdd(false);
   };
   const removeApi = (id) => { if (selectedApi === id) setSelectedApi(null); saveApis(apis.filter(a => a.id !== id)); };
-
   const fmtCpf = (v) => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
 
   const simulate = async () => {
@@ -10414,109 +10914,91 @@ function ApisBancosPage({ currentUser }) {
   };
 
   return (
-    <div style={{ padding:"28px 36px", maxWidth:820 }}>
-      <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 6px" }}>⬧ APIs Bancos</h1>
-      <p style={{ color:C.tm, fontSize:13, marginBottom:22 }}>Conecte APIs bancárias e simule crédito diretamente pelo CPF do cliente.</p>
+    <div style={{ padding:"24px 30px", maxWidth:900 }}>
+      <h1 style={{ color:C.tp, fontSize:20, fontWeight:700, margin:"0 0 4px" }}>⬧ APIs Bancos</h1>
+      <p style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Conecte APIs bancárias e integre com o V8 Digital.</p>
 
-      {/* Simulação rápida */}
-      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
-        <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>🔍 Simular pelo CPF</div>
-        <div style={{ display:"flex", gap:10, alignItems:"flex-end", flexWrap:"wrap", marginBottom:14 }}>
-          <div style={{ flex:"0 0 190px" }}>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
-            <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00"
-              style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&simulate()} />
-          </div>
-          <div style={{ flex:1, minWidth:150 }}>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco</label>
-            <select value={selectedApi||""} onChange={e=>setSelectedApi(Number(e.target.value)||null)}
-              style={{ ...S.input, cursor:"pointer" }}>
-              <option value="">Selecione um banco...</option>
-              {apis.map(a=><option key={a.id} value={a.id}>{a.banco}</option>)}
-            </select>
-          </div>
-          <button onClick={simulate} disabled={simLoading||!cpf||!selectedApi}
-            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:simLoading||!cpf||!selectedApi?0.5:1, flexShrink:0, boxShadow:`0 2px 12px ${C.acc}44` }}>
-            {simLoading ? "⏳ Consultando..." : "Simular →"}
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:24 }}>
+        {[{v:"geral",l:"⬧ APIs Gerais"},{v:"v8",l:"⚡ V8 Digital"}].map(t=>(
+          <button key={t.v} onClick={()=>setAba(t.v)}
+            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, fontWeight:aba===t.v?700:400, color:aba===t.v?C.atxt:C.tm, borderBottom:aba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+            {t.l}
           </button>
-        </div>
-        {simErr && <div style={{ color:"#F87171", fontSize:12.5, background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"8px 12px", marginBottom:10 }}>⚠ {simErr}</div>}
-        {simResult && (
-          <div style={{ background:C.deep, borderRadius:10, padding:"14px 16px", border:`1px solid ${C.atxt}33` }}>
-            <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:8 }}>✅ Resultado</div>
-            <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simResult, null, 2)}</pre>
-          </div>
-        )}
-        {apis.length === 0 && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"8px 0" }}>Configure um banco abaixo para começar a simular.</div>}
+        ))}
       </div>
 
-      {/* Gerenciar APIs */}
-      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-          <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>🔑 APIs configuradas ({apis.length})</div>
-          {isMestre && (
-            <button onClick={()=>setShowAdd(p=>!p)}
-              style={{ background:showAdd?C.deep:C.acc, color:showAdd?C.tm:"#fff", border:showAdd?`1px solid ${C.b2}`:"none", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>
-              {showAdd ? "✕ Cancelar" : "＋ Nova API"}
-            </button>
-          )}
-        </div>
-
-        {showAdd && isMestre && (
-          <div style={{ background:C.deep, borderRadius:11, padding:"16px", marginBottom:14, border:`1px solid ${C.b1}` }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome do banco *</label>
-                <input value={form.banco} onChange={e=>setForm(f=>({...f,banco:e.target.value}))} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} />
+      {/* ABA GERAL */}
+      {aba === "geral" && (
+        <div>
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
+            <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>🔍 Simular pelo CPF</div>
+            <div style={{ display:"flex", gap:10, alignItems:"flex-end", flexWrap:"wrap", marginBottom:14 }}>
+              <div style={{ flex:"0 0 190px" }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
+                <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&simulate()} />
               </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave API *</label>
-                <input value={form.apiKey} onChange={e=>setForm(f=>({...f,apiKey:e.target.value}))} placeholder="Chave secreta" style={{ ...S.input }} type="password" />
+              <div style={{ flex:1, minWidth:150 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco</label>
+                <select value={selectedApi||""} onChange={e=>setSelectedApi(Number(e.target.value)||null)} style={{ ...S.input, cursor:"pointer" }}>
+                  <option value="">Selecione...</option>
+                  {apis.map(a=><option key={a.id} value={a.id}>{a.banco}</option>)}
+                </select>
               </div>
-              <div style={{ gridColumn:"1/-1" }}>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Endpoint (URL com variáveis)</label>
-                <input value={form.endpoint} onChange={e=>setForm(f=>({...f,endpoint:e.target.value}))} placeholder="https://api.banco.com/consulta?cpf={cpf}&key={apiKey}" style={{ ...S.input }} />
-                <div style={{ color:C.td, fontSize:10, marginTop:3 }}>Use {"{cpf}"} e {"{apiKey}"} como variáveis dinâmicas</div>
-              </div>
-              <div style={{ gridColumn:"1/-1" }}>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição</label>
-                <input value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} placeholder="Ex: Crédito consignado" style={{ ...S.input }} />
-              </div>
+              <button onClick={simulate} disabled={simLoading||!cpf||!selectedApi}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:simLoading||!cpf||!selectedApi?0.5:1 }}>
+                {simLoading?"⏳...":"Simular →"}
+              </button>
             </div>
-            <button onClick={addApi} disabled={!form.banco.trim()||!form.apiKey.trim()}
-              style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", opacity:!form.banco.trim()||!form.apiKey.trim()?0.5:1 }}>
-              Salvar API
-            </button>
-          </div>
-        )}
-
-        {apis.length === 0 && !showAdd && (
-          <div style={{ textAlign:"center", padding:"28px 0", color:C.tm }}>
-            <div style={{ fontSize:30, marginBottom:10, opacity:0.5 }}>🔌</div>
-            <div style={{ fontSize:13 }}>{isMestre ? "Clique em ＋ Nova API para adicionar" : "Solicite ao mestre configurar as APIs"}</div>
-          </div>
-        )}
-
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {apis.map(a => (
-            <div key={a.id} onClick={()=>setSelectedApi(selectedApi===a.id?null:a.id)}
-              style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:C.deep, borderRadius:10, border:`1px solid ${selectedApi===a.id?C.atxt+"55":C.b2}`, cursor:"pointer", transition:"all 0.14s" }}>
-              <div style={{ width:36, height:36, borderRadius:9, background:C.abg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>🏦</div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{a.banco}</div>
-                <div style={{ color:C.td, fontSize:11 }}>{a.descricao || "API configurada"}{a.endpoint ? " · Endpoint ✓" : " · ⚠ Sem endpoint"}</div>
+            {simErr && <div style={{ color:"#F87171", fontSize:12.5, background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"8px 12px", marginBottom:10 }}>⚠ {simErr}</div>}
+            {simResult && (
+              <div style={{ background:C.deep, borderRadius:10, padding:"14px 16px", border:`1px solid ${C.atxt}33` }}>
+                <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:8 }}>✅ Resultado</div>
+                <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simResult, null, 2)}</pre>
               </div>
-              {selectedApi === a.id && <span style={{ color:C.atxt, fontSize:10, fontWeight:700, background:C.abg, borderRadius:7, padding:"2px 8px" }}>✓ Selecionado</span>}
+            )}
+          </div>
+
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>🔑 APIs configuradas ({apis.length})</div>
               {isMestre && (
-                <button onClick={e=>{e.stopPropagation();removeApi(a.id);}}
-                  style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:7, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}>
-                  <svg width="11" height="12" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                <button onClick={()=>setShowAdd(p=>!p)} style={{ background:showAdd?C.deep:C.acc, color:showAdd?C.tm:"#fff", border:showAdd?`1px solid ${C.b2}`:"none", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                  {showAdd ? "✕ Cancelar" : "＋ Nova API"}
                 </button>
               )}
             </div>
-          ))}
+            {showAdd && isMestre && (
+              <div style={{ background:C.deep, borderRadius:11, padding:"16px", marginBottom:14, border:`1px solid ${C.b1}` }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome *</label><input value={form.banco} onChange={e=>setForm(f=>({...f,banco:e.target.value}))} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} /></div>
+                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave API *</label><input value={form.apiKey} onChange={e=>setForm(f=>({...f,apiKey:e.target.value}))} placeholder="Chave secreta" style={{ ...S.input }} type="password" /></div>
+                  <div style={{ gridColumn:"1/-1" }}><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Endpoint</label><input value={form.endpoint} onChange={e=>setForm(f=>({...f,endpoint:e.target.value}))} placeholder="https://api.banco.com/consulta?cpf={cpf}&key={apiKey}" style={{ ...S.input }} /><div style={{ color:C.td, fontSize:10, marginTop:3 }}>Use {"{cpf}"} e {"{apiKey}"} como variáveis dinâmicas</div></div>
+                  <div style={{ gridColumn:"1/-1" }}><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição</label><input value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} placeholder="Ex: Crédito consignado" style={{ ...S.input }} /></div>
+                </div>
+                <button onClick={addApi} disabled={!form.banco.trim()||!form.apiKey.trim()} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", opacity:!form.banco.trim()||!form.apiKey.trim()?0.5:1 }}>Salvar API</button>
+              </div>
+            )}
+            {apis.length === 0 && !showAdd && <div style={{ textAlign:"center", padding:"28px 0", color:C.tm }}>{isMestre?"Clique em ＋ Nova API para adicionar":"Solicite ao mestre configurar as APIs"}</div>}
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {apis.map(a=>(
+                <div key={a.id} onClick={()=>setSelectedApi(selectedApi===a.id?null:a.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:C.deep, borderRadius:10, border:`1px solid ${selectedApi===a.id?C.atxt+"55":C.b2}`, cursor:"pointer" }}>
+                  <div style={{ width:36, height:36, borderRadius:9, background:C.abg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>🏦</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{a.banco}</div>
+                    <div style={{ color:C.td, fontSize:11 }}>{a.descricao||"API configurada"}{a.endpoint?" · Endpoint ✓":" · ⚠ Sem endpoint"}</div>
+                  </div>
+                  {selectedApi===a.id&&<span style={{ color:C.atxt, fontSize:10, fontWeight:700, background:C.abg, borderRadius:7, padding:"2px 8px" }}>✓</span>}
+                  {isMestre&&<button onClick={e=>{e.stopPropagation();removeApi(a.id);}} style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:7, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}><svg width="11" height="12" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg></button>}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ABA V8 DIGITAL */}
+      {aba === "v8" && <V8DigitalTab currentUser={currentUser} />}
     </div>
   );
 }
