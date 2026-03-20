@@ -451,116 +451,278 @@ function CommSim({ compact = false }) {
 }
 
 // ── Login ──────────────────────────────────────────────────────
-// ── NexpRobot — robô animado com 12 poses ─────────────────────
-const ROBOT_POSES = [
-  { key:"idle",    label:"",           emoji:"🤖" },
-  { key:"smile",   label:"😊",         trigger:"hover" },
-  { key:"cry",     label:"😢",         trigger:"click" },
-  { key:"laugh",   label:"😂",         trigger:"click" },
-  { key:"jump",    label:"🦘",         trigger:"click" },
-  { key:"kiss",    label:"😘",         trigger:"click" },
-  { key:"guitar",  label:"🎸",         trigger:"click" },
-  { key:"trophy",  label:"🏆",         trigger:"click" },
-  { key:"soccer",  label:"⚽",         trigger:"click" },
-  { key:"cool",    label:"😎",         trigger:"hover" },
-  { key:"love",    label:"🥰",         trigger:"hover" },
-  { key:"dance",   label:"🕺",         trigger:"click" },
+// ── NexpRobot — robô SVG com corpo animado e 12 poses ─────────
+const FRASES_DIA = [
+  "Hoje é um novo começo. Faça valer cada minuto! 🚀",
+  "Cada cliente atendido é uma vitória. Vai com tudo! 💪",
+  "Persistência transforma sonhos em resultados. 🌟",
+  "Seu esforço hoje é o sucesso de amanhã. ✨",
+  "Grandes conquistas começam com pequenas ações. 🏆",
+  "Você é capaz de mais do que imagina. Acredite! 🌈",
+  "Foco, força e fé. O sucesso está ao seu alcance! 💎",
+  "Cada dia é uma nova oportunidade de brilhar. ☀️",
+  "O segredo é nunca parar de tentar. 🔥",
+  "Sua dedicação faz a diferença. Orgulhe-se! 🎯",
+  "Trabalhe com propósito e os resultados virão. 💡",
+  "Hoje você é mais forte do que ontem. 🌿",
+  "O sucesso não é sorte, é construção diária. 🧱",
+  "Cada sorriso do cliente vale todo o esforço. 😊",
+  "Seja a energia que transforma o ambiente. ⚡",
+  "Você planta hoje o que vai colher amanhã. 🌱",
+  "Não existe meta grande demais para quem não desiste. 🎉",
+  "Sua presença aqui já faz a diferença. 👏",
+  "O caminho é longo, mas você já está no caminho certo. 🛤️",
+  "Celebre cada conquista, por menor que seja. 🥳",
 ];
 
-function NexpRobot({ size = 44, showFaceOnly = false }) {
+function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
   const [pose, setPose] = useState(0);
   const [animKey, setAnimKey] = useState(0);
   const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (poseOverride !== null) {
+      setPose(poseOverride);
+      setAnimKey(k => k + 1);
+    }
+  }, [poseOverride]);
 
   const triggerPose = (idx) => {
     setPose(idx);
     setAnimKey(k => k + 1);
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setPose(0), 2200);
+    timerRef.current = setTimeout(() => setPose(0), 2500);
   };
 
   const handleClick = () => {
-    const clickPoses = [2,3,4,5,6,7,8,11];
-    const next = clickPoses[Math.floor(Math.random() * clickPoses.length)];
-    triggerPose(next);
+    const all = [1,2,3,4,5,6,7,8,9,10,11];
+    triggerPose(all[Math.floor(Math.random() * all.length)]);
   };
 
-  const handleHover = () => {
-    if (pose !== 0) return;
-    const hoverPoses = [1,9,10];
-    triggerPose(hoverPoses[Math.floor(Math.random() * hoverPoses.length)]);
+  // Definir pose atual
+  const poses = [
+    // 0: idle
+    { leftArm: 0,  rightArm: 0,  body: 0,    mouth:"neutral", eyes:"normal",  anim:"float",   label:"" },
+    // 1: oi (acena)
+    { leftArm: -60, rightArm: 40, body: 0,   mouth:"smile",   eyes:"normal",  anim:"wave",    label:"👋" },
+    // 2: dança
+    { leftArm: 45,  rightArm: -45, body: 10, mouth:"smile",   eyes:"happy",   anim:"dance",   label:"🕺" },
+    // 3: rebola
+    { leftArm: 30,  rightArm: 30,  body: -15, mouth:"smile",  eyes:"happy",   anim:"wiggle",  label:"💃" },
+    // 4: beijo
+    { leftArm: 20,  rightArm: -60, body: 0,  mouth:"kiss",    eyes:"closed",  anim:"bounce",  label:"😘" },
+    // 5: pose
+    { leftArm: -90, rightArm: -90, body: 0,  mouth:"smile",   eyes:"cool",    anim:"none",    label:"😎" },
+    // 6: chora
+    { leftArm: 15,  rightArm: 15,  body: 5,  mouth:"sad",     eyes:"cry",     anim:"shake",   label:"😢" },
+    // 7: ri
+    { leftArm: 30,  rightArm: 30,  body: -8, mouth:"laugh",   eyes:"laugh",   anim:"bounce",  label:"😂" },
+    // 8: pula
+    { leftArm: -60, rightArm: -60, body: 0,  mouth:"smile",   eyes:"happy",   anim:"jump",    label:"⬆️" },
+    // 9: troféu
+    { leftArm: -90, rightArm: 20,  body: 0,  mouth:"smile",   eyes:"star",    anim:"bounce",  label:"🏆" },
+    // 10: joga bola
+    { leftArm: 0,   rightArm: -90, body: 10, mouth:"smile",   eyes:"normal",  anim:"kick",    label:"⚽" },
+    // 11: manda beijo duplo
+    { leftArm: -70, rightArm: -70, body: 0,  mouth:"kiss",    eyes:"closed",  anim:"float",   label:"💕" },
+  ];
+
+  const p = poses[pose] || poses[0];
+  const s = size;
+  const cx = s * 0.5;  // centro x
+
+  // Mapa de animações CSS
+  const animMap = {
+    float:  "robotFloat 2.5s ease-in-out infinite",
+    wave:   `robotWave${animKey} 0.5s ease-in-out infinite alternate`,
+    dance:  `robotDance${animKey} 0.3s ease-in-out infinite alternate`,
+    wiggle: `robotWiggle${animKey} 0.2s ease-in-out infinite alternate`,
+    bounce: `robotBounce${animKey} 0.4s ease-in-out infinite alternate`,
+    shake:  `robotShake${animKey} 0.15s ease-in-out infinite alternate`,
+    jump:   `robotJump${animKey} 0.35s ease-in-out infinite alternate`,
+    kick:   `robotKick${animKey} 0.4s ease-in-out 0s 4 alternate`,
+    none:   "none",
+  };
+  const bodyAnim = animMap[p.anim] || "none";
+
+  const eyeL = { x: s*0.36, y: s*0.42 };
+  const eyeR = { x: s*0.64, y: s*0.42 };
+  const mouthY = s * 0.56;
+  const eyeR2 = s * 0.08;
+
+  const renderEyes = () => {
+    if (p.eyes === "cry") return (<>
+      <ellipse cx={eyeL.x} cy={eyeL.y} rx={eyeR2} ry={eyeR2*0.6} fill="#4F8EF7"/>
+      <ellipse cx={eyeR.x} cy={eyeR.y} rx={eyeR2} ry={eyeR2*0.6} fill="#4F8EF7"/>
+      <line x1={eyeL.x} y1={eyeL.y+eyeR2*0.6} x2={eyeL.x} y2={eyeL.y+eyeR2*2} stroke="#60A5FA" strokeWidth={s*0.02} strokeLinecap="round"/>
+      <line x1={eyeR.x} y1={eyeR.y+eyeR2*0.6} x2={eyeR.x} y2={eyeR.y+eyeR2*2} stroke="#60A5FA" strokeWidth={s*0.02} strokeLinecap="round"/>
+    </>);
+    if (p.eyes === "closed") return (<>
+      <path d={`M${eyeL.x-eyeR2} ${eyeL.y} Q${eyeL.x} ${eyeL.y-eyeR2} ${eyeL.x+eyeR2} ${eyeL.y}`} stroke="#4F8EF7" strokeWidth={s*0.025} fill="none" strokeLinecap="round"/>
+      <path d={`M${eyeR.x-eyeR2} ${eyeR.y} Q${eyeR.x} ${eyeR.y-eyeR2} ${eyeR.x+eyeR2} ${eyeR.y}`} stroke="#4F8EF7" strokeWidth={s*0.025} fill="none" strokeLinecap="round"/>
+    </>);
+    if (p.eyes === "cool") return (<>
+      <rect x={eyeL.x-eyeR2*1.3} y={eyeL.y-eyeR2*0.7} width={eyeR2*2.6} height={eyeR2*1.4} rx={eyeR2*0.4} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+      <rect x={eyeR.x-eyeR2*1.3} y={eyeR.y-eyeR2*0.7} width={eyeR2*2.6} height={eyeR2*1.4} rx={eyeR2*0.4} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+    </>);
+    if (p.eyes === "star") return (<>
+      <text x={eyeL.x-eyeR2*0.8} y={eyeL.y+eyeR2*0.8} fontSize={eyeR2*2} fill="#FBBF24">★</text>
+      <text x={eyeR.x-eyeR2*0.8} y={eyeR.y+eyeR2*0.8} fontSize={eyeR2*2} fill="#FBBF24">★</text>
+    </>);
+    if (p.eyes === "laugh") return (<>
+      <path d={`M${eyeL.x-eyeR2} ${eyeL.y+eyeR2*0.3} Q${eyeL.x} ${eyeL.y-eyeR2} ${eyeL.x+eyeR2} ${eyeL.y+eyeR2*0.3}`} stroke="#4F8EF7" strokeWidth={s*0.025} fill="none" strokeLinecap="round"/>
+      <path d={`M${eyeR.x-eyeR2} ${eyeR.y+eyeR2*0.3} Q${eyeR.x} ${eyeR.y-eyeR2} ${eyeR.x+eyeR2} ${eyeR.y+eyeR2*0.3}`} stroke="#4F8EF7" strokeWidth={s*0.025} fill="none" strokeLinecap="round"/>
+    </>);
+    // normal / happy
+    return (<>
+      <circle cx={eyeL.x} cy={eyeL.y} r={eyeR2} fill="#4F8EF7" opacity="0.95"/>
+      <circle cx={eyeR.x} cy={eyeR.y} r={eyeR2} fill="#4F8EF7" opacity="0.95"/>
+      <circle cx={eyeL.x+eyeR2*0.3} cy={eyeL.y-eyeR2*0.3} r={eyeR2*0.35} fill="#fff"/>
+      <circle cx={eyeR.x+eyeR2*0.3} cy={eyeR.y-eyeR2*0.3} r={eyeR2*0.35} fill="#fff"/>
+    </>);
   };
 
-  const p = ROBOT_POSES[pose];
-  const face = p.label || "🤖";
-  const isJump = p.key === "jump" || p.key === "dance";
-  const isShake = p.key === "guitar" || p.key === "soccer";
+  const renderMouth = () => {
+    const mw = s * 0.22;
+    if (p.mouth === "kiss") return <circle cx={cx} cy={mouthY} r={s*0.04} fill="#F472B6"/>;
+    if (p.mouth === "sad") return <path d={`M${cx-mw*0.7} ${mouthY+s*0.02} Q${cx} ${mouthY-s*0.04} ${cx+mw*0.7} ${mouthY+s*0.02}`} stroke="#60A5FA" strokeWidth={s*0.025} fill="none" strokeLinecap="round"/>;
+    if (p.mouth === "laugh") return <path d={`M${cx-mw*0.8} ${mouthY-s*0.02} Q${cx} ${mouthY+s*0.06} ${cx+mw*0.8} ${mouthY-s*0.02}`} stroke="#34D399" strokeWidth={s*0.025} fill="rgba(52,211,153,0.2)" strokeLinecap="round"/>;
+    if (p.mouth === "smile") return <path d={`M${cx-mw*0.7} ${mouthY-s*0.01} Q${cx} ${mouthY+s*0.05} ${cx+mw*0.7} ${mouthY-s*0.01}`} stroke="#34D399" strokeWidth={s*0.025} fill="none" strokeLinecap="round"/>;
+    return <path d={`M${cx-mw*0.5} ${mouthY} Q${cx} ${mouthY+s*0.02} ${cx+mw*0.5} ${mouthY}`} stroke="#4F8EF7" strokeWidth={s*0.02} fill="none" strokeLinecap="round"/>;
+  };
 
-  const poseAnim = isJump
-    ? "robotJump 0.4s ease infinite alternate"
-    : isShake
-    ? "robotShake 0.15s ease infinite alternate"
-    : p.key === "trophy"
-    ? "robotBounce 0.6s ease infinite alternate"
-    : "none";
-
+  // Para o rosto-only, retorna só a cabeça SVG
   if (showFaceOnly) {
+    const faceSize = size;
     return (
-      <div onClick={handleClick} onMouseEnter={handleHover}
-        key={animKey}
-        style={{ cursor:"pointer", fontSize: size * 0.7, lineHeight:1, display:"inline-block",
-          animation: poseAnim, userSelect:"none",
-          filter:"drop-shadow(0 2px 8px rgba(79,142,247,0.5))" }}>
-        {face}
+      <div onClick={handleClick} title="Clique para animar!" key={animKey}
+        style={{ cursor:"pointer", userSelect:"none", display:"inline-block",
+          animation: pose === 0 ? "robotFloat 2.5s ease-in-out infinite" : bodyAnim,
+          filter:"drop-shadow(0 2px 12px rgba(79,142,247,0.6))" }}>
+        <style>{`
+          @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+          @keyframes robotBounce${animKey} { from{transform:translateY(0) scale(1)} to{transform:translateY(-6px) scale(1.05)} }
+          @keyframes robotJump${animKey} { from{transform:translateY(0)} to{transform:translateY(-14px)} }
+          @keyframes robotShake${animKey} { from{transform:rotate(-6deg)} to{transform:rotate(6deg)} }
+          @keyframes robotDance${animKey} { from{transform:rotate(-5deg) translateY(0)} to{transform:rotate(5deg) translateY(-5px)} }
+          @keyframes robotWiggle${animKey} { from{transform:skewX(-6deg)} to{transform:skewX(6deg)} }
+          @keyframes robotKick${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-12deg)} }
+        `}</style>
+        <svg width={faceSize} height={faceSize} viewBox={`0 0 ${faceSize} ${faceSize}`}>
+          {/* Antena */}
+          <line x1={faceSize*0.5} y1={faceSize*0.06} x2={faceSize*0.5} y2={faceSize*0.2} stroke="#4F8EF7" strokeWidth={faceSize*0.04} strokeLinecap="round"/>
+          <circle cx={faceSize*0.5} cy={faceSize*0.05} r={faceSize*0.07} fill={pose===9?"#FBBF24":"#4F8EF7"}/>
+          {/* Cabeça */}
+          <rect x={faceSize*0.1} y={faceSize*0.18} width={faceSize*0.8} height={faceSize*0.72} rx={faceSize*0.18} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={faceSize*0.04}/>
+          {/* Olhos */}
+          {(() => {
+            const ex1 = faceSize*0.34, ex2 = faceSize*0.66, ey = faceSize*0.47, er = faceSize*0.1;
+            if (p.eyes === "closed") return (<>
+              <path d={`M${ex1-er} ${ey} Q${ex1} ${ey-er} ${ex1+er} ${ey}`} stroke="#4F8EF7" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>
+              <path d={`M${ex2-er} ${ey} Q${ex2} ${ey-er} ${ex2+er} ${ey}`} stroke="#4F8EF7" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>
+            </>);
+            if (p.eyes === "cry") return (<>
+              <ellipse cx={ex1} cy={ey} rx={er} ry={er*0.65} fill="#4F8EF7"/>
+              <ellipse cx={ex2} cy={ey} rx={er} ry={er*0.65} fill="#4F8EF7"/>
+              <line x1={ex1} y1={ey+er*0.65} x2={ex1-er*0.3} y2={ey+er*2.2} stroke="#60A5FA" strokeWidth={faceSize*0.025} strokeLinecap="round"/>
+              <line x1={ex2} y1={ey+er*0.65} x2={ex2+er*0.3} y2={ey+er*2.2} stroke="#60A5FA" strokeWidth={faceSize*0.025} strokeLinecap="round"/>
+            </>);
+            if (p.eyes === "star") return (<>
+              <text x={ex1-er} y={ey+er*0.9} fontSize={er*2.2} fill="#FBBF24">★</text>
+              <text x={ex2-er} y={ey+er*0.9} fontSize={er*2.2} fill="#FBBF24">★</text>
+            </>);
+            if (p.eyes === "cool") return (<>
+              <rect x={ex1-er*1.4} y={ey-er*0.75} width={er*2.8} height={er*1.5} rx={er*0.5} fill="#0B0D14" stroke="#4F8EF7" strokeWidth={faceSize*0.03}/>
+              <rect x={ex2-er*1.4} y={ey-er*0.75} width={er*2.8} height={er*1.5} rx={er*0.5} fill="#0B0D14" stroke="#4F8EF7" strokeWidth={faceSize*0.03}/>
+            </>);
+            if (p.eyes === "laugh") return (<>
+              <path d={`M${ex1-er} ${ey+er*0.4} Q${ex1} ${ey-er} ${ex1+er} ${ey+er*0.4}`} stroke="#4F8EF7" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>
+              <path d={`M${ex2-er} ${ey+er*0.4} Q${ex2} ${ey-er} ${ex2+er} ${ey+er*0.4}`} stroke="#4F8EF7" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>
+            </>);
+            return (<>
+              <circle cx={ex1} cy={ey} r={er} fill="#4F8EF7" opacity="0.95"/>
+              <circle cx={ex2} cy={ey} r={er} fill="#4F8EF7" opacity="0.95"/>
+              <circle cx={ex1+er*0.3} cy={ey-er*0.3} r={er*0.38} fill="#fff"/>
+              <circle cx={ex2+er*0.3} cy={ey-er*0.3} r={er*0.38} fill="#fff"/>
+            </>);
+          })()}
+          {/* Boca */}
+          {(() => {
+            const mx = faceSize*0.5, my = faceSize*0.72, mw = faceSize*0.22;
+            if (p.mouth === "kiss") return <circle cx={mx} cy={my} r={faceSize*0.06} fill="#F472B6"/>;
+            if (p.mouth === "sad") return <path d={`M${mx-mw} ${my+faceSize*0.02} Q${mx} ${my-faceSize*0.04} ${mx+mw} ${my+faceSize*0.02}`} stroke="#60A5FA" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>;
+            if (p.mouth === "laugh") return <path d={`M${mx-mw*1.1} ${my-faceSize*0.02} Q${mx} ${my+faceSize*0.07} ${mx+mw*1.1} ${my-faceSize*0.02}`} stroke="#34D399" strokeWidth={faceSize*0.04} fill="rgba(52,211,153,0.2)" strokeLinecap="round"/>;
+            if (p.mouth === "smile") return <path d={`M${mx-mw} ${my-faceSize*0.01} Q${mx} ${my+faceSize*0.06} ${mx+mw} ${my-faceSize*0.01}`} stroke="#34D399" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>;
+            return <path d={`M${mx-mw*0.7} ${my} Q${mx} ${my+faceSize*0.025} ${mx+mw*0.7} ${my}`} stroke="#4F8EF7" strokeWidth={faceSize*0.03} fill="none" strokeLinecap="round"/>;
+          })()}
+        </svg>
+        {pose > 0 && poses[pose]?.label && (
+          <div style={{ textAlign:"center", fontSize:faceSize*0.35, lineHeight:1, marginTop:2, animation:"fadeIn 0.2s ease" }}>{poses[pose].label}</div>
+        )}
       </div>
     );
   }
 
+  // Robô corpo inteiro
+  const headH = s * 0.38;
+  const bodyH = s * 0.3;
+  const legH  = s * 0.2;
+  const armW  = s * 0.16;
+  const armH  = s * 0.12;
+  const totalH = headH + bodyH + legH + s * 0.1;
+  const headY  = s * 0.08;
+  const bodyY  = headY + headH + s * 0.02;
+  const legY   = bodyY + bodyH;
+
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, cursor:"pointer", userSelect:"none" }}
-      onClick={handleClick} onMouseEnter={handleHover}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", cursor:"pointer", userSelect:"none" }}
+      onClick={handleClick} title="Clique para animar!">
       <style>{`
-        @keyframes robotJump { from{transform:translateY(0)} to{transform:translateY(-8px)} }
-        @keyframes robotShake { from{transform:rotate(-8deg)} to{transform:rotate(8deg)} }
-        @keyframes robotBounce { from{transform:scale(1)} to{transform:scale(1.15)} }
-        @keyframes robotIdle { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2px)} }
+        @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+        @keyframes robotBounce${animKey} { from{transform:translateY(0) scale(1)} to{transform:translateY(-8px) scale(1.04)} }
+        @keyframes robotJump${animKey} { from{transform:translateY(0)} to{transform:translateY(-16px)} }
+        @keyframes robotShake${animKey} { from{transform:rotate(-5deg)} to{transform:rotate(5deg)} }
+        @keyframes robotDance${animKey} { from{transform:rotate(-6deg) translateY(0)} to{transform:rotate(6deg) translateY(-6px)} }
+        @keyframes robotWiggle${animKey} { from{transform:skewX(-8deg) rotate(-3deg)} to{transform:skewX(8deg) rotate(3deg)} }
+        @keyframes robotKick${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-15deg)} }
+        @keyframes robotWave${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-8deg)} }
+        @keyframes robotArmWave { 0%,100%{transform:rotate(0deg)} 50%{transform:rotate(-30deg)} }
       `}</style>
-      {/* Corpo SVG do robô */}
-      <div key={animKey} style={{ animation: pose === 0 ? "robotIdle 2s ease-in-out infinite" : poseAnim, display:"flex", flexDirection:"column", alignItems:"center" }}>
-        {/* Cabeça */}
-        <svg width={size} height={size * 1.1} viewBox="0 0 44 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <div key={animKey} style={{ animation: pose === 0 ? "robotFloat 2.5s ease-in-out infinite" : bodyAnim, transformOrigin:"center bottom", filter:`drop-shadow(0 4px 16px rgba(79,142,247,${pose===0?0.3:0.6}))` }}>
+        <svg width={s} height={totalH} viewBox={`0 0 ${s} ${totalH}`} fill="none">
           {/* Antena */}
-          <line x1="22" y1="2" x2="22" y2="8" stroke="#4F8EF7" strokeWidth="2" strokeLinecap="round"/>
-          <circle cx="22" cy="2" r="2.5" fill="#4F8EF7"/>
+          <line x1={cx} y1={headY - s*0.06} x2={cx} y2={headY} stroke="#4F8EF7" strokeWidth={s*0.03} strokeLinecap="round"/>
+          <circle cx={cx} cy={headY - s*0.07} r={s*0.05} fill={pose===9?"#FBBF24":"#4F8EF7"}/>
           {/* Cabeça */}
-          <rect x="7" y="8" width="30" height="22" rx="7" fill="#1E2A45" stroke="#4F8EF7" strokeWidth="1.5"/>
-          {/* Olhos */}
-          <circle cx="17" cy="18" r="3.5" fill={pose > 0 ? "#4F8EF7" : "#4F8EF7"} opacity="0.9"/>
-          <circle cx="27" cy="18" r="3.5" fill="#4F8EF7" opacity="0.9"/>
-          <circle cx="17" cy="18" r="1.5" fill="#fff"/>
-          <circle cx="27" cy="18" r="1.5" fill="#fff"/>
-          {/* Boca dinâmica */}
-          {p.key === "cry"    && <path d="M16 26 Q22 22 28 26" stroke="#60A5FA" strokeWidth="1.8" strokeLinecap="round" fill="none"/>}
-          {p.key === "laugh"  && <path d="M15 24 Q22 30 29 24" stroke="#34D399" strokeWidth="1.8" strokeLinecap="round" fill="none"/>}
-          {p.key === "kiss"   && <circle cx="22" cy="25" r="2.5" fill="#F472B6"/>}
-          {p.key === "smile" || p.key === "trophy" || p.key === "love" || p.key === "cool"
-            ? <path d="M16 25 Q22 29 28 25" stroke="#34D399" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
-            : null}
-          {(p.key === "idle" || p.key === "jump" || p.key === "guitar" || p.key === "soccer" || p.key === "dance")
-            && <path d="M16 25 Q22 27 28 25" stroke="#4F8EF7" strokeWidth="1.5" strokeLinecap="round" fill="none"/>}
+          <rect x={s*0.18} y={headY} width={s*0.64} height={headH} rx={s*0.1} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.025}/>
+          {/* Olhos e boca (reutilizando as funções) */}
+          {renderEyes()}
+          {renderMouth()}
           {/* Corpo */}
-          <rect x="13" y="31" width="18" height="13" rx="5" fill="#141A2E" stroke="#4F8EF7" strokeWidth="1.2"/>
-          {/* Botão no peito */}
-          <circle cx="22" cy="37" r="2.5" fill="#4F8EF7" opacity="0.7"/>
-          {/* Braços */}
-          <rect x="4" y="32" width="8" height="5" rx="2.5" fill="#1E2A45" stroke="#4F8EF7" strokeWidth="1"/>
-          <rect x="32" y="32" width="8" height="5" rx="2.5" fill="#1E2A45" stroke="#4F8EF7" strokeWidth="1"/>
+          <rect x={s*0.22} y={bodyY} width={s*0.56} height={bodyH} rx={s*0.08} fill="#141A2E" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+          {/* Botões peito */}
+          <circle cx={cx-s*0.1} cy={bodyY+bodyH*0.4} r={s*0.04} fill="#4F8EF7" opacity="0.7"/>
+          <circle cx={cx} cy={bodyY+bodyH*0.4} r={s*0.04} fill="#7C3AED" opacity="0.6"/>
+          <circle cx={cx+s*0.1} cy={bodyY+bodyH*0.4} r={s*0.04} fill="#34D399" opacity="0.6"/>
+          {/* Braço esquerdo */}
+          <g style={{ transformOrigin:`${s*0.22}px ${bodyY+armH*0.5}px`, transform:`rotate(${p.leftArm}deg)`, transition:"transform 0.3s ease" }}>
+            <rect x={s*0.04} y={bodyY+s*0.02} width={armW} height={armH} rx={armH*0.5} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+            {p.key==="oi" && <circle cx={s*0.04} cy={bodyY+s*0.02} r={s*0.04} fill="#FBBF24"/>}
+          </g>
+          {/* Braço direito */}
+          <g style={{ transformOrigin:`${s*0.78}px ${bodyY+armH*0.5}px`, transform:`rotate(${p.rightArm}deg)`, transition:"transform 0.3s ease" }}>
+            <rect x={s*0.78} y={bodyY+s*0.02} width={armW} height={armH} rx={armH*0.5} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+            {p.key==="troféu" && <text x={s*0.82} y={bodyY-s*0.06} fontSize={s*0.15}>🏆</text>}
+          </g>
+          {/* Pernas */}
+          <rect x={s*0.28} y={legY} width={s*0.17} height={legH} rx={s*0.06} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+          <rect x={s*0.55} y={legY} width={s*0.17} height={legH} rx={s*0.06} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+          {/* Pezinhos */}
+          <ellipse cx={s*0.365} cy={legY+legH} rx={s*0.12} ry={s*0.04} fill="#4F8EF7" opacity="0.6"/>
+          <ellipse cx={s*0.635} cy={legY+legH} rx={s*0.12} ry={s*0.04} fill="#4F8EF7" opacity="0.6"/>
         </svg>
-        {/* Emoji da pose */}
-        {pose > 0 && (
-          <div style={{ fontSize: size * 0.45, lineHeight:1, marginTop:2, animation:"fadeIn 0.2s ease" }}>
-            {face}
-          </div>
+        {pose > 0 && poses[pose]?.label && (
+          <div style={{ textAlign:"center", fontSize:s*0.28, lineHeight:1, marginTop:2, animation:"fadeIn 0.2s ease" }}>{poses[pose].label}</div>
         )}
       </div>
     </div>
@@ -573,244 +735,186 @@ function LoginPage({ onLogin }) {
   const [err, setErr] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const go = async () => {
-    if (!un.trim() || !pw.trim()) {
-      setErr("Preencha e-mail e senha.");
-      return;
+  const [weather, setWeather] = useState(null);
+
+  // Determinar hora do dia e clima
+  const hour = new Date().getHours();
+  const isNight = hour >= 20 || hour < 6;
+  const isMorning = hour >= 6 && hour < 12;
+  const isAfternoon = hour >= 12 && hour < 18;
+  const isEvening = hour >= 18 && hour < 20;
+
+  // Frase motivacional do dia (muda todo dia)
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(),0,0)) / 86400000);
+  const frase = FRASES_DIA[dayOfYear % FRASES_DIA.length];
+
+  // Buscar clima
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async pos => {
+        try {
+          const { latitude: lat, longitude: lon } = pos.coords;
+          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`);
+          const d = await r.json();
+          setWeather(d.current_weather);
+        } catch {}
+      }, () => {});
     }
-    setLoading(true);
-    setErr("");
+  }, []);
+
+  // Determinar tema visual baseado em hora e clima
+  const wcode = weather?.weathercode ?? -1;
+  const isRain   = wcode >= 51 && wcode <= 82;
+  const isCloudy = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
+  const isClear  = wcode === 0 || wcode === 1;
+
+  const getBgGradient = () => {
+    if (isRain)    return "linear-gradient(180deg, #1a2535 0%, #263040 60%, #1a2535 100%)";
+    if (isNight)   return "linear-gradient(180deg, #020408 0%, #060B1A 40%, #0A0F22 100%)";
+    if (isMorning) return "linear-gradient(180deg, #1a3a6b 0%, #2563aa 50%, #f97316 100%)";
+    if (isAfternoon) return "linear-gradient(180deg, #1e3a8a 0%, #2563eb 40%, #38bdf8 100%)";
+    if (isEvening) return "linear-gradient(180deg, #4c1d95 0%, #7c3aed 40%, #f97316 100%)";
+    if (isCloudy)  return "linear-gradient(180deg, #374151 0%, #4b5563 50%, #6b7280 100%)";
+    return "linear-gradient(180deg, #060810 0%, #0A0F22 100%)";
+  };
+
+  const go = async () => {
+    if (!un.trim() || !pw.trim()) { setErr("Preencha e-mail e senha."); return; }
+    setLoading(true); setErr("");
     try {
       const firebaseUser = await firebaseLogin(un.trim(), pw);
       const profile = await getUserProfile(firebaseUser.uid);
-      if (!profile) {
-        setErr("Perfil não encontrado. Entre em contato com o suporte.");
-        setLoading(false);
-        return;
-      }
-      if (profile.active === false) {
-        setErr("Usuário inativo. Entre em contato com o suporte.");
-        setLoading(false);
-        return;
-      }
+      if (!profile) { setErr("Perfil não encontrado. Entre em contato com o suporte."); setLoading(false); return; }
+      if (profile.active === false) { setErr("Usuário inativo. Entre em contato com o suporte."); setLoading(false); return; }
       onLogin({ ...profile, uid: firebaseUser.uid });
-    } catch (e) {
-      setErr("Usuário ou senha inválidos.");
-    }
+    } catch { setErr("Usuário ou senha inválidos."); }
     setLoading(false);
   };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#060810", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px", position: "relative", overflow: "hidden" }}>
-      {/* Animação: chuva + onda */}
+    <div style={{ minHeight:"100vh", background:getBgGradient(), display:"flex", alignItems:"center", justifyContent:"space-between", padding:"32px 5%", position:"relative", overflow:"hidden", gap:32 }}>
+
       <style>{`
-        @keyframes rain { 0%{transform:translateY(-10px) scaleY(0.8);opacity:0} 10%{opacity:0.7} 90%{opacity:0.5} 100%{transform:translateY(100vh) scaleY(1);opacity:0} }
-        @keyframes wave1 { 0%,100%{d:path("M0,40 C80,10 160,70 240,40 C320,10 400,70 480,40 C560,10 640,70 720,40 L720,80 L0,80 Z")} 50%{d:path("M0,50 C80,70 160,20 240,50 C320,70 400,20 480,50 C560,70 640,20 720,50 L720,80 L0,80 Z")} }
-        @keyframes wave2 { 0%,100%{d:path("M0,55 C90,30 180,70 270,45 C360,20 450,65 540,40 C630,15 720,55 720,55 L720,80 L0,80 Z")} 50%{d:path("M0,45 C90,65 180,25 270,55 C360,75 450,30 540,60 C630,80 720,45 720,45 L720,80 L0,80 Z")} }
-        @keyframes dropFall { to { transform: translateY(100vh); opacity: 0; } }
+        @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
+        @keyframes moonMove { 0%{right:10%} 100%{right:80%} }
+        @keyframes cloudFloat { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
+        @keyframes cloudFloat2 { 0%{transform:translateX(0)} 100%{transform:translateX(-40px)} }
+        @keyframes rainDrop { 0%{top:-5%;opacity:0.7} 100%{top:110%;opacity:0.2} }
+        @keyframes starTwinkle { 0%,100%{opacity:0.3} 50%{opacity:1} }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
       `}</style>
 
-      {/* Ondas no fundo */}
-      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:80, overflow:"hidden", zIndex:0, opacity:0.35 }}>
-        <svg viewBox="0 0 720 80" width="100%" height="80" style={{ position:"absolute", bottom:0 }}>
-          <path d="M0,40 C80,10 160,70 240,40 C320,10 400,70 480,40 C560,10 640,70 720,40 L720,80 L0,80 Z" fill="#3B6EF5" style={{ animation:"wave1 4s ease-in-out infinite" }} />
-          <path d="M0,55 C90,30 180,70 270,45 C360,20 450,65 540,40 C630,15 720,55 720,55 L720,80 L0,80 Z" fill="#7C3AED" opacity="0.6" style={{ animation:"wave2 5s ease-in-out infinite" }} />
-        </svg>
-      </div>
+      {/* ── Elementos de clima ── */}
+      {isNight && <>
+        {/* Lua */}
+        <div style={{ position:"absolute", top:"12%", right:"15%", width:52, height:52, borderRadius:"50%", background:"#FBBF24", boxShadow:"0 0 30px #FBBF2466", animation:"moonMove 60s linear infinite alternate", zIndex:0 }} />
+        {/* Estrelas */}
+        {Array.from({length:24}).map((_,i)=>(
+          <div key={i} style={{ position:"absolute", top:`${5+(i*17%55)}%`, left:`${(i*13)%90}%`, width: i%3===0?3:2, height: i%3===0?3:2, borderRadius:"50%", background:"#fff", opacity:0.5, animation:`starTwinkle ${1.2+(i%4)*0.5}s ease-in-out ${i*0.3}s infinite`, zIndex:0 }} />
+        ))}
+      </>}
+      {(isMorning || isAfternoon) && !isRain && !isCloudy && <>
+        {/* Sol */}
+        <div style={{ position:"absolute", top:"8%", left:"15%", width:58, height:58, borderRadius:"50%", background:"radial-gradient(circle,#FDE68A,#F59E0B)", boxShadow:"0 0 50px #F59E0B88", animation:"sunMove 120s linear infinite alternate", zIndex:0 }} />
+        {/* Nuvens */}
+        <div style={{ position:"absolute", top:"18%", left:"30%", zIndex:0, animation:"cloudFloat 18s ease-in-out infinite alternate" }}>
+          <div style={{ width:90, height:36, borderRadius:18, background:"rgba(255,255,255,0.18)", boxShadow:"0 2px 12px rgba(255,255,255,0.1)" }} />
+        </div>
+        <div style={{ position:"absolute", top:"10%", left:"55%", zIndex:0, animation:"cloudFloat2 22s ease-in-out infinite alternate" }}>
+          <div style={{ width:60, height:24, borderRadius:12, background:"rgba(255,255,255,0.12)" }} />
+        </div>
+      </>}
+      {isEvening && <>
+        {/* Céu do entardecer com nuvens */}
+        <div style={{ position:"absolute", top:"15%", right:"25%", zIndex:0, animation:"cloudFloat 25s ease-in-out infinite alternate" }}>
+          <div style={{ width:100, height:40, borderRadius:20, background:"rgba(249,115,22,0.2)" }} />
+        </div>
+      </>}
+      {isCloudy && !isRain && <>
+        {Array.from({length:3}).map((_,i)=>(
+          <div key={i} style={{ position:"absolute", top:`${8+i*12}%`, left:`${10+i*28}%`, zIndex:0, animation:`cloudFloat${i%2===0?"":"2"} ${14+i*6}s ease-in-out infinite alternate` }}>
+            <div style={{ width:80+i*30, height:30+i*10, borderRadius:15+i*5, background:`rgba(180,180,200,0.18)` }} />
+          </div>
+        ))}
+      </>}
+      {isRain && <>
+        {/* Nuvens de chuva */}
+        <div style={{ position:"absolute", top:0, left:0, right:0, height:120, background:"linear-gradient(180deg,#1a2535,transparent)", zIndex:0 }} />
+        {/* Gotas de chuva */}
+        {Array.from({length:40}).map((_,i)=>(
+          <div key={i} style={{ position:"absolute", top:`-${5+(i%15)}%`, left:`${(i*2.5)%100}%`, width:1.5, height:14+(i%6)*3, background:`rgba(147,197,253,${0.2+(i%4)*0.1})`, borderRadius:2, animation:`rainDrop ${0.8+(i%5)*0.2}s linear ${(i*0.07)%1.5}s infinite`, zIndex:0 }} />
+        ))}
+      </>}
 
-      {/* Gotas de chuva */}
-      {Array.from({length:28}).map((_,i) => (
-        <div key={i} style={{
-          position:"absolute", top: -20, left: `${(i * 3.7) % 100}%`,
-          width: 1.5, height: 12 + (i%5)*4,
-          background: `rgba(79,142,247,${0.15 + (i%4)*0.07})`,
-          borderRadius: 2,
-          animation: `dropFall ${1.8 + (i%7)*0.4}s linear ${(i*0.18)%2}s infinite`,
-          zIndex: 0,
-        }} />
-      ))}
-      <div style={{ width: "100%", maxWidth: 380, position:"relative", zIndex:1 }}>
-        <div
-          style={{
-            background: C.card,
-            borderRadius: 18,
-            border: `1px solid ${C.b1}`,
-            padding: "40px 36px",
-            marginBottom: 16,
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8, marginBottom:28 }}>
-            <NexpRobot size={52} showFaceOnly />
-            <div style={{ textAlign:"center" }}>
-              <div style={{ fontWeight:900, fontSize:22, letterSpacing:"-0.8px", background:`linear-gradient(135deg,#4F8EF7,#7C3AED)`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>
+      {/* ── Lado esquerdo: formulário com transparência ── */}
+      <div style={{ flex:"0 0 auto", width:"min(380px,90vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease" }}>
+        {/* Card com transparência */}
+        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:20, border:"1px solid rgba(79,142,247,0.2)", padding:"36px 32px", marginBottom:14, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
+          {/* Logo + robô */}
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:26 }}>
+            <NexpRobot size={46} showFaceOnly />
+            <div>
+              <div style={{ fontWeight:900, fontSize:20, letterSpacing:"-0.8px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>
                 Nexp Consultas
               </div>
-              <div style={{ color: C.td, fontSize: 11, marginTop: 3 }}>Sistema de Leads</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>Sistema de Leads</div>
             </div>
           </div>
 
-          {err && (
-            <div
-              style={{
-                background: "#2D1515",
-                border: "1px solid #EF444433",
-                borderRadius: 8,
-                padding: "10px 14px",
-                marginBottom: 18,
-                color: "#F87171",
-                fontSize: 12.5,
-              }}
-            >
-              ⚠ {err}
-            </div>
-          )}
+          {err && <div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:16, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
 
-          <div style={{ marginBottom: 14 }}>
-            <label
-              style={{
-                color: C.tm,
-                fontSize: 11.5,
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Usuário
-            </label>
-            <input
-              value={un}
-              onChange={(e) => setUn(e.target.value)}
-              placeholder="Digite seu usuário"
-              onKeyDown={(e) => e.key === "Enter" && go()}
-              style={{ ...S.input }}
-            />
+          <div style={{ marginBottom:13 }}>
+            <label style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, display:"block", marginBottom:5 }}>E-mail</label>
+            <input value={un} onChange={e=>setUn(e.target.value)} placeholder="seu@email.com" onKeyDown={e=>e.key==="Enter"&&go()}
+              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF" }} />
           </div>
-          <div style={{ marginBottom: 22 }}>
-            <label
-              style={{
-                color: C.tm,
-                fontSize: 11.5,
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Senha
-            </label>
-            <div style={{ position: "relative" }}>
-              <input
-                value={pw}
-                onChange={(e) => setPw(e.target.value)}
-                type={show ? "text" : "password"}
-                placeholder="Digite sua senha"
-                onKeyDown={(e) => e.key === "Enter" && go()}
-                style={{ ...S.input, paddingRight: 40 }}
-              />
-              <button
-                onClick={() => setShow((p) => !p)}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "none",
-                  border: "none",
-                  color: C.tm,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                {show ? "🙈" : "👁"}
+          <div style={{ marginBottom:22 }}>
+            <label style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, display:"block", marginBottom:5 }}>Senha</label>
+            <div style={{ position:"relative" }}>
+              <input value={pw} onChange={e=>setPw(e.target.value)} type={show?"text":"password"} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()}
+                style={{ ...S.input, paddingRight:40, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF" }} />
+              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:14 }}>
+                {show?"🙈":"👁"}
               </button>
             </div>
           </div>
-          <button
-            onClick={go}
-            disabled={loading}
-            style={{
-              ...S.btn("#3B6EF5", "#fff"),
-              width: "100%",
-              padding: "12px",
-              fontSize: 14,
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Entrando..." : "Entrar"}
+          <button onClick={go} disabled={loading}
+            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 20px rgba(59,110,245,0.4)" }}>
+            {loading ? "Entrando..." : "Entrar →"}
           </button>
         </div>
 
-        {/* Support card — always visible, highlighted when there's an error */}
-        <a
-          href="https://wa.me/5584981323542"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            background: err ? "#0A2918" : "#0B0E17",
-            border: err ? "1px solid #25D36655" : `1px solid ${C.b1}`,
-            borderRadius: 12,
-            padding: "14px 16px",
-            textDecoration: "none",
-            transition: "all 0.2s",
-            boxShadow: err ? "0 0 18px #25D36618" : "none",
-          }}
-        >
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: "50%",
-              background: "#25D36618",
-              border: "1.5px solid #25D36644",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="#25D366"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z" />
-            </svg>
+        {/* Suporte */}
+        <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,41,24,0.7)", backdropFilter:"blur(10px)", border:"1px solid #25D36633", borderRadius:12, padding:"12px 14px", textDecoration:"none" }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
+          <div style={{ flex:1 }}>
+            <div style={{ color:err?"#25D366":"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600 }}>{err?"Problemas? Fale com o suporte":"Suporte WhatsApp"}</div>
+            <div style={{ color:"#2D6B47", fontSize:10.5 }}>(84) 98132-3542</div>
           </div>
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                color: err ? "#25D366" : C.ts,
-                fontSize: 13,
-                fontWeight: 600,
-                lineHeight: 1.3,
-              }}
-            >
-              {err
-                ? "Problemas para entrar? Fale com o suporte"
-                : "Suporte WhatsApp"}
-            </div>
-            <div
-              style={{
-                color: "#2D6B47",
-                fontSize: 11.5,
-                marginTop: 3,
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              <span style={{ color: "#25D36688", fontSize: 10 }}>WhatsApp</span>
-              <span style={{ color: "#2D6B47" }}>·</span>
-              <span>(84) 98132-3542</span>
-            </div>
-          </div>
-          <div style={{ color: "#25D36666", fontSize: 18, flexShrink: 0 }}>
-            →
-          </div>
+          <span style={{ color:"#25D36666", fontSize:16 }}>→</span>
         </a>
+      </div>
+
+      {/* ── Lado direito: robô + frase motivacional ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:28, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease" }}>
+        {/* Robô corpo inteiro */}
+        <NexpRobot size={110} showFaceOnly={false} />
+
+        {/* Frase motivacional */}
+        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:16, padding:"20px 24px", maxWidth:320, textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.4)" }}>
+          <div style={{ color:"rgba(79,142,247,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
+          <div style={{ color:"rgba(255,255,255,0.88)", fontSize:13.5, lineHeight:1.6, fontStyle:"italic" }}>{frase}</div>
+        </div>
+
+        {/* Clima atual */}
+        {weather && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(15,19,32,0.5)", backdropFilter:"blur(10px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.08)" }}>
+            <span style={{ fontSize:20 }}>{isRain?"🌧":isCloudy?"☁️":isNight?"🌙":isMorning?"🌅":isAfternoon?"☀️":"🌆"}</span>
+            <span style={{ color:"rgba(255,255,255,0.7)", fontSize:12 }}>{Math.round(weather.temperature)}°C · {isRain?"Chuvoso":isCloudy?"Nublado":isNight?"Noite":isMorning?"Manhã":isAfternoon?"Tarde":"Entardecer"}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -820,15 +924,15 @@ function LoginPage({ onLogin }) {
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   return (
     <div style={{ flexShrink: 0 }}>
-      <div style={{ padding: "14px 14px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
-          <NexpRobot size={36} />
-          <div style={{ fontWeight:900, fontSize:21, letterSpacing:"-0.8px", background:`linear-gradient(135deg,${C.atxt},${C.lg2})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1, whiteSpace:"nowrap" }}>
+      <div style={{ padding: "12px 14px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:7, minWidth:0 }}>
+          <NexpRobot size={32} showFaceOnly />
+          <div style={{ fontWeight:900, fontSize:17, letterSpacing:"-0.6px", background:`linear-gradient(135deg,${C.atxt},${C.lg2})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1, whiteSpace:"nowrap" }}>
             Nexp Consultas
           </div>
         </div>
-        <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
-          style={{ background:"transparent", border:"none", color:C.tm, fontSize:14, cursor:"pointer", padding:"4px 6px", borderRadius:6, opacity:0.7, transition:"opacity 0.15s", flexShrink:0 }}
+        <button onClick={() => setSidebarOpen(o => !o)}
+          style={{ background:"transparent", border:"none", color:C.tm, fontSize:13, cursor:"pointer", padding:"3px 5px", borderRadius:6, opacity:0.7, transition:"opacity 0.15s", flexShrink:0 }}
           onMouseEnter={e => e.currentTarget.style.opacity = "1"}
           onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}>
           ◀
