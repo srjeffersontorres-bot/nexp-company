@@ -1373,178 +1373,469 @@ const WA_ICON = (
 );
 
 function WhatsAppContasPage() {
-  const [contas, setContas] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("nexp_wpp_contas") || "[]"); } catch { return []; }
-  });
-  const [showAdd, setShowAdd] = useState(false);
+  // ── Config do servidor ──────────────────────────────────────
+  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem("nexp_wpp_server") || "");
+  const [editingServer, setEditingServer] = useState(!localStorage.getItem("nexp_wpp_server"));
+  const [serverInput, setServerInput]     = useState(localStorage.getItem("nexp_wpp_server") || "");
+
+  // ── Estado das contas e mensagens ───────────────────────────
+  const [accounts, setAccounts]         = useState([]);   // [{id, label, status, phone, name, qr}]
+  const [allMessages, setAllMessages]   = useState([]);   // [{...msg, accountLabel}] unificadas
+  const [conversations, setConversations] = useState({}); // {accountId_jid: {name,msgs,unread,accountId,accountLabel}}
+  const [activeConv, setActiveConv]     = useState(null); // {accountId, jid, name}
+  const [convMsgs, setConvMsgs]         = useState([]);
+  const [inputText, setInputText]       = useState("");
+  const [sending, setSending]           = useState(false);
+  const [connected, setConnected]       = useState(false);
+  const [wsError, setWsError]           = useState("");
+
+  // ── Adicionar conta ─────────────────────────────────────────
+  const [showAdd, setShowAdd]     = useState(false);
   const [novaLabel, setNovaLabel] = useState("");
-  const [novaDesc, setNovaDesc]   = useState("");
-  const winRefs = useRef({});
-  const [winState, setWinState] = useState({});
+  const [addLoading, setAddLoading] = useState(false);
 
-  // Persiste contas no localStorage
-  useEffect(() => {
-    localStorage.setItem("nexp_wpp_contas", JSON.stringify(contas));
-  }, [contas]);
+  // ── Vista ───────────────────────────────────────────────────
+  const [view, setView]     = useState("inbox"); // "inbox" | "accounts" | "conv"
+  const [filterAcc, setFilterAcc] = useState("all");
 
-  // Monitora janelas abertas
+  const wsRef      = useRef(null);
+  const reconnTimer = useRef(null);
+  const msgsEndRef = useRef(null);
+
+  const httpBase = serverUrl ? serverUrl.replace(/^ws/, "http").replace(/\/$/, "") : "";
+
+  // ── Conecta ao WebSocket ─────────────────────────────────────
+  const connectWS = (url) => {
+    if (!url) return;
+    const wsUrl = url.startsWith("http") ? url.replace(/^http/, "ws") : url;
+    try {
+      const ws = new window.WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setConnected(true);
+        setWsError("");
+        clearTimeout(reconnTimer.current);
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const { event, data } = JSON.parse(e.data);
+          handleWSEvent(event, data);
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        reconnTimer.current = setTimeout(() => connectWS(url), 4000);
+      };
+
+      ws.onerror = () => {
+        setWsError("Não foi possível conectar ao servidor. Verifique a URL e se o servidor está rodando.");
+        setConnected(false);
+      };
+    } catch(e) {
+      setWsError("URL inválida: " + e.message);
+    }
+  };
+
+  const handleWSEvent = (event, data) => {
+    switch(event) {
+      case "snapshot":
+        setAccounts(data || []);
+        break;
+      case "qr":
+        setAccounts(p => p.map(a => a.id === data.accountId ? { ...a, status:"qr", qr:data.qr } : a));
+        break;
+      case "connected":
+        setAccounts(p => p.map(a => a.id === data.accountId ? { ...a, status:"connected", phone:data.phone, name:data.name, qr:null } : a));
+        break;
+      case "disconnected":
+        setAccounts(p => p.map(a => a.id === data.accountId ? { ...a, status: data.willReconnect ? "reconnecting" : "disconnected", qr:null } : a));
+        break;
+      case "account_removed":
+        setAccounts(p => p.filter(a => a.id !== data.accountId));
+        break;
+      case "message": {
+        const msg = data.message;
+        if (!msg) break;
+        const accLabel = accounts.find(a => a.id === msg.accountId)?.label || msg.accountId;
+        const enriched = { ...msg, accountLabel: accLabel, _key: msg.id + msg.accountId };
+        setAllMessages(p => {
+          const next = [...p, enriched].sort((a,b) => b.timestamp - a.timestamp);
+          return next.slice(0, 500);
+        });
+        const convKey = msg.accountId + "___" + (msg.fromMe ? msg.to : msg.from);
+        const jid     = msg.fromMe ? msg.to : msg.from;
+        setConversations(p => {
+          const prev = p[convKey] || { jid, name: msg.pushName || jid.replace("@s.whatsapp.net",""), msgs:[], unread:0, accountId: msg.accountId, accountLabel: accLabel };
+          return { ...p, [convKey]: { ...prev, msgs:[...prev.msgs, msg].slice(-100), lastMsg:msg, unread: msg.fromMe ? prev.unread : prev.unread+1, name: msg.pushName || prev.name } };
+        });
+        setConvMsgs(p => {
+          if (activeConv && activeConv.convKey === convKey) return [...p, msg];
+          return p;
+        });
+        break;
+      }
+      case "chats_loaded": {
+        const chats = data.chats || [];
+        const accLabel = accounts.find(a => a.id === data.accountId)?.label || data.accountId;
+        setConversations(p => {
+          const next = { ...p };
+          chats.forEach(c => {
+            const k = data.accountId + "___" + c.jid;
+            if (!next[k]) next[k] = { jid:c.jid, name:c.name||c.jid.replace("@s.whatsapp.net",""), msgs:[], unread:c.unread||0, accountId:data.accountId, accountLabel:accLabel, lastMsg:null };
+          });
+          return next;
+        });
+        break;
+      }
+    }
+  };
+
   useEffect(() => {
-    const iv = setInterval(() => {
-      const next = {};
-      contas.forEach(c => {
-        const w = winRefs.current[c.id];
-        next[c.id] = w && !w.closed ? "open" : "closed";
+    if (serverUrl) connectWS(serverUrl);
+    return () => {
+      clearTimeout(reconnTimer.current);
+      wsRef.current?.close();
+    };
+  }, [serverUrl]); // eslint-disable-line
+
+  useEffect(() => {
+    msgsEndRef.current?.scrollIntoView({ behavior:"smooth" });
+  }, [convMsgs]);
+
+  // Atualiza labels nas mensagens quando accounts mudam
+  useEffect(() => {
+    setAllMessages(p => p.map(m => ({ ...m, accountLabel: accounts.find(a=>a.id===m.accountId)?.label || m.accountId })));
+    setConversations(p => {
+      const next = {...p};
+      Object.keys(next).forEach(k => {
+        const acc = accounts.find(a => a.id === next[k].accountId);
+        if (acc) next[k] = { ...next[k], accountLabel: acc.label };
       });
-      setWinState(next);
-    }, 900);
-    return () => clearInterval(iv);
-  }, [contas]);
+      return next;
+    });
+  }, [accounts]); // eslint-disable-line
 
-  const addConta = () => {
-    if (!novaLabel.trim()) return;
-    const nova = { id: Date.now(), label: novaLabel.trim(), desc: novaDesc.trim(), cor: CORES_WPP[contas.length % CORES_WPP.length], adicionadaEm: new Date().toLocaleDateString("pt-BR") };
-    setContas(p => [...p, nova]);
-    setNovaLabel(""); setNovaDesc(""); setShowAdd(false);
+  const saveServer = () => {
+    const url = serverInput.trim().replace(/\/$/, "");
+    if (!url) return;
+    localStorage.setItem("nexp_wpp_server", url);
+    setServerUrl(url);
+    setEditingServer(false);
   };
 
-  const removeConta = (id) => {
-    if (winRefs.current[id] && !winRefs.current[id].closed) winRefs.current[id].close();
-    setContas(p => p.filter(c => c.id !== id));
+  const addAccount = async () => {
+    if (!novaLabel.trim() || !httpBase) return;
+    setAddLoading(true);
+    try {
+      const r = await fetch(`${httpBase}/api/accounts`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ label: novaLabel.trim() }) });
+      const d = await r.json();
+      if (d.id) {
+        setAccounts(p => [...p, { id:d.id, label:d.label, status:"connecting", qr:null }]);
+        setNovaLabel(""); setShowAdd(false);
+        setView("accounts");
+      }
+    } catch(e) { alert("Erro ao adicionar conta: " + e.message); }
+    setAddLoading(false);
   };
 
-  const abrirWpp = (c) => {
-    const ex = winRefs.current[c.id];
-    if (ex && !ex.closed) { ex.focus(); return; }
-    const sw = window.screen.width, sh = window.screen.height;
-    const w = Math.round(sw * 0.70), h = Math.round(sh * 0.90);
-    const left = Math.round((sw - w) / 2), top = Math.round((sh - h) / 2);
-    const win = window.open("https://web.whatsapp.com", `wpp_${c.id}`, `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=yes,scrollbars=yes,resizable=yes`);
-    winRefs.current[c.id] = win;
-    setWinState(s => ({ ...s, [c.id]: "open" }));
+  const removeAccount = async (id) => {
+    if (!window.confirm("Remover esta conta? A sessão será apagada.")) return;
+    await fetch(`${httpBase}/api/accounts/${id}`, { method:"DELETE" }).catch(()=>{});
+    setAccounts(p => p.filter(a => a.id !== id));
   };
 
-  const CORES_WPP = ["#25D366","#128C7E","#075E54","#34D399","#059669","#10B981","#0EA5E9","#6366F1","#EC4899","#F59E0B","#EF4444","#8B5CF6"];
+  const sendMessage = async () => {
+    if (!inputText.trim() || !activeConv || sending) return;
+    setSending(true);
+    try {
+      await fetch(`${httpBase}/api/send`, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ accountId: activeConv.accountId, jid: activeConv.jid, text: inputText.trim() }) });
+      setInputText("");
+    } catch(e) { alert("Erro ao enviar: " + e.message); }
+    setSending(false);
+  };
 
-  return (
-    <div style={{ padding:"28px 32px", background:C.bg, minHeight:"100vh" }}>
+  const openConv = async (convKey, conv) => {
+    setActiveConv({ ...conv, convKey });
+    setView("conv");
+    // Carrega histórico via API
+    try {
+      const r = await fetch(`${httpBase}/api/messages/${conv.accountId}/${encodeURIComponent(conv.jid)}`);
+      const msgs = await r.json();
+      setConvMsgs(msgs);
+    } catch { setConvMsgs(conv.msgs || []); }
+    // Zera unread
+    setConversations(p => ({ ...p, [convKey]: { ...p[convKey], unread:0 } }));
+  };
 
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          <div style={{ width:44, height:44, borderRadius:12, background:"#0A2918", border:"1.5px solid #25D36644", display:"flex", alignItems:"center", justifyContent:"center", color:"#25D366", fontSize:22 }}>
-            {WA_ICON}
-          </div>
+  const fmtTime = (ts) => {
+    if (!ts) return "";
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) return d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+  };
+
+  const accColor = (id) => {
+    const colors = ["#25D366","#0EA5E9","#8B5CF6","#F59E0B","#EF4444","#EC4899","#34D399","#FB923C"];
+    const idx = [...(id||"")].reduce((a,c)=>a+c.charCodeAt(0),0) % colors.length;
+    return colors[idx];
+  };
+
+  const statusDot = (status) => {
+    const map = { connected:"#16A34A", qr:"#F59E0B", connecting:"#60A5FA", reconnecting:"#FBBF24", disconnected:"#EF4444" };
+    return map[status] || C.td;
+  };
+
+  const statusLabel = { connected:"Conectado", qr:"Aguardando QR", connecting:"Conectando...", reconnecting:"Reconectando...", disconnected:"Desconectado" };
+
+  // Filtro de conversas
+  const convList = Object.entries(conversations)
+    .filter(([,c]) => filterAcc === "all" || c.accountId === filterAcc)
+    .sort(([,a],[,b]) => (b.lastMsg?.timestamp||0) - (a.lastMsg?.timestamp||0));
+
+  const totalUnread = convList.reduce((s,[,c]) => s + (c.unread||0), 0);
+
+  // ── Configuração do servidor ─────────────────────────────────
+  if (editingServer) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"100vh", background:C.bg, padding:32 }}>
+      <div style={{ background:C.card, borderRadius:18, border:"1px solid #25D36633", padding:"36px 40px", maxWidth:480, width:"100%" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:26 }}>
+          <div style={{ width:48, height:48, borderRadius:12, background:"#0A2918", border:"1.5px solid #25D36644", display:"flex", alignItems:"center", justifyContent:"center", color:"#25D366", fontSize:24 }}>{WA_ICON}</div>
           <div>
-            <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>WhatsApp Multi-Contas</div>
-            <div style={{ color:C.td, fontSize:12, marginTop:2 }}>Gerencie e acesse múltiplas contas do WhatsApp Web</div>
+            <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>Conectar ao Servidor</div>
+            <div style={{ color:C.td, fontSize:12, marginTop:2 }}>WhatsApp Multi-Contas</div>
           </div>
         </div>
-        <button onClick={() => setShowAdd(p => !p)}
-          style={{ ...S.btn(showAdd ? "#0A2918" : "#25D366", showAdd ? "#25D366" : "#fff"), padding:"10px 22px", fontSize:13, fontWeight:700, borderRadius:10, border: showAdd ? "1px solid #25D36644" : "none", display:"flex", alignItems:"center", gap:8 }}>
-          {showAdd ? "✕ Cancelar" : "＋ Adicionar conta"}
+
+        <div style={{ color:C.ts, fontSize:13, lineHeight:1.7, marginBottom:22 }}>
+          Insira a URL do servidor backend Baileys.<br/>
+          <span style={{ color:C.td, fontSize:11.5 }}>Ex: <code style={{ background:C.deep, padding:"1px 6px", borderRadius:4 }}>wss://meu-servidor.railway.app</code></span>
+        </div>
+
+        <input value={serverInput} onChange={e=>setServerInput(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&saveServer()}
+          placeholder="wss://seu-servidor.railway.app"
+          style={{ ...S.input, marginBottom:14, fontSize:13, fontFamily:"monospace" }} autoFocus />
+
+        {wsError && <div style={{ color:"#F87171", fontSize:12, marginBottom:12 }}>⚠ {wsError}</div>}
+
+        <button onClick={saveServer} disabled={!serverInput.trim()}
+          style={{ ...S.btn("#25D366","#fff"), width:"100%", padding:"12px", fontSize:14, fontWeight:700, borderRadius:10, marginBottom:16, opacity:!serverInput.trim()?0.5:1 }}>
+          🔗 Conectar
         </button>
-      </div>
 
-      {/* Formulário de nova conta */}
-      {showAdd && (
-        <div style={{ background:C.card, borderRadius:14, border:"1px solid #25D36633", padding:"22px 24px", marginBottom:24, maxWidth:500 }}>
-          <div style={{ color:"#25D366", fontSize:13, fontWeight:700, marginBottom:16 }}>📱 Nova conta WhatsApp</div>
-          <div style={{ marginBottom:12 }}>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Nome da conta *</label>
-            <input value={novaLabel} onChange={e=>setNovaLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addConta()}
-              placeholder="Ex: Conta Principal, Suporte, Vendas..."
-              style={{ ...S.input }} autoFocus />
+        <div style={{ background:C.deep, borderRadius:10, padding:"14px 16px", border:`1px solid ${C.b1}` }}>
+          <div style={{ color:C.tm, fontSize:11.5, fontWeight:700, marginBottom:8 }}>📦 Como subir o servidor?</div>
+          <div style={{ color:C.td, fontSize:11, lineHeight:1.8 }}>
+            1. Baixe a pasta <code style={{ background:C.card, padding:"1px 5px", borderRadius:3, fontSize:10.5 }}>wpp-server/</code> que foi gerada<br/>
+            2. Suba no <strong style={{color:C.ts}}>Railway</strong>, <strong style={{color:C.ts}}>Render</strong> ou qualquer VPS<br/>
+            3. Cole a URL pública aqui e conecte<br/>
+            4. O README inclui instruções completas
           </div>
-          <div style={{ marginBottom:16 }}>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Descrição (opcional)</label>
-            <input value={novaDesc} onChange={e=>setNovaDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addConta()}
-              placeholder="Ex: (84) 99999-0000 — Atendimento"
-              style={{ ...S.input }} />
-          </div>
-          <button onClick={addConta} disabled={!novaLabel.trim()}
-            style={{ ...S.btn("#25D366","#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, borderRadius:10, opacity:!novaLabel.trim()?0.5:1 }}>
-            ✓ Adicionar
-          </button>
-        </div>
-      )}
-
-      {/* Lista de contas */}
-      {contas.length === 0 ? (
-        <div style={{ textAlign:"center", padding:"60px 0" }}>
-          <div style={{ fontSize:52, marginBottom:16, opacity:0.3 }}>{WA_ICON}</div>
-          <div style={{ color:C.tm, fontSize:15, fontWeight:700, marginBottom:8 }}>Nenhuma conta adicionada</div>
-          <div style={{ color:C.td, fontSize:13 }}>Clique em "＋ Adicionar conta" para começar</div>
-        </div>
-      ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:16, marginBottom:32 }}>
-          {contas.map((c, i) => {
-            const isOpen = winState[c.id] === "open";
-            const cor = c.cor || CORES_WPP[i % CORES_WPP.length];
-            return (
-              <div key={c.id} style={{ background:C.card, borderRadius:14, border:`1px solid ${cor}33`, padding:"20px 20px", boxShadow:`0 2px 16px ${cor}11`, transition:"box-shadow 0.2s" }}>
-                {/* Top row */}
-                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:14 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                    <div style={{ width:42, height:42, borderRadius:12, background:cor+"22", border:`1.5px solid ${cor}55`, display:"flex", alignItems:"center", justifyContent:"center", color:cor, fontSize:20, flexShrink:0 }}>
-                      {WA_ICON}
-                    </div>
-                    <div>
-                      <div style={{ color:C.tp, fontSize:14, fontWeight:700, lineHeight:1.2 }}>{c.label}</div>
-                      {c.desc && <div style={{ color:C.td, fontSize:11, marginTop:3 }}>{c.desc}</div>}
-                      <div style={{ color:C.td, fontSize:10, marginTop:2 }}>Adicionada em {c.adicionadaEm}</div>
-                    </div>
-                  </div>
-                  {isOpen && (
-                    <span style={{ background:"#0A2918", color:"#34D399", border:"1px solid #16A34A44", borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
-                      <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                      Aberta
-                    </span>
-                  )}
-                </div>
-
-                {/* Botões */}
-                <div style={{ display:"flex", gap:8 }}>
-                  {!isOpen ? (
-                    <button onClick={() => abrirWpp(c)}
-                      style={{ ...S.btn(cor,"#fff"), flex:1, padding:"9px 0", fontSize:13, fontWeight:700, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }}>
-                      {WA_ICON} Abrir
-                    </button>
-                  ) : (
-                    <>
-                      <button onClick={() => { winRefs.current[c.id]?.focus(); }}
-                        style={{ ...S.btn(cor,"#fff"), flex:1, padding:"9px 0", fontSize:12, fontWeight:700, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                        🔍 Abrir
-                      </button>
-                      <button onClick={() => { winRefs.current[c.id]?.close(); setWinState(s=>({...s,[c.id]:"closed"})); }}
-                        style={{ ...S.btn("#0A2918","#34D399"), padding:"9px 12px", fontSize:12, fontWeight:600, borderRadius:9, border:"1px solid #16A34A33" }}>
-                        ✕
-                      </button>
-                    </>
-                  )}
-                  <button onClick={() => { if(window.confirm(`Remover a conta "${c.label}"?`)) removeConta(c.id); }}
-                    style={{ ...S.btn("transparent","#F87171"), padding:"9px 10px", fontSize:12, borderRadius:9, border:"1px solid #EF444422" }}>
-                    🗑
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Explicação técnica */}
-      <div style={{ background:C.deep, borderRadius:12, padding:"18px 22px", border:`1px solid ${C.b1}`, maxWidth:680 }}>
-        <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:10 }}>ℹ️ Como funciona o WhatsApp Multi-Contas?</div>
-        <div style={{ color:C.td, fontSize:12, lineHeight:1.8 }}>
-          Cada conta abre o <strong style={{color:C.tm}}>WhatsApp Web</strong> em uma janela separada do navegador.<br/>
-          Para usar <strong style={{color:C.tm}}>múltiplas contas simultaneamente</strong>, cada janela usa um perfil isolado — escaneie o QR code de cada conta na janela correspondente.<br/>
-          <br/>
-          <strong style={{color:"#FBBF24"}}>⚠️ Integração avançada (caixa única unificada)</strong> — para exibir todas as conversas em uma única tela é necessário um servidor backend com <strong style={{color:C.tm}}>Baileys</strong> (Node.js). Isso pode ser implementado como uma evolução futura do sistema.
         </div>
       </div>
     </div>
   );
+
+  return (
+    <div style={{ display:"flex", height:"100vh", overflow:"hidden", background:C.bg }}>
+
+      {/* ── Painel Esquerdo: Conversas ── */}
+      <div style={{ width:320, flexShrink:0, borderRight:`1px solid ${C.b1}`, display:"flex", flexDirection:"column", background:C.sb }}>
+
+        {/* Header */}
+        <div style={{ padding:"14px 16px", borderBottom:`1px solid ${C.b1}`, flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ color:"#25D366", fontSize:18 }}>{WA_ICON}</span>
+              <span style={{ color:C.tp, fontSize:14, fontWeight:800 }}>WhatsApp</span>
+              {totalUnread > 0 && <span style={{ background:"#25D366", color:"#fff", borderRadius:"50%", minWidth:18, height:18, fontSize:10, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px" }}>{totalUnread}</span>}
+            </div>
+            <div style={{ display:"flex", gap:5 }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background:connected?"#16A34A":"#EF4444", boxShadow:connected?"0 0 6px #16A34A88":"none", marginTop:4 }} title={connected?"Servidor conectado":"Servidor desconectado"} />
+              <button onClick={()=>setShowAdd(p=>!p)} title="Adicionar conta"
+                style={{ background:showAdd?C.abg:C.deep, border:`1px solid ${showAdd?C.atxt:C.b2}`, color:showAdd?C.atxt:C.tm, borderRadius:7, width:28, height:28, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>＋</button>
+              <button onClick={()=>setView(view==="accounts"?"inbox":"accounts")} title="Gerenciar contas"
+                style={{ background:view==="accounts"?C.abg:C.deep, border:`1px solid ${view==="accounts"?C.atxt:C.b2}`, color:view==="accounts"?C.atxt:C.tm, borderRadius:7, width:28, height:28, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>⚙</button>
+              <button onClick={()=>setEditingServer(true)} title="Configurar servidor"
+                style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.td, borderRadius:7, width:28, height:28, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", justifyContent:"center" }}>🔗</button>
+            </div>
+          </div>
+
+          {/* Adicionar conta inline */}
+          {showAdd && (
+            <div style={{ background:C.deep, borderRadius:10, padding:"12px", border:"1px solid #25D36633", marginBottom:8 }}>
+              <input value={novaLabel} onChange={e=>setNovaLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addAccount()}
+                placeholder="Nome da conta (ex: Principal, Suporte...)"
+                style={{ ...S.input, marginBottom:8, fontSize:12 }} autoFocus />
+              <button onClick={addAccount} disabled={!novaLabel.trim()||addLoading}
+                style={{ ...S.btn("#25D366","#fff"), width:"100%", padding:"8px", fontSize:12, fontWeight:700, borderRadius:8, opacity:(!novaLabel.trim()||addLoading)?0.5:1 }}>
+                {addLoading?"Adicionando...":"＋ Adicionar e escanear QR"}
+              </button>
+            </div>
+          )}
+
+          {/* Filtro por conta */}
+          {accounts.length > 1 && (
+            <div style={{ display:"flex", gap:4, overflowX:"auto", paddingBottom:2 }}>
+              <button onClick={()=>setFilterAcc("all")} style={{ flexShrink:0, padding:"3px 10px", borderRadius:20, border:`1px solid ${filterAcc==="all"?C.atxt:C.b2}`, background:filterAcc==="all"?C.abg:C.deep, color:filterAcc==="all"?C.atxt:C.tm, fontSize:11, cursor:"pointer", fontWeight:filterAcc==="all"?700:400 }}>Todas</button>
+              {accounts.map(a => (
+                <button key={a.id} onClick={()=>setFilterAcc(a.id)} style={{ flexShrink:0, padding:"3px 10px", borderRadius:20, border:`1px solid ${filterAcc===a.id?accColor(a.id)+"88":C.b2}`, background:filterAcc===a.id?accColor(a.id)+"22":C.deep, color:filterAcc===a.id?accColor(a.id):C.tm, fontSize:11, cursor:"pointer", fontWeight:filterAcc===a.id?700:400 }}>{a.label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Lista de conversas */}
+        <div style={{ flex:1, overflowY:"auto" }}>
+          {view === "accounts" ? (
+            /* Gerenciar contas */
+            <div style={{ padding:"8px" }}>
+              <div style={{ color:C.td, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px", padding:"6px 8px", marginBottom:4 }}>Contas cadastradas</div>
+              {accounts.length === 0 && <div style={{ color:C.tm, fontSize:12, padding:"20px 12px", textAlign:"center" }}>Nenhuma conta. Clique em ＋ para adicionar.</div>}
+              {accounts.map(a => (
+                <div key={a.id} style={{ background:C.deep, borderRadius:10, padding:"12px", marginBottom:8, border:`1px solid ${accColor(a.id)}33` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: a.qr ? 12 : 0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ width:36, height:36, borderRadius:10, background:accColor(a.id)+"22", border:`1.5px solid ${accColor(a.id)}55`, display:"flex", alignItems:"center", justifyContent:"center", color:accColor(a.id), fontSize:18, flexShrink:0 }}>{WA_ICON}</div>
+                      <div>
+                        <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{a.label}</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
+                          <span style={{ width:7, height:7, borderRadius:"50%", background:statusDot(a.status), display:"inline-block" }} />
+                          <span style={{ color:C.td, fontSize:10.5 }}>{statusLabel[a.status]||a.status}</span>
+                          {a.phone && <span style={{ color:C.td, fontSize:10 }}>· +{a.phone}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={()=>removeAccount(a.id)} style={{ background:"transparent", border:"none", color:"#EF4444", cursor:"pointer", fontSize:13, padding:"4px 6px", borderRadius:6 }}>🗑</button>
+                  </div>
+                  {/* QR Code */}
+                  {a.qr && (
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8 }}>📱 Escaneie com o WhatsApp</div>
+                      <img src={a.qr} alt="QR Code" style={{ width:200, height:200, borderRadius:10, border:"3px solid #25D36644", background:"#fff" }} />
+                      <div style={{ color:C.td, fontSize:10.5, marginTop:6 }}>Abra o WhatsApp → Aparelhos conectados → Conectar aparelho</div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Caixa de entrada unificada */
+            <>
+              {convList.length === 0 && (
+                <div style={{ padding:"40px 16px", textAlign:"center" }}>
+                  <div style={{ fontSize:40, marginBottom:12, opacity:0.3 }}>{WA_ICON}</div>
+                  <div style={{ color:C.tm, fontSize:13, fontWeight:600, marginBottom:6 }}>
+                    {accounts.filter(a=>a.status==="connected").length === 0 ? "Nenhuma conta conectada" : "Aguardando mensagens..."}
+                  </div>
+                  <div style={{ color:C.td, fontSize:11.5 }}>
+                    {accounts.length === 0 ? "Clique em ＋ para adicionar uma conta" : "As conversas aparecerão aqui"}
+                  </div>
+                </div>
+              )}
+              {convList.map(([key, conv]) => {
+                const isActive = activeConv?.convKey === key;
+                const col = accColor(conv.accountId);
+                return (
+                  <button key={key} onClick={() => openConv(key, conv)}
+                    style={{ width:"100%", display:"flex", alignItems:"center", gap:10, padding:"11px 14px", background:isActive?C.abg:C.sb, border:"none", borderBottom:`1px solid ${C.b1}`, cursor:"pointer", textAlign:"left", transition:"background 0.12s" }}
+                    onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.background=C.deep; }}
+                    onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.background=C.sb; }}
+                  >
+                    {/* Avatar */}
+                    <div style={{ width:40, height:40, borderRadius:"50%", background:col+"22", border:`1.5px solid ${col}55`, display:"flex", alignItems:"center", justifyContent:"center", color:col, fontWeight:700, fontSize:15, flexShrink:0 }}>
+                      {conv.name?.[0]?.toUpperCase() || "?"}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ color:C.tp, fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:140 }}>{conv.name || conv.jid?.replace("@s.whatsapp.net","")}</span>
+                        <span style={{ color:C.td, fontSize:10.5, flexShrink:0, marginLeft:6 }}>{fmtTime(conv.lastMsg?.timestamp)}</span>
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <span style={{ color:C.tm, fontSize:11.5, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:160 }}>
+                          {conv.lastMsg?.fromMe && <span style={{ color:C.td }}>Você: </span>}
+                          {conv.lastMsg?.text || conv.lastMsg?.media?.type || ""}
+                        </span>
+                        <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
+                          <span style={{ background:col+"22", color:col, borderRadius:4, padding:"1px 5px", fontSize:9, fontWeight:700, border:`1px solid ${col}33` }}>{conv.accountLabel}</span>
+                          {conv.unread > 0 && <span style={{ background:"#25D366", color:"#fff", borderRadius:"50%", minWidth:17, height:17, fontSize:9.5, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{conv.unread}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Painel Direito: Conversa ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        {!activeConv ? (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
+            <div style={{ fontSize:60, opacity:0.15 }}>{WA_ICON}</div>
+            <div style={{ color:C.tm, fontSize:15, fontWeight:700 }}>Selecione uma conversa</div>
+            <div style={{ color:C.td, fontSize:12 }}>As mensagens de todas as contas aparecem na caixa de entrada unificada</div>
+            {!connected && serverUrl && (
+              <div style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:10, padding:"10px 18px", color:"#F87171", fontSize:12, marginTop:8 }}>
+                ⚠ Servidor desconectado. Tentando reconectar...
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Header da conversa */}
+            <div style={{ padding:"12px 18px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:12, background:C.sb, flexShrink:0 }}>
+              <button onClick={()=>{ setActiveConv(null); setView("inbox"); }} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:20, lineHeight:1, padding:"0 4px" }}>‹</button>
+              <div style={{ width:36, height:36, borderRadius:"50%", background:accColor(activeConv.accountId)+"22", border:`1.5px solid ${accColor(activeConv.accountId)}55`, display:"flex", alignItems:"center", justifyContent:"center", color:accColor(activeConv.accountId), fontWeight:700, fontSize:16, flexShrink:0 }}>
+                {activeConv.name?.[0]?.toUpperCase() || "?"}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{activeConv.name}</div>
+                <div style={{ color:C.td, fontSize:11 }}>via <span style={{ color:accColor(activeConv.accountId) }}>{activeConv.accountLabel}</span> · {activeConv.jid?.replace("@s.whatsapp.net","").replace("@g.us"," (grupo)")}</div>
+              </div>
+            </div>
+
+            {/* Mensagens */}
+            <div style={{ flex:1, overflowY:"auto", padding:"16px 20px", display:"flex", flexDirection:"column", gap:6 }}>
+              {convMsgs.map((m, i) => (
+                <div key={m.id || i} style={{ display:"flex", justifyContent: m.fromMe ? "flex-end" : "flex-start" }}>
+                  <div style={{ maxWidth:"70%", background: m.fromMe ? C.acc+"EE" : C.card, borderRadius: m.fromMe ? "14px 14px 4px 14px" : "14px 14px 14px 4px", padding:"9px 13px", boxShadow:`0 1px 4px rgba(0,0,0,0.2)` }}>
+                    {!m.fromMe && m.pushName && <div style={{ color: accColor(activeConv.accountId), fontSize:10.5, fontWeight:700, marginBottom:3 }}>{m.pushName}</div>}
+                    {m.media && <div style={{ color:C.td, fontSize:11, fontStyle:"italic", marginBottom:m.text?4:0 }}>📎 {m.media.type === "image" ? "Imagem" : m.media.type === "video" ? "Vídeo" : m.media.type === "audio" ? (m.media.ptt ? "🎤 Áudio" : "🎵 Música") : m.media.type === "sticker" ? "🎨 Sticker" : "📄 Documento"}</div>}
+                    {m.text && <div style={{ color: m.fromMe ? "#fff" : C.tp, fontSize:13.5, lineHeight:1.5, wordBreak:"break-word" }}>{m.text}</div>}
+                    <div style={{ color: m.fromMe ? "rgba(255,255,255,0.5)" : C.td, fontSize:10, marginTop:4, textAlign:"right" }}>{fmtTime(m.timestamp)}</div>
+                  </div>
+                </div>
+              ))}
+              <div ref={msgsEndRef} />
+            </div>
+
+            {/* Input de envio */}
+            <div style={{ padding:"12px 16px", borderTop:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-end", background:C.sb, flexShrink:0 }}>
+              <textarea value={inputText} onChange={e=>setInputText(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendMessage(); }}}
+                placeholder={`Mensagem para ${activeConv.name}...`} rows={1}
+                style={{ ...S.input, flex:1, resize:"none", minHeight:40, maxHeight:120, overflowY:"auto", padding:"10px 14px", fontSize:13, lineHeight:1.5 }} />
+              <button onClick={sendMessage} disabled={!inputText.trim()||sending}
+                style={{ ...S.btn("#25D366","#fff"), padding:"10px 18px", fontSize:14, fontWeight:700, borderRadius:10, flexShrink:0, opacity:(!inputText.trim()||sending)?0.5:1 }}>
+                {sending ? "⏳" : "➤"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
+
 
 // ── Internet Page ──────────────────────────────────────────────
 const INTERNET_TABS = [
