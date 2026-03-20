@@ -10468,7 +10468,7 @@ function V8DigitalTab({ currentUser }) {
       setLoading(true); setErr(""); setSimRes(null);
       try {
         // 1. Consultar saldo — endpoint real V8
-        const saldo = await apiFetch(\`/saque-aniversario/cliente/saldo?cpf=\${c}\`);
+        const saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`);
         // 2. Simular em todas as tabelas paralelamente
         const tableSims = await Promise.all(
           TABELAS.map(async (tab) => {
