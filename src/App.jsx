@@ -5361,7 +5361,7 @@ function EditPasswordPanel({ savedPw, doReset }) {
         {step === "confirm" && (
           <div>
             <div style={{ color:"#FBBF24", fontSize:11.5, fontWeight:600, marginBottom:7 }}>
-              🔐 Confirme a nova senha:
+              🔐 Digite novamente a senha:
             </div>
             <div style={{ display:"flex", gap:8, alignItems:"center" }}>
               <div style={{ position:"relative", flex:1 }}>
@@ -5371,7 +5371,7 @@ function EditPasswordPanel({ savedPw, doReset }) {
                   onChange={e => { setConfirmPw(e.target.value); setMsg(""); }}
                   onKeyDown={e => e.key === "Enter" && finalize()}
                   type={showConf ? "text" : "password"}
-                  placeholder="Repita a nova senha"
+                  placeholder="Digite novamente a nova senha"
                   style={{ ...S.input, background:C.card, padding:"9px 40px 9px 12px", fontSize:12.5, fontFamily:"monospace",
                     border: msg ? "1px solid #EF4444" : `1px solid ${C.b2}` }}
                 />
@@ -5387,7 +5387,7 @@ function EditPasswordPanel({ savedPw, doReset }) {
             </div>
             {msg && <div style={{ color:"#F87171", fontSize:11, marginTop:5 }}>{msg}</div>}
             <div style={{ color:C.td, fontSize:10.5, marginTop:5 }}>
-              Digite a nova senha novamente para confirmar.
+              Digite a nova senha novamente para confirmar a alteração definitiva.
             </div>
           </div>
         )}
@@ -5594,15 +5594,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   };
 
   // ── Helpers: muda senha via instância secundária ─────────────
-  const FB_CFG = {
-    apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-    authDomain: "nexpcompany-9a7ba.firebaseapp.com",
-    projectId: "nexpcompany-9a7ba",
-    storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
-    messagingSenderId: "1043432853586",
-    appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
-  };
-  // Config para deleção
+  // Config para deleção de usuário via instância secundária
   const FB_CFG_DEL = {
     apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
     authDomain: "nexpcompany-9a7ba.firebaseapp.com",
@@ -5613,15 +5605,32 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   };
 
   const changeUserPassword = async (email, oldPass, newPass) => {
-    const appName = "pwreset_" + Date.now();
-    const sec = initFirebaseApp(FB_CFG, appName);
-    const secAuth = getAuth(sec);
+    const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
     try {
-      const c = await signInSecondary(secAuth, email, oldPass);
-      await updatePassword(c.user, newPass);
-      return true;
+      // Passo 1: faz login via REST para obter idToken
+      const signInRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password: oldPass, returnSecureToken: true }),
+        }
+      );
+      const signInData = await signInRes.json();
+      if (!signInData.idToken) return false;
+
+      // Passo 2: atualiza senha via REST com o idToken obtido
+      const updateRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken: signInData.idToken, password: newPass, returnSecureToken: true }),
+        }
+      );
+      const updateData = await updateRes.json();
+      return !!updateData.idToken;
     } catch { return false; }
-    finally { try { await secAuth.signOut(); } catch {} }
   };
 
   const doReset = async (newPassword) => {
@@ -6181,31 +6190,34 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                           if (newPassInput !== resetConfirm) { setResetMsg("As senhas não coincidem. Verifique e tente novamente."); return; }
                           setResetting(true); setResetMsg("");
                           try {
-                            // Busca email e senha atual
+                            // Busca email e senha atual do Firestore
                             const snap2 = await getDocs(query(collection(db, "users"), where("uid", "==", pUid)));
                             const uData = snap2.empty ? null : snap2.docs[0].data();
                             const targetEmail = uData?.email;
                             const currentPass2 = uData?.password;
 
+                            // Atualiza no Firebase Auth via REST API (não desloga o admin)
+                            const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
                             if (targetEmail && currentPass2) {
-                              const fbCfg3 = {
-                                apiKey:"AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-                                authDomain:"nexpcompany-9a7ba.firebaseapp.com",
-                                projectId:"nexpcompany-9a7ba",
-                                storageBucket:"nexpcompany-9a7ba.firebasestorage.app",
-                                messagingSenderId:"1043432853586",
-                                appId:"1:1043432853586:web:10d443d6757420fe01cf8b",
-                              };
-                              const sApp3 = initFirebaseApp(fbCfg3, "pfr2_" + Date.now());
-                              const sAuth3 = getAuth(sApp3);
                               try {
-                                const c3 = await signInSecondary(sAuth3, targetEmail, currentPass2);
-                                await updatePassword(c3.user, newPassInput);
-                              } catch {} finally { try { await sAuth3.signOut(); } catch {} }
+                                const signInRes = await fetch(
+                                  `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
+                                  { method:"POST", headers:{"Content-Type":"application/json"},
+                                    body: JSON.stringify({ email: targetEmail, password: currentPass2, returnSecureToken: true }) }
+                                );
+                                const signInData = await signInRes.json();
+                                if (signInData.idToken) {
+                                  await fetch(
+                                    `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
+                                    { method:"POST", headers:{"Content-Type":"application/json"},
+                                      body: JSON.stringify({ idToken: signInData.idToken, password: newPassInput, returnSecureToken: true }) }
+                                  );
+                                }
+                              } catch {}
                             }
-                            // Salva nova senha no Firestore independente do Auth
+                            // Salva nova senha no Firestore em todo caso
                             await setDoc(doc(db, "users", pUid), { password: newPassInput }, { merge: true });
-                            if (storedPass) setStoredPass(newPassInput);
+                            if (storedPass !== null) setStoredPass(newPassInput);
                             setNewPassInput(""); setResetConfirm(""); setShowReset(false); setResetStep("typing");
                             setResetMsg("✅ Senha redefinida com sucesso!");
                             setTimeout(() => setResetMsg(""), 3000);
