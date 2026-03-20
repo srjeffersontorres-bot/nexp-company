@@ -451,6 +451,122 @@ function CommSim({ compact = false }) {
 }
 
 // ── Login ──────────────────────────────────────────────────────
+// ── NexpRobot — robô animado com 12 poses ─────────────────────
+const ROBOT_POSES = [
+  { key:"idle",    label:"",           emoji:"🤖" },
+  { key:"smile",   label:"😊",         trigger:"hover" },
+  { key:"cry",     label:"😢",         trigger:"click" },
+  { key:"laugh",   label:"😂",         trigger:"click" },
+  { key:"jump",    label:"🦘",         trigger:"click" },
+  { key:"kiss",    label:"😘",         trigger:"click" },
+  { key:"guitar",  label:"🎸",         trigger:"click" },
+  { key:"trophy",  label:"🏆",         trigger:"click" },
+  { key:"soccer",  label:"⚽",         trigger:"click" },
+  { key:"cool",    label:"😎",         trigger:"hover" },
+  { key:"love",    label:"🥰",         trigger:"hover" },
+  { key:"dance",   label:"🕺",         trigger:"click" },
+];
+
+function NexpRobot({ size = 44, showFaceOnly = false }) {
+  const [pose, setPose] = useState(0);
+  const [animKey, setAnimKey] = useState(0);
+  const timerRef = useRef(null);
+
+  const triggerPose = (idx) => {
+    setPose(idx);
+    setAnimKey(k => k + 1);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setPose(0), 2200);
+  };
+
+  const handleClick = () => {
+    const clickPoses = [2,3,4,5,6,7,8,11];
+    const next = clickPoses[Math.floor(Math.random() * clickPoses.length)];
+    triggerPose(next);
+  };
+
+  const handleHover = () => {
+    if (pose !== 0) return;
+    const hoverPoses = [1,9,10];
+    triggerPose(hoverPoses[Math.floor(Math.random() * hoverPoses.length)]);
+  };
+
+  const p = ROBOT_POSES[pose];
+  const face = p.label || "🤖";
+  const isJump = p.key === "jump" || p.key === "dance";
+  const isShake = p.key === "guitar" || p.key === "soccer";
+
+  const poseAnim = isJump
+    ? "robotJump 0.4s ease infinite alternate"
+    : isShake
+    ? "robotShake 0.15s ease infinite alternate"
+    : p.key === "trophy"
+    ? "robotBounce 0.6s ease infinite alternate"
+    : "none";
+
+  if (showFaceOnly) {
+    return (
+      <div onClick={handleClick} onMouseEnter={handleHover}
+        key={animKey}
+        style={{ cursor:"pointer", fontSize: size * 0.7, lineHeight:1, display:"inline-block",
+          animation: poseAnim, userSelect:"none",
+          filter:"drop-shadow(0 2px 8px rgba(79,142,247,0.5))" }}>
+        {face}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, cursor:"pointer", userSelect:"none" }}
+      onClick={handleClick} onMouseEnter={handleHover}>
+      <style>{`
+        @keyframes robotJump { from{transform:translateY(0)} to{transform:translateY(-8px)} }
+        @keyframes robotShake { from{transform:rotate(-8deg)} to{transform:rotate(8deg)} }
+        @keyframes robotBounce { from{transform:scale(1)} to{transform:scale(1.15)} }
+        @keyframes robotIdle { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2px)} }
+      `}</style>
+      {/* Corpo SVG do robô */}
+      <div key={animKey} style={{ animation: pose === 0 ? "robotIdle 2s ease-in-out infinite" : poseAnim, display:"flex", flexDirection:"column", alignItems:"center" }}>
+        {/* Cabeça */}
+        <svg width={size} height={size * 1.1} viewBox="0 0 44 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Antena */}
+          <line x1="22" y1="2" x2="22" y2="8" stroke="#4F8EF7" strokeWidth="2" strokeLinecap="round"/>
+          <circle cx="22" cy="2" r="2.5" fill="#4F8EF7"/>
+          {/* Cabeça */}
+          <rect x="7" y="8" width="30" height="22" rx="7" fill="#1E2A45" stroke="#4F8EF7" strokeWidth="1.5"/>
+          {/* Olhos */}
+          <circle cx="17" cy="18" r="3.5" fill={pose > 0 ? "#4F8EF7" : "#4F8EF7"} opacity="0.9"/>
+          <circle cx="27" cy="18" r="3.5" fill="#4F8EF7" opacity="0.9"/>
+          <circle cx="17" cy="18" r="1.5" fill="#fff"/>
+          <circle cx="27" cy="18" r="1.5" fill="#fff"/>
+          {/* Boca dinâmica */}
+          {p.key === "cry"    && <path d="M16 26 Q22 22 28 26" stroke="#60A5FA" strokeWidth="1.8" strokeLinecap="round" fill="none"/>}
+          {p.key === "laugh"  && <path d="M15 24 Q22 30 29 24" stroke="#34D399" strokeWidth="1.8" strokeLinecap="round" fill="none"/>}
+          {p.key === "kiss"   && <circle cx="22" cy="25" r="2.5" fill="#F472B6"/>}
+          {p.key === "smile" || p.key === "trophy" || p.key === "love" || p.key === "cool"
+            ? <path d="M16 25 Q22 29 28 25" stroke="#34D399" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+            : null}
+          {(p.key === "idle" || p.key === "jump" || p.key === "guitar" || p.key === "soccer" || p.key === "dance")
+            && <path d="M16 25 Q22 27 28 25" stroke="#4F8EF7" strokeWidth="1.5" strokeLinecap="round" fill="none"/>}
+          {/* Corpo */}
+          <rect x="13" y="31" width="18" height="13" rx="5" fill="#141A2E" stroke="#4F8EF7" strokeWidth="1.2"/>
+          {/* Botão no peito */}
+          <circle cx="22" cy="37" r="2.5" fill="#4F8EF7" opacity="0.7"/>
+          {/* Braços */}
+          <rect x="4" y="32" width="8" height="5" rx="2.5" fill="#1E2A45" stroke="#4F8EF7" strokeWidth="1"/>
+          <rect x="32" y="32" width="8" height="5" rx="2.5" fill="#1E2A45" stroke="#4F8EF7" strokeWidth="1"/>
+        </svg>
+        {/* Emoji da pose */}
+        {pose > 0 && (
+          <div style={{ fontSize: size * 0.45, lineHeight:1, marginTop:2, animation:"fadeIn 0.2s ease" }}>
+            {face}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LoginPage({ onLogin }) {
   const [un, setUn] = useState("");
   const [pw, setPw] = useState("");
@@ -523,35 +639,13 @@ function LoginPage({ onLogin }) {
             backdropFilter: "blur(12px)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginBottom: 32,
-            }}
-          >
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                background: `linear-gradient(135deg,${ACCENT_THEMES["Padrão"].lg1},${ACCENT_THEMES["Padrão"].lg2})`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 22,
-                color: "#fff",
-                fontWeight: 700,
-              }}
-            >
-              N
-            </div>
-            <div>
-              <div style={{ color: C.tp, fontWeight: 700, fontSize: 16 }}>
-                Nexp Company
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8, marginBottom:28 }}>
+            <NexpRobot size={52} showFaceOnly />
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontWeight:900, fontSize:22, letterSpacing:"-0.8px", background:`linear-gradient(135deg,#4F8EF7,#7C3AED)`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>
+                Nexp Consultas
               </div>
-              <div style={{ color: C.td, fontSize: 11 }}>Sistema de Leads</div>
+              <div style={{ color: C.td, fontSize: 11, marginTop: 3 }}>Sistema de Leads</div>
             </div>
           </div>
 
@@ -726,18 +820,21 @@ function LoginPage({ onLogin }) {
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   return (
     <div style={{ flexShrink: 0 }}>
-      <div style={{ padding: "20px 16px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ color: C.tp, fontWeight: 900, fontSize: 19, letterSpacing: "-0.8px", background: `linear-gradient(135deg,${C.atxt},${C.lg2})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight: 1.1 }}>
-          Nexp Consultas
+      <div style={{ padding: "14px 14px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+          <NexpRobot size={36} />
+          <div style={{ fontWeight:900, fontSize:21, letterSpacing:"-0.8px", background:`linear-gradient(135deg,${C.atxt},${C.lg2})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1, whiteSpace:"nowrap" }}>
+            Nexp Consultas
+          </div>
         </div>
         <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
-          style={{ background: "transparent", border: "none", color: C.tm, fontSize: 14, cursor: "pointer", padding: "4px 6px", borderRadius: 6, opacity: 0.7, transition: "opacity 0.15s" }}
+          style={{ background:"transparent", border:"none", color:C.tm, fontSize:14, cursor:"pointer", padding:"4px 6px", borderRadius:6, opacity:0.7, transition:"opacity 0.15s", flexShrink:0 }}
           onMouseEnter={e => e.currentTarget.style.opacity = "1"}
           onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}>
           ◀
         </button>
       </div>
-      <div style={{ height: 1, background: C.b1, margin: "0 12px 4px" }} />
+      <div style={{ height:1, background:C.b1, margin:"0 12px 4px" }} />
     </div>
   );
 }
@@ -4191,11 +4288,20 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase())
           );
           const ALL_TABS = [
-            { id:"dashboard", label:"Leads Gerais" }, { id:"contacts", label:"Contatos" },
-            { id:"review", label:"Ver Clientes" }, { id:"cstatus", label:"Status" },
-            { id:"add", label:"Adicionar" }, { id:"import", label:"Importar" },
-            { id:"leds", label:"Leds" }, { id:"atalhos", label:"Atalhos" },
-            { id:"calendario", label:"Agenda" }, { id:"config", label:"Configurações" },
+            { id:"dashboard",    label:"Leads Gerais" },
+            { id:"contacts",     label:"Contatos" },
+            { id:"review",       label:"Ver Clientes" },
+            { id:"cstatus",      label:"Status" },
+            { id:"add",          label:"Adicionar" },
+            { id:"import",       label:"Importar" },
+            { id:"leds",         label:"Leds" },
+            { id:"atalhos",      label:"Atalhos" },
+            { id:"calendario",   label:"Agenda" },
+            { id:"notificacoes", label:"Notificações" },
+            { id:"stories",      label:"Stories" },
+            { id:"chat",         label:"Nexp Chat" },
+            { id:"premium",      label:"Premium Nexp" },
+            { id:"config",       label:"Configurações" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
 
