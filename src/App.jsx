@@ -1364,243 +1364,188 @@ const INTERNET_TABS = [
   },
 ];
 
-// ── Janela flutuante interna para Internet ─────────────────────
-function InternetFloatWindow({ tab, onMinimize, onClose }) {
-  const [url, setUrl] = useState(tab.url);
-  const [inputUrl, setInputUrl] = useState(tab.url);
-  const [loading, setLoading] = useState(true);
-  const iframeRef = useRef(null);
+function InternetPage() {
+  const [activeTab, setActiveTab] = useState("whatsapp");
+  // Guarda referência da janela aberta por cada aba
+  const winRefs = useRef({});
+  // Estado visual: "closed" | "open"
+  const [winState, setWinState] = useState({});
+  const tab = INTERNET_TABS.find(t => t.id === activeTab);
 
-  // Tenta carregar no iframe; se bloquear mostra aviso
-  const [blocked, setBlocked] = useState(false);
-
+  // Verifica a cada 800ms se a janela ainda está aberta
   useEffect(() => {
-    setBlocked(false);
-    setLoading(true);
-    setUrl(tab.url);
-    setInputUrl(tab.url);
-  }, [tab.id]); // eslint-disable-line
+    const interval = setInterval(() => {
+      const next = {};
+      INTERNET_TABS.forEach(t => {
+        const w = winRefs.current[t.id];
+        next[t.id] = w && !w.closed ? "open" : "closed";
+      });
+      setWinState(next);
+    }, 800);
+    return () => clearInterval(interval);
+  }, []);
 
-  const navigate = () => {
-    let u = inputUrl.trim();
-    if (!u.startsWith("http")) u = "https://" + u;
-    setUrl(u);
-    setBlocked(false);
-    setLoading(true);
+  const openTab = (t) => {
+    setActiveTab(t.id);
+    const existing = winRefs.current[t.id];
+    if (existing && !existing.closed) {
+      existing.focus();
+      return;
+    }
+    // Calcula posição e tamanho: ocupa a maior parte da tela deixando a sidebar visível
+    const sw = window.screen.width;
+    const sh = window.screen.height;
+    const w  = Math.round(sw * 0.72);
+    const h  = Math.round(sh * 0.92);
+    const left = Math.round((sw - w) / 2);
+    const top  = Math.round((sh - h) / 2);
+    const win = window.open(
+      t.url,
+      `nexp_${t.id}`,
+      `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes`
+    );
+    winRefs.current[t.id] = win;
+    setWinState(s => ({ ...s, [t.id]: "open" }));
+  };
+
+  const closeTab = (t) => {
+    const w = winRefs.current[t.id];
+    if (w && !w.closed) w.close();
+    winRefs.current[t.id] = null;
+    setWinState(s => ({ ...s, [t.id]: "closed" }));
+  };
+
+  const focusTab = (t) => {
+    const w = winRefs.current[t.id];
+    if (w && !w.closed) w.focus();
   };
 
   return (
-    <div style={{
-      position:"fixed", top:0, left:0, right:0, bottom:0,
-      zIndex:800, display:"flex", flexDirection:"column",
-      background:C.bg, animation:"fadeIn 0.2s ease",
-    }}>
-      {/* Barra superior */}
-      <div style={{
-        display:"flex", alignItems:"center", gap:8,
-        padding:"8px 12px", background:C.sb,
-        borderBottom:`1px solid ${C.b1}`, flexShrink:0,
-      }}>
-        {/* Ícone + nome */}
-        <div style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
-          <div style={{ width:28, height:28, borderRadius:8, background:tab.color+"22", color:tab.color, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            {tab.icon}
-          </div>
-          <span style={{ color:tab.color, fontSize:13, fontWeight:700 }}>{tab.label}</span>
-        </div>
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden", background:C.bg }}>
 
-        {/* Barra de URL */}
-        <div style={{ flex:1, display:"flex", gap:6, alignItems:"center" }}>
-          <input
-            value={inputUrl}
-            onChange={e => setInputUrl(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && navigate()}
-            style={{ ...S.input, flex:1, padding:"6px 10px", fontSize:12, borderRadius:8 }}
-          />
-          <button onClick={navigate}
-            style={{ background:tab.color, color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-            Ir
-          </button>
-        </div>
-
-        {/* Botões */}
-        <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-          <button onClick={() => window.open(url,"_blank")}
-            title="Abrir no navegador"
-            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer" }}>
-            ↗
-          </button>
-          <button onClick={onMinimize}
-            title="Minimizar"
-            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer" }}>
-            ─
-          </button>
-          <button onClick={onClose}
-            title="Fechar"
-            style={{ background:"#2D1515", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer", fontWeight:700 }}>
-            ✕
-          </button>
-        </div>
+      {/* Tab bar */}
+      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 16px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0, flexWrap:"wrap" }}>
+        <span style={{ color:C.atxt, fontSize:13, fontWeight:800, marginRight:4 }}>🌐 Internet</span>
+        {INTERNET_TABS.map(t => {
+          const active = t.id === activeTab;
+          const isOpen = winState[t.id] === "open";
+          return (
+            <button key={t.id}
+              onClick={() => active && isOpen ? focusTab(t) : openTab(t)}
+              style={{
+                display:"flex", alignItems:"center", gap:7,
+                padding:"7px 16px", borderRadius:9, cursor:"pointer",
+                background: active ? t.color + "22" : C.deep,
+                color: active ? t.color : C.tm,
+                border: active ? `1.5px solid ${t.color}55` : `1px solid ${C.b2}`,
+                fontSize:12.5, fontWeight: active ? 700 : 400,
+                transition:"all 0.15s",
+                boxShadow: active ? `0 2px 10px ${t.color}33` : "none",
+                position:"relative",
+              }}
+              onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background=C.abg; e.currentTarget.style.color=C.atxt; }}}
+              onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background=C.deep; e.currentTarget.style.color=C.tm; }}}
+            >
+              <span style={{ color: active ? t.color : "inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
+              {t.label}
+              {/* Indicador verde se aberta */}
+              {isOpen && (
+                <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", marginLeft:2, boxShadow:"0 0 6px #16A34A88" }} />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Conteúdo */}
-      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
-        {loading && !blocked && (
-          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, zIndex:2, flexDirection:"column", gap:12 }}>
-            <div style={{ width:36, height:36, border:`3px solid ${tab.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
-            <span style={{ color:C.tm, fontSize:13 }}>Carregando {tab.label}...</span>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        )}
+      {/* Área principal — cards de cada aba */}
+      <div style={{ flex:1, overflowY:"auto", padding:"32px 40px", display:"flex", flexDirection:"column", gap:20 }}>
 
-        {!blocked ? (
-          <iframe
-            ref={iframeRef}
-            src={url}
-            title={tab.label}
-            onLoad={() => setLoading(false)}
-            onError={() => { setBlocked(true); setLoading(false); }}
-            style={{ width:"100%", height:"100%", border:"none", display:"block" }}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
-          />
-        ) : (
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:16, padding:40 }}>
-            <div style={{ fontSize:48 }}>🔒</div>
-            <div style={{ color:C.tp, fontSize:18, fontWeight:700 }}>{tab.label} bloqueou a incorporação</div>
-            <div style={{ color:C.tm, fontSize:13, textAlign:"center", maxWidth:420, lineHeight:1.7 }}>
-              Este site não permite ser aberto dentro de outros sistemas por segurança.<br/>
-              Clique abaixo para abrir em uma nova aba do navegador.
+        {/* Card da aba ativa */}
+        {(() => {
+          const t = tab;
+          if (!t) return null;
+          const isOpen = winState[t.id] === "open";
+          return (
+            <div style={{ background:C.card, borderRadius:16, border:`1px solid ${t.color}33`, padding:"32px 36px", maxWidth:560, boxShadow:`0 4px 32px ${t.color}11` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
+                <div style={{ width:56, height:56, borderRadius:14, background:t.color+"22", border:`1.5px solid ${t.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:t.color }}>
+                  {t.icon}
+                </div>
+                <div>
+                  <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>{t.label}</div>
+                  <div style={{ color:C.td, fontSize:12, marginTop:3 }}>{t.url}</div>
+                </div>
+                {isOpen && (
+                  <span style={{ marginLeft:"auto", background:"#0A2918", color:"#34D399", border:"1px solid #16A34A44", borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:5 }}>
+                    <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
+                    Aberta
+                  </span>
+                )}
+              </div>
+
+              <div style={{ color:C.ts, fontSize:13, lineHeight:1.7, marginBottom:24 }}>
+                {t.id === "whatsapp" && "Abre o WhatsApp Web em uma janela separada. Escaneie o QR code para conectar ou continue onde parou."}
+                {t.id === "instagram" && "Abre o Instagram em uma janela separada. Faça login e acesse seu feed normalmente."}
+                {t.id === "chatgpt" && "Abre o ChatGPT em uma janela separada. Use a IA da OpenAI para auxílio nas suas tarefas."}
+                {t.id === "claude" && "Abre o Claude (Anthropic) em uma janela separada. Converse com a IA para ajuda em qualquer tarefa."}
+              </div>
+
+              <div style={{ display:"flex", gap:10 }}>
+                {!isOpen ? (
+                  <button onClick={() => openTab(t)}
+                    style={{ ...S.btn(t.color, "#fff"), padding:"11px 28px", fontSize:14, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:8, boxShadow:`0 4px 18px ${t.color}44` }}>
+                    {t.icon} Abrir {t.label}
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => focusTab(t)}
+                      style={{ ...S.btn(t.color, "#fff"), padding:"11px 22px", fontSize:13, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:7 }}>
+                      🔍 Trazer para frente
+                    </button>
+                    <button onClick={() => closeTab(t)}
+                      style={{ ...S.btn("transparent", "#F87171"), padding:"11px 18px", fontSize:13, fontWeight:600, borderRadius:10, border:"1px solid #EF444433" }}>
+                      ✕ Fechar
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-            <button onClick={() => window.open(tab.url, "_blank")}
-              style={{ background:tab.color, color:"#fff", border:"none", borderRadius:10, padding:"12px 28px", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:8, boxShadow:`0 4px 18px ${tab.color}44` }}>
-              {tab.icon} Abrir {tab.label} no navegador
-            </button>
+          );
+        })()}
+
+        {/* Grid de atalhos rápidos para todas as abas */}
+        <div>
+          <div style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>Todas as ferramentas</div>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+            {INTERNET_TABS.map(t => {
+              const isOpen = winState[t.id] === "open";
+              return (
+                <button key={t.id}
+                  onClick={() => { setActiveTab(t.id); isOpen ? focusTab(t) : openTab(t); }}
+                  style={{ display:"flex", alignItems:"center", gap:9, padding:"10px 18px", borderRadius:10, cursor:"pointer",
+                    background: isOpen ? t.color+"18" : C.deep,
+                    color: isOpen ? t.color : C.tm,
+                    border: isOpen ? `1px solid ${t.color}44` : `1px solid ${C.b2}`,
+                    fontSize:12.5, fontWeight: isOpen ? 700 : 400, transition:"all 0.15s" }}>
+                  <span style={{ color:"inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
+                  {t.label}
+                  {isOpen && <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block" }} />}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
+
+        {/* Aviso explicativo */}
+        <div style={{ background:C.deep, borderRadius:10, padding:"14px 18px", border:`1px solid ${C.b1}`, maxWidth:560 }}>
+          <div style={{ color:C.td, fontSize:11.5, lineHeight:1.7 }}>
+            ℹ️ <strong style={{ color:C.tm }}>Por que abre em janela separada?</strong><br/>
+            WhatsApp, Instagram, ChatGPT e Claude bloqueiam incorporação direta por segurança (<code style={{ background:C.card, padding:"1px 5px", borderRadius:4, fontSize:10.5 }}>X-Frame-Options</code>).
+            A janela aberta fica vinculada a esta aba — você pode fechá-la por aqui quando quiser.
+          </div>
+        </div>
       </div>
     </div>
-  );
-}
-
-function InternetPage() {
-  // Estado por aba: null | "open" | "minimized"
-  const [windows, setWindows] = useState({});
-  const [activeTab, setActiveTab] = useState("whatsapp");
-
-  const openWindow = (id) => {
-    setWindows(w => ({ ...w, [id]: "open" }));
-    setActiveTab(id);
-  };
-  const minimizeWindow = (id) => setWindows(w => ({ ...w, [id]: "minimized" }));
-  const restoreWindow  = (id) => { setWindows(w => ({ ...w, [id]: "open" })); setActiveTab(id); };
-  const closeWindow    = (id) => setWindows(w => ({ ...w, [id]: null }));
-
-  const openCount = INTERNET_TABS.filter(t => windows[t.id] === "open").length;
-  const activeOpenTab = INTERNET_TABS.find(t => t.id === activeTab && windows[t.id] === "open");
-
-  // FABs das janelas minimizadas — posicionadas em linha acima do botão de chat
-  const minimized = INTERNET_TABS.filter(t => windows[t.id] === "minimized");
-
-  return (
-    <>
-      {/* Janela aberta por cima de tudo */}
-      {activeOpenTab && (
-        <InternetFloatWindow
-          key={activeOpenTab.id}
-          tab={activeOpenTab}
-          onMinimize={() => minimizeWindow(activeOpenTab.id)}
-          onClose={() => closeWindow(activeOpenTab.id)}
-        />
-      )}
-
-      {/* FABs das janelas minimizadas */}
-      {minimized.map((t, i) => (
-        <button key={t.id}
-          onClick={() => restoreWindow(t.id)}
-          title={`Restaurar ${t.label}`}
-          style={{
-            position:"fixed", right:22, bottom: 90 + i * 62, zIndex:600,
-            width:50, height:50, borderRadius:"50%",
-            background:`linear-gradient(135deg,${t.color},${t.color}cc)`,
-            border:"none", cursor:"pointer",
-            boxShadow:`0 4px 18px ${t.color}66`,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            color:"#fff", transition:"transform 0.18s, box-shadow 0.18s",
-            animation:"fadeIn 0.3s ease",
-          }}
-          onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.12)"; }}
-          onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)"; }}
-        >
-          <span style={{ display:"flex", alignItems:"center", justifyContent:"center" }}>{t.icon}</span>
-          {/* Botão fechar no FAB */}
-          <span
-            onClick={e=>{ e.stopPropagation(); closeWindow(t.id); }}
-            title="Fechar"
-            style={{ position:"absolute", top:-4, right:-4, width:16, height:16, borderRadius:"50%", background:"#EF4444", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", border:"2px solid #080A10" }}>
-            ✕
-          </span>
-        </button>
-      ))}
-
-      {/* Página Internet */}
-      <div style={{ padding:"30px 36px", maxWidth:860 }}>
-        <div style={{ marginBottom:24 }}>
-          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>🌐 Internet</h1>
-          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>
-            Abra sites dentro do sistema. {openCount > 0 ? `${openCount} janela${openCount>1?"s":""} aberta${openCount>1?"s":""}` : "Nenhuma janela aberta"}
-          </p>
-        </div>
-
-        {/* Grid de ferramentas */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14 }}>
-          {INTERNET_TABS.map(t => {
-            const state = windows[t.id];
-            return (
-              <div key={t.id} style={{ background:C.card, border:`1px solid ${state ? t.color+"44" : C.b1}`, borderRadius:14, padding:"22px 20px", display:"flex", flexDirection:"column", gap:12, transition:"all 0.15s", boxShadow: state ? `0 4px 20px ${t.color}22` : "none" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:40, height:40, borderRadius:10, background:t.color+"22", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>
-                    {t.icon}
-                  </div>
-                  <div>
-                    <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{t.label}</div>
-                    {state === "open" && <div style={{ color:"#34D399", fontSize:10, fontWeight:600 }}>● Aberto</div>}
-                    {state === "minimized" && <div style={{ color:"#FBBF24", fontSize:10, fontWeight:600 }}>● Minimizado</div>}
-                    {!state && <div style={{ color:C.td, fontSize:10 }}>Fechado</div>}
-                  </div>
-                </div>
-
-                <div style={{ display:"flex", gap:7 }}>
-                  {!state && (
-                    <button onClick={() => openWindow(t.id)}
-                      style={{ flex:1, background:t.color, color:"#fff", border:"none", borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                      Abrir
-                    </button>
-                  )}
-                  {state === "minimized" && (
-                    <button onClick={() => restoreWindow(t.id)}
-                      style={{ flex:1, background:t.color+"22", color:t.color, border:`1px solid ${t.color}44`, borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                      Restaurar
-                    </button>
-                  )}
-                  {state === "open" && (
-                    <button onClick={() => minimizeWindow(t.id)}
-                      style={{ flex:1, background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 0", fontSize:12, cursor:"pointer" }}>
-                      Minimizar
-                    </button>
-                  )}
-                  {state && (
-                    <button onClick={() => closeWindow(t.id)}
-                      style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"8px 10px", fontSize:12, cursor:"pointer" }}>
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </>
   );
 }
 
