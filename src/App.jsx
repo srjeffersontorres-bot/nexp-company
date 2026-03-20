@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from "firebase/auth";
+import { initializeApp as initFirebaseApp } from "firebase/app";
+import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword, getAuth, signInWithEmailAndPassword as signInSecondary } from "firebase/auth";
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import {
   auth,
@@ -5412,68 +5413,74 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     } catch (e) { setErr("Erro ao salvar: " + e.message); }
   };
 
-  // ── Reset password — efetivo via instância secundária Firebase ──
-  const doReset = async () => {
-    if (!resetPw.trim()) { setErr("Nova senha não pode estar vazia."); return; }
-    if (resetPw.length < 6) { setErr("A senha deve ter pelo menos 6 caracteres."); return; }
-    try {
-      setErr("");
-      // 1. Busca a senha atual do usuário no Firestore para fazer login na instância secundária
-      const targetEmail = editForm.email;
-      const snap = await getDocs(query(collection(db, "users"), where("email", "==", targetEmail)));
-      let currentPass = null;
-      if (!snap.empty) currentPass = snap.docs[0].data().password || null;
-
-      if (!currentPass) {
-        // Sem senha salva — tenta criar novo acesso (recria o Auth user)
-        try {
-          const { initializeApp } = await import("firebase/app");
-          const { getAuth, signInWithEmailAndPassword: signIn, updatePassword: updPw } = await import("firebase/auth");
-          const { default: firebaseConfigObj } = await import("./firebase");
-          // Fallback: salva a nova senha no Firestore mesmo assim
-          await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
-          setResetPw(""); flash("Senha salva! O usuário precisa fazer logout e login para usar.");
-          return;
-        } catch {
-          await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
-          setResetPw(""); flash("Senha salva! Oriente o usuário a usar a nova senha.");
-          return;
-        }
-      }
-
-      // 2. Instância secundária para não deslogar o admin
-      const { initializeApp, getApps } = await import("firebase/app");
-      const { getAuth, signInWithEmailAndPassword: signIn, updatePassword: updPw } = await import("firebase/auth");
-      const firebaseConfig = {
-        apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-        authDomain: "nexpcompany-9a7ba.firebaseapp.com",
-        projectId: "nexpcompany-9a7ba",
-        storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
-        messagingSenderId: "1043432853586",
-        appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
-      };
-      const secondAppName = "reset_" + Date.now();
-      const secondApp = initializeApp(firebaseConfig, secondAppName);
-      const secondAuth = getAuth(secondApp);
-
-      try {
-        const cred = await signIn(secondAuth, targetEmail, currentPass);
-        await updPw(cred.user, resetPw);
-        // 3. Salva a nova senha no Firestore para futura consulta
-        await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
-        setResetPw("");
-        flash("✅ Senha redefinida com sucesso!");
-      } catch (e2) {
-        // Se login falhou (senha antiga errada), salva só no Firestore
-        await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
-        setResetPw("");
-        flash("Senha salva no sistema. O usuário deve fazer logout e tentar com a nova senha.");
-      } finally {
-        try { await secondAuth.signOut(); } catch {}
-      }
-    } catch (e) { setErr("Erro: " + e.message); }
+  // ── Reset password — instância secundária Firebase (sem dynamic import) ──
+  const FB_CONFIG = {
+    apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+    authDomain: "nexpcompany-9a7ba.firebaseapp.com",
+    projectId: "nexpcompany-9a7ba",
+    storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
+    messagingSenderId: "1043432853586",
+    appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
   };
 
+  const changeUserPassword = async (targetEmail, currentPass, newPass) => {
+    // Usa instância secundária para não deslogar o admin
+    const appName = "pwreset_" + Date.now();
+    const secondApp = initFirebaseApp(FB_CONFIG, appName);
+    const secondAuth = getAuth(secondApp);
+    try {
+      const cred = await signInSecondary(secondAuth, targetEmail, currentPass);
+      await updatePassword(cred.user, newPass);
+      return { ok: true };
+    } catch(e) {
+      return { ok: false, error: e.message };
+    } finally {
+      try { await secondAuth.signOut(); } catch {}
+    }
+  };
+
+  // ── Helpers: muda senha via instância secundária ─────────────
+  const FB_CFG = {
+    apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+    authDomain: "nexpcompany-9a7ba.firebaseapp.com",
+    projectId: "nexpcompany-9a7ba",
+    storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
+    messagingSenderId: "1043432853586",
+    appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
+  };
+  const changeUserPassword = async (email, oldPass, newPass) => {
+    const appName = "pwreset_" + Date.now();
+    const sec = initFirebaseApp(FB_CFG, appName);
+    const secAuth = getAuth(sec);
+    try {
+      const c = await signInSecondary(secAuth, email, oldPass);
+      await updatePassword(c.user, newPass);
+      return true;
+    } catch { return false; }
+    finally { try { await secAuth.signOut(); } catch {} }
+  };
+
+  const doReset = async () => {
+    if (!resetPw.trim() || resetPw.length < 6) {
+      setErr("A senha deve ter pelo menos 6 caracteres."); return;
+    }
+    setErr("");
+    try {
+      const email = editForm.email;
+      const uid2  = editForm.uid || editForm.id;
+      // Busca senha atual salva no Firestore
+      const snap = await getDocs(query(collection(db, "users"), where("email", "==", email)));
+      const savedPass = snap.empty ? null : (snap.docs[0].data().password || null);
+      // Tenta mudar no Firebase Auth
+      const authOk = savedPass ? await changeUserPassword(email, savedPass, resetPw) : false;
+      // Sempre salva no Firestore
+      await saveUserProfile(uid2, { password: resetPw });
+      setResetPw("");
+      flash(authOk
+        ? "✅ Senha alterada com sucesso!"
+        : "💾 Senha salva. Peça ao usuário para sair e entrar com a nova senha.");
+    } catch (e) { setErr("Erro: " + e.message); }
+  };
   // ── Toggle active/inactive
   const toggleActive = async (u) => {
     const updated = { ...u, active: u.active === false ? true : false };
@@ -6004,9 +6011,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                             const currentPass2 = uData?.password;
 
                             if (targetEmail && currentPass2) {
-                              const { initializeApp } = await import("firebase/app");
-                              const { getAuth, signInWithEmailAndPassword: signIn2, updatePassword: updPw2 } = await import("firebase/auth");
-                              const fbCfg = {
+                              const fbCfg3 = {
                                 apiKey:"AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
                                 authDomain:"nexpcompany-9a7ba.firebaseapp.com",
                                 projectId:"nexpcompany-9a7ba",
@@ -6014,11 +6019,12 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                                 messagingSenderId:"1043432853586",
                                 appId:"1:1043432853586:web:10d443d6757420fe01cf8b",
                               };
-                              const sApp = initializeApp(fbCfg, "pfReset_" + Date.now());
-                              const sAuth = getAuth(sApp);
+                              const sApp3 = initFirebaseApp(fbCfg3, "pfr2_" + Date.now());
+                              const sAuth3 = getAuth(sApp3);
                               try {
-                                const cred2 = await signIn2(sAuth, targetEmail, currentPass2);
-                                await updPw2(cred2.user, newPassInput);
+                                const c3 = await signInSecondary(sAuth3, targetEmail, currentPass2);
+                                await updatePassword(c3.user, newPassInput);
+                              } catch {} finally { try { await sAuth3.signOut(); } catch {} }
                               } catch {} finally { try { await sAuth.signOut(); } catch {} }
                             }
                             // Salva nova senha no Firestore independente do Auth
@@ -6368,39 +6374,60 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       </button>
                     </div>
 
-                    {/* Reset password */}
+                    {/* Senha atual + redefinir */}
                     {(currentUser.role === "mestre" ||
                       (currentUser.role === "master" &&
                         u.role === "indicado" &&
                         u.createdBy === currentUser.id)) &&
-                      !isSelf && (
-                        <div
-                          style={{
-                            borderTop: `1px solid ${C.b1}`,
-                            paddingTop: 16,
-                          }}
-                        >
-                          <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>
-                            🔑 Redefinir senha
+                      !isSelf && (() => {
+                        const [showCurr, setShowCurr] = useState(false);
+                        const savedPw = editForm.password || u.password || null;
+                        return (
+                          <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
+                            {/* Senha atual */}
+                            <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:12, border:`1px solid ${C.b1}` }}>
+                              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                                <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha atual</span>
+                                <button onClick={()=>setShowCurr(p=>!p)}
+                                  style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
+                                  {showCurr ? "🙈 Ocultar" : "👁 Mostrar"}
+                                </button>
+                              </div>
+                              {showCurr ? (
+                                <div style={{ color:"#34D399", fontSize:14, fontWeight:700, fontFamily:"monospace", letterSpacing:2, background:C.deep, borderRadius:7, padding:"8px 12px" }}>
+                                  {savedPw || <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0 }}>Não cadastrada ainda — defina abaixo</span>}
+                                </div>
+                              ) : (
+                                <div style={{ color:C.tm, fontSize:13, fontFamily:"monospace" }}>••••••••</div>
+                              )}
+                            </div>
+
+                            {/* Nova senha */}
+                            <div>
+                              <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>
+                                🔄 Redefinir senha
+                              </div>
+                              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                <input
+                                  value={resetPw}
+                                  onChange={e=>setResetPw(e.target.value)}
+                                  onKeyDown={e=>e.key==="Enter"&&doReset()}
+                                  type="text"
+                                  placeholder="Digite a nova senha (mín. 6 caracteres)"
+                                  style={{ ...S.input, background:C.card, padding:"9px 12px", fontSize:12.5, flex:1, fontFamily:"monospace" }}
+                                />
+                                <button onClick={doReset}
+                                  style={{ ...S.btn("#F59E0B","#000"), padding:"9px 20px", fontSize:13, flexShrink:0, fontWeight:700, borderRadius:9 }}>
+                                  ✅ Salvar
+                                </button>
+                              </div>
+                              <div style={{ color:C.td, fontSize:10.5, marginTop:6 }}>
+                                A senha será alterada no Firebase e salva no sistema para consulta futura.
+                              </div>
+                            </div>
                           </div>
-                          <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>
-                            A senha será alterada no Firebase Auth e salva no sistema para consulta futura.
-                          </div>
-                          <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                            <input
-                              value={resetPw}
-                              onChange={(e) => setResetPw(e.target.value)}
-                              type="text"
-                              placeholder="Nova senha (mín. 6 caracteres)"
-                              style={{ ...S.input, background:C.card, padding:"8px 11px", fontSize:12.5, flex:1, fontFamily:"monospace" }}
-                            />
-                            <button onClick={doReset}
-                              style={{ ...S.btn("#F59E0B","#000"), padding:"8px 18px", fontSize:12, flexShrink:0, fontWeight:700 }}>
-                              ✅ Redefinir
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                   </div>
                 )}
               </div>
@@ -10004,9 +10031,8 @@ function CalendarPage({ currentUser }) {
 
   const confirmDelete = async () => {
     try {
-      const { EmailAuthProvider, reauthenticateWithCredential: reauth } = await import("firebase/auth");
       const cred = EmailAuthProvider.credential(currentUser.email, deletePass);
-      await reauth(auth.currentUser, cred);
+      await reauthenticateWithCredential(auth.currentUser, cred);
       await deleteCalendarNote(deleteConfirm);
       setDeleteConfirm(null); setDeletePass(""); setDeleteErr("");
     } catch { setDeleteErr("Senha incorreta"); }
