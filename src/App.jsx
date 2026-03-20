@@ -7408,7 +7408,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const [groupNewTheme, setGroupNewTheme] = useState(null);
   const groupPhotoRef = useRef(null);
   // eslint-disable-next-line no-unused-vars
-  const [editingGroup, setEditingGroup] = useState(false);
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupPhoto, setEditGroupPhoto] = useState(null);
   const editGroupPhotoRef = useRef(null);
@@ -10434,31 +10433,80 @@ function V8DigitalTab({ currentUser }) {
   // ── FGTS tab ───────────────────────────────────────────────
   const FGTSTab = () => {
     const [subAba, setSubAba] = useState("simular");
-    const [cpf, setCpf]     = useState("");
-    const [simRes, setSimRes] = useState(null);
+    const [cpf, setCpf]       = useState("");
+    const [seguro, setSeguro]  = useState(false);
+    const [simRes, setSimRes]  = useState(null);   // { saldo, tableSims }
     const [loading, setLoading] = useState(false);
-    const [err, setErr] = useState("");
+    const [err, setErr]         = useState("");
     // Proposta
-    const [propForm, setPropForm] = useState({ cpf:"", tableId:"", bankId:"", conta:"", agencia:"", tipoConta:"corrente" });
-    const [propRes, setPropRes]   = useState(null);
+    const [propForm, setPropForm] = useState({
+      cpf:"", tableId:"", bankId:"", conta:"", agencia:"",
+      tipoConta:"corrente", seguro:false,
+    });
+    const [propRes, setPropRes] = useState(null);
     // Operações
-    const [ops, setOps] = useState(null);
+    const [ops, setOps]           = useState(null);
     const [opsLoading, setOpsLoading] = useState(false);
 
     const fmtCpf = v => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
     const fmtBr  = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
 
+    // Tabelas disponíveis V8
+    const TABELAS = [
+      { id:"cometa",    label:"Cometa"     },
+      { id:"turbo",     label:"Turbo"      },
+      { id:"grid",      label:"Grid"       },
+      { id:"normal",    label:"Normal"     },
+      { id:"pitstop",   label:"Pitstop"    },
+      { id:"acelera20", label:"Acelera 2.0" },
+    ];
+
+    // ── Simular: consulta saldo + simula em todas as tabelas ────
     const simular = async () => {
       const c = cpf.replace(/\D/g,"");
       if (c.length !== 11) { setErr("CPF inválido."); return; }
       setLoading(true); setErr(""); setSimRes(null);
       try {
-        // 1. Consultar saldo
-        const saldo = await apiFetch(`/fgts/saldo?cpf=${c}`);
-        // 2. Simular
-        const sim   = await apiFetch(`/fgts/simular?cpf=${c}`);
-        setSimRes({ saldo, sim });
-      } catch(e) { setErr(e.message); }
+        // 1. Consultar saldo — endpoint real V8
+        const saldo = await apiFetch(\`/saque-aniversario/cliente/saldo?cpf=\${c}\`);
+        // 2. Simular em todas as tabelas paralelamente
+        const tableSims = await Promise.all(
+          TABELAS.map(async (tab) => {
+            try {
+              const sim = await apiFetch("/saque-aniversario/simulacao", "POST", {
+                cpf: c,
+                tabelaId: tab.id,
+                seguro,
+              });
+              return { ...tab, sim, ok: true };
+            } catch(e) {
+              return { ...tab, err: e.message, ok: false };
+            }
+          })
+        );
+        setSimRes({ saldo, tableSims });
+      } catch(e) {
+        // Se saldo falhar, tenta só simular
+        if (e.message.includes("saldo")) {
+          try {
+            const tableSims = await Promise.all(
+              TABELAS.map(async (tab) => {
+                try {
+                  const sim = await apiFetch("/saque-aniversario/simulacao", "POST", {
+                    cpf: c, tabelaId: tab.id, seguro,
+                  });
+                  return { ...tab, sim, ok: true };
+                } catch(e2) {
+                  return { ...tab, err: e2.message, ok: false };
+                }
+              })
+            );
+            setSimRes({ saldo: null, tableSims });
+          } catch(e2) { setErr(e2.message); }
+        } else {
+          setErr(e.message);
+        }
+      }
       setLoading(false);
     };
 
@@ -10467,7 +10515,15 @@ function V8DigitalTab({ currentUser }) {
       if (c.length !== 11) { setErr("CPF inválido."); return; }
       setLoading(true); setErr(""); setPropRes(null);
       try {
-        const res = await apiFetch("/fgts/proposta", "POST", { cpf:c, tableId:propForm.tableId, bankId:propForm.bankId, conta:propForm.conta, agencia:propForm.agencia, tipoConta:propForm.tipoConta });
+        const res = await apiFetch("/saque-aniversario/proposta", "POST", {
+          cpf: c,
+          tabelaId: propForm.tableId,
+          bankId: propForm.bankId,
+          conta: propForm.conta,
+          agencia: propForm.agencia,
+          tipoConta: propForm.tipoConta,
+          seguro: propForm.seguro,
+        });
         setPropRes(res);
       } catch(e) { setErr(e.message); }
       setLoading(false);
@@ -10475,59 +10531,167 @@ function V8DigitalTab({ currentUser }) {
 
     const listarOps = async () => {
       setOpsLoading(true); setErr("");
-      try { const res = await apiFetch("/fgts/operacoes"); setOps(res); }
+      try { const res = await apiFetch("/saque-aniversario/operacoes"); setOps(res); }
       catch(e) { setErr(e.message); }
       setOpsLoading(false);
     };
 
-    const statusColor = s => ({ APROVADO:"#34D399", PENDENTE:"#FBBF24", CANCELADO:"#F87171", AGUARDANDO:"#60A5FA" }[s?.toUpperCase()] || C.tm);
+    const statusColor = s => ({
+      APROVADO:"#34D399", APROVADA:"#34D399",
+      PENDENTE:"#FBBF24", AGUARDANDO:"#60A5FA",
+      CANCELADO:"#F87171", CANCELADA:"#F87171",
+      ERRO:"#F87171",
+    }[s?.toUpperCase()] || C.tm);
+
+    // Extrai valor do cliente da resposta (pode vir em campos variados)
+    const extractValor = (sim) => {
+      if (!sim) return null;
+      return sim.valorLiquido ?? sim.valorCliente ?? sim.valorFinanciado ?? sim.valor ?? null;
+    };
+    const extractParcelas = (sim) => {
+      if (!sim) return null;
+      return sim.quantidadeParcelas ?? sim.parcelas ?? sim.prazo ?? null;
+    };
+    const extractTaxa = (sim) => {
+      if (!sim) return null;
+      const t = sim.taxaMensal ?? sim.taxa ?? sim.taxaJuros ?? null;
+      return t !== null ? (typeof t === "number" ? t.toFixed(2) + "%" : String(t)) : null;
+    };
+    const extractParcela = (sim) => {
+      if (!sim) return null;
+      return sim.valorParcela ?? sim.valorMensalidade ?? null;
+    };
 
     return (
       <div>
-        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${C.b1}`, paddingBottom:"-1px" }}>
+        {/* Sub-tabs */}
+        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${C.b1}` }}>
           {[{v:"simular",l:"🔍 Simular FGTS"},{v:"proposta",l:"📄 Digitar Proposta"},{v:"operacoes",l:"📋 Acompanhamento"}].map(t=>(
             <button key={t.v} onClick={()=>setSubAba(t.v)}
-              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"8px 16px", fontSize:12.5, fontWeight:subAba===t.v?700:400, color:subAba===t.v?C.atxt:C.tm, borderBottom:subAba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"8px 16px", fontSize:12.5,
+                fontWeight:subAba===t.v?700:400, color:subAba===t.v?C.atxt:C.tm,
+                borderBottom:subAba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
               {t.l}
             </button>
           ))}
         </div>
 
-        {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {err}</div>}
+        {err && (
+          <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>
+            ⚠ {err}
+          </div>
+        )}
 
-        {/* SIMULAR */}
+        {/* ── SIMULAR ── */}
         {subAba === "simular" && (
           <div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Consulte o saldo FGTS e simule os valores disponíveis para antecipação.</div>
-            <div style={{ display:"flex", gap:10, alignItems:"flex-end", marginBottom:20 }}>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>
+              Consulte o saldo FGTS e simule os valores em todas as tabelas disponíveis.
+            </div>
+
+            {/* Inputs */}
+            <div style={{ display:"flex", gap:12, alignItems:"flex-end", flexWrap:"wrap", marginBottom:16 }}>
               <div style={{ flex:"0 0 220px" }}>
                 <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
-                <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&simular()} />
+                <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))}
+                  placeholder="000.000.000-00" style={{ ...S.input }}
+                  onKeyDown={e=>e.key==="Enter"&&simular()} />
               </div>
+
+              {/* Seguro */}
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                <label style={{ color:C.tm, fontSize:11 }}>Seguro</label>
+                <div style={{ display:"flex", gap:6 }}>
+                  {[{v:false,l:"Não"},{v:true,l:"Sim"}].map(opt=>(
+                    <button key={String(opt.v)} onClick={()=>setSeguro(opt.v)}
+                      style={{ background:seguro===opt.v?C.abg:C.deep, color:seguro===opt.v?C.atxt:C.tm,
+                        border:seguro===opt.v?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`,
+                        borderRadius:8, padding:"9px 18px", fontSize:12.5, cursor:"pointer", fontWeight:seguro===opt.v?700:400 }}>
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <button onClick={simular} disabled={loading||cpf.replace(/\D/g,"").length!==11}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 22px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading||cpf.replace(/\D/g,"").length!==11?0.5:1 }}>
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none",
+                  borderRadius:9, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer",
+                  opacity:loading||cpf.replace(/\D/g,"").length!==11?0.5:1, height:40 }}>
                 {loading?"⏳ Consultando...":"Simular →"}
               </button>
             </div>
+
+            {/* Resultado */}
             {simRes && (
-              <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+
+                {/* Saldo */}
                 {simRes.saldo && (
                   <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"16px 20px" }}>
-                    <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>💰 Saldo FGTS</div>
+                    <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:12 }}>💰 Saldo FGTS</div>
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:10 }}>
-                      {Object.entries(simRes.saldo).filter(([,v])=>v!==null&&v!=="").map(([k,v])=>(
+                      {Object.entries(simRes.saldo).filter(([,v])=>v!==null&&v!==""&&typeof v!=="object").map(([k,v])=>(
                         <div key={k} style={{ background:C.deep, borderRadius:8, padding:"9px 12px" }}>
                           <div style={{ color:C.td, fontSize:9.5, textTransform:"uppercase", marginBottom:3 }}>{k.replace(/_/g," ")}</div>
-                          <div style={{ color:C.tp, fontSize:12.5, fontWeight:600 }}>{typeof v==="number"&&k.toLowerCase().includes("valor")?fmtBr(v):String(v)}</div>
+                          <div style={{ color:C.tp, fontSize:12.5, fontWeight:600 }}>
+                            {typeof v==="number"&&(k.toLowerCase().includes("valor")||k.toLowerCase().includes("saldo"))?fmtBr(v):String(v)}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-                {simRes.sim && (
-                  <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px" }}>
-                    <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>📊 Simulação</div>
-                    <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simRes.sim, null, 2)}</pre>
+
+                {/* Tabela de simulações */}
+                {simRes.tableSims && (
+                  <div style={{ background:C.card, border:`1px solid ${C.atxt}22`, borderRadius:12, overflow:"hidden" }}>
+                    <div style={{ padding:"14px 20px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                      <div style={{ color:C.atxt, fontSize:13, fontWeight:700 }}>📊 Simulação por Tabela</div>
+                      <div style={{ color:C.td, fontSize:11 }}>Seguro: <span style={{ color:seguro?"#34D399":C.tm, fontWeight:600 }}>{seguro?"Sim":"Não"}</span></div>
+                    </div>
+                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                      <thead>
+                        <tr style={{ background:C.deep }}>
+                          {["Tabela","Valor Líquido","Parcelas","Taxa Mensal","Parcela","Status"].map(h=>(
+                            <th key={h} style={{ color:C.td, fontSize:10.5, fontWeight:700, padding:"10px 14px", textAlign:"left", textTransform:"uppercase", letterSpacing:"0.3px", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {simRes.tableSims.map((tab, i)=>{
+                          const vl = extractValor(tab.sim);
+                          const p  = extractParcelas(tab.sim);
+                          const tx = extractTaxa(tab.sim);
+                          const pv = extractParcela(tab.sim);
+                          return (
+                            <tr key={tab.id} style={{ borderBottom:`1px solid ${C.b1}`, background:i%2===0?"transparent":C.deep+"44", transition:"background 0.15s" }}
+                              onMouseEnter={e=>e.currentTarget.style.background=C.abg}
+                              onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":C.deep+"44"}>
+                              <td style={{ padding:"11px 14px", color:C.tp, fontWeight:700, fontSize:13 }}>{tab.label}</td>
+                              <td style={{ padding:"11px 14px", color:"#34D399", fontWeight:800, fontSize:13.5 }}>{vl!==null?fmtBr(vl):"—"}</td>
+                              <td style={{ padding:"11px 14px", color:C.ts, fontSize:12.5 }}>{p!==null?`${p}x`:"—"}</td>
+                              <td style={{ padding:"11px 14px", color:C.atxt, fontSize:12.5 }}>{tx||"—"}</td>
+                              <td style={{ padding:"11px 14px", color:"#FBBF24", fontSize:12.5 }}>{pv!==null?fmtBr(pv):"—"}</td>
+                              <td style={{ padding:"11px 14px" }}>
+                                {tab.ok
+                                  ? <span style={{ background:"#091E12", color:"#34D399", fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 9px", border:"1px solid #34D39933" }}>✓ OK</span>
+                                  : <span style={{ background:"#2D1515", color:"#F87171", fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 9px", border:"1px solid #F8717133" }} title={tab.err}>✗ Erro</span>
+                                }
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {/* Raw JSON debug (collapsible) */}
+                    {simRes.tableSims.find(t=>t.ok) && (
+                      <details style={{ padding:"10px 20px", borderTop:`1px solid ${C.b1}` }}>
+                        <summary style={{ color:C.td, fontSize:11, cursor:"pointer" }}>Ver resposta completa da API</summary>
+                        <pre style={{ color:C.ts, fontSize:10.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:"8px 0 0", lineHeight:1.6 }}>
+                          {JSON.stringify(simRes.tableSims.filter(t=>t.ok).map(t=>({tabela:t.label,...t.sim})), null, 2)}
+                        </pre>
+                      </details>
+                    )}
                   </div>
                 )}
               </div>
@@ -10535,17 +10699,38 @@ function V8DigitalTab({ currentUser }) {
           </div>
         )}
 
-        {/* PROPOSTA */}
+        {/* ── PROPOSTA ── */}
         {subAba === "proposta" && (
           <div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Preencha os dados para digitar uma nova proposta de FGTS.</div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Preencha os dados para digitar uma nova proposta de FGTS Saque Aniversário.</div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
-              {[{f:"cpf",l:"CPF *",ph:"000.000.000-00"},{f:"tableId",l:"ID da Tabela *",ph:"Ex: TAB001"},{f:"bankId",l:"ID do Banco *",ph:"Ex: 033"},{f:"conta",l:"Conta *",ph:"Número da conta"},{f:"agencia",l:"Agência *",ph:"Ex: 0001"}].map(({f,l,ph})=>(
-                <div key={f}>
-                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{l}</label>
-                  <input value={propForm[f]} onChange={e=>setPropForm(p=>({...p,[f]:f==="cpf"?fmtCpf(e.target.value):e.target.value}))} placeholder={ph} style={{ ...S.input }} />
-                </div>
-              ))}
+              {/* CPF */}
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF *</label>
+                <input value={propForm.cpf} onChange={e=>setPropForm(p=>({...p,cpf:fmtCpf(e.target.value)}))} placeholder="000.000.000-00" style={{ ...S.input }} />
+              </div>
+              {/* Tabela */}
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tabela *</label>
+                <select value={propForm.tableId} onChange={e=>setPropForm(p=>({...p,tableId:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
+                  <option value="">Selecione a tabela</option>
+                  {[{id:"cometa",l:"Cometa"},{id:"turbo",l:"Turbo"},{id:"grid",l:"Grid"},{id:"normal",l:"Normal"},{id:"pitstop",l:"Pitstop"},{id:"acelera20",l:"Acelera 2.0"}].map(t=>(
+                    <option key={t.id} value={t.id}>{t.l}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>ID do Banco *</label>
+                <input value={propForm.bankId} onChange={e=>setPropForm(p=>({...p,bankId:e.target.value}))} placeholder="Ex: 033" style={{ ...S.input }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Agência *</label>
+                <input value={propForm.agencia} onChange={e=>setPropForm(p=>({...p,agencia:e.target.value}))} placeholder="Ex: 0001" style={{ ...S.input }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Conta *</label>
+                <input value={propForm.conta} onChange={e=>setPropForm(p=>({...p,conta:e.target.value}))} placeholder="Número da conta" style={{ ...S.input }} />
+              </div>
               <div>
                 <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta *</label>
                 <select value={propForm.tipoConta} onChange={e=>setPropForm(p=>({...p,tipoConta:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
@@ -10553,13 +10738,27 @@ function V8DigitalTab({ currentUser }) {
                   <option value="poupanca">Poupança</option>
                 </select>
               </div>
+              {/* Seguro */}
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Seguro</label>
+                <div style={{ display:"flex", gap:6 }}>
+                  {[{v:false,l:"Não"},{v:true,l:"Sim"}].map(opt=>(
+                    <button key={String(opt.v)} onClick={()=>setPropForm(p=>({...p,seguro:opt.v}))}
+                      style={{ background:propForm.seguro===opt.v?C.abg:C.deep, color:propForm.seguro===opt.v?C.atxt:C.tm,
+                        border:propForm.seguro===opt.v?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`,
+                        borderRadius:8, padding:"9px 18px", fontSize:12.5, cursor:"pointer", fontWeight:propForm.seguro===opt.v?700:400 }}>
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <button onClick={criarProposta} disabled={loading}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
               {loading?"⏳ Enviando...":"📤 Enviar Proposta"}
             </button>
             {propRes && (
-              <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px", marginTop:16 }}>
+              <div style={{ background:C.card, border:`1px solid #34D39933`, borderRadius:12, padding:"16px 20px", marginTop:16 }}>
                 <div style={{ color:"#34D399", fontSize:13, fontWeight:700, marginBottom:8 }}>✅ Proposta enviada!</div>
                 <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(propRes, null, 2)}</pre>
               </div>
@@ -10567,11 +10766,11 @@ function V8DigitalTab({ currentUser }) {
           </div>
         )}
 
-        {/* OPERAÇÕES */}
+        {/* ── OPERAÇÕES ── */}
         {subAba === "operacoes" && (
           <div>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-              <div style={{ color:C.tm, fontSize:12.5 }}>Acompanhe todas as operações de FGTS em andamento.</div>
+              <div style={{ color:C.tm, fontSize:12.5 }}>Acompanhe todas as operações de FGTS Saque Aniversário.</div>
               <button onClick={listarOps} disabled={opsLoading}
                 style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
                 {opsLoading?"⏳ Carregando...":"↻ Atualizar"}
@@ -10585,17 +10784,26 @@ function V8DigitalTab({ currentUser }) {
             )}
             {ops && (
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {(Array.isArray(ops) ? ops : ops.data || []).length === 0 && <div style={{ color:C.tm, textAlign:"center", padding:"20px 0" }}>Nenhuma operação encontrada.</div>}
-                {(Array.isArray(ops) ? ops : ops.data || []).map((op, i) => (
+                {(Array.isArray(ops)?ops:ops.data||ops.items||[]).length===0 && (
+                  <div style={{ color:C.tm, textAlign:"center", padding:"20px 0" }}>Nenhuma operação encontrada.</div>
+                )}
+                {(Array.isArray(ops)?ops:ops.data||ops.items||[]).map((op,i)=>(
                   <div key={i} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:11, padding:"12px 16px", display:"flex", gap:14, alignItems:"center" }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:4 }}>
-                        <span style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{op.cpf || op.nome || `Op. ${i+1}`}</span>
+                        <span style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{op.cpf||op.nome||op.cliente||`Op. ${i+1}`}</span>
                         {op.status && <span style={{ background:statusColor(op.status)+"22", color:statusColor(op.status), fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 8px" }}>{op.status}</span>}
+                        {op.tabela && <span style={{ background:C.abg, color:C.atxt, fontSize:10, borderRadius:20, padding:"2px 8px" }}>{op.tabela}</span>}
                       </div>
-                      <div style={{ color:C.td, fontSize:11 }}>{op.id ? `ID: ${op.id}` : ""} {op.createdAt ? `· ${new Date(op.createdAt).toLocaleDateString("pt-BR")}` : ""}</div>
+                      <div style={{ color:C.td, fontSize:11 }}>
+                        {op.id?`ID: ${op.id}`:""} {op.createdAt?`· ${new Date(op.createdAt).toLocaleDateString("pt-BR")}`:""}
+                      </div>
                     </div>
-                    {op.valor && <div style={{ color:C.atxt, fontSize:15, fontWeight:800, flexShrink:0 }}>{fmtBr(op.valor)}</div>}
+                    {(op.valor||op.valorLiquido) && (
+                      <div style={{ color:"#34D399", fontSize:15, fontWeight:800, flexShrink:0 }}>
+                        {fmtBr(op.valor||op.valorLiquido)}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
