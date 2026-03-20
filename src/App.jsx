@@ -484,18 +484,35 @@ function LoginPage({ onLogin }) {
     setLoading(false);
   };
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#060810",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-      }}
-    >
-      <div style={{ width: "100%", maxWidth: 380 }}>
+    <div style={{ minHeight: "100vh", background: "#060810", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px", position: "relative", overflow: "hidden" }}>
+      {/* Animação: chuva + onda */}
+      <style>{`
+        @keyframes rain { 0%{transform:translateY(-10px) scaleY(0.8);opacity:0} 10%{opacity:0.7} 90%{opacity:0.5} 100%{transform:translateY(100vh) scaleY(1);opacity:0} }
+        @keyframes wave1 { 0%,100%{d:path("M0,40 C80,10 160,70 240,40 C320,10 400,70 480,40 C560,10 640,70 720,40 L720,80 L0,80 Z")} 50%{d:path("M0,50 C80,70 160,20 240,50 C320,70 400,20 480,50 C560,70 640,20 720,50 L720,80 L0,80 Z")} }
+        @keyframes wave2 { 0%,100%{d:path("M0,55 C90,30 180,70 270,45 C360,20 450,65 540,40 C630,15 720,55 720,55 L720,80 L0,80 Z")} 50%{d:path("M0,45 C90,65 180,25 270,55 C360,75 450,30 540,60 C630,80 720,45 720,45 L720,80 L0,80 Z")} }
+        @keyframes dropFall { to { transform: translateY(100vh); opacity: 0; } }
+      `}</style>
+
+      {/* Ondas no fundo */}
+      <div style={{ position:"absolute", bottom:0, left:0, right:0, height:80, overflow:"hidden", zIndex:0, opacity:0.35 }}>
+        <svg viewBox="0 0 720 80" width="100%" height="80" style={{ position:"absolute", bottom:0 }}>
+          <path d="M0,40 C80,10 160,70 240,40 C320,10 400,70 480,40 C560,10 640,70 720,40 L720,80 L0,80 Z" fill="#3B6EF5" style={{ animation:"wave1 4s ease-in-out infinite" }} />
+          <path d="M0,55 C90,30 180,70 270,45 C360,20 450,65 540,40 C630,15 720,55 720,55 L720,80 L0,80 Z" fill="#7C3AED" opacity="0.6" style={{ animation:"wave2 5s ease-in-out infinite" }} />
+        </svg>
+      </div>
+
+      {/* Gotas de chuva */}
+      {Array.from({length:28}).map((_,i) => (
+        <div key={i} style={{
+          position:"absolute", top: -20, left: `${(i * 3.7) % 100}%`,
+          width: 1.5, height: 12 + (i%5)*4,
+          background: `rgba(79,142,247,${0.15 + (i%4)*0.07})`,
+          borderRadius: 2,
+          animation: `dropFall ${1.8 + (i%7)*0.4}s linear ${(i*0.18)%2}s infinite`,
+          zIndex: 0,
+        }} />
+      ))}
+      <div style={{ width: "100%", maxWidth: 380, position:"relative", zIndex:1 }}>
         <div
           style={{
             background: C.card,
@@ -503,6 +520,7 @@ function LoginPage({ onLogin }) {
             border: `1px solid ${C.b1}`,
             padding: "40px 36px",
             marginBottom: 16,
+            backdropFilter: "blur(12px)",
           }}
         >
           <div
@@ -706,40 +724,20 @@ function LoginPage({ onLogin }) {
 
 // ── Sidebar ────────────────────────────────────────────────────
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
-  const canEdit = user.role === "mestre"; // only mestre can edit cover
-  const [cover, setCover] = useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
-  const coverRef = useRef(null);
-  const handleCover = (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = (ev) => { setCover(ev.target.result); localStorage.setItem("nexp_sidebar_cover", ev.target.result); };
-    r.readAsDataURL(f);
-  };
   return (
-    <div style={{ position: "relative", flexShrink: 0 }}>
-      <div style={{ width: "100%", height: 120, background: cover ? "transparent" : `linear-gradient(135deg,${C.lg1},${C.lg2})`, overflow: "hidden", position: "relative" }}>
-        {cover && <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
-        <div style={{ position: "absolute", bottom: 8, left: 12 }}>
-          <div style={{ color: "#fff", fontWeight: 700, fontSize: 13.5, letterSpacing: "-0.3px", textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>Nexp Company</div>
-          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 10, textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>Sistema de Leads</div>
+    <div style={{ flexShrink: 0 }}>
+      <div style={{ padding: "20px 16px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ color: C.tp, fontWeight: 900, fontSize: 19, letterSpacing: "-0.8px", background: `linear-gradient(135deg,${C.atxt},${C.lg2})`, WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight: 1.1 }}>
+          Nexp Consultas
         </div>
-        {canEdit && (
-          <button onClick={() => coverRef.current?.click()} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 6, padding: "2px 7px", fontSize: 9.5, cursor: "pointer" }}>
-            {cover ? "✎ Trocar" : "＋ Capa"}
-          </button>
-        )}
-        <input ref={coverRef} type="file" accept="image/*" onChange={handleCover} style={{ display: "none" }} />
-      </div>
-      <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${C.b1}`, height: 24 }}>
-        <div style={{ flex: 1 }} />
         <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? "Fechar menu" : "Abrir menu"}
-          style={{ background: "transparent", border: "none", color: C.tm, fontSize: 11, cursor: "pointer", padding: "0 10px", height: "100%", display: "flex", alignItems: "center", opacity: 0.7, transition: "opacity 0.15s" }}
+          style={{ background: "transparent", border: "none", color: C.tm, fontSize: 14, cursor: "pointer", padding: "4px 6px", borderRadius: 6, opacity: 0.7, transition: "opacity 0.15s" }}
           onMouseEnter={e => e.currentTarget.style.opacity = "1"}
           onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}>
-          <span style={{ display: "inline-block", transition: "transform 0.2s" }}>◀</span>
+          ◀
         </button>
       </div>
+      <div style={{ height: 1, background: C.b1, margin: "0 12px 4px" }} />
     </div>
   );
 }
@@ -747,17 +745,17 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
-    { id:"dashboard", label:"Leads Gerais",    icon:"▦", roles:["mestre","master","indicado","visitante"] },
-    { id:"contacts",  label:"Contatos",         icon:"◉", roles:["mestre","master","indicado","visitante"] },
-    { id:"add",       label:"Adicionar",         icon:"＋", roles:["mestre","master","indicado"] },
-    { id:"import",    label:"Importar",           icon:"↑", roles:["mestre","master","indicado"] },
-    { id:"review",    label:"Ver Clientes",       icon:"▶", roles:["mestre","master","indicado","visitante"] },
-    { id:"cstatus",   label:"Cliente Status",     icon:"⊡", roles:["mestre","master","indicado","visitante"] },
-    { id:"leds",      label:"Leds",               icon:"⬇", roles:["mestre","master"] },
-    { id:"atalhos",   label:"Atalhos",             icon:"🔗", roles:["mestre","master","indicado","visitante"] },
-    { id:"calendario", label:"Calendário",        icon:"📅", roles:["mestre","master","indicado","visitante"] },
-    { id:"premium",   label:"Premium Nexp",       icon:"★", roles:["mestre"] },
-    { id:"config",    label:"Configurações",       icon:"⚙", roles:["mestre","master","indicado"] },
+    { id:"dashboard", label:"Leads Gerais",    icon:"◈", roles:["mestre","master","indicado","visitante"] },
+    { id:"contacts",  label:"Contatos",         icon:"⬡", roles:["mestre","master","indicado","visitante"] },
+    { id:"add",       label:"Adicionar",         icon:"⊕", roles:["mestre","master","indicado"] },
+    { id:"import",    label:"Importar",           icon:"⤓", roles:["mestre","master","indicado"] },
+    { id:"review",    label:"Ver Clientes",       icon:"◎", roles:["mestre","master","indicado","visitante"] },
+    { id:"cstatus",   label:"Status",             icon:"◐", roles:["mestre","master","indicado","visitante"] },
+    { id:"leds",      label:"Leds",               icon:"⬦", roles:["mestre","master"] },
+    { id:"atalhos",   label:"Atalhos",             icon:"⌘", roles:["mestre","master","indicado","visitante"] },
+    { id:"calendario", label:"Agenda",            icon:"◷", roles:["mestre","master","indicado","visitante"] },
+    { id:"premium",   label:"Premium Nexp",       icon:"◈", roles:["mestre"] },
+    { id:"config",    label:"Configurações",       icon:"⊞", roles:["mestre","master","indicado"] },
   ];
   // For visitante: filter by mestre-controlled tab config
   const cfg = sysConfig?.visitanteTabs || {};
@@ -960,7 +958,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 
             {/* WhatsApp */}
             <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "9px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 9, textDecoration: "none" }}>
+              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 10, padding: "9px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 9, textDecoration: "none" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
               <div>
                 <div style={{ color: "#25D366", fontSize: 11, fontWeight: 700, lineHeight: 1.2 }}>Suporte WhatsApp</div>
@@ -9212,7 +9210,7 @@ function CalendarPage({ currentUser }) {
           if (diffMin > 13 && diffMin <= 16 && !notifiedRef.current[key15m]) {
             notifiedRef.current[key15m] = true;
             setAlertAgendam(n);
-            setTimeout(() => setAlertAgendam(null), 15000);
+            setTimeout(() => setAlertAgendam(null), 30000);
           }
         }
       });
@@ -9323,7 +9321,7 @@ function CalendarPage({ currentUser }) {
                       <div style={{ flex:1, color:C.ts, fontSize:12.5, lineHeight:1.5 }}>{n.text}</div>
                       <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
                         {n.notify && <span style={{ fontSize:9, color:C.acc }}>🔔</span>}
-                        <button onClick={()=>setDeleteConfirm(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>🗑</button>
+                        <button onClick={()=>setDeleteConfirm(n.id)} title="Apagar" style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:8, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>e.currentTarget.style.background="#3D1515"} onMouseLeave={e=>e.currentTarget.style.background="#2D1515"}><svg width="12" height="13" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg></button>
                       </div>
                     </div>
                   ))}
@@ -9493,7 +9491,7 @@ function CalendarPage({ currentUser }) {
                 <div style={{ flex:1, color:C.ts, fontSize:12.5, lineHeight:1.5 }}>{n.text}</div>
                 <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                   {n.notify && <span style={{ fontSize:10, color:C.acc }}>🔔</span>}
-                  <button onClick={()=>setDeleteConfirm(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>🗑</button>
+                  <button onClick={()=>setDeleteConfirm(n.id)} title="Apagar" style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:8, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0, transition:"all 0.15s" }} onMouseEnter={e=>e.currentTarget.style.background="#3D1515"} onMouseLeave={e=>e.currentTarget.style.background="#2D1515"}><svg width="12" height="13" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg></button>
                 </div>
               </div>
             ))}
