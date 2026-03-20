@@ -496,46 +496,76 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
   };
 
   const handleClick = () => {
-    const all = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+    const all = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
     triggerPose(all[Math.floor(Math.random() * all.length)]);
   };
 
   // Definir pose atual
   const poses = [
     // 0: idle
-    { leftArm: 0,  rightArm: 0,  body: 0,    mouth:"neutral", eyes:"normal",  anim:"float",   label:"" },
-    // 1: oi (acena)
-    { leftArm: -60, rightArm: 40, body: 0,   mouth:"smile",   eyes:"normal",  anim:"wave",    label:"👋" },
+    { leftArm:0,   rightArm:0,   body:0,   mouth:"neutral", eyes:"normal", anim:"float",   label:"",   walk:false },
+    // 1: oi
+    { leftArm:-60, rightArm:40,  body:0,   mouth:"smile",   eyes:"normal", anim:"wave",    label:"👋", walk:false },
     // 2: dança
-    { leftArm: 45,  rightArm: -45, body: 10, mouth:"smile",   eyes:"happy",   anim:"dance",   label:"🕺" },
+    { leftArm:45,  rightArm:-45, body:10,  mouth:"smile",   eyes:"happy",  anim:"dance",   label:"🕺", walk:false },
     // 3: rebola
-    { leftArm: 30,  rightArm: 30,  body: -15, mouth:"smile",  eyes:"happy",   anim:"wiggle",  label:"💃" },
+    { leftArm:30,  rightArm:30,  body:-15, mouth:"smile",   eyes:"happy",  anim:"wiggle",  label:"💃", walk:false },
     // 4: beijo
-    { leftArm: 20,  rightArm: -60, body: 0,  mouth:"kiss",    eyes:"closed",  anim:"bounce",  label:"😘" },
-    // 5: pose
-    { leftArm: -90, rightArm: -90, body: 0,  mouth:"smile",   eyes:"cool",    anim:"none",    label:"😎" },
+    { leftArm:20,  rightArm:-60, body:0,   mouth:"kiss",    eyes:"closed", anim:"bounce",  label:"😘", walk:false },
+    // 5: pose cool
+    { leftArm:-90, rightArm:-90, body:0,   mouth:"smile",   eyes:"cool",   anim:"none",    label:"😎", walk:false },
     // 6: chora
-    { leftArm: 15,  rightArm: 15,  body: 5,  mouth:"sad",     eyes:"cry",     anim:"shake",   label:"😢" },
+    { leftArm:15,  rightArm:15,  body:5,   mouth:"sad",     eyes:"cry",    anim:"shake",   label:"😢", walk:false },
     // 7: ri
-    { leftArm: 30,  rightArm: 30,  body: -8, mouth:"laugh",   eyes:"laugh",   anim:"bounce",  label:"😂" },
+    { leftArm:30,  rightArm:30,  body:-8,  mouth:"laugh",   eyes:"laugh",  anim:"bounce",  label:"😂", walk:false },
     // 8: pula
-    { leftArm: -60, rightArm: -60, body: 0,  mouth:"smile",   eyes:"happy",   anim:"jump",    label:"⬆️" },
+    { leftArm:-60, rightArm:-60, body:0,   mouth:"smile",   eyes:"happy",  anim:"jump",    label:"⬆️", walk:false },
     // 9: troféu
-    { leftArm: -90, rightArm: 20,  body: 0,  mouth:"smile",   eyes:"star",    anim:"bounce",  label:"🏆" },
-    // 10: joga bola
-    { leftArm: 0,   rightArm: -90, body: 10, mouth:"smile",   eyes:"normal",  anim:"kick",    label:"⚽" },
-    // 11: manda beijo duplo
-    { leftArm: -70, rightArm: -70, body: 0,  mouth:"kiss",    eyes:"closed",  anim:"float",   label:"💕" },
-    // 12: apaixonado (coração nos olhos)
-    { leftArm: -30, rightArm: -30, body: 0,  mouth:"smile",   eyes:"heart",   anim:"bounce",  label:"😍" },
+    { leftArm:-90, rightArm:20,  body:0,   mouth:"smile",   eyes:"star",   anim:"bounce",  label:"🏆", walk:false },
+    // 10: chuta
+    { leftArm:0,   rightArm:-90, body:10,  mouth:"smile",   eyes:"normal", anim:"kick",    label:"⚽", walk:false },
+    // 11: beijo duplo
+    { leftArm:-70, rightArm:-70, body:0,   mouth:"kiss",    eyes:"closed", anim:"float",   label:"💕", walk:false },
+    // 12: apaixonado
+    { leftArm:-30, rightArm:-30, body:0,   mouth:"smile",   eyes:"heart",  anim:"bounce",  label:"😍", walk:false },
     // 13: surpreso
-    { leftArm: -80, rightArm: -80, body: 0,  mouth:"open",    eyes:"wide",    anim:"shake",   label:"😱" },
+    { leftArm:-80, rightArm:-80, body:0,   mouth:"open",    eyes:"wide",   anim:"shake",   label:"😱", walk:false },
     // 14: pensativo
-    { leftArm: 0,   rightArm: 60,  body: 5,  mouth:"neutral", eyes:"think",   anim:"float",   label:"🤔" },
-    // 15: animado (puxa os braços pra cima)
-    { leftArm: -90, rightArm: -90, body: -5, mouth:"laugh",   eyes:"star",    anim:"jump",    label:"🎉" },
+    { leftArm:0,   rightArm:60,  body:5,   mouth:"neutral", eyes:"think",  anim:"float",   label:"🤔", walk:false },
+    // 15: animado
+    { leftArm:-90, rightArm:-90, body:-5,  mouth:"laugh",   eyes:"star",   anim:"jump",    label:"🎉", walk:false },
     // 16: envergonhado
-    { leftArm: 30,  rightArm: 30,  body: 10, mouth:"sad",     eyes:"closed",  anim:"wiggle",  label:"😳" },
+    { leftArm:30,  rightArm:30,  body:10,  mouth:"sad",     eyes:"closed", anim:"wiggle",  label:"😳", walk:false },
+    // 17: caminha pra direita
+    { leftArm:30,  rightArm:-30, body:0,   mouth:"smile",   eyes:"normal", anim:"walkR",   label:"🚶", walk:"right" },
+    // 18: caminha pra esquerda
+    { leftArm:-30, rightArm:30,  body:0,   mouth:"smile",   eyes:"normal", anim:"walkL",   label:"🚶", walk:"left" },
+    // 19: medita
+    { leftArm:45,  rightArm:-45, body:0,   mouth:"neutral", eyes:"closed", anim:"float",   label:"🧘", walk:false },
+    // 20: robô malvado
+    { leftArm:-90, rightArm:-90, body:0,   mouth:"sad",     eyes:"cool",   anim:"shake",   label:"😈", walk:false },
+    // 21: flerte
+    { leftArm:-20, rightArm:60,  body:-5,  mouth:"kiss",    eyes:"think",  anim:"wiggle",  label:"😏", walk:false },
+    // 22: estica braços
+    { leftArm:-90, rightArm:90,  body:0,   mouth:"neutral", eyes:"normal", anim:"stretch", label:"🙆", walk:false },
+    // 23: gira
+    { leftArm:-45, rightArm:45,  body:0,   mouth:"laugh",   eyes:"laugh",  anim:"spin",    label:"🌀", walk:false },
+    // 24: abraço
+    { leftArm:-60, rightArm:60,  body:0,   mouth:"smile",   eyes:"heart",  anim:"bounce",  label:"🤗", walk:false },
+    // 25: saluta
+    { leftArm:-90, rightArm:0,   body:0,   mouth:"neutral", eyes:"normal", anim:"none",    label:"🫡", walk:false },
+    // 26: power up
+    { leftArm:-90, rightArm:-90, body:-10, mouth:"open",    eyes:"star",   anim:"powerup", label:"⚡", walk:false },
+    // 27: sleep
+    { leftArm:10,  rightArm:10,  body:5,   mouth:"neutral", eyes:"closed", anim:"float",   label:"😴", walk:false },
+    // 28: robô raiva
+    { leftArm:60,  rightArm:-60, body:0,   mouth:"sad",     eyes:"wide",   anim:"shake",   label:"😤", walk:false },
+    // 29: festeja
+    { leftArm:-90, rightArm:-90, body:0,   mouth:"laugh",   eyes:"star",   anim:"dance",   label:"🥳", walk:false },
+    // 30: coração duplo
+    { leftArm:-40, rightArm:40,  body:0,   mouth:"smile",   eyes:"heart",  anim:"float",   label:"💝", walk:false },
+    // 31: turbo
+    { leftArm:-90, rightArm:-90, body:-15, mouth:"open",    eyes:"wide",   anim:"turbo",   label:"🚀", walk:false },
   ];
 
   const p = poses[pose] || poses[0];
@@ -544,15 +574,21 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
 
   // Mapa de animações CSS
   const animMap = {
-    float:  "robotFloat 2.5s ease-in-out infinite",
-    wave:   `robotWave${animKey} 0.5s ease-in-out infinite alternate`,
-    dance:  `robotDance${animKey} 0.3s ease-in-out infinite alternate`,
-    wiggle: `robotWiggle${animKey} 0.2s ease-in-out infinite alternate`,
-    bounce: `robotBounce${animKey} 0.4s ease-in-out infinite alternate`,
-    shake:  `robotShake${animKey} 0.15s ease-in-out infinite alternate`,
-    jump:   `robotJump${animKey} 0.35s ease-in-out infinite alternate`,
-    kick:   `robotKick${animKey} 0.4s ease-in-out 0s 4 alternate`,
-    none:   "none",
+    float:   "robotFloat 2.5s ease-in-out infinite",
+    wave:    `robotWave${animKey} 0.5s ease-in-out infinite alternate`,
+    dance:   `robotDance${animKey} 0.3s ease-in-out infinite alternate`,
+    wiggle:  `robotWiggle${animKey} 0.2s ease-in-out infinite alternate`,
+    bounce:  `robotBounce${animKey} 0.4s ease-in-out infinite alternate`,
+    shake:   `robotShake${animKey} 0.15s ease-in-out infinite alternate`,
+    jump:    `robotJump${animKey} 0.35s ease-in-out infinite alternate`,
+    kick:    `robotKick${animKey} 0.4s ease-in-out 0s 4 alternate`,
+    none:    "none",
+    walkR:   `robotWalkR${animKey} 0.5s ease-in-out infinite alternate`,
+    walkL:   `robotWalkL${animKey} 0.5s ease-in-out infinite alternate`,
+    stretch: `robotStretch${animKey} 0.6s ease-in-out infinite alternate`,
+    spin:    `robotSpin${animKey} 0.6s linear infinite`,
+    powerup: `robotPowerup${animKey} 0.3s ease-in-out infinite alternate`,
+    turbo:   `robotTurbo${animKey} 0.15s ease-in-out infinite alternate`,
   };
   const bodyAnim = animMap[p.anim] || "none";
 
@@ -705,13 +741,21 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
       <style>{`
         @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes robotBounce${animKey} { from{transform:translateY(0) scale(1)} to{transform:translateY(-8px) scale(1.04)} }
-        @keyframes robotJump${animKey} { from{transform:translateY(0)} to{transform:translateY(-16px)} }
-        @keyframes robotShake${animKey} { from{transform:rotate(-5deg)} to{transform:rotate(5deg)} }
-        @keyframes robotDance${animKey} { from{transform:rotate(-6deg) translateY(0)} to{transform:rotate(6deg) translateY(-6px)} }
-        @keyframes robotWiggle${animKey} { from{transform:skewX(-8deg) rotate(-3deg)} to{transform:skewX(8deg) rotate(3deg)} }
-        @keyframes robotKick${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-15deg)} }
-        @keyframes robotWave${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-8deg)} }
+        @keyframes robotJump${animKey} { from{transform:translateY(0)} to{transform:translateY(-18px)} }
+        @keyframes robotShake${animKey} { from{transform:rotate(-6deg)} to{transform:rotate(6deg)} }
+        @keyframes robotDance${animKey} { from{transform:rotate(-7deg) translateY(0)} to{transform:rotate(7deg) translateY(-6px)} }
+        @keyframes robotWiggle${animKey} { from{transform:skewX(-10deg) rotate(-4deg)} to{transform:skewX(10deg) rotate(4deg)} }
+        @keyframes robotKick${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-18deg)} }
+        @keyframes robotWave${animKey} { from{transform:rotate(0deg)} to{transform:rotate(-10deg)} }
         @keyframes robotArmWave { 0%,100%{transform:rotate(0deg)} 50%{transform:rotate(-30deg)} }
+        @keyframes robotWalkR${animKey} { from{transform:translateX(-8px)} to{transform:translateX(8px)} }
+        @keyframes robotWalkL${animKey} { from{transform:translateX(8px)} to{transform:translateX(-8px)} }
+        @keyframes robotStretch${animKey} { from{transform:scaleY(0.92) scaleX(1.04)} to{transform:scaleY(1.06) scaleX(0.97)} }
+        @keyframes robotSpin${animKey} { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes robotPowerup${animKey} { from{transform:translateY(0) scale(1)} to{transform:translateY(-12px) scale(1.08)} }
+        @keyframes robotTurbo${animKey} { from{transform:translateX(-3px) rotate(-3deg)} to{transform:translateX(3px) rotate(3deg)} }
+        @keyframes legWalk { 0%,100%{transform:rotate(0deg)} 50%{transform:rotate(20deg)} }
+        @keyframes legWalkB { 0%,100%{transform:rotate(20deg)} 50%{transform:rotate(0deg)} }
       `}</style>
       <div key={animKey} style={{ animation: pose === 0 ? "robotFloat 2.5s ease-in-out infinite" : bodyAnim, transformOrigin:"center bottom", filter:`drop-shadow(0 4px 16px rgba(79,142,247,${pose===0?0.3:0.6}))` }}>
         <svg width={s} height={totalH} viewBox={`0 0 ${s} ${totalH}`} fill="none">
@@ -739,12 +783,23 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
             <rect x={s*0.78} y={bodyY+s*0.02} width={armW} height={armH} rx={armH*0.5} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
             {p.key==="troféu" && <text x={s*0.82} y={bodyY-s*0.06} fontSize={s*0.15}>🏆</text>}
           </g>
-          {/* Pernas */}
-          <rect x={s*0.28} y={legY} width={s*0.17} height={legH} rx={s*0.06} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
-          <rect x={s*0.55} y={legY} width={s*0.17} height={legH} rx={s*0.06} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+          {/* Pernas — animadas quando caminha */}
+          <g style={{ transformOrigin:`${s*0.365}px ${legY}px`, animation: p.walk ? `legWalk 0.4s ease-in-out infinite` : "none" }}>
+            <rect x={s*0.28} y={legY} width={s*0.17} height={legH} rx={s*0.06} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+          </g>
+          <g style={{ transformOrigin:`${s*0.635}px ${legY}px`, animation: p.walk ? `legWalkB 0.4s ease-in-out infinite` : "none" }}>
+            <rect x={s*0.55} y={legY} width={s*0.17} height={legH} rx={s*0.06} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={s*0.02}/>
+          </g>
           {/* Pezinhos */}
           <ellipse cx={s*0.365} cy={legY+legH} rx={s*0.12} ry={s*0.04} fill="#4F8EF7" opacity="0.6"/>
           <ellipse cx={s*0.635} cy={legY+legH} rx={s*0.12} ry={s*0.04} fill="#4F8EF7" opacity="0.6"/>
+          {/* ZZZ quando dorme */}
+          {pose===27 && <text x={s*0.72} y={headY-s*0.02} fontSize={s*0.12} fill="#60A5FA" opacity="0.8">zzz</text>}
+          {/* Estrelas quando power up */}
+          {pose===26 && <>
+            <text x={s*0.05} y={headY+s*0.1} fontSize={s*0.12} fill="#FBBF24">⚡</text>
+            <text x={s*0.78} y={headY+s*0.1} fontSize={s*0.12} fill="#FBBF24">⚡</text>
+          </>}
         </svg>
       </div>
     </div>
@@ -848,7 +903,7 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:getBgGradient(), display:"flex", alignItems:"center", justifyContent:"space-between", padding:"32px 5%", position:"relative", overflow:"hidden", gap:32 }}>
+    <div style={{ minHeight:"100vh", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-start", justifyContent:"space-between", padding:"20px 5% 0", position:"relative", overflow:"hidden", gap:32 }}>
 
       <style>{`
         @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
@@ -891,13 +946,22 @@ function LoginPage({ onLogin }) {
           </linearGradient>
         </defs>
 
-        {/* ── ESTRELAS (noite) ── */}
-        {isNight && Array.from({length:50}).map((_,i)=>(
-          <circle key={i} cx={20+(i*31+i*7)%1400} cy={8+(i*19)%280} r={i%6===0?2.2:i%3===0?1.5:0.9}
-            fill="#fff" opacity={0.3+(i%4)*0.18}>
+        {/* ── ESTRELAS (noite) — posições aleatórias espalhadas ── */}
+        {isNight && [
+          [120,45],[380,22],[670,68],[920,15],[1180,52],[1380,38],
+          [55,110],[290,88],[510,130],[740,75],[990,105],[1240,90],[1420,125],
+          [180,180],[430,155],[700,195],[950,165],[1100,185],[1330,170],
+          [80,240],[320,220],[580,255],[830,230],[1070,248],[1280,235],
+          [210,310],[470,290],[720,325],[970,305],[1150,315],[1350,295],
+          [40,370],[260,350],[500,385],[760,362],[1010,378],[1200,390],
+          [150,30],[600,50],[1050,28],[1300,55],[450,200],[850,140],
+          [160,420],[550,440],[900,410],[1250,435],[350,460],[750,475],
+        ].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r={i%7===0?2.4:i%4===0?1.6:i%2===0?1.1:0.7}
+            fill={i%5===0?"#FEF9C3":i%3===0?"#BAE6FD":"#fff"} opacity={0.4+(i%4)*0.15}>
             <animate attributeName="opacity"
-              values={`${0.15+(i%3)*0.2};${0.9+(i%2)*0.1};${0.15+(i%3)*0.2}`}
-              dur={`${1.2+(i%5)*0.6}s`} begin={`${i*0.14}s`} repeatCount="indefinite"/>
+              values={`${0.2+(i%3)*0.18};${0.85+(i%2)*0.12};${0.2+(i%3)*0.18}`}
+              dur={`${1.4+(i%6)*0.5}s`} begin={`${i*0.11}s`} repeatCount="indefinite"/>
           </circle>
         ))}
 
@@ -4899,7 +4963,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
                           <span style={{ color:C.td, fontSize:12 }}>{expanded?"▲":"▼"}</span>
                         </div>
                         {expanded && (
-                          <div style={{ padding:"12px 16px", borderTop:`1px solid ${C.b1}`, display:"flex", flexDirection:"column", gap:8 }}>
+                          <div style={{ padding:"12px 16px", borderTop:`1px solid ${C.b1}`, display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
                             {ALL_TABS.map(t => {
                               const allowed = override.tabs ? override.tabs.includes(t.id) : true;
                               return (
@@ -4907,10 +4971,10 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
                                   const cur = override.tabs || ALL_TABS.map(x=>x.id);
                                   const next = allowed ? cur.filter(x=>x!==t.id) : [...cur, t.id];
                                   setOv("tabs", next);
-                                }} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"7px 10px", borderRadius:8, cursor:"pointer", background: allowed?C.abg:C.card, border:`1px solid ${allowed?C.atxt+"33":C.b1}` }}>
-                                  <span style={{ color: allowed?C.atxt:C.tm, fontSize:12 }}>{t.label}</span>
-                                  <div style={{ width:30, height:16, borderRadius:8, background:allowed?C.acc:C.b2, position:"relative", flexShrink:0 }}>
-                                    <div style={{ position:"absolute", top:1, left:allowed?14:1, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                                }} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 9px", borderRadius:8, cursor:"pointer", background: allowed?C.abg:C.card, border:`1px solid ${allowed?C.atxt+"33":C.b1}` }}>
+                                  <span style={{ color: allowed?C.atxt:C.tm, fontSize:11.5 }}>{t.label}</span>
+                                  <div style={{ width:26, height:14, borderRadius:7, background:allowed?C.acc:C.b2, position:"relative", flexShrink:0, marginLeft:6 }}>
+                                    <div style={{ position:"absolute", top:1, left:allowed?12:1, width:12, height:12, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
                                   </div>
                                 </div>
                               );
@@ -5470,11 +5534,27 @@ function PerfilTab({ users, setUsers, currentUser }) {
 }
 
 // Subcomponente isolado para exibir/redefinir senha no painel de edição
-function EditPasswordPanel({ savedPw, userEmail }) {
+function EditPasswordPanel({ savedPw, userEmail, userId }) {
   const [showCurr, setShowCurr]   = useState(false);
+  const [realPw, setRealPw]       = useState(savedPw || null);
+  const [loadingPw, setLoadingPw] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailMsg, setEmailMsg]   = useState("");
+
+  const handleToggle = async () => {
+    if (showCurr) { setShowCurr(false); return; }
+    // Busca senha direto do Firestore se não tiver
+    if (!realPw && userId) {
+      setLoadingPw(true);
+      try {
+        const snap = await getDoc(doc(db, "users", String(userId)));
+        if (snap.exists()) setRealPw(snap.data().password || null);
+      } catch {}
+      setLoadingPw(false);
+    }
+    setShowCurr(true);
+  };
 
   const sendResetEmail = async () => {
     if (!userEmail) { setEmailMsg("❌ Email do usuário não encontrado."); return; }
@@ -5499,13 +5579,13 @@ function EditPasswordPanel({ savedPw, userEmail }) {
       <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", marginBottom:14, border:`1px solid ${C.b1}` }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
           <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha do usuário</span>
-          <button onClick={() => setShowCurr(p => !p)} style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11 }}>
-            {showCurr ? "🙈 Ocultar" : "👁 Ver senha"}
+          <button onClick={handleToggle} disabled={loadingPw} style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11 }}>
+            {loadingPw ? "⏳ Buscando..." : showCurr ? "🙈 Ocultar" : "👁 Ver senha"}
           </button>
         </div>
         {showCurr ? (
           <div style={{ color:"#34D399", fontSize:14, fontWeight:700, fontFamily:"monospace", letterSpacing:2, background:C.card, borderRadius:7, padding:"9px 12px", wordBreak:"break-all" }}>
-            {savedPw || <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0, fontSize:12 }}>Senha não cadastrada</span>}
+            {realPw || <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0, fontSize:12 }}>Senha não encontrada no banco</span>}
           </div>
         ) : (
           <div style={{ color:C.tm, fontSize:15, fontFamily:"monospace", letterSpacing:3 }}>••••••••</div>
@@ -6753,6 +6833,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                         <EditPasswordPanel
                           savedPw={editForm.password || u.password || null}
                           userEmail={editForm.email || u.email || null}
+                          userId={editForm.uid || editForm.id || u.uid || u.id || null}
                         />
                       )}
                   </div>
