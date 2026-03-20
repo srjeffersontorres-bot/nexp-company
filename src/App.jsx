@@ -4087,6 +4087,8 @@ function PerfisTab({ users, setUsers, currentUser }) {
 
 function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("perfil");
+  const [permSearch, setPermSearch] = useState("");
+  const [permExpandedId, setPermExpandedId] = useState(null);
   const tabs = [
     {
       id: "perfil",
@@ -4116,7 +4118,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       id: "permissoes",
       label: "Permissões",
       icon: "🔐",
-      roles: ["mestre"],
+      roles: ["mestre", "master"],
     },
   ].filter((t) => t.roles.includes(currentUser.role));
   return (
@@ -4176,100 +4178,155 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
         )}
         {tab === "perfis" && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
-        {tab === "permissoes" && sysConfig && onSysConfig && (
-          <div>
-            <h2 style={{ color:C.tp, fontSize:17, fontWeight:700, marginBottom:6 }}>🔐 Controle de Acesso</h2>
-            <p style={{ color:C.tm, fontSize:13, marginBottom:20 }}>Configure permissões por papel (todos de uma vez) ou por usuário individualmente.</p>
+        {tab === "permissoes" && sysConfig && onSysConfig && (() => {
+          const isMestre = currentUser.role === "mestre";
+          // Master só vê usuários que ele criou; mestre vê todos
+          const visibleUsers = users.filter(u => {
+            if (u.role === "mestre") return false;
+            if (isMestre) return true;
+            // master: só vê quem ele criou (createdBy === myId)
+            return u.createdBy === (currentUser.uid || currentUser.id);
+          });
+          const filtered = visibleUsers.filter(u =>
+            !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase())
+          );
+          const ALL_TABS = [
+            { id:"dashboard", label:"Leads Gerais" }, { id:"contacts", label:"Contatos" },
+            { id:"review", label:"Ver Clientes" }, { id:"cstatus", label:"Status" },
+            { id:"add", label:"Adicionar" }, { id:"import", label:"Importar" },
+            { id:"leds", label:"Leds" }, { id:"atalhos", label:"Atalhos" },
+            { id:"calendario", label:"Agenda" }, { id:"config", label:"Configurações" },
+          ];
+          const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
 
-            {/* Role-level chat toggles */}
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>💬 Chat por papel</div>
-              {[
-                { key:"masterChatEnabled",   label:"Master pode usar o chat",    col:"#94a3b8" },
-                { key:"indicadoChatEnabled", label:"Operador pode usar o chat",  col:"#34D399" },
-                { key:"visitanteChatEnabled",label:"Visitante pode usar o chat", col:"#60a5fa" },
-              ].map(opt=>(
-                <div key={opt.key} onClick={()=>onSysConfig({...sysConfig,[opt.key]:!sysConfig[opt.key]})}
-                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:10, cursor:"pointer", marginBottom:8, background:sysConfig[opt.key]?C.abg:C.deep, border:`1px solid ${sysConfig[opt.key]?opt.col+"44":C.b2}`, transition:"all 0.15s" }}>
-                  <span style={{ color:sysConfig[opt.key]?opt.col:C.ts, fontSize:13, fontWeight:sysConfig[opt.key]?600:400 }}>{opt.label}</span>
-                  <div style={{ width:36, height:20, borderRadius:10, background:sysConfig[opt.key]?opt.col:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
-                    <div style={{ position:"absolute", top:2, left:sysConfig[opt.key]?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
-                  </div>
+          return (
+            <div>
+              <h2 style={{ color:C.tp, fontSize:17, fontWeight:700, marginBottom:4 }}>🔐 Permissões por Usuário</h2>
+              <p style={{ color:C.tm, fontSize:13, marginBottom:20 }}>
+                {isMestre ? "Controle o acesso de todos os usuários." : "Controle o acesso dos usuários que você criou."}
+              </p>
+
+              {/* Toggles globais por papel — só mestre */}
+              {isMestre && (
+                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:700, marginBottom:12 }}>💬 Chat por papel (padrão global)</div>
+                  {[
+                    { key:"masterChatEnabled",   label:"Master — Chat",    col:"#94a3b8" },
+                    { key:"indicadoChatEnabled", label:"Operador — Chat",  col:"#34D399" },
+                    { key:"visitanteChatEnabled",label:"Visitante — Chat", col:"#60a5fa" },
+                  ].map(opt=>(
+                    <div key={opt.key} onClick={()=>onSysConfig({...sysConfig,[opt.key]:!sysConfig[opt.key]})}
+                      style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", marginBottom:7, background:sysConfig[opt.key]?C.abg:C.deep, border:`1px solid ${sysConfig[opt.key]?opt.col+"44":C.b2}`, transition:"all 0.15s" }}>
+                      <span style={{ color:sysConfig[opt.key]?opt.col:C.ts, fontSize:12.5, fontWeight:sysConfig[opt.key]?600:400 }}>{opt.label}</span>
+                      <div style={{ width:34, height:18, borderRadius:9, background:sysConfig[opt.key]?opt.col:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                        <div style={{ position:"absolute", top:1, left:sysConfig[opt.key]?16:1, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
 
-            {/* Per-user individual chat control */}
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>👤 Chat por usuário (individual)</div>
-              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>Sobrescreve a configuração de papel para usuários específicos.</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {users.filter(u=>u.role!=="mestre").map(u=>{
-                  const uid = u.uid||u.id;
-                  const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
-                  const col = roleColor2[u.role]||C.atxt;
-                  const override = sysConfig.userOverrides?.[uid];
-                  const chatOn = override !== undefined ? override.chat : (
-                    u.role==="master"?sysConfig.masterChatEnabled:u.role==="indicado"?sysConfig.indicadoChatEnabled:sysConfig.visitanteChatEnabled
-                  );
-                  return (
-                    <div key={uid} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:C.deep, border:`1px solid ${C.b2}` }}>
-                      <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:col+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:col }}>
-                        {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
-                      </div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ color:C.tp, fontSize:12.5, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name||u.email}</div>
-                        <div style={{ color:col, fontSize:10 }}>{u.role}</div>
-                      </div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <span style={{ color:C.td, fontSize:11 }}>Chat</span>
-                        <div onClick={()=>{
-                          const prev = sysConfig.userOverrides||{};
-                          onSysConfig({...sysConfig, userOverrides:{...prev,[uid]:{...(prev[uid]||{}),chat:!chatOn}}});
-                        }} style={{ width:36, height:20, borderRadius:10, background:chatOn?C.acc:C.b2, position:"relative", transition:"background 0.2s", cursor:"pointer", flexShrink:0 }}>
-                          <div style={{ position:"absolute", top:2, left:chatOn?16:2, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+              {/* Pesquisa + lista de usuários */}
+              <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px" }}>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:700, marginBottom:10 }}>👤 Permissões individuais</div>
+                <input
+                  placeholder="🔍 Pesquisar usuário por nome ou email..."
+                  value={permSearch}
+                  onChange={e=>{setPermSearch(e.target.value); setPermExpandedId(null);}}
+                  style={{ ...S.input, marginBottom:14 }}
+                />
+
+                {filtered.length === 0 && (
+                  <div style={{ color:C.tm, fontSize:12.5, textAlign:"center", padding:"20px 0" }}>
+                    {permSearch ? "Nenhum usuário encontrado." : "Nenhum usuário disponível."}
+                  </div>
+                )}
+
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {filtered.map(u => {
+                    const uid = u.uid||u.id;
+                    const col = roleColor2[u.role]||C.atxt;
+                    const override = sysConfig.userOverrides?.[uid] || {};
+                    const chatOn = override.chat !== undefined ? override.chat : (
+                      u.role==="master"?sysConfig.masterChatEnabled:u.role==="indicado"?sysConfig.indicadoChatEnabled:!!sysConfig.visitanteChatEnabled
+                    );
+                    const expanded = permExpandedId === uid;
+                    const hasOverride = Object.keys(override).length > 0;
+
+                    const setOv = (key, val) => {
+                      const prev = sysConfig.userOverrides||{};
+                      onSysConfig({...sysConfig, userOverrides:{...prev,[uid]:{...(prev[uid]||{}),[key]:val}}});
+                    };
+                    const resetOv = () => {
+                      const prev = {...(sysConfig.userOverrides||{})};
+                      delete prev[uid];
+                      onSysConfig({...sysConfig, userOverrides:prev});
+                    };
+
+                    return (
+                      <div key={uid} style={{ borderRadius:12, background:C.deep, border:`1px solid ${expanded?C.atxt+"44":C.b2}`, overflow:"hidden", transition:"border 0.2s" }}>
+                        {/* Linha do usuário — clicável */}
+                        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", cursor:"pointer" }}
+                          onClick={()=>setPermExpandedId(expanded?null:uid)}>
+                          <div style={{ width:34, height:34, borderRadius:"50%", overflow:"hidden", flexShrink:0, background:col+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:col }}>
+                            {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(u.name||"?")}
+                          </div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name||u.email}</div>
+                            <div style={{ color:col, fontSize:10.5 }}>{u.role} {u.email ? `· ${u.email}` : ""}</div>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                            {hasOverride && <span style={{ color:C.atxt, fontSize:9, background:C.abg, borderRadius:8, padding:"2px 7px", fontWeight:700 }}>personalizado</span>}
+                            <span style={{ color:C.td, fontSize:13, transition:"transform 0.2s", transform:expanded?"rotate(180deg)":"rotate(0deg)", display:"inline-block" }}>▼</span>
+                          </div>
                         </div>
-                        {override !== undefined && (
-                          <button onClick={()=>{
-                            const prev = {...(sysConfig.userOverrides||{})};
-                            delete prev[uid];
-                            onSysConfig({...sysConfig,userOverrides:prev});
-                          }} style={{ background:"none", border:"none", color:C.td, fontSize:10, cursor:"pointer" }} title="Resetar para padrão do papel">↺</button>
+
+                        {/* Painel expandido */}
+                        {expanded && (
+                          <div style={{ padding:"0 14px 14px", borderTop:`1px solid ${C.b1}` }}>
+                            {/* Chat */}
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"11px 0", borderBottom:`1px solid ${C.b1}` }}>
+                              <div>
+                                <span style={{ color:C.ts, fontSize:12.5, fontWeight:600 }}>💬 Acesso ao Chat</span>
+                                <div style={{ color:C.td, fontSize:10.5, marginTop:2 }}>{chatOn?"Habilitado":"Desabilitado"}</div>
+                              </div>
+                              <div onClick={()=>setOv("chat",!chatOn)} style={{ width:38, height:21, borderRadius:11, background:chatOn?C.acc:C.b2, position:"relative", transition:"background 0.2s", cursor:"pointer", flexShrink:0 }}>
+                                <div style={{ position:"absolute", top:2, left:chatOn?18:2, width:17, height:17, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                              </div>
+                            </div>
+
+                            {/* Abas visíveis */}
+                            <div style={{ marginTop:12, marginBottom:10 }}>
+                              <div style={{ color:C.ts, fontSize:12, fontWeight:600, marginBottom:8 }}>📋 Abas visíveis para este usuário</div>
+                              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                                {ALL_TABS.map(tabItem => {
+                                  const on = override.tabs ? override.tabs[tabItem.id] !== false : true;
+                                  return (
+                                    <button key={tabItem.id} onClick={()=>setOv("tabs",{...(override.tabs||{}),[tabItem.id]:!on})}
+                                      style={{ background:on?C.acc+"15":C.card, color:on?C.atxt:C.td, border:`1px solid ${on?C.atxt+"33":C.b2}`, borderRadius:20, padding:"4px 11px", fontSize:11, cursor:"pointer", fontWeight:on?600:400, transition:"all 0.15s" }}>
+                                      {on?"✓ ":""}{tabItem.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Reset */}
+                            {hasOverride && (
+                              <button onClick={resetOv} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"5px 14px", fontSize:11, cursor:"pointer", marginTop:4 }}>
+                                ↺ Resetar para padrão do papel
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
-
-            {/* Visitante tabs */}
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px" }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>👁 Abas visíveis para Visitante</div>
-              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>Controle quais seções o Visitante pode acessar na barra lateral.</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {[
-                  { id:"dashboard", label:"Leads Gerais" }, { id:"contacts", label:"Contatos" },
-                  { id:"review",    label:"Ver Clientes" }, { id:"cstatus",  label:"Cliente Status" },
-                  { id:"atalhos",   label:"Atalhos" },      { id:"add",      label:"Adicionar" },
-                  { id:"import",    label:"Importar" },     { id:"leds",     label:"Leds" },
-                  { id:"premium",   label:"Premium Nexp" }, { id:"config",   label:"Configurações" },
-                ].map(it=>{
-                  const on = sysConfig.visitanteTabs?.[it.id] !== false;
-                  return (
-                    <div key={it.id} onClick={()=>onSysConfig({...sysConfig, visitanteTabs:{...(sysConfig.visitanteTabs||{}),[it.id]:!on}})}
-                      style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", background:on?C.abg:C.deep, border:`1px solid ${on?C.atxt+"33":C.b2}`, transition:"all 0.15s" }}>
-                      <span style={{ color:on?C.atxt:C.ts, fontSize:13, fontWeight:on?600:400 }}>{it.label}</span>
-                      <div style={{ width:34, height:18, borderRadius:9, background:on?C.acc:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
-                        <div style={{ position:"absolute", top:1, left:on?16:1, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
@@ -9421,12 +9478,18 @@ function CalendarPage({ currentUser }) {
       {/* Alerta 15 minutos — caixinha no centro */}
       {alertAgendam && (
         <div style={{ position:"fixed", inset:0, zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-          <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:20, padding:"32px 40px", maxWidth:380, textAlign:"center", boxShadow:"0 12px 60px rgba(0,0,0,0.8)", animation:"fadeIn 0.4s ease" }}>
+          <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:20, padding:"32px 40px", maxWidth:380, textAlign:"center", boxShadow:"0 12px 60px rgba(0,0,0,0.8)", animation:"fadeIn 0.4s ease", pointerEvents:"all" }}>
             <div style={{ fontSize:40, marginBottom:12 }}>⏰</div>
             <div style={{ color:"#fff", fontSize:26, fontWeight:900, letterSpacing:"-0.5px", marginBottom:8 }}>15 MINUTOS</div>
             <div style={{ color:"rgba(255,255,255,0.9)", fontSize:15, marginBottom:6 }}>para seu compromisso!</div>
-            <div style={{ color:"rgba(255,255,255,0.75)", fontSize:16, fontWeight:600, background:"rgba(0,0,0,0.2)", borderRadius:10, padding:"10px 16px" }}>📋 {alertAgendam.text}</div>
-            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginTop:10 }}>Esta janela fecha automaticamente</div>
+            <div style={{ color:"rgba(255,255,255,0.75)", fontSize:16, fontWeight:600, background:"rgba(0,0,0,0.2)", borderRadius:10, padding:"10px 16px", marginBottom:16 }}>📋 {alertAgendam.text}</div>
+            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:14 }}>Fecha automaticamente em 30 segundos</div>
+            <button onClick={()=>setAlertAgendam(null)}
+              style={{ background:"rgba(255,255,255,0.15)", border:"1.5px solid rgba(255,255,255,0.35)", color:"#fff", borderRadius:10, padding:"9px 32px", fontSize:14, fontWeight:700, cursor:"pointer", letterSpacing:"0.5px", transition:"all 0.15s" }}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.28)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.15)"}>
+              Fechar
+            </button>
           </div>
         </div>
       )}
