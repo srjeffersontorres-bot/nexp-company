@@ -5593,32 +5593,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     } catch (e) { setErr("Erro ao salvar: " + e.message); }
   };
 
-  // ── Reset password — instância secundária Firebase (sem dynamic import) ──
-  const FB_CONFIG = {
-    apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-    authDomain: "nexpcompany-9a7ba.firebaseapp.com",
-    projectId: "nexpcompany-9a7ba",
-    storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
-    messagingSenderId: "1043432853586",
-    appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
-  };
-
-  const changeUserPassword = async (targetEmail, currentPass, newPass) => {
-    // Usa instância secundária para não deslogar o admin
-    const appName = "pwreset_" + Date.now();
-    const secondApp = initFirebaseApp(FB_CONFIG, appName);
-    const secondAuth = getAuth(secondApp);
-    try {
-      const cred = await signInSecondary(secondAuth, targetEmail, currentPass);
-      await updatePassword(cred.user, newPass);
-      return { ok: true };
-    } catch(e) {
-      return { ok: false, error: e.message };
-    } finally {
-      try { await secondAuth.signOut(); } catch {}
-    }
-  };
-
   // ── Helpers: muda senha via instância secundária ─────────────
   const FB_CFG = {
     apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
