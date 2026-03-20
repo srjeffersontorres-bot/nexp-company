@@ -736,15 +736,28 @@ function LoginPage({ onLogin }) {
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(),0,0)) / 86400000);
   const frase = FRASES_DIA[dayOfYear % FRASES_DIA.length];
 
-  // Buscar clima
+  const [cityName, setCityName] = useState(null);
+  const [forecast, setForecast] = useState(null);
+
+  // Buscar clima + cidade
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(async pos => {
         try {
           const { latitude: lat, longitude: lon } = pos.coords;
-          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`);
+          // Clima atual + previsão do dia
+          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`);
           const d = await r.json();
           setWeather(d.current_weather);
+          if (d.daily) setForecast({ tmax: d.daily.temperature_2m_max?.[0], tmin: d.daily.temperature_2m_min?.[0], rain: d.daily.precipitation_probability_max?.[0] });
+          // Nome da cidade via reverse geocoding
+          try {
+            const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
+            const gd  = await geo.json();
+            const city = gd.address?.city || gd.address?.town || gd.address?.village || gd.address?.county || "";
+            const state = gd.address?.state_code || gd.address?.state || "";
+            setCityName(city && state ? `${city}, ${state}` : city || state || null);
+          } catch {}
         } catch {}
       }, () => {});
     }
@@ -792,70 +805,210 @@ function LoginPage({ onLogin }) {
         @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
       `}</style>
 
-      {/* ── Elementos de clima ── */}
-      {isNight && <>
-        {/* Lua */}
-        <div style={{ position:"absolute", top:"12%", right:"15%", animation:"moonMove 60s linear infinite alternate", zIndex:0 }}>
-          <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
-            <defs>
-              <radialGradient id="moonGrad" cx="40%" cy="35%" r="60%">
-                <stop offset="0%" stopColor="#FEF9C3"/>
-                <stop offset="60%" stopColor="#FDE68A"/>
-                <stop offset="100%" stopColor="#F59E0B"/>
-              </radialGradient>
-              <filter id="moonGlow">
-                <feGaussianBlur stdDeviation="3" result="blur"/>
-                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-            </defs>
-            {/* Glow */}
-            <circle cx="26" cy="26" r="24" fill="#FBBF24" opacity="0.12"/>
-            {/* Lua crescente — forma com clip */}
-            <circle cx="26" cy="26" r="22" fill="url(#moonGrad)" filter="url(#moonGlow)"/>
-            <circle cx="36" cy="22" r="18" fill="#020408"/>
-            {/* Crateras */}
-            <circle cx="14" cy="28" r="2.5" fill="#E9A827" opacity="0.5"/>
-            <circle cx="18" cy="36" r="1.5" fill="#E9A827" opacity="0.4"/>
-            <circle cx="10" cy="20" r="1.8" fill="#E9A827" opacity="0.35"/>
-          </svg>
-        </div>
-        {/* Estrelas */}
-        {Array.from({length:24}).map((_,i)=>(
-          <div key={i} style={{ position:"absolute", top:`${5+(i*17%55)}%`, left:`${(i*13)%90}%`, width: i%3===0?3:2, height: i%3===0?3:2, borderRadius:"50%", background:"#fff", opacity:0.5, animation:`starTwinkle ${1.2+(i%4)*0.5}s ease-in-out ${i*0.3}s infinite`, zIndex:0 }} />
+      {/* ══ CENA COMPLETA — Céu + Cidade + Terra ══ */}
+      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }} viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FFF7A0" stopOpacity="1"/>
+            <stop offset="40%" stopColor="#FDE68A" stopOpacity="0.9"/>
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="moonGlow2" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FEF9C3"/>
+            <stop offset="60%" stopColor="#FDE68A"/>
+            <stop offset="100%" stopColor="#E9A827" stopOpacity="0"/>
+          </radialGradient>
+          <filter id="glow4"><feGaussianBlur stdDeviation="8" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="softBlur"><feGaussianBlur stdDeviation="3"/></filter>
+          <linearGradient id="grassGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#16A34A"/>
+            <stop offset="100%" stopColor="#14532d"/>
+          </linearGradient>
+          <linearGradient id="roadGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#374151"/>
+            <stop offset="100%" stopColor="#1f2937"/>
+          </linearGradient>
+        </defs>
+
+        {/* ── ESTRELAS (noite) ── */}
+        {isNight && Array.from({length:40}).map((_,i)=>(
+          <circle key={i} cx={30+(i*37)%1380} cy={10+(i*23)%320} r={i%5===0?2:1} fill="#fff" opacity={0.4+(i%4)*0.15}>
+            <animate attributeName="opacity" values={`${0.2+(i%3)*0.2};${0.8+(i%2)*0.2};${0.2+(i%3)*0.2}`} dur={`${1.5+(i%4)*0.7}s`} begin={`${i*0.18}s`} repeatCount="indefinite"/>
+          </circle>
         ))}
-      </>}
-      {(isMorning || isAfternoon) && !isRain && !isCloudy && <>
-        {/* Sol */}
-        <div style={{ position:"absolute", top:"8%", left:"15%", width:58, height:58, borderRadius:"50%", background:"radial-gradient(circle,#FDE68A,#F59E0B)", boxShadow:"0 0 50px #F59E0B88", animation:"sunMove 120s linear infinite alternate", zIndex:0 }} />
-        {/* Nuvens */}
-        <div style={{ position:"absolute", top:"18%", left:"30%", zIndex:0, animation:"cloudFloat 18s ease-in-out infinite alternate" }}>
-          <div style={{ width:90, height:36, borderRadius:18, background:"rgba(255,255,255,0.18)", boxShadow:"0 2px 12px rgba(255,255,255,0.1)" }} />
-        </div>
-        <div style={{ position:"absolute", top:"10%", left:"55%", zIndex:0, animation:"cloudFloat2 22s ease-in-out infinite alternate" }}>
-          <div style={{ width:60, height:24, borderRadius:12, background:"rgba(255,255,255,0.12)" }} />
-        </div>
-      </>}
-      {isEvening && <>
-        {/* Céu do entardecer com nuvens */}
-        <div style={{ position:"absolute", top:"15%", right:"25%", zIndex:0, animation:"cloudFloat 25s ease-in-out infinite alternate" }}>
-          <div style={{ width:100, height:40, borderRadius:20, background:"rgba(249,115,22,0.2)" }} />
-        </div>
-      </>}
-      {isCloudy && !isRain && <>
-        {Array.from({length:3}).map((_,i)=>(
-          <div key={i} style={{ position:"absolute", top:`${8+i*12}%`, left:`${10+i*28}%`, zIndex:0, animation:`cloudFloat${i%2===0?"":"2"} ${14+i*6}s ease-in-out infinite alternate` }}>
-            <div style={{ width:80+i*30, height:30+i*10, borderRadius:15+i*5, background:`rgba(180,180,200,0.18)` }} />
-          </div>
+
+        {/* ── LUA (noite) ── */}
+        {isNight && <>
+          <circle cx="1100" cy="120" r="70" fill="#FBBF24" opacity="0.08" filter="url(#glow4)"/>
+          <circle cx="1100" cy="120" r="46" fill="url(#moonGlow2)" filter="url(#glow4)"/>
+          <circle cx="1100" cy="120" r="40" fill="#E2C96B"/>
+          <circle cx="1124" cy="104" r="32" fill={isNight?"#060B1A":"transparent"}/>
+          <circle cx="1080" cy="132" r="4" fill="#C9A227" opacity="0.5"/>
+          <circle cx="1092" cy="144" r="2.5" fill="#C9A227" opacity="0.4"/>
+          <circle cx="1072" cy="118" r="3" fill="#C9A227" opacity="0.35"/>
+        </>}
+
+        {/* ── SOL (dia) ── */}
+        {(isMorning || isAfternoon || isEvening) && !isRain && <>
+          {/* Halo */}
+          <circle cx={isMorning?220:isEvening?1220:720} cy={isMorning?130:isEvening?160:80} r="110" fill="url(#sunGlow)" opacity="0.35"/>
+          {/* Raios */}
+          {Array.from({length:12}).map((_,i)=>{
+            const cx = isMorning?220:isEvening?1220:720;
+            const cy = isMorning?130:isEvening?160:80;
+            const ang = (i*30)*Math.PI/180;
+            const r1=58, r2=80;
+            return <line key={i} x1={cx+Math.cos(ang)*r1} y1={cy+Math.sin(ang)*r1} x2={cx+Math.cos(ang)*r2} y2={cy+Math.sin(ang)*r2} stroke="#FDE68A" strokeWidth="2" strokeLinecap="round" opacity="0.5">
+              <animateTransform attributeName="transform" type="rotate" from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`} dur="60s" repeatCount="indefinite"/>
+            </line>;
+          })}
+          {/* Núcleo */}
+          <circle cx={isMorning?220:isEvening?1220:720} cy={isMorning?130:isEvening?160:80} r="48" fill="#FDE68A" filter="url(#glow4)"/>
+          <circle cx={isMorning?220:isEvening?1220:720} cy={isMorning?130:isEvening?160:80} r="40" fill="#FFF7A0"/>
+        </>}
+
+        {/* ── NUVENS ── */}
+        {/* Nuvem 1 - grande */}
+        {!isNight && <>
+          <g opacity={isCloudy||isRain?0.9:0.65}>
+            <ellipse cx="320" cy="190" rx="110" ry="52" fill="white" opacity="0.9">
+              <animateTransform attributeName="transform" type="translate" values="0 0;30 0;0 0" dur="20s" repeatCount="indefinite"/>
+            </ellipse>
+            <ellipse cx="260" cy="205" rx="75" ry="40" fill="white" opacity="0.85">
+              <animateTransform attributeName="transform" type="translate" values="0 0;30 0;0 0" dur="20s" repeatCount="indefinite"/>
+            </ellipse>
+            <ellipse cx="380" cy="208" rx="65" ry="36" fill="white" opacity="0.8">
+              <animateTransform attributeName="transform" type="translate" values="0 0;30 0;0 0" dur="20s" repeatCount="indefinite"/>
+            </ellipse>
+          </g>
+          {/* Nuvem 2 */}
+          <g opacity={isCloudy||isRain?0.85:0.5}>
+            <ellipse cx="880" cy="140" rx="90" ry="42" fill="white" opacity="0.85">
+              <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="28s" repeatCount="indefinite"/>
+            </ellipse>
+            <ellipse cx="830" cy="152" rx="60" ry="34" fill="white" opacity="0.8">
+              <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="28s" repeatCount="indefinite"/>
+            </ellipse>
+            <ellipse cx="940" cy="155" rx="55" ry="30" fill="white" opacity="0.75">
+              <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="28s" repeatCount="indefinite"/>
+            </ellipse>
+          </g>
+          {/* Nuvem 3 — extra quando nublado */}
+          {(isCloudy || isRain) && <>
+            <g opacity="0.8">
+              <ellipse cx="620" cy="110" rx="130" ry="58" fill={isRain?"#9ca3af":"white"} opacity="0.7">
+                <animateTransform attributeName="transform" type="translate" values="0 0;20 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="550" cy="128" rx="85" ry="44" fill={isRain?"#9ca3af":"white"} opacity="0.7">
+                <animateTransform attributeName="transform" type="translate" values="0 0;20 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="700" cy="125" rx="80" ry="40" fill={isRain?"#9ca3af":"white"} opacity="0.65">
+                <animateTransform attributeName="transform" type="translate" values="0 0;20 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+            <g opacity="0.75">
+              <ellipse cx="1180" cy="170" rx="100" ry="48" fill={isRain?"#6b7280":"white"} opacity="0.7">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-18 0;0 0" dur="24s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="1130" cy="185" rx="70" ry="36" fill={isRain?"#6b7280":"white"} opacity="0.65">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-18 0;0 0" dur="24s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+          </>}
+        </>}
+
+        {/* ── CHUVA ── */}
+        {isRain && Array.from({length:60}).map((_,i)=>(
+          <line key={i} x1={(i*24)%1440} y1="-10" x2={(i*24+8)%1440} y2="30" stroke="rgba(147,197,253,0.5)" strokeWidth="1.5" strokeLinecap="round">
+            <animateTransform attributeName="transform" type="translate" values={`0 0;0 ${920}`} dur={`${0.6+(i%5)*0.12}s`} begin={`${(i*0.05)%1.2}s`} repeatCount="indefinite"/>
+          </line>
         ))}
-      </>}
-      {isRain && <>
-        {/* Nuvens de chuva */}
-        <div style={{ position:"absolute", top:0, left:0, right:0, height:120, background:"linear-gradient(180deg,#1a2535,transparent)", zIndex:0 }} />
-        {/* Gotas de chuva */}
-        {Array.from({length:40}).map((_,i)=>(
-          <div key={i} style={{ position:"absolute", top:`-${5+(i%15)}%`, left:`${(i*2.5)%100}%`, width:1.5, height:14+(i%6)*3, background:`rgba(147,197,253,${0.2+(i%4)*0.1})`, borderRadius:2, animation:`rainDrop ${0.8+(i%5)*0.2}s linear ${(i*0.07)%1.5}s infinite`, zIndex:0 }} />
+
+        {/* ── CIDADE — prédios ── */}
+        {/* Prédios fundos (mais escuros, menores) */}
+        {[
+          {x:50,  w:60, h:200, rx:2, fill:"#1e293b"},
+          {x:120, w:45, h:160, rx:2, fill:"#1e293b"},
+          {x:175, w:55, h:240, rx:3, fill:"#1e293b"},
+          {x:240, w:40, h:180, rx:2, fill:"#1e293b"},
+          {x:290, w:70, h:280, rx:3, fill:"#1e293b"},
+          {x:370, w:50, h:200, rx:2, fill:"#1e293b"},
+          {x:430, w:65, h:260, rx:3, fill:"#1e293b"},
+          {x:505, w:40, h:190, rx:2, fill:"#1e293b"},
+          {x:555, w:80, h:320, rx:3, fill:"#1e293b"},
+          {x:645, w:45, h:200, rx:2, fill:"#1e293b"},
+          {x:700, w:60, h:260, rx:3, fill:"#1e293b"},
+          {x:770, w:55, h:300, rx:3, fill:"#1e293b"},
+          {x:835, w:45, h:220, rx:2, fill:"#1e293b"},
+          {x:890, w:70, h:280, rx:3, fill:"#1e293b"},
+          {x:970, w:50, h:200, rx:2, fill:"#1e293b"},
+          {x:1030,w:65, h:260, rx:3, fill:"#1e293b"},
+          {x:1105,w:40, h:180, rx:2, fill:"#1e293b"},
+          {x:1155,w:80, h:340, rx:3, fill:"#1e293b"},
+          {x:1245,w:45, h:210, rx:2, fill:"#1e293b"},
+          {x:1300,w:60, h:260, rx:3, fill:"#1e293b"},
+          {x:1370,w:50, h:190, rx:2, fill:"#1e293b"},
+        ].map((b,i)=>(
+          <rect key={i} x={b.x} y={620-b.h} width={b.w} height={b.h} rx={b.rx} fill={b.fill} opacity="0.7"/>
         ))}
-      </>}
+
+        {/* Prédios frente (mais claros, maiores, janelas) */}
+        {[
+          {x:0,   w:80,  h:280, fill:"#0f172a", wins:[[10,20],[10,60],[10,100],[45,20],[45,60],[45,100]]},
+          {x:160, w:100, h:360, fill:"#0f172a", wins:[[12,20],[12,70],[12,120],[12,170],[55,20],[55,70],[55,120],[55,170]]},
+          {x:400, w:90,  h:300, fill:"#1a2535", wins:[[12,20],[12,70],[12,120],[50,20],[50,70],[50,120]]},
+          {x:620, w:110, h:420, fill:"#0f172a", wins:[[14,20],[14,80],[14,140],[14,200],[60,20],[60,80],[60,140],[60,200]]},
+          {x:870, w:95,  h:340, fill:"#1a2535", wins:[[13,20],[13,75],[13,130],[52,20],[52,75],[52,130]]},
+          {x:1100,w:105, h:390, fill:"#0f172a", wins:[[13,20],[13,75],[13,130],[13,185],[57,20],[57,75],[57,130],[57,185]]},
+          {x:1320,w:120, h:300, fill:"#1a2535", wins:[[15,20],[15,75],[15,130],[65,20],[65,75],[65,130]]},
+        ].map((b,bi)=>(
+          <g key={bi}>
+            <rect x={b.x} y={620-b.h} width={b.w} height={b.h} fill={b.fill}/>
+            {/* Antena */}
+            <line x1={b.x+b.w/2} y1={620-b.h} x2={b.x+b.w/2} y2={620-b.h-20} stroke="#475569" strokeWidth="2"/>
+            <circle cx={b.x+b.w/2} cy={620-b.h-22} r="3" fill="#EF4444" opacity="0.9">
+              <animate attributeName="opacity" values="0.9;0.2;0.9" dur="1.8s" repeatCount="indefinite"/>
+            </circle>
+            {/* Janelas */}
+            {b.wins.map(([wx,wy],wi)=>(
+              <rect key={wi} x={b.x+wx} y={620-b.h+wy} width={18} height={12} rx={1}
+                fill={isNight?(wi%3===0?"#FDE68A":wi%5===0?"#60A5FA":"#334155"):"#60A5FA"}
+                opacity={isNight?0.9:(wi%4===0?0.7:0.3)}/>
+            ))}
+          </g>
+        ))}
+
+        {/* ── ESTRADA / CALÇADA ── */}
+        <rect x="0" y="618" width="1440" height="24" fill="url(#roadGrad)"/>
+        {/* Faixas da estrada */}
+        {Array.from({length:9}).map((_,i)=>(
+          <rect key={i} x={100+i*150} y="627" width="60" height="4" rx="2" fill="#FBBF24" opacity="0.7">
+            <animateTransform attributeName="transform" type="translate" values="0 0;-150 0" dur="4s" begin={`${i*0.44}s`} repeatCount="indefinite"/>
+          </rect>
+        ))}
+
+        {/* ── GRAMA ── */}
+        <rect x="0" y="640" width="1440" height="260" fill="url(#grassGrad)"/>
+        {/* Textura de grama — tufos */}
+        {Array.from({length:30}).map((_,i)=>(
+          <g key={i} transform={`translate(${i*48+10},640)`} opacity="0.6">
+            <ellipse cx="0" cy="0" rx="14" ry="6" fill="#15803d"/>
+            <line x1="-8" y1="0" x2="-12" y2="-10" stroke="#16a34a" strokeWidth="1.5"/>
+            <line x1="0"  y1="0" x2="0"   y2="-14" stroke="#22c55e" strokeWidth="1.5"/>
+            <line x1="8"  y1="0" x2="12"  y2="-10" stroke="#16a34a" strokeWidth="1.5"/>
+          </g>
+        ))}
+
+        {/* ── ÁRVORES ── */}
+        {[80,240,520,760,1020,1260,1400].map((x,i)=>(
+          <g key={i} transform={`translate(${x},580)`}>
+            <rect x="-5" y="0" width="10" height="40" rx="3" fill="#7c4f2a"/>
+            <ellipse cx="0" cy="-10" rx="28" ry="38" fill="#15803d" opacity="0.9"/>
+            <ellipse cx="-10" cy="0" rx="20" ry="28" fill="#16a34a" opacity="0.7"/>
+            <ellipse cx="10" cy="-5" rx="18" ry="26" fill="#22c55e" opacity="0.6"/>
+          </g>
+        ))}
+      </svg>
 
       {/* ── Lado esquerdo: formulário com transparência ── */}
       <div style={{ flex:"0 0 auto", width:"min(380px,90vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease" }}>
@@ -918,11 +1071,32 @@ function LoginPage({ onLogin }) {
           <div style={{ color:"rgba(255,255,255,0.88)", fontSize:13.5, lineHeight:1.6, fontStyle:"italic" }}>{frase}</div>
         </div>
 
-        {/* Clima atual */}
+        {/* Clima atual + localização */}
         {weather && (
-          <div style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(15,19,32,0.5)", backdropFilter:"blur(10px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.08)" }}>
-            <span style={{ fontSize:20 }}>{isRain?"🌧":isCloudy?"☁️":isNight?"🌙":isMorning?"🌅":isAfternoon?"☀️":"🌆"}</span>
-            <span style={{ color:"rgba(255,255,255,0.7)", fontSize:12 }}>{Math.round(weather.temperature)}°C · {isRain?"Chuvoso":isCloudy?"Nublado":isNight?"Noite":isMorning?"Manhã":isAfternoon?"Tarde":"Entardecer"}</span>
+          <div style={{ background:"rgba(15,19,32,0.6)", backdropFilter:"blur(14px)", borderRadius:14, padding:"12px 18px", border:"1px solid rgba(255,255,255,0.1)", minWidth:220, textAlign:"center" }}>
+            {/* Localização */}
+            {cityName && (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:5, marginBottom:8 }}>
+                <span style={{ fontSize:13 }}>📍</span>
+                <span style={{ color:"rgba(255,255,255,0.6)", fontSize:11.5, fontWeight:600 }}>{cityName}</span>
+              </div>
+            )}
+            {/* Temperatura + ícone */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:6 }}>
+              <span style={{ fontSize:28 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
+              <div>
+                <div style={{ color:"#fff", fontSize:26, fontWeight:800, lineHeight:1 }}>{Math.round(weather.temperature)}°C</div>
+                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{isRain?"Chuvoso":isCloudy?"Nublado":isNight?"Noite clara":isMorning?"Manhã":isAfternoon?"Tarde limpa":"Entardecer"}</div>
+              </div>
+            </div>
+            {/* Previsão do dia */}
+            {forecast && (
+              <div style={{ display:"flex", gap:12, justifyContent:"center", paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.08)" }}>
+                <span style={{ color:"#F87171", fontSize:11 }}>↑ {forecast.tmax}°</span>
+                <span style={{ color:"#60A5FA", fontSize:11 }}>↓ {forecast.tmin}°</span>
+                {forecast.rain > 0 && <span style={{ color:"#93C5FD", fontSize:11 }}>💧 {forecast.rain}%</span>}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -4427,6 +4601,8 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             { id:"cstatus",      label:"Status" },
             { id:"add",          label:"Adicionar" },
             { id:"import",       label:"Importar" },
+            { id:"simulador",    label:"Simulador" },
+            { id:"apis",         label:"APIs Bancos" },
             { id:"leds",         label:"Leds" },
             { id:"atalhos",      label:"Atalhos" },
             { id:"calendario",   label:"Agenda" },
@@ -5557,13 +5733,14 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 
                         const handleReveal = () => { setAskConfirm(true); setPassErr(""); };
                         const handleConfirm = async () => {
-                          // Verifica senha do usuário atual via Firebase Auth
+                          // Verifica senha do mestre via Firebase Auth
                           try {
-                            const cred = EmailAuthProvider.credential(currentUser.email, confirmPass);
+                            const mestreEmail = currentUser.email;
+                            const cred = EmailAuthProvider.credential(mestreEmail, confirmPass);
                             await reauthenticateWithCredential(auth.currentUser, cred);
                             await loadPass();
                             setPassVisible(true); setAskConfirm(false); setConfirmPass("");
-                          } catch { setPassErr("Senha incorreta"); }
+                          } catch { setPassErr("Senha do mestre incorreta. Tente novamente."); }
                         };
                         const copy = () => { if (!storedPass) return; navigator.clipboard.writeText(storedPass).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1800);}); };
 
@@ -5586,7 +5763,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                             )}
                             {askConfirm && !passVisible && (
                               <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
-                                <div style={{ color:C.tm, fontSize:11 }}>Digite sua senha para confirmar:</div>
+                                <div style={{ color:C.tm, fontSize:11 }}>🔐 Digite a senha do Mestre para revelar:</div>
                                 <div style={{ display:"flex", gap:6 }}>
                                   <input type="password" value={confirmPass} onChange={e=>{setConfirmPass(e.target.value);setPassErr("");}}
                                     onKeyDown={e=>e.key==="Enter"&&handleConfirm()}
@@ -11429,6 +11606,20 @@ export default function App() {
         }}
       />
     );
+
+  // ── Inatividade — logout automático após 15 minutos ────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const IDLE_MS = 15 * 60 * 1000; // 15 minutos
+    let timer = setTimeout(() => logout(), IDLE_MS);
+    const reset = () => { clearTimeout(timer); timer = setTimeout(() => logout(), IDLE_MS); };
+    const events = ["mousemove","keydown","click","scroll","touchstart"];
+    events.forEach(ev => window.addEventListener(ev, reset, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach(ev => window.removeEventListener(ev, reset));
+    };
+  }, [currentUser]); // eslint-disable-line
 
   const logout = async () => {
     await firebaseLogout();
