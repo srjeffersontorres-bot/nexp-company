@@ -10018,7 +10018,6 @@ function CreditoTab({ bancos }) {
           </thead>
           <tbody>
             {linhas.map((l, i) => {
-              const c = toF(l.coef);
               return (
                 <tr key={l.id} style={{ background: i%2===0 ? C.card : C.deep }}>
                   <td style={{ color:C.tp, fontWeight:700, padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>{l.prazo}</td>
