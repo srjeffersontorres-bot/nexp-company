@@ -1362,16 +1362,32 @@ function InternetFloatWindow({ tab, onMinimize, onClose }) {
   const [currentUrl, setCurrentUrl] = useState(tab.url);
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
     setBlocked(false); setLoading(true);
     setCurrentUrl(tab.url); setInputUrl(tab.url);
+    // Timeout: se não carregar em 8s, mostra aviso
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setBlocked(true); setLoading(false);
+    }, 8000);
+    return () => clearTimeout(timeoutRef.current);
   }, [tab.id]); // eslint-disable-line
 
   const navigate = () => {
     let u = inputUrl.trim();
     if (!u.startsWith("http")) u = "https://" + u;
     setCurrentUrl(u); setBlocked(false); setLoading(true);
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setBlocked(true); setLoading(false);
+    }, 8000);
+  };
+
+  const handleLoad = () => {
+    clearTimeout(timeoutRef.current);
+    setLoading(false);
   };
 
   return (
@@ -1404,30 +1420,39 @@ function InternetFloatWindow({ tab, onMinimize, onClose }) {
       {/* Conteúdo */}
       <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
         {loading && !blocked && (
-          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, zIndex:2, flexDirection:"column", gap:12 }}>
-            <div style={{ width:34, height:34, border:`3px solid ${tab.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, zIndex:2, flexDirection:"column", gap:14 }}>
+            <div style={{ width:40, height:40, border:`3px solid ${tab.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
             <span style={{ color:C.tm, fontSize:13 }}>Carregando {tab.label}...</span>
+            <span style={{ color:C.td, fontSize:11 }}>Se demorar muito, o site pode não permitir incorporação</span>
           </div>
         )}
-        {!blocked ? (
-          <iframe src={currentUrl} title={tab.label}
-            onLoad={()=>setLoading(false)}
-            onError={()=>{ setBlocked(true); setLoading(false); }}
-            style={{ width:"100%", height:"100%", border:"none", display:"block" }}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
-          />
-        ) : (
+
+        {blocked ? (
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:16, padding:40 }}>
-            <div style={{ fontSize:48 }}>🔒</div>
-            <div style={{ color:C.tp, fontSize:18, fontWeight:700 }}>{tab.label} bloqueou a incorporação</div>
-            <div style={{ color:C.tm, fontSize:13, textAlign:"center", maxWidth:400, lineHeight:1.7 }}>
-              Este site não permite ser aberto dentro de outros sistemas por segurança. Clique abaixo para abrir no navegador.
+            <div style={{ fontSize:52 }}>🔒</div>
+            <div style={{ color:C.tp, fontSize:18, fontWeight:700 }}>{tab.label} não pode ser aberto aqui</div>
+            <div style={{ color:C.tm, fontSize:13, textAlign:"center", maxWidth:420, lineHeight:1.8 }}>
+              Este site bloqueou a incorporação por segurança.<br/>
+              Clique abaixo para abrir normalmente no navegador.
             </div>
             <button onClick={()=>window.open(tab.url,"_blank")}
-              style={{ background:tab.color, color:"#fff", border:"none", borderRadius:10, padding:"11px 26px", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 16px ${tab.color}44` }}>
+              style={{ background:tab.color, color:"#fff", border:"none", borderRadius:10, padding:"12px 28px", fontSize:14, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 16px ${tab.color}44`, display:"flex", alignItems:"center", gap:8 }}>
               {tab.emoji} Abrir {tab.label} no navegador
             </button>
+            <button onClick={()=>{ setBlocked(false); setLoading(true); setCurrentUrl(tab.url);
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = setTimeout(()=>{ setBlocked(true); setLoading(false); }, 8000);
+            }} style={{ background:"none", border:"none", color:C.td, fontSize:12, cursor:"pointer", textDecoration:"underline" }}>
+              Tentar novamente
+            </button>
           </div>
+        ) : (
+          <iframe src={currentUrl} title={tab.label}
+            onLoad={handleLoad}
+            onError={()=>{ clearTimeout(timeoutRef.current); setBlocked(true); setLoading(false); }}
+            style={{ width:"100%", height:"100%", border:"none", display: loading ? "none" : "block" }}
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
+          />
         )}
       </div>
     </div>
