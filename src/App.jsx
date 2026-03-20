@@ -1420,37 +1420,72 @@ const INTERNET_TABS = [
 
 function InternetPage() {
   const [activeTab, setActiveTab] = useState("whatsapp");
-  const iframeRef = useRef();
+  // Guarda referência da janela aberta por cada aba
+  const winRefs = useRef({});
+  // Estado visual: "closed" | "open"
+  const [winState, setWinState] = useState({});
   const tab = INTERNET_TABS.find(t => t.id === activeTab);
 
-  // Monitora navegação do iframe para manter dentro do domínio permitido
+  // Verifica a cada 800ms se a janela ainda está aberta
   useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const handleLoad = () => {
-      try {
-        const iframeUrl = iframe.contentWindow?.location?.href || "";
-        const allowedDomain = new URL(tab.url).hostname.replace("www.", "");
-        const currentDomain = iframeUrl ? new URL(iframeUrl).hostname.replace("www.", "") : "";
-        if (iframeUrl && currentDomain && !currentDomain.includes(allowedDomain) && !allowedDomain.includes(currentDomain)) {
-          iframe.src = tab.fallback;
-        }
-      } catch {}
-    };
-    iframe.addEventListener("load", handleLoad);
-    return () => iframe.removeEventListener("load", handleLoad);
-  }, [activeTab, tab]);
+    const interval = setInterval(() => {
+      const next = {};
+      INTERNET_TABS.forEach(t => {
+        const w = winRefs.current[t.id];
+        next[t.id] = w && !w.closed ? "open" : "closed";
+      });
+      setWinState(next);
+    }, 800);
+    return () => clearInterval(interval);
+  }, []);
+
+  const openTab = (t) => {
+    setActiveTab(t.id);
+    const existing = winRefs.current[t.id];
+    if (existing && !existing.closed) {
+      existing.focus();
+      return;
+    }
+    // Calcula posição e tamanho: ocupa a maior parte da tela deixando a sidebar visível
+    const sw = window.screen.width;
+    const sh = window.screen.height;
+    const w  = Math.round(sw * 0.72);
+    const h  = Math.round(sh * 0.92);
+    const left = Math.round((sw - w) / 2);
+    const top  = Math.round((sh - h) / 2);
+    const win = window.open(
+      t.url,
+      `nexp_${t.id}`,
+      `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes`
+    );
+    winRefs.current[t.id] = win;
+    setWinState(s => ({ ...s, [t.id]: "open" }));
+  };
+
+  const closeTab = (t) => {
+    const w = winRefs.current[t.id];
+    if (w && !w.closed) w.close();
+    winRefs.current[t.id] = null;
+    setWinState(s => ({ ...s, [t.id]: "closed" }));
+  };
+
+  const focusTab = (t) => {
+    const w = winRefs.current[t.id];
+    if (w && !w.closed) w.focus();
+  };
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden", background:C.bg }}>
 
       {/* Tab bar */}
-      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 16px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0 }}>
-        <span style={{ color:C.tm, fontSize:12, fontWeight:700, marginRight:4 }}>🌐</span>
+      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 16px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0, flexWrap:"wrap" }}>
+        <span style={{ color:C.atxt, fontSize:13, fontWeight:800, marginRight:4 }}>🌐 Internet</span>
         {INTERNET_TABS.map(t => {
           const active = t.id === activeTab;
+          const isOpen = winState[t.id] === "open";
           return (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
+            <button key={t.id}
+              onClick={() => active && isOpen ? focusTab(t) : openTab(t)}
               style={{
                 display:"flex", alignItems:"center", gap:7,
                 padding:"7px 16px", borderRadius:9, cursor:"pointer",
@@ -1460,49 +1495,108 @@ function InternetPage() {
                 fontSize:12.5, fontWeight: active ? 700 : 400,
                 transition:"all 0.15s",
                 boxShadow: active ? `0 2px 10px ${t.color}33` : "none",
+                position:"relative",
               }}
               onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background=C.abg; e.currentTarget.style.color=C.atxt; }}}
               onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background=C.deep; e.currentTarget.style.color=C.tm; }}}
             >
               <span style={{ color: active ? t.color : "inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
               {t.label}
+              {/* Indicador verde se aberta */}
+              {isOpen && (
+                <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", marginLeft:2, boxShadow:"0 0 6px #16A34A88" }} />
+              )}
             </button>
           );
         })}
-
-        {/* Reload button */}
-        <button onClick={() => { if(iframeRef.current) iframeRef.current.src = tab.url; }}
-          style={{ marginLeft:"auto", background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
-          🔄 Recarregar
-        </button>
       </div>
 
-      {/* iFrame area */}
-      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
-        {INTERNET_TABS.map(t => (
-          <iframe
-            key={t.id}
-            ref={t.id === activeTab ? iframeRef : null}
-            src={t.url}
-            title={t.label}
-            style={{
-              position:"absolute", inset:0, width:"100%", height:"100%",
-              border:"none", display: t.id === activeTab ? "block" : "none",
-              background:"#fff",
-            }}
-            allow="camera; microphone; geolocation; clipboard-read; clipboard-write"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
-          />
-        ))}
+      {/* Área principal — cards de cada aba */}
+      <div style={{ flex:1, overflowY:"auto", padding:"32px 40px", display:"flex", flexDirection:"column", gap:20 }}>
 
-        {/* Aviso de bloqueio (sites que bloqueiam iframe) */}
-        <div id={`iframe-blocked-${activeTab}`} style={{ display:"none", position:"absolute", inset:0, background:C.bg, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
-          <div style={{ fontSize:40 }}>{tab?.icon}</div>
-          <div style={{ color:C.ts, fontSize:15, fontWeight:700 }}>{tab?.label} bloqueou o acesso direto.</div>
-          <a href={tab?.url} target="_blank" rel="noopener noreferrer"
-            style={{ background:tab?.color, color:"#fff", padding:"10px 24px", borderRadius:10, textDecoration:"none", fontSize:13, fontWeight:700 }}>
-            Abrir em nova aba →
-          </a>
+        {/* Card da aba ativa */}
+        {(() => {
+          const t = tab;
+          if (!t) return null;
+          const isOpen = winState[t.id] === "open";
+          return (
+            <div style={{ background:C.card, borderRadius:16, border:`1px solid ${t.color}33`, padding:"32px 36px", maxWidth:560, boxShadow:`0 4px 32px ${t.color}11` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
+                <div style={{ width:56, height:56, borderRadius:14, background:t.color+"22", border:`1.5px solid ${t.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:t.color }}>
+                  {t.icon}
+                </div>
+                <div>
+                  <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>{t.label}</div>
+                  <div style={{ color:C.td, fontSize:12, marginTop:3 }}>{t.url}</div>
+                </div>
+                {isOpen && (
+                  <span style={{ marginLeft:"auto", background:"#0A2918", color:"#34D399", border:"1px solid #16A34A44", borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:5 }}>
+                    <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
+                    Aberta
+                  </span>
+                )}
+              </div>
+
+              <div style={{ color:C.ts, fontSize:13, lineHeight:1.7, marginBottom:24 }}>
+                {t.id === "whatsapp" && "Abre o WhatsApp Web em uma janela separada. Escaneie o QR code para conectar ou continue onde parou."}
+                {t.id === "instagram" && "Abre o Instagram em uma janela separada. Faça login e acesse seu feed normalmente."}
+                {t.id === "chatgpt" && "Abre o ChatGPT em uma janela separada. Use a IA da OpenAI para auxílio nas suas tarefas."}
+                {t.id === "claude" && "Abre o Claude (Anthropic) em uma janela separada. Converse com a IA para ajuda em qualquer tarefa."}
+              </div>
+
+              <div style={{ display:"flex", gap:10 }}>
+                {!isOpen ? (
+                  <button onClick={() => openTab(t)}
+                    style={{ ...S.btn(t.color, "#fff"), padding:"11px 28px", fontSize:14, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:8, boxShadow:`0 4px 18px ${t.color}44` }}>
+                    {t.icon} Abrir {t.label}
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => focusTab(t)}
+                      style={{ ...S.btn(t.color, "#fff"), padding:"11px 22px", fontSize:13, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:7 }}>
+                      🔍 Trazer para frente
+                    </button>
+                    <button onClick={() => closeTab(t)}
+                      style={{ ...S.btn("transparent", "#F87171"), padding:"11px 18px", fontSize:13, fontWeight:600, borderRadius:10, border:"1px solid #EF444433" }}>
+                      ✕ Fechar
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Grid de atalhos rápidos para todas as abas */}
+        <div>
+          <div style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>Todas as ferramentas</div>
+          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+            {INTERNET_TABS.map(t => {
+              const isOpen = winState[t.id] === "open";
+              return (
+                <button key={t.id}
+                  onClick={() => { setActiveTab(t.id); isOpen ? focusTab(t) : openTab(t); }}
+                  style={{ display:"flex", alignItems:"center", gap:9, padding:"10px 18px", borderRadius:10, cursor:"pointer",
+                    background: isOpen ? t.color+"18" : C.deep,
+                    color: isOpen ? t.color : C.tm,
+                    border: isOpen ? `1px solid ${t.color}44` : `1px solid ${C.b2}`,
+                    fontSize:12.5, fontWeight: isOpen ? 700 : 400, transition:"all 0.15s" }}>
+                  <span style={{ color:"inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
+                  {t.label}
+                  {isOpen && <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block" }} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Aviso explicativo */}
+        <div style={{ background:C.deep, borderRadius:10, padding:"14px 18px", border:`1px solid ${C.b1}`, maxWidth:560 }}>
+          <div style={{ color:C.td, fontSize:11.5, lineHeight:1.7 }}>
+            ℹ️ <strong style={{ color:C.tm }}>Por que abre em janela separada?</strong><br/>
+            WhatsApp, Instagram, ChatGPT e Claude bloqueiam incorporação direta por segurança (<code style={{ background:C.card, padding:"1px 5px", borderRadius:4, fontSize:10.5 }}>X-Frame-Options</code>).
+            A janela aberta fica vinculada a esta aba — você pode fechá-la por aqui quando quiser.
+          </div>
         </div>
       </div>
     </div>
