@@ -9151,65 +9151,265 @@ function CalendarPage({ currentUser }) {
   const myId = currentUser.uid || currentUser.id;
   const [year, setYear] = useState(new Date().getFullYear());
   const [notes, setNotes] = useState([]);
-  const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD"
-  const [noteText, setNoteText] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // note id
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(null); // null = grade anual, número = ver mês
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deletePass, setDeletePass] = useState("");
   const [deleteErr, setDeleteErr] = useState("");
+  // Formulário de novo agendamento
+  const [newText, setNewText] = useState("");
+  const [newHour, setNewHour] = useState("");
+  const [newNotify, setNewNotify] = useState(true);
+  // Alerta 15 min
+  const [alertAgendam, setAlertAgendam] = useState(null);
+  const notifiedRef = useRef({});
+
+  const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const WEEK = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     const unsub = listenCalendarNotes(myId, setNotes);
     return () => unsub();
   }, [myId]);
 
-  const notesForDay = (dateStr) => notes.filter(n => n.date === dateStr);
-  const today = new Date().toISOString().slice(0, 10);
+  // ── Notificações de agendamento ──────────────────────────────
+  useEffect(() => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") Notification.requestPermission();
+
+    const check = () => {
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      const hh = now.getHours(); const mm = now.getMinutes();
+
+      notes.filter(n => n.notify !== false).forEach(n => {
+        const key5am = `5am_${n.id}_${n.date}`;
+        const key5h  = `5h_${n.id}_${n.date}`;
+        const key30m = `30m_${n.id}_${n.date}`;
+        const key15m = `15m_${n.id}_${n.date}`;
+
+        // 5 da manhã do dia do agendamento
+        if (n.date === todayStr && hh === 5 && mm < 2 && !notifiedRef.current[key5am]) {
+          notifiedRef.current[key5am] = true;
+          if (Notification.permission === "granted") new Notification("📅 Agendamento hoje", { body: n.text, icon: "/favicon.ico" });
+        }
+
+        // Faltando 5h, 30min, 15min — só se tiver hora definida
+        if (n.hour && n.date === todayStr) {
+          const [nh, nm] = n.hour.split(":").map(Number);
+          const agendaMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), nh, nm).getTime();
+          const diffMin = (agendaMs - now.getTime()) / 60000;
+
+          if (diffMin > 295 && diffMin <= 305 && !notifiedRef.current[key5h]) {
+            notifiedRef.current[key5h] = true;
+            if (Notification.permission === "granted") new Notification("⏰ Faltam 5 horas", { body: n.text });
+          }
+          if (diffMin > 28 && diffMin <= 32 && !notifiedRef.current[key30m]) {
+            notifiedRef.current[key30m] = true;
+            if (Notification.permission === "granted") new Notification("⏰ Faltam 30 minutos", { body: n.text });
+          }
+          if (diffMin > 13 && diffMin <= 16 && !notifiedRef.current[key15m]) {
+            notifiedRef.current[key15m] = true;
+            setAlertAgendam(n);
+            setTimeout(() => setAlertAgendam(null), 15000);
+          }
+        }
+      });
+    };
+
+    check();
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, [notes]); // eslint-disable-line
+
+  const agendForDay = (dateStr) => notes.filter(n => n.date === dateStr).sort((a,b)=>(a.hour||"99:99").localeCompare(b.hour||"99:99"));
+  const agendForMonth = (monthIdx) => notes.filter(n => n.date?.startsWith(`${year}-${String(monthIdx+1).padStart(2,"0")}`)).sort((a,b)=>a.date.localeCompare(b.date)||(a.hour||"").localeCompare(b.hour||""));
 
   const addNote = async () => {
-    if (!noteText.trim() || !selectedDay) return;
-    await saveCalendarNote({ uid: myId, date: selectedDay, text: noteText.trim(), createdAt: new Date().toISOString() });
-    setNoteText("");
+    if (!newText.trim() || !selectedDay) return;
+    await saveCalendarNote({ uid: myId, date: selectedDay, text: newText.trim(), hour: newHour || null, notify: newNotify, createdAt: new Date().toISOString() });
+    setNewText(""); setNewHour(""); setNewNotify(true);
   };
 
   const confirmDelete = async () => {
-    if (deletePass !== "MestredaNexp2027@" && deletePass !== currentUser.email) {
-      setDeleteErr("Senha incorreta");
-      return;
-    }
-    await deleteCalendarNote(deleteConfirm);
-    setDeleteConfirm(null); setDeletePass(""); setDeleteErr("");
+    try {
+      const { EmailAuthProvider, reauthenticateWithCredential: reauth } = await import("firebase/auth");
+      const cred = EmailAuthProvider.credential(currentUser.email, deletePass);
+      await reauth(auth.currentUser, cred);
+      await deleteCalendarNote(deleteConfirm);
+      setDeleteConfirm(null); setDeletePass(""); setDeleteErr("");
+    } catch { setDeleteErr("Senha incorreta"); }
   };
 
-  const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-  const WEEK = ["D","S","T","Q","Q","S","S"];
+  // Exportar relatório CSV do mês
+  const exportMonth = (monthIdx) => {
+    const items = agendForMonth(monthIdx);
+    if (!items.length) return;
+    const rows = [["Data","Hora","Agendamento"],...items.map(n=>[n.date, n.hour||"—", `"${n.text.replace(/"/g,'""')}"`])];
+    const csv = rows.map(r=>r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=`agendamentos_${MONTHS[monthIdx]}_${year}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
 
-  const renderMonth = (monthIdx) => {
+  // ── Render de um mês expandido ────────────────────────────────
+  const renderMonthExpanded = () => {
+    const mi = selectedMonth;
+    const firstDay = new Date(year, mi, 1).getDay();
+    const daysInMonth = new Date(year, mi + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    const dateStr = (d) => `${year}-${String(mi+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const monthItems = agendForMonth(mi);
+
+    return (
+      <div>
+        {/* Header mês */}
+        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+          <button onClick={()=>{setSelectedMonth(null);setSelectedDay(null);}} style={{ ...S.btn(C.deep,C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>← Voltar</button>
+          <h2 style={{ color:C.tp, fontSize:19, fontWeight:700, margin:0 }}>{MONTHS[mi]} {year}</h2>
+          <button onClick={()=>exportMonth(mi)} disabled={!monthItems.length} style={{ ...S.btn(monthItems.length?C.acc:C.deep, monthItems.length?"#fff":C.td), padding:"7px 14px", fontSize:12, marginLeft:"auto", opacity:monthItems.length?1:0.5 }}>
+            ⬇ Baixar relatório
+          </button>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+          {/* Calendário grande do mês */}
+          <div style={{ ...S.card, padding:"18px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4, marginBottom:8 }}>
+              {WEEK.map((w,i)=><div key={i} style={{ color:C.td, fontSize:10, textAlign:"center", fontWeight:600 }}>{w}</div>)}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
+              {cells.map((d,i)=>{
+                if (!d) return <div key={i} />;
+                const ds = dateStr(d);
+                const count = agendForDay(ds).length;
+                const isToday = ds === today;
+                const isSel = ds === selectedDay;
+                return (
+                  <div key={i} onClick={()=>setSelectedDay(isSel?null:ds)}
+                    style={{ textAlign:"center", padding:"6px 2px", borderRadius:8, cursor:"pointer", background:isSel?C.acc:isToday?C.abg:"transparent", color:isSel?"#fff":isToday?C.atxt:C.ts, fontSize:12, fontWeight:isToday||isSel?700:400, transition:"all 0.12s", position:"relative" }}
+                    onMouseEnter={e=>{ if(!isSel&&!isToday) e.currentTarget.style.background=C.deep; }}
+                    onMouseLeave={e=>{ if(!isSel&&!isToday) e.currentTarget.style.background="transparent"; }}>
+                    {d}
+                    {count>0 && (
+                      <div style={{ display:"flex", justifyContent:"center", gap:2, marginTop:2 }}>
+                        {Array.from({length:Math.min(count,3)}).map((_,ci)=>(
+                          <div key={ci} style={{ width:4, height:4, borderRadius:"50%", background:isSel?"#fff":C.acc }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Painel direito: dia selecionado ou lista do mês */}
+          <div>
+            {selectedDay ? (
+              <div style={{ ...S.card, padding:"16px", border:`1px solid ${C.atxt}33` }}>
+                <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:12 }}>
+                  📅 {new Date(selectedDay+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}
+                </div>
+                {agendForDay(selectedDay).length === 0 && <div style={{ color:C.tm, fontSize:12, marginBottom:10 }}>Nenhum agendamento neste dia.</div>}
+                <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:12 }}>
+                  {agendForDay(selectedDay).map(n => (
+                    <div key={n.id} style={{ background:C.deep, borderRadius:9, padding:"9px 12px", border:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-start" }}>
+                      {n.hour && <div style={{ color:C.acc, fontSize:12, fontWeight:700, flexShrink:0, marginTop:1 }}>🕐 {n.hour}</div>}
+                      <div style={{ flex:1, color:C.ts, fontSize:12.5, lineHeight:1.5 }}>{n.text}</div>
+                      <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
+                        {n.notify && <span style={{ fontSize:9, color:C.acc }}>🔔</span>}
+                        <button onClick={()=>setDeleteConfirm(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>🗑</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Formulário novo agendamento */}
+                <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:12 }}>
+                  <div style={{ color:C.tm, fontSize:11, marginBottom:8 }}>➕ Novo agendamento</div>
+                  <input value={newText} onChange={e=>setNewText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&addNote()}
+                    placeholder="Descrição do agendamento..." style={{ ...S.input, marginBottom:7 }} />
+                  <div style={{ display:"flex", gap:7, alignItems:"center", marginBottom:7 }}>
+                    <input type="time" value={newHour} onChange={e=>setNewHour(e.target.value)}
+                      style={{ ...S.input, width:110, padding:"7px 10px" }} />
+                    <span style={{ color:C.td, fontSize:10.5 }}>hora (opcional)</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                    <div onClick={()=>setNewNotify(p=>!p)} style={{ width:32, height:18, borderRadius:9, background:newNotify?C.acc:C.b2, position:"relative", cursor:"pointer", transition:"background 0.2s", flexShrink:0 }}>
+                      <div style={{ position:"absolute", top:1, left:newNotify?14:1, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                    </div>
+                    <span style={{ color:C.tm, fontSize:11.5 }}>Notificar sobre este agendamento</span>
+                  </div>
+                  <button onClick={addNote} disabled={!newText.trim()} style={{ ...S.btn(newText.trim()?C.acc:C.deep, newText.trim()?"#fff":C.td), width:"100%", opacity:newText.trim()?1:0.5 }}>
+                    Salvar agendamento
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ ...S.card, padding:"16px" }}>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:700, marginBottom:10 }}>📋 Todos os agendamentos de {MONTHS[mi]}</div>
+                {monthItems.length === 0 && <div style={{ color:C.tm, fontSize:12 }}>Nenhum agendamento neste mês.</div>}
+                <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:360, overflowY:"auto" }}>
+                  {monthItems.map(n=>(
+                    <div key={n.id} style={{ background:C.deep, borderRadius:9, padding:"8px 12px", border:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-start", cursor:"pointer" }}
+                      onClick={()=>setSelectedDay(n.date)}>
+                      <div style={{ flexShrink:0, textAlign:"center" }}>
+                        <div style={{ color:C.atxt, fontSize:11, fontWeight:700 }}>{n.date.slice(8)}</div>
+                        <div style={{ color:C.td, fontSize:9 }}>{MONTHS[parseInt(n.date.slice(5,7))-1].slice(0,3)}</div>
+                        {n.hour && <div style={{ color:C.acc, fontSize:9, marginTop:2 }}>🕐 {n.hour}</div>}
+                      </div>
+                      <div style={{ flex:1, color:C.ts, fontSize:12, lineHeight:1.4 }}>{n.text}</div>
+                      {n.notify && <span style={{ fontSize:9, color:C.acc, flexShrink:0 }}>🔔</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render grade anual ────────────────────────────────────────
+  const renderMonthMini = (monthIdx) => {
     const firstDay = new Date(year, monthIdx, 1).getDay();
     const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
     const cells = [];
     for (let i = 0; i < firstDay; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
     const dateStr = (d) => `${year}-${String(monthIdx+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const monthCount = agendForMonth(monthIdx).length;
     return (
-      <div key={monthIdx} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px" }}>
-        <div style={{ color:C.tp, fontSize:12.5, fontWeight:700, marginBottom:8, textAlign:"center" }}>{MONTHS[monthIdx]}</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4 }}>
-          {WEEK.map((w,i) => <div key={i} style={{ color:C.td, fontSize:9, textAlign:"center", fontWeight:600 }}>{w}</div>)}
+      <div key={monthIdx} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px", cursor:"default" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+          <button onClick={()=>{setSelectedMonth(monthIdx);setSelectedDay(null);}}
+            style={{ background:"none", border:"none", color:C.tp, fontSize:12.5, fontWeight:700, cursor:"pointer", padding:0 }}
+            onMouseEnter={e=>e.currentTarget.style.color=C.atxt} onMouseLeave={e=>e.currentTarget.style.color=C.tp}>
+            {MONTHS[monthIdx]}
+          </button>
+          {monthCount>0 && <span style={{ background:C.acc+"1A", color:C.acc, fontSize:9, padding:"1px 6px", borderRadius:9, fontWeight:700 }}>{monthCount}</span>}
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
-          {cells.map((d, i) => {
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:1, marginBottom:3 }}>
+          {["D","S","T","Q","Q","S","S"].map((w,i)=><div key={i} style={{ color:C.td, fontSize:8, textAlign:"center" }}>{w}</div>)}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:1 }}>
+          {cells.map((d,i)=>{
             if (!d) return <div key={i} />;
             const ds = dateStr(d);
-            const hasNotes = notesForDay(ds).length > 0;
+            const count = agendForDay(ds).length;
             const isToday = ds === today;
-            const isSel = ds === selectedDay;
             return (
-              <div key={i} onClick={() => setSelectedDay(isSel ? null : ds)}
-                style={{ textAlign:"center", padding:"3px 2px", borderRadius:5, cursor:"pointer", background:isSel?C.acc:isToday?C.abg:"transparent", color:isSel?"#fff":isToday?C.atxt:C.ts, fontSize:10.5, fontWeight:isToday||isSel?700:400, position:"relative", transition:"all 0.12s" }}
-                onMouseEnter={e=>{ if(!isSel&&!isToday) e.currentTarget.style.background=C.deep; }}
-                onMouseLeave={e=>{ if(!isSel&&!isToday) e.currentTarget.style.background="transparent"; }}>
+              <div key={i} onClick={()=>{setSelectedMonth(monthIdx);setSelectedDay(ds);}}
+                style={{ textAlign:"center", padding:"2px 1px", borderRadius:4, cursor:"pointer", background:isToday?C.abg:"transparent", color:isToday?C.atxt:C.ts, fontSize:9.5, fontWeight:isToday?700:400, position:"relative" }}
+                onMouseEnter={e=>{ if(!isToday) e.currentTarget.style.background=C.deep; }}
+                onMouseLeave={e=>{ if(!isToday) e.currentTarget.style.background="transparent"; }}>
                 {d}
-                {hasNotes && <div style={{ width:4, height:4, borderRadius:"50%", background:isSel?"#fff":C.acc, margin:"1px auto 0" }} />}
+                {count>0 && <div style={{ width:3, height:3, borderRadius:"50%", background:C.acc, margin:"1px auto 0" }} />}
               </div>
             );
           })}
@@ -9219,56 +9419,28 @@ function CalendarPage({ currentUser }) {
   };
 
   return (
-    <div style={{ padding:"24px 28px", maxWidth:1100 }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
-        <div>
-          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📅 Calendário {year}</h1>
-          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Clique em um dia para adicionar notas</p>
-        </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-          <button onClick={()=>setYear(y=>y-1)} style={{ ...S.btn(C.deep, C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>← {year-1}</button>
-          <button onClick={()=>setYear(new Date().getFullYear())} style={{ ...S.btn(C.abg, C.atxt), padding:"7px 14px", fontSize:12 }}>Hoje</button>
-          <button onClick={()=>setYear(y=>y+1)} style={{ ...S.btn(C.deep, C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>{year+1} →</button>
-        </div>
-      </div>
-
-      {/* Painel de nota do dia selecionado */}
-      {selectedDay && (
-        <div style={{ ...S.card, padding:"16px 20px", marginBottom:18, border:`1px solid ${C.atxt}33` }}>
-          <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>
-            📝 Notas — {new Date(selectedDay+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}
-          </div>
-          {notesForDay(selectedDay).length === 0 && <div style={{ color:C.tm, fontSize:12, marginBottom:10 }}>Nenhuma nota neste dia ainda.</div>}
-          <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:10 }}>
-            {notesForDay(selectedDay).map(n => (
-              <div key={n.id} style={{ display:"flex", alignItems:"flex-start", gap:10, background:C.deep, borderRadius:9, padding:"9px 12px", border:`1px solid ${C.b1}` }}>
-                <div style={{ flex:1, color:C.ts, fontSize:12.5, lineHeight:1.5 }}>{n.text}</div>
-                <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
-                  <div style={{ color:C.td, fontSize:10 }}>{new Date(n.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
-                  <button onClick={()=>setDeleteConfirm(n.id)}
-                    style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>🗑 Apagar</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            <input value={noteText} onChange={e=>setNoteText(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&addNote()}
-              placeholder="Adicionar nota para este dia..."
-              style={{ ...S.input, flex:1, padding:"8px 12px" }} />
-            <button onClick={addNote} disabled={!noteText.trim()} style={{ ...S.btn(noteText.trim()?C.acc:C.deep, noteText.trim()?"#fff":C.td), padding:"8px 16px", opacity:noteText.trim()?1:0.5 }}>＋</button>
+    <div style={{ padding:"24px 28px", maxWidth:1200 }}>
+      {/* Alerta 15 minutos — caixinha no centro */}
+      {alertAgendam && (
+        <div style={{ position:"fixed", inset:0, zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+          <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:20, padding:"32px 40px", maxWidth:380, textAlign:"center", boxShadow:"0 12px 60px rgba(0,0,0,0.8)", animation:"fadeIn 0.4s ease" }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>⏰</div>
+            <div style={{ color:"#fff", fontSize:26, fontWeight:900, letterSpacing:"-0.5px", marginBottom:8 }}>15 MINUTOS</div>
+            <div style={{ color:"rgba(255,255,255,0.9)", fontSize:15, marginBottom:6 }}>para seu compromisso!</div>
+            <div style={{ color:"rgba(255,255,255,0.75)", fontSize:16, fontWeight:600, background:"rgba(0,0,0,0.2)", borderRadius:10, padding:"10px 16px" }}>📋 {alertAgendam.text}</div>
+            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginTop:10 }}>Esta janela fecha automaticamente</div>
           </div>
         </div>
       )}
 
-      {/* Modal confirmação apagar nota */}
+      {/* Modal apagar */}
       {deleteConfirm && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"24px", maxWidth:340, width:"90%" }}>
-            <div style={{ color:"#F87171", fontSize:15, fontWeight:700, marginBottom:8 }}>🗑 Apagar nota</div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:14 }}>Digite sua senha para confirmar a exclusão permanente.</div>
+            <div style={{ color:"#F87171", fontSize:15, fontWeight:700, marginBottom:8 }}>🗑 Apagar agendamento</div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:14 }}>Digite sua senha para confirmar.</div>
             <input type="password" value={deletePass} onChange={e=>{setDeletePass(e.target.value);setDeleteErr("");}}
+              onKeyDown={e=>e.key==="Enter"&&confirmDelete()}
               placeholder="Sua senha..." style={{ ...S.input, marginBottom:8 }} autoFocus />
             {deleteErr && <div style={{ color:"#F87171", fontSize:11.5, marginBottom:8 }}>{deleteErr}</div>}
             <div style={{ display:"flex", gap:8 }}>
@@ -9279,10 +9451,74 @@ function CalendarPage({ currentUser }) {
         </div>
       )}
 
-      {/* Grade anual */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12 }}>
-        {Array.from({length:12},(_,i)=>renderMonth(i))}
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
+        <div>
+          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📅 Agenda {year}</h1>
+          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>
+            {selectedMonth !== null ? `Clique em um dia para ver agendamentos` : `Clique no nome do mês para abri-lo · ${notes.length} agendamento(s)`}
+          </p>
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          {selectedMonth !== null && (
+            <button onClick={()=>{setSelectedMonth(null);setSelectedDay(null);}} style={{ ...S.btn(C.deep,C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>← Anual</button>
+          )}
+          <button onClick={()=>setYear(y=>y-1)} style={{ ...S.btn(C.deep,C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>← {year-1}</button>
+          <button onClick={()=>setYear(new Date().getFullYear())} style={{ ...S.btn(C.abg,C.atxt), padding:"7px 14px", fontSize:12 }}>Hoje</button>
+          <button onClick={()=>setYear(y=>y+1)} style={{ ...S.btn(C.deep,C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>{year+1} →</button>
+        </div>
       </div>
+
+      {/* Conteúdo */}
+      {selectedMonth !== null
+        ? renderMonthExpanded()
+        : (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:12 }}>
+            {Array.from({length:12},(_,i)=>renderMonthMini(i))}
+          </div>
+        )
+      }
+
+      {/* Painel dia selecionado na grade anual */}
+      {selectedMonth === null && selectedDay && (
+        <div style={{ ...S.card, padding:"16px 20px", marginTop:18, border:`1px solid ${C.atxt}33` }}>
+          <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>
+            📅 {new Date(selectedDay+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}
+          </div>
+          {agendForDay(selectedDay).length === 0 && <div style={{ color:C.tm, fontSize:12, marginBottom:10 }}>Nenhum agendamento neste dia.</div>}
+          <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:12 }}>
+            {agendForDay(selectedDay).map(n=>(
+              <div key={n.id} style={{ background:C.deep, borderRadius:9, padding:"9px 12px", border:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-start" }}>
+                {n.hour && <div style={{ color:C.acc, fontSize:12, fontWeight:700, flexShrink:0, marginTop:1 }}>🕐 {n.hour}</div>}
+                <div style={{ flex:1, color:C.ts, fontSize:12.5, lineHeight:1.5 }}>{n.text}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                  {n.notify && <span style={{ fontSize:10, color:C.acc }}>🔔</span>}
+                  <button onClick={()=>setDeleteConfirm(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>🗑</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:12 }}>
+            <div style={{ color:C.tm, fontSize:11, marginBottom:8 }}>➕ Novo agendamento</div>
+            <input value={newText} onChange={e=>setNewText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&addNote()}
+              placeholder="Descrição..." style={{ ...S.input, marginBottom:7 }} />
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:7, flexWrap:"wrap" }}>
+              <input type="time" value={newHour} onChange={e=>setNewHour(e.target.value)}
+                style={{ ...S.input, width:110, padding:"7px 10px" }} />
+              <span style={{ color:C.td, fontSize:10.5 }}>hora (opcional)</span>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:"auto" }}>
+                <div onClick={()=>setNewNotify(p=>!p)} style={{ width:32, height:18, borderRadius:9, background:newNotify?C.acc:C.b2, position:"relative", cursor:"pointer", transition:"background 0.2s" }}>
+                  <div style={{ position:"absolute", top:1, left:newNotify?14:1, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                </div>
+                <span style={{ color:C.tm, fontSize:11 }}>Notificar 🔔</span>
+              </div>
+            </div>
+            <button onClick={addNote} disabled={!newText.trim()} style={{ ...S.btn(newText.trim()?C.acc:C.deep, newText.trim()?"#fff":C.td), width:"100%", opacity:newText.trim()?1:0.5 }}>
+              Salvar agendamento
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
