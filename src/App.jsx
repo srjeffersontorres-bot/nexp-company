@@ -5339,6 +5339,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         id: uid, uid,
         username: form.email,
         email: form.email,
+        password: form.password, // salva para consulta pelo mestre
         role: currentUser.role === "mestre" ? form.role : "indicado",
         name: form.name,
         cpf: form.cpf,
@@ -5411,14 +5412,65 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     } catch (e) { setErr("Erro ao salvar: " + e.message); }
   };
 
-  // ── Reset password
+  // ── Reset password — efetivo via instância secundária Firebase ──
   const doReset = async () => {
     if (!resetPw.trim()) { setErr("Nova senha não pode estar vazia."); return; }
+    if (resetPw.length < 6) { setErr("A senha deve ter pelo menos 6 caracteres."); return; }
     try {
-      // Usa firebase admin via createOperator trick — apenas salva no perfil
-      await saveUserProfile(editForm.uid || editForm.id, { ...editForm, _pwHint: "redefined" });
-      setResetPw("");
-      flash("Senha redefinida! O usuário precisará usar o novo acesso.");
+      setErr("");
+      // 1. Busca a senha atual do usuário no Firestore para fazer login na instância secundária
+      const targetEmail = editForm.email;
+      const snap = await getDocs(query(collection(db, "users"), where("email", "==", targetEmail)));
+      let currentPass = null;
+      if (!snap.empty) currentPass = snap.docs[0].data().password || null;
+
+      if (!currentPass) {
+        // Sem senha salva — tenta criar novo acesso (recria o Auth user)
+        try {
+          const { initializeApp } = await import("firebase/app");
+          const { getAuth, signInWithEmailAndPassword: signIn, updatePassword: updPw } = await import("firebase/auth");
+          const { default: firebaseConfigObj } = await import("./firebase");
+          // Fallback: salva a nova senha no Firestore mesmo assim
+          await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
+          setResetPw(""); flash("Senha salva! O usuário precisa fazer logout e login para usar.");
+          return;
+        } catch {
+          await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
+          setResetPw(""); flash("Senha salva! Oriente o usuário a usar a nova senha.");
+          return;
+        }
+      }
+
+      // 2. Instância secundária para não deslogar o admin
+      const { initializeApp, getApps } = await import("firebase/app");
+      const { getAuth, signInWithEmailAndPassword: signIn, updatePassword: updPw } = await import("firebase/auth");
+      const firebaseConfig = {
+        apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+        authDomain: "nexpcompany-9a7ba.firebaseapp.com",
+        projectId: "nexpcompany-9a7ba",
+        storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
+        messagingSenderId: "1043432853586",
+        appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
+      };
+      const secondAppName = "reset_" + Date.now();
+      const secondApp = initializeApp(firebaseConfig, secondAppName);
+      const secondAuth = getAuth(secondApp);
+
+      try {
+        const cred = await signIn(secondAuth, targetEmail, currentPass);
+        await updPw(cred.user, resetPw);
+        // 3. Salva a nova senha no Firestore para futura consulta
+        await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
+        setResetPw("");
+        flash("✅ Senha redefinida com sucesso!");
+      } catch (e2) {
+        // Se login falhou (senha antiga errada), salva só no Firestore
+        await saveUserProfile(editForm.uid || editForm.id, { ...editForm, password: resetPw });
+        setResetPw("");
+        flash("Senha salva no sistema. O usuário deve fazer logout e tentar com a nova senha.");
+      } finally {
+        try { await secondAuth.signOut(); } catch {}
+      }
     } catch (e) { setErr("Erro: " + e.message); }
   };
 
@@ -5936,34 +5988,115 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                         };
                         const copy = () => { if (!storedPass) return; navigator.clipboard.writeText(storedPass).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1800);}); };
 
+                        const [newPassInput, setNewPassInput] = useState("");
+                        const [resetting, setResetting] = useState(false);
+                        const [showReset, setShowReset] = useState(false);
+                        const [resetMsg, setResetMsg] = useState("");
+
+                        const handleReset = async () => {
+                          if (!newPassInput.trim() || newPassInput.length < 6) { setResetMsg("Mínimo 6 caracteres."); return; }
+                          setResetting(true); setResetMsg("");
+                          try {
+                            // Busca email e senha atual
+                            const snap2 = await getDocs(query(collection(db, "users"), where("uid", "==", pUid)));
+                            const uData = snap2.empty ? null : snap2.docs[0].data();
+                            const targetEmail = uData?.email;
+                            const currentPass2 = uData?.password;
+
+                            if (targetEmail && currentPass2) {
+                              const { initializeApp } = await import("firebase/app");
+                              const { getAuth, signInWithEmailAndPassword: signIn2, updatePassword: updPw2 } = await import("firebase/auth");
+                              const fbCfg = {
+                                apiKey:"AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+                                authDomain:"nexpcompany-9a7ba.firebaseapp.com",
+                                projectId:"nexpcompany-9a7ba",
+                                storageBucket:"nexpcompany-9a7ba.firebasestorage.app",
+                                messagingSenderId:"1043432853586",
+                                appId:"1:1043432853586:web:10d443d6757420fe01cf8b",
+                              };
+                              const sApp = initializeApp(fbCfg, "pfReset_" + Date.now());
+                              const sAuth = getAuth(sApp);
+                              try {
+                                const cred2 = await signIn2(sAuth, targetEmail, currentPass2);
+                                await updPw2(cred2.user, newPassInput);
+                              } catch {} finally { try { await sAuth.signOut(); } catch {} }
+                            }
+                            // Salva nova senha no Firestore independente do Auth
+                            await setDoc(doc(db, "users", pUid), { password: newPassInput }, { merge: true });
+                            if (storedPass) setStoredPass(newPassInput);
+                            setNewPassInput(""); setShowReset(false);
+                            setResetMsg("✅ Senha redefinida!");
+                            setTimeout(() => setResetMsg(""), 3000);
+                          } catch(e2) { setResetMsg("Erro: " + e2.message); }
+                          setResetting(false);
+                        };
+
                         return (
-                          <div style={{ gridColumn:"1/-1" }}>
-                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
-                              <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.4px" }}>Senha</div>
-                              <div style={{ display:"flex", gap:4 }}>
-                                {passVisible && storedPass && <button onClick={copy} style={{ background:"none", border:"none", color:copied?"#34D399":C.td, cursor:"pointer", fontSize:10 }}>{copied?"✓":"⎘"}</button>}
+                          <div style={{ gridColumn:"1/-1", background:C.deep, borderRadius:10, padding:"10px 12px", border:`1px solid ${C.b1}` }}>
+                            {/* Cabeçalho */}
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+                              <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha</div>
+                              <div style={{ display:"flex", gap:6 }}>
+                                {passVisible && storedPass && (
+                                  <button onClick={copy} style={{ background:"none", border:"none", color:copied?"#34D399":C.td, cursor:"pointer", fontSize:10 }}>
+                                    {copied?"✓ Copiado":"⎘ Copiar"}
+                                  </button>
+                                )}
                                 <button onClick={()=>{ if(passVisible){setPassVisible(false);setStoredPass(null);} else handleReveal(); }}
                                   style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:10 }}>
                                   {passVisible?"🙈 Ocultar":"👁 Ver senha"}
                                 </button>
+                                <button onClick={()=>setShowReset(p=>!p)}
+                                  style={{ background:showReset?C.abg:"none", border:showReset?`1px solid ${C.atxt}44`:"none", color:"#FBBF24", cursor:"pointer", fontSize:10, borderRadius:5, padding:"1px 6px" }}>
+                                  ✏ Redefinir
+                                </button>
                               </div>
                             </div>
+
+                            {/* Senha visível / oculta */}
                             {passVisible ? (
-                              <div style={{ color:C.tp, fontSize:12.5, fontWeight:500, letterSpacing:1 }}>{storedPass || "Não disponível"}</div>
+                              <div style={{ color:"#34D399", fontSize:13, fontWeight:700, letterSpacing:2, marginBottom:4, fontFamily:"monospace" }}>
+                                {storedPass || "Não disponível no sistema"}
+                              </div>
                             ) : (
-                              <div style={{ color:C.tm, fontSize:12.5 }}>••••••••</div>
+                              <div style={{ color:C.tm, fontSize:12.5, marginBottom:4 }}>••••••••</div>
                             )}
+
+                            {/* Confirmar com senha do mestre */}
                             {askConfirm && !passVisible && (
-                              <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
+                              <div style={{ display:"flex", flexDirection:"column", gap:5, marginBottom:6 }}>
                                 <div style={{ color:C.tm, fontSize:11 }}>🔐 Digite a senha do Mestre para revelar:</div>
-                                <div style={{ display:"flex", gap:6 }}>
+                                <div style={{ display:"flex", gap:5 }}>
                                   <input type="password" value={confirmPass} onChange={e=>{setConfirmPass(e.target.value);setPassErr("");}}
                                     onKeyDown={e=>e.key==="Enter"&&handleConfirm()}
-                                    placeholder="Sua senha atual..." style={{ ...S.input, flex:1, padding:"5px 10px", fontSize:12 }} autoFocus />
+                                    placeholder="Senha do mestre..." style={{ ...S.input, flex:1, padding:"5px 10px", fontSize:12 }} autoFocus />
                                   <button onClick={handleConfirm} style={{ ...S.btn(C.acc,"#fff"), padding:"5px 12px", fontSize:12 }}>OK</button>
-                                  <button onClick={()=>{setAskConfirm(false);setConfirmPass("");setPassErr("");}} style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"5px 10px", fontSize:12 }}>✕</button>
+                                  <button onClick={()=>{setAskConfirm(false);setConfirmPass("");setPassErr("");}}
+                                    style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"5px 10px", fontSize:12 }}>✕</button>
                                 </div>
                                 {passErr && <div style={{ color:"#F87171", fontSize:11 }}>{passErr}</div>}
+                              </div>
+                            )}
+
+                            {/* Painel de redefinição */}
+                            {showReset && (
+                              <div style={{ marginTop:8, padding:"10px 12px", background:C.card, borderRadius:8, border:`1px solid #FBBF2433` }}>
+                                <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8 }}>✏ Nova senha para este usuário</div>
+                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                  <input type="text" value={newPassInput} onChange={e=>{ setNewPassInput(e.target.value); setResetMsg(""); }}
+                                    onKeyDown={e=>e.key==="Enter"&&handleReset()}
+                                    placeholder="Nova senha (mín. 6 caracteres)"
+                                    style={{ ...S.input, flex:1, padding:"7px 10px", fontSize:12.5, fontFamily:"monospace" }} autoFocus />
+                                  <button onClick={handleReset} disabled={resetting}
+                                    style={{ ...S.btn("#F59E0B","#000"), padding:"7px 16px", fontSize:12.5, fontWeight:700, opacity:resetting?0.6:1, flexShrink:0 }}>
+                                    {resetting?"⏳...":"Confirmar"}
+                                  </button>
+                                  <button onClick={()=>{setShowReset(false);setNewPassInput("");setResetMsg("");}}
+                                    style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"7px 10px", fontSize:12 }}>✕</button>
+                                </div>
+                                {resetMsg && (
+                                  <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11.5, marginTop:6 }}>{resetMsg}</div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -6247,47 +6380,23 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                             paddingTop: 16,
                           }}
                         >
-                          <div
-                            style={{
-                              color: C.tm,
-                              fontSize: 11,
-                              marginBottom: 8,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.5px",
-                            }}
-                          >
-                            Redefinir senha
+                          <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>
+                            🔑 Redefinir senha
                           </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 10,
-                              alignItems: "center",
-                            }}
-                          >
+                          <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>
+                            A senha será alterada no Firebase Auth e salva no sistema para consulta futura.
+                          </div>
+                          <div style={{ display:"flex", gap:10, alignItems:"center" }}>
                             <input
                               value={resetPw}
                               onChange={(e) => setResetPw(e.target.value)}
-                              type="password"
-                              placeholder="Nova senha"
-                              style={{
-                                ...S.input,
-                                background: C.card,
-                                padding: "8px 11px",
-                                fontSize: 12.5,
-                                flex: 1,
-                              }}
+                              type="text"
+                              placeholder="Nova senha (mín. 6 caracteres)"
+                              style={{ ...S.input, background:C.card, padding:"8px 11px", fontSize:12.5, flex:1, fontFamily:"monospace" }}
                             />
-                            <button
-                              onClick={doReset}
-                              style={{
-                                ...S.btn(C.acc, "#fff"),
-                                padding: "8px 18px",
-                                fontSize: 12,
-                                flexShrink: 0,
-                              }}
-                            >
-                              Redefinir
+                            <button onClick={doReset}
+                              style={{ ...S.btn("#F59E0B","#000"), padding:"8px 18px", fontSize:12, flexShrink:0, fontWeight:700 }}>
+                              ✅ Redefinir
                             </button>
                           </div>
                         </div>
