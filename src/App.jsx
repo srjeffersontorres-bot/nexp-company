@@ -2550,18 +2550,17 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const savingRef = useRef(false);
   const prevIdRef = useRef(cur.id);
 
-  // Sincroniza APENAS quando troca de cliente (não durante saves)
+  // Sincroniza APENAS quando troca de cliente (id muda), nunca durante saves
+  const curId = cur.id;
   useEffect(() => {
     if (savingRef.current) return;
-    if (cur.id !== prevIdRef.current) {
-      prevIdRef.current = cur.id;
-      setReactions(cur.reactions || []);
-      setLeadType(cur.leadType || "FGTS");
-      setExtraLeads(cur.extraLeads || []);
-      setExtraStatus(cur.extraStatus || []);
-      setDone(false);
-    }
-  }); // eslint-disable-line
+    prevIdRef.current = curId;
+    setReactions(cur.reactions || []);
+    setLeadType(cur.leadType || "FGTS");
+    setExtraLeads(cur.extraLeads || []);
+    setExtraStatus(cur.extraStatus || []);
+    setDone(false);
+  }, [curId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!list.length)
     return (
