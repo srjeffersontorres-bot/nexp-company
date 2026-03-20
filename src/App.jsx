@@ -10128,7 +10128,7 @@ function CartaoTab() {
               </div>
 
               {/* ── CARTÃO VISUAL — proporção 85.6×54mm (1.585:1) ── */}
-              <div style={{ position:"relative", width:"100%", paddingTop:"63%", marginBottom:16 }}>
+              <div style={{ position:"relative", width:"70%", paddingTop:"44%", marginBottom:16 }}>
                 {/* Sombra */}
                 <div style={{ position:"absolute", inset:"6% 4% 0 6%", borderRadius:16, background:card.g, opacity:0.35, transform:"rotate(-2.5deg)", filter:"blur(6px)" }} />
                 {/* Frente do cartão */}
@@ -10185,12 +10185,12 @@ function CartaoTab() {
                     <div style={{ color:C.atxt, fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.limite !== null ? fmtBRL(card.calc.limite) : "—"}</div>
                   </div>
                   <div style={{ background:"rgba(217,119,6,0.12)", border:"1px solid rgba(217,119,6,0.4)", borderRadius:10, padding:"9px 6px", textAlign:"center" }}>
-                    <div style={{ color:"#92400E", fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Saque {ps}%</div>
-                    <div style={{ color:"#B45309", fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
+                    <div style={{ color:C.tm, fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Saque {ps}%</div>
+                    <div style={{ color:"#F59E0B", fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
                   </div>
                   <div style={{ background:"rgba(5,150,105,0.1)", border:"1px solid rgba(5,150,105,0.35)", borderRadius:10, padding:"9px 6px", textAlign:"center" }}>
-                    <div style={{ color:"#065F46", fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Restante {pr}%</div>
-                    <div style={{ color:"#047857", fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
+                    <div style={{ color:C.tm, fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Restante {pr}%</div>
+                    <div style={{ color:"#10B981", fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
                   </div>
                 </div>
                 {/* Parcela — coluna à direita */}
