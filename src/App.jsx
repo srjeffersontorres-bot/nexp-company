@@ -943,7 +943,15 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
-                  <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>{roleLabel[user.role]}<span style={{ color: "#16A34A", fontSize: 9 }}>● online</span></div>
+                  <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                    {roleLabel[user.role]}
+                    {presence[(uObj.uid || uObj.id)]?.online
+                      ? <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />online</span>
+                      : presence[(uObj.uid || uObj.id)]?.lastSeen?.seconds
+                        ? <span style={{ color: C.td, fontSize: 9 }}>visto {new Date(presence[(uObj.uid || uObj.id)].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>
+                        : null
+                    }
+                  </div>
                 </div>
                 <button onClick={() => setPage("stories")} title="Criar story" style={{ width: 20, height: 20, borderRadius: "50%", background: C.acc, color: "#fff", border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: 0 }}>+</button>
               </div>
@@ -8049,8 +8057,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         </div>
                       </div>
                     </div>
-                    {userBio && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"8px 10px", background:C.deep, borderRadius:8, marginBottom:8 }}>📝 {userBio}</div>}
-                    {userBirthday && <div style={{ color:C.tm, fontSize:11 }}>🎂 {new Date(userBirthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
+                    {tabUser.bio && <div style={{ color:C.tm, fontSize:12, fontStyle:"italic", padding:"8px 10px", background:C.deep, borderRadius:8, marginBottom:8 }}>📝 {tabUser.bio}</div>}
+                    {tabUser.recado && <div style={{ color:C.atxt, fontSize:12, padding:"8px 10px", background:C.abg, borderRadius:8, marginBottom:8 }}>💬 {tabUser.recado}</div>}
+                    {tabUser.birthday && <div style={{ color:C.tm, fontSize:11 }}>🎂 {new Date(tabUser.birthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
                   </div>
                 )}
 
@@ -9039,12 +9048,11 @@ function WeatherCalcWidget() {
     setCalcVal(p => p + v);
   };
   const calcBtns = [
-    ["C","(",")","%"],
-    ["7","8","9","÷"],
-    ["4","5","6","×"],
-    ["1","2","3","-"],
-    ["0",".","⌫","+"],
-    ["=","=","=","="],
+    ["C", "⌫", "%", "÷"],
+    ["7", "8", "9", "×"],
+    ["4", "5", "6", "-"],
+    ["1", "2", "3", "+"],
+    ["(", "0", ".", "="],
   ];
 
   if (collapsed) return (
@@ -9097,18 +9105,36 @@ function WeatherCalcWidget() {
 
       {/* Calculadora */}
       {activeSection === "calc" && (
-        <div style={{ padding:"10px 12px" }}>
-          <div style={{ background:C.deep, borderRadius:8, padding:"8px 10px", marginBottom:8, textAlign:"right", minHeight:44 }}>
-            <div style={{ color:C.td, fontSize:11, minHeight:16 }}>{calcVal || "0"}</div>
-            {calcResult !== null && <div style={{ color:C.atxt, fontSize:18, fontWeight:700 }}>{calcResult}</div>}
+        <div style={{ padding:"12px" }}>
+          {/* Display */}
+          <div style={{ background:"#0B0D14", borderRadius:10, padding:"12px 14px", marginBottom:10, textAlign:"right", minHeight:64, display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
+            <div style={{ color:C.td, fontSize:10.5, minHeight:16, wordBreak:"break-all" }}>{calcVal || "0"}</div>
+            {calcResult !== null && <div style={{ color:C.atxt, fontSize:22, fontWeight:700, lineHeight:1.2 }}>{calcResult}</div>}
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:5 }}>
+          {/* Buttons */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
             {calcBtns.flat().map((btn, i) => {
-              const isEq = btn === "="; const isOp = ["÷","×","-","+","%"].includes(btn); const isClear = btn === "C";
+              const isEq = btn === "=";
+              const isOp = ["÷","×","-","+"].includes(btn);
+              const isClear = btn === "C";
+              const isDel = btn === "⌫";
+              const isMod = btn === "%";
               return (
                 <button key={i} onClick={()=>calcPress(btn)}
-                  style={{ background:isEq?C.acc:isClear?"#2D1515":isOp?C.abg:C.card, color:isEq?"#fff":isClear?"#F87171":isOp?C.atxt:C.tp, border:"none", borderRadius:7, padding:"10px 0", fontSize:13, fontWeight:600, cursor:"pointer", transition:"all 0.1s" }}
-                  onMouseEnter={e=>e.currentTarget.style.opacity="0.8"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+                  style={{
+                    background: isEq ? `linear-gradient(135deg,${C.lg1},${C.lg2})` : isClear ? "#2D1515" : isDel||isMod ? C.deep : isOp ? C.abg : C.card,
+                    color: isEq ? "#fff" : isClear ? "#F87171" : isDel||isMod ? C.atxt : isOp ? C.atxt : C.tp,
+                    border: isEq ? "none" : `1px solid ${C.b1}`,
+                    borderRadius: 9,
+                    padding: "11px 0",
+                    fontSize: isEq ? 17 : 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 0.1s",
+                    boxShadow: isEq ? `0 2px 10px ${C.acc}44` : "none",
+                  }}
+                  onMouseEnter={e=>{ e.currentTarget.style.filter="brightness(1.2)"; e.currentTarget.style.transform="scale(1.05)"; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.filter="none"; e.currentTarget.style.transform="scale(1)"; }}>
                   {btn}
                 </button>
               );
