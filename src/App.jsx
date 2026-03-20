@@ -965,34 +965,57 @@ function LoginPage({ onLogin }) {
           </circle>
         ))}
 
-        {/* ── LUA cheia, visível, percorre o céu ── */}
+        {/* ── LUA — mais real, mais rápida, percorre o céu ── */}
         {isNight && (
           <g filter="url(#glow4)">
-            <circle r="60" fill="#FBBF24" opacity="0.12">
-              <animateMotion dur="180s" repeatCount="indefinite"
-                path="M -80,140 C 300,30 900,20 1520,130"/>
+            {/* Halo difuso externo */}
+            <circle r="72" fill="#FEF3C7" opacity="0.07">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,130 C 280,20 860,10 1540,120"/>
             </circle>
-            <circle r="42" fill="#E2C96B">
-              <animateMotion dur="180s" repeatCount="indefinite"
-                path="M -80,140 C 300,30 900,20 1520,130"/>
+            {/* Corpo principal da lua */}
+            <circle r="46" fill="#F5E6A0">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,130 C 280,20 860,10 1540,120"/>
             </circle>
-            <circle r="38" fill="#F5D77A">
-              <animateMotion dur="180s" repeatCount="indefinite"
-                path="M -80,140 C 300,30 900,20 1520,130"/>
+            {/* Camada de textura — tons mais frios */}
+            <circle r="46" fill="url(#moonGlow2)" opacity="0.4">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,130 C 280,20 860,10 1540,120"/>
             </circle>
-            {/* Sombra da lua crescente */}
-            <circle r="32" fill={isNight?"#060B1A":"transparent"} opacity="0.9">
-              <animateMotion dur="180s" repeatCount="indefinite"
-                path="M -62,126 C 318,16 918,6 1538,116"/>
+            {/* Sombra crescente realista */}
+            <circle r="40" fill="#04080F" opacity="0.88">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -80,118 C 300,8 880,-2 1560,108"/>
             </circle>
-            {/* Crateras */}
-            <circle r="5" fill="#C9A227" opacity="0.4">
-              <animateMotion dur="180s" repeatCount="indefinite"
-                path="M -95,152 C 285,42 885,32 1505,142"/>
+            {/* Cratera grande */}
+            <circle r="8" fill="#D4B44A" opacity="0.5">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -112,143 C 268,33 848,23 1528,133"/>
             </circle>
-            <circle r="3" fill="#C9A227" opacity="0.3">
-              <animateMotion dur="180s" repeatCount="indefinite"
-                path="M -72,158 C 308,48 908,38 1528,148"/>
+            <circle r="6" fill="#C8A830" opacity="0.35">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -112,143 C 268,33 848,23 1528,133"/>
+            </circle>
+            {/* Cratera média 1 */}
+            <circle r="5" fill="#D4B44A" opacity="0.45">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -88,118 C 292,8 872,-2 1552,108"/>
+            </circle>
+            {/* Cratera média 2 */}
+            <circle r="4" fill="#C8A830" opacity="0.4">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -120,152 C 260,42 840,32 1520,142"/>
+            </circle>
+            {/* Cratera pequena */}
+            <circle r="2.5" fill="#BFA040" opacity="0.5">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -95,138 C 285,28 865,18 1545,128"/>
+            </circle>
+            {/* Brilho especular */}
+            <circle r="12" fill="#FFFDE7" opacity="0.25">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -116,124 C 264,14 844,4 1524,114"/>
             </circle>
           </g>
         )}
@@ -1314,9 +1337,9 @@ function LoginPage({ onLogin }) {
       </svg>
 
       {/* ── Lado esquerdo: formulário com transparência ── */}
-      <div style={{ flex:"0 0 auto", width:"min(380px,90vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease" }}>
+      <div style={{ flex:"0 0 auto", width:"min(320px,88vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease", marginTop:"auto", paddingBottom:24 }}>
         {/* Card com transparência */}
-        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:20, border:"1px solid rgba(79,142,247,0.2)", padding:"36px 32px", marginBottom:14, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
+        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:16, border:"1px solid rgba(79,142,247,0.2)", padding:"22px 22px", marginBottom:10, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
           {/* Logo + robô */}
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:26 }}>
             <NexpRobot size={46} showFaceOnly />
@@ -1410,7 +1433,7 @@ function LoginPage({ onLogin }) {
       </div>
 
       {/* ── Lado direito: robô + frase motivacional + clima ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", paddingTop:10, gap:16, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:32, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden", height:"100%" }}>
         <div style={{ display:"flex", alignItems:"center", gap:24, maxWidth:680, width:"100%" }}>
           <div style={{ flexShrink:0, animation:"robotFloat 3s ease-in-out infinite" }}>
             <NexpRobot size={130} showFaceOnly={false} />
@@ -12467,7 +12490,8 @@ export default function App() {
         mobileOpen={mobileSidebarOpen}
         onMobileClose={()=>setMobileSidebarOpen(false)}
       />
-      <div className="nexp-main" style={{ flex: 1, overflowY: "auto", height: "100vh", position:"relative" }}>
+      <div className="nexp-main" style={{ flex: 1, overflowY: "auto", height: "100vh", position:"relative", scrollbarWidth:"none" }}>
+        <style>{`.nexp-main::-webkit-scrollbar { display: none; }`}</style>
         {/* Botão hamburguer mobile */}
         <button className="nexp-mobile-fab" onClick={()=>setMobileSidebarOpen(p=>!p)}
           style={{ display:"none", position:"fixed", top:12, left:12, zIndex:997, width:42, height:42, borderRadius:11,
