@@ -2533,36 +2533,37 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 // ── Review Client ──────────────────────────────────────────────
 function ReviewClient({ contacts, setContacts, filtered = null }) {
   const list = filtered || contacts;
-  const [idx, setIdx] = useState(0);
+
+  // Rastrear pelo ID do cliente, não pelo índice — evita pulos quando contacts muda de ordem
+  const [curId, setCurId] = useState(() => list[0]?.id || null);
   const [sc, setSc] = useState(false);
   const [done, setDone] = useState(false);
 
-  const si = Math.min(idx, list.length - 1);
-  const cur = list[si] || {};
+  // Encontrar o cliente atual pelo ID (nunca pelo índice)
+  const cur = list.find(c => c.id === curId) || list[0] || {};
+  const si  = list.findIndex(c => c.id === curId);
 
   // Estado local isolado por cliente
-  const [reactions, setReactions] = useState(cur.reactions || []);
-  const [leadType, setLeadType] = useState(cur.leadType || "FGTS");
+  const [reactions, setReactions]   = useState(cur.reactions  || []);
+  const [leadType,  setLeadType]    = useState(cur.leadType   || "FGTS");
   const [extraLeads, setExtraLeads] = useState(cur.extraLeads || []);
-  const [extraStatus, setExtraStatus] = useState(cur.extraStatus || []);
+  const [extraStatus,setExtraStatus]= useState(cur.extraStatus|| []);
 
-  // Ref para bloquear re-sync quando é o próprio save que atualiza contacts
+  // Bloquear re-sync durante saves
   const savingRef = useRef(false);
-  const prevIdRef = useRef(cur.id);
-  const curId = cur.id;
+  const prevSyncId = useRef(cur.id);
 
-  // Sincroniza APENAS quando o ID do cliente realmente muda
-  // Nunca reseta durante saves (savingRef bloqueia)
+  // Sincronizar APENAS quando o cliente muda (ID diferente) e não é durante save
   useEffect(() => {
-    if (cur.id === prevIdRef.current) return; // mesmo cliente, não reseta
-    if (savingRef.current) return;             // salvando, não reseta
-    prevIdRef.current = cur.id;
-    setReactions(cur.reactions || []);
-    setLeadType(cur.leadType || "FGTS");
+    if (savingRef.current) return;
+    if (cur.id === prevSyncId.current) return;
+    prevSyncId.current = cur.id;
+    setReactions(cur.reactions  || []);
+    setLeadType(cur.leadType   || "FGTS");
     setExtraLeads(cur.extraLeads || []);
-    setExtraStatus(cur.extraStatus || []);
+    setExtraStatus(cur.extraStatus|| []);
     setDone(false);
-  }, [curId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!list.length)
     return (
@@ -2580,13 +2581,14 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     );
 
   const lc = LEAD_COLOR[leadType] || "#9CA3AF";
-  const nexts = list.slice(si + 1, si + 11);
+  const nexts = list.filter(c => c.id !== curId).slice(0, 10);
 
   const upd = async (u) => {
     savingRef.current = true;
     await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
-    setTimeout(() => { savingRef.current = false; }, 600);
+    // Liberar depois do re-render do Firestore
+    setTimeout(() => { savingRef.current = false; }, 800);
   };
 
   // Emojis — máx 3, isolados por cliente
@@ -2604,9 +2606,9 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     });
   };
 
-  // Tipo de lead — ILIMITADO, clique alterna; clique duplo no principal define outro como principal
+  // Tipo de lead — ilimitado, mantém no mesmo cliente
   const selectLead = (t) => {
-    if (t === leadType) return; // não remove o principal direto
+    if (t === leadType) return;
     const isExtra = extraLeads.includes(t);
     const newExtra = isExtra ? extraLeads.filter(x => x !== t) : [...extraLeads, t];
     setExtraLeads(newExtra);
@@ -2621,7 +2623,7 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     upd({ ...cur, leadType: t, extraLeads: newExtra, reactions, extraStatus });
   };
 
-  // Status — toggle multi-seleção
+  // Status — toggle multi-seleção, mantém no mesmo cliente
   const toggleStatus = (s) => {
     const isSelected = extraStatus.includes(s);
     const newExtra = isSelected ? extraStatus.filter(x => x !== s) : [...extraStatus, s];
@@ -2629,12 +2631,13 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     upd({ ...cur, leadType, extraLeads, reactions, extraStatus: newExtra });
   };
 
-  // Concluído — avança para o próximo
+  // Concluído — avança para o próximo pelo ID
   const conclude = async () => {
     await upd({ ...cur, reactions, leadType, extraLeads, extraStatus });
     setDone(true);
     setTimeout(() => {
-      if (si < list.length - 1) setIdx((i) => i + 1);
+      const nextIdx = si + 1;
+      if (nextIdx < list.length) setCurId(list[nextIdx].id);
     }, 800);
   };
 
@@ -2652,12 +2655,12 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            onClick={() => setIdx((i) => Math.max(0, i - 1))}
+            onClick={() => { if (si > 0) setCurId(list[si - 1].id); }}
             disabled={si === 0}
             style={{ ...S.btn(si === 0 ? C.deep : C.abg, si === 0 ? C.td : C.atxt), border: `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 13 }}
           >← Anterior</button>
           <button
-            onClick={() => setIdx((i) => Math.min(list.length - 1, i + 1))}
+            onClick={() => { if (si < list.length - 1) setCurId(list[si + 1].id); }}
             disabled={si === list.length - 1}
             style={{ ...S.btn(si === list.length - 1 ? C.deep : C.acc, si === list.length - 1 ? C.td : "#fff"), padding: "7px 14px", fontSize: 13 }}
           >Próximo →</button>
@@ -2820,7 +2823,7 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
               const lc2 = LEAD_COLOR[c.leadType] || "#9CA3AF";
               const ss2 = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
               return (
-                <div key={c.id} onClick={() => setIdx(si + 1 + i)}
+                <div key={c.id} onClick={() => setCurId(c.id)}
                   style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = C.card)}
                   onMouseLeave={(e) => (e.currentTarget.style.background = C.deep)}
@@ -10085,83 +10088,138 @@ function CartaoTab() {
   const [mult1,   setMult1]   = useState("3.0");
   const [margem2, setMargem2] = useState("");
   const [mult2,   setMult2]   = useState("3.0");
+  const [pctSaque, setPctSaque] = useState("70");
+  const [prazo,    setPrazo]    = useState("84");
+
+  const ps     = Math.min(100, Math.max(0, parseFloat(pctSaque) || 70));
+  const pr     = Math.max(0, 100 - ps);
+  const nPrazo = parseInt(prazo) || 84;
 
   const calcCard = (margem, mult) => {
-    const m = toF(margem);
-    const x = toF(mult);
-    if (m <= 0 || x <= 0) return { limite: null, saque70: null, resto30: null };
+    const m = toF(margem), x = toF(mult);
+    if (m <= 0 || x <= 0) return { limite:null, saque:null, resto:null, parcela:null };
     const limite = m * x;
-    return { limite, saque70: limite * 0.70, resto30: limite * 0.30 };
+    return { limite, saque: limite * ps/100, resto: limite * pr/100, parcela: limite / nPrazo };
   };
 
   const c1 = calcCard(margem1, mult1);
   const c2 = calcCard(margem2, mult2);
-
-  const gradients = [
-    `linear-gradient(135deg,${C.lg1},${C.lg2})`,
-    "linear-gradient(135deg,#7C3AED,#EC4899)",
-  ];
+  const grads = [`linear-gradient(135deg,${C.lg1},${C.lg2})`, "linear-gradient(135deg,#7C3AED,#EC4899)"];
 
   return (
     <div>
-      {/* Regra explicada */}
-      <div style={{ color:C.td, fontSize:11.5, marginBottom:18, padding:"10px 14px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22`, lineHeight:1.7 }}>
-        <b style={{ color:C.atxt }}>Regras do Cartão Consignado:</b><br />
-        • <b style={{ color:C.tp }}>Limite Total</b> = Margem × Multiplicador<br />
-        • <b style={{ color:"#FBBF24" }}>Saque Complementar</b> = 70% do Limite Total<br />
-        • <b style={{ color:"#34D399" }}>Restante do Limite</b> = 30% do Limite Total
+      {/* Regra */}
+      <div style={{ fontSize:11.5, marginBottom:16, padding:"9px 14px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22`, lineHeight:1.7 }}>
+        <b style={{ color:C.atxt }}>Regras:</b>
+        <span style={{ color:C.ts }}> Limite = Margem × Mult · </span>
+        <span style={{ color:"#D97706", fontWeight:600 }}>Saque = {ps}% do Limite</span>
+        <span style={{ color:C.td }}> · </span>
+        <span style={{ color:"#059669", fontWeight:600 }}>Restante = {pr}%</span>
       </div>
 
-      {/* Dois cartões lado a lado */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
-        {[
-          { n:1, margem:margem1, setMargem:setMargem1, mult:mult1, setMult:setMult1, calc:c1, grad:gradients[0] },
-          { n:2, margem:margem2, setMargem:setMargem2, mult:mult2, setMult:setMult2, calc:c2, grad:gradients[1] },
-        ].map(card => (
-          <div key={card.n} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 16px" }}>
-            {/* Header */}
-            <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:14 }}>
-              Cartão {card.n}
+      {/* Painel de configuração global */}
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 18px", marginBottom:20 }}>
+        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:12 }}>⚙ Configurações da simulação</div>
+        <div style={{ display:"flex", gap:16, alignItems:"flex-end", flexWrap:"wrap" }}>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>% Saque complementar</label>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <input value={pctSaque} onChange={e=>setPctSaque(String(Math.min(100,Math.max(0,parseInt(e.target.value)||0))))}
+                type="number" min="0" max="100" style={{ ...S.input, width:72, textAlign:"center", fontWeight:700 }} />
+              <span style={{ color:C.tm, fontSize:12 }}>%</span>
             </div>
-
-            {/* Campos */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Margem (R$)</label>
-                <input
-                  value={card.margem}
-                  onChange={e => card.setMargem(e.target.value)}
-                  placeholder="Ex: 500,00"
-                  style={{ ...S.input, padding:"9px 12px", fontSize:14, fontWeight:600 }}
-                />
+          </div>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Restante do limite</label>
+            <div style={{ background:C.deep, border:`1px solid ${C.b2}`, borderRadius:8, padding:"9px 14px", color:C.ts, fontSize:13, fontWeight:700 }}>
+              {pr}%
+            </div>
+          </div>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Prazo parcelas</label>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <input value={prazo} onChange={e=>setPrazo(e.target.value)} type="number" min="1" max="96"
+                style={{ ...S.input, width:72, textAlign:"center", fontWeight:700 }} />
+              <span style={{ color:C.tm, fontSize:12 }}>x</span>
+            </div>
+          </div>
+          {/* Parcelas */}
+          <div style={{ display:"flex", gap:10, marginLeft:"auto", flexWrap:"wrap" }}>
+            {[{n:1,calc:c1},{n:2,calc:c2}].filter(({calc})=>calc.parcela!==null).map(({n,calc})=>(
+              <div key={n} style={{ background:C.abg, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 14px", textAlign:"center" }}>
+                <div style={{ color:C.td, fontSize:9, textTransform:"uppercase", marginBottom:2 }}>Parcela Cartão {n} — {prazo}x</div>
+                <div style={{ color:C.atxt, fontSize:15, fontWeight:800 }}>{fmtBRL(calc.parcela)}</div>
               </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Multiplicador</label>
-                <input
-                  value={card.mult}
-                  onChange={e => card.setMult(e.target.value)}
-                  placeholder="Ex: 3.0"
-                  style={{ ...S.input, padding:"9px 12px", fontSize:14, fontWeight:600 }}
-                />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Dois cartões */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
+        {[{n:1,m:margem1,setM:setMargem1,x:mult1,setX:setMult1,calc:c1,g:grads[0]},{n:2,m:margem2,setM:setMargem2,x:mult2,setX:setMult2,calc:c2,g:grads[1]}].map(card=>(
+          <div key={card.n} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, overflow:"hidden" }}>
+            <div style={{ background:C.deep, padding:"11px 16px", borderBottom:`1px solid ${C.b1}` }}>
+              <span style={{ color:C.ts, fontSize:13, fontWeight:700 }}>Cartão {card.n}</span>
+            </div>
+            <div style={{ padding:"16px" }}>
+              {/* Inputs */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                <div>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4, fontWeight:600 }}>Margem (R$)</label>
+                  <input value={card.m} onChange={e=>card.setM(e.target.value)} placeholder="Ex: 500,00"
+                    style={{ ...S.input, fontSize:14, fontWeight:700 }} />
+                </div>
+                <div>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4, fontWeight:600 }}>Multiplicador</label>
+                  <input value={card.x} onChange={e=>card.setX(e.target.value)} placeholder="Ex: 3.0"
+                    style={{ ...S.input, fontSize:14, fontWeight:700 }} />
+                </div>
+              </div>
+
+              {/* Cartão SVG visual */}
+              <div style={{ position:"relative", height:168, marginBottom:16 }}>
+                <div style={{ position:"absolute", top:10, left:8, right:8, bottom:0, borderRadius:13, background:card.g, opacity:0.3, transform:"rotate(-3deg)", filter:"blur(3px)" }} />
+                <div style={{ position:"absolute", inset:0, borderRadius:13, background:card.g, padding:"15px 18px", boxSizing:"border-box", boxShadow:"0 8px 28px rgba(0,0,0,0.45)" }}>
+                  <div style={{ width:26, height:19, borderRadius:3, background:"linear-gradient(135deg,#f5d06a,#c8920a)", marginBottom:10, position:"relative", overflow:"hidden" }}>
+                    <div style={{ position:"absolute", top:"50%", left:0, right:0, height:1, background:"rgba(0,0,0,0.3)" }} />
+                    <div style={{ position:"absolute", left:"38%", top:0, bottom:0, width:1, background:"rgba(0,0,0,0.2)" }} />
+                  </div>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9, letterSpacing:2.5, marginBottom:2 }}>•••• •••• •••• ••••</div>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:7.5, letterSpacing:0.5, marginBottom:16 }}>CARTÃO {card.n} — CONSIGNADO</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:6.5, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:4 }}>Limite Total</div>
+                      <div style={{ color:"#fff", fontSize:12, fontWeight:800 }}>{card.calc.limite !== null ? fmtBRL(card.calc.limite) : "—"}</div>
+                    </div>
+                    <div style={{ textAlign:"center", borderLeft:"1px solid rgba(255,255,255,0.15)", borderRight:"1px solid rgba(255,255,255,0.15)" }}>
+                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:6.5, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:4 }}>Saque ({ps}%)</div>
+                      <div style={{ color:"#FDE68A", fontSize:12, fontWeight:800 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
+                    </div>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:6.5, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:4 }}>Restante ({pr}%)</div>
+                      <div style={{ color:"#A7F3D0", fontSize:12, fontWeight:800 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Boxes de resultado com bom contraste */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                <div style={{ background:C.abg, border:`1px solid ${C.atxt}44`, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                  <div style={{ color:C.tm, fontSize:9, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:5 }}>Limite Total</div>
+                  <div style={{ color:C.atxt, fontSize:15, fontWeight:800, lineHeight:1 }}>{card.calc.limite !== null ? fmtBRL(card.calc.limite) : "—"}</div>
+                </div>
+                <div style={{ background:"rgba(217,119,6,0.12)", border:"1px solid rgba(217,119,6,0.4)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                  <div style={{ color:"#92400E", fontSize:9, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:5 }}>Saque ({ps}%)</div>
+                  <div style={{ color:"#B45309", fontSize:15, fontWeight:800, lineHeight:1 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
+                </div>
+                <div style={{ background:"rgba(5,150,105,0.1)", border:"1px solid rgba(5,150,105,0.35)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                  <div style={{ color:"#065F46", fontSize:9, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:5 }}>Restante ({pr}%)</div>
+                  <div style={{ color:"#047857", fontSize:15, fontWeight:800, lineHeight:1 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
+                </div>
               </div>
             </div>
-
-            {/* Cálculo resumido antes do cartão */}
-            {card.calc.limite !== null && (
-              <div style={{ display:"flex", gap:6, marginBottom:14, fontSize:11.5, flexWrap:"wrap" }}>
-                <span style={{ color:C.td }}>{fmtBRL(toF(card.margem))} × {card.mult} =</span>
-                <span style={{ color:C.atxt, fontWeight:700 }}>{fmtBRL(card.calc.limite)}</span>
-              </div>
-            )}
-
-            {/* Cartão visual */}
-            <CardVisual
-              label={`CARTÃO ${card.n} — CONSIGNADO`}
-              gradient={card.grad}
-              limite={card.calc.limite}
-              saque70={card.calc.saque70}
-              resto30={card.calc.resto30}
-            />
           </div>
         ))}
       </div>
