@@ -11579,7 +11579,31 @@ export default function App() {
     cursor: "pointer",
   });
 
-  if (authLoading)
+  // ── Inatividade — logout automático após 15 minutos ────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const IDLE_MS = 15 * 60 * 1000;
+    let timer = setTimeout(() => {
+      firebaseLogout();
+      setCurrentUser(null);
+      sessionStorage.removeItem("nexp_page");
+      setPage("dashboard");
+    }, IDLE_MS);
+    const reset = () => { clearTimeout(timer); timer = setTimeout(() => {
+      firebaseLogout();
+      setCurrentUser(null);
+      sessionStorage.removeItem("nexp_page");
+      setPage("dashboard");
+    }, IDLE_MS); };
+    const events = ["mousemove","keydown","click","scroll","touchstart"];
+    events.forEach(ev => window.addEventListener(ev, reset, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach(ev => window.removeEventListener(ev, reset));
+    };
+  }, [currentUser]); // eslint-disable-line
+
+    if (authLoading)
     return (
       <div
         style={{
@@ -11606,20 +11630,6 @@ export default function App() {
         }}
       />
     );
-
-  // ── Inatividade — logout automático após 15 minutos ────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const IDLE_MS = 15 * 60 * 1000; // 15 minutos
-    let timer = setTimeout(() => logout(), IDLE_MS);
-    const reset = () => { clearTimeout(timer); timer = setTimeout(() => logout(), IDLE_MS); };
-    const events = ["mousemove","keydown","click","scroll","touchstart"];
-    events.forEach(ev => window.addEventListener(ev, reset, { passive: true }));
-    return () => {
-      clearTimeout(timer);
-      events.forEach(ev => window.removeEventListener(ev, reset));
-    };
-  }, [currentUser]); // eslint-disable-line
 
   const logout = async () => {
     await firebaseLogout();
