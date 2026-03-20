@@ -4787,6 +4787,8 @@ function PerfisTab({ users, setUsers, currentUser }) {
 // ── Página de Usuários (nova aba no menu) ──────────────────────
 function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("usuarios");
+  const [permSearch, setPermSearch] = useState("");
+  const [permExpandedId, setPermExpandedId] = useState(null);
   const isMestre = currentUser.role === "mestre";
   const isMaster = currentUser.role === "master";
 
@@ -4840,8 +4842,6 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"premium",      label:"Premium Nexp" },
             { id:"config",       label:"Configurações" },
           ];
-          const [permSearch, setPermSearch] = useState("");
-          const [permExpandedId, setPermExpandedId] = useState(null);
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
           const filtered = visibleUsers.filter(u => !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase()));
 
