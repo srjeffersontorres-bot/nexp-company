@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword, getAuth, signInWithEmailAndPassword as signInSecondary } from "firebase/auth";
-import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, getDoc, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import {
   auth,
   db,
@@ -726,6 +726,28 @@ function LoginPage({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [weather, setWeather] = useState(null);
 
+  const [showResetLogin, setShowResetLogin] = useState(false);
+  const [resetEmail, setResetEmail]         = useState("");
+  const [resetMsg, setResetMsg]             = useState("");
+  const [resetBusy, setResetBusy]           = useState(false);
+
+  const doLoginReset = async () => {
+    if (!resetEmail.trim()) { setResetMsg("Digite seu e-mail de acesso."); return; }
+    setResetBusy(true); setResetMsg("");
+    try {
+      const { sendPasswordResetEmail } = await import("firebase/auth");
+      const { auth: fbAuth } = await import("./firebase");
+      await sendPasswordResetEmail(fbAuth, resetEmail.trim());
+      setResetMsg("✅ E-mail de redefinição enviado! Verifique sua caixa de entrada.");
+    } catch(e) {
+      const code = e.code || "";
+      if (code === "auth/user-not-found") setResetMsg("❌ E-mail não encontrado. Verifique e tente novamente.");
+      else if (code === "auth/invalid-email") setResetMsg("❌ E-mail inválido.");
+      else setResetMsg("❌ Erro: " + e.message);
+    }
+    setResetBusy(false);
+  };
+
   // Determinar hora do dia e clima
   const hour = new Date().getHours();
   const isNight = hour >= 20 || hour < 6;
@@ -1278,6 +1300,52 @@ function LoginPage({ onLogin }) {
           </div>
           <span style={{ color:"#25D36666", fontSize:16 }}>→</span>
         </a>
+
+        {/* Redefinir senha */}
+        <div style={{ marginTop:8 }}>
+          <button onClick={() => { setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
+            style={{ width:"100%", display:"flex", alignItems:"center", gap:10, background:"rgba(59,110,245,0.1)", backdropFilter:"blur(10px)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:12, padding:"11px 14px", cursor:"pointer", textDecoration:"none" }}>
+            <span style={{ fontSize:17 }}>🔑</span>
+            <div style={{ flex:1, textAlign:"left" }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600 }}>Redefinir senha</div>
+              <div style={{ color:"rgba(79,142,247,0.5)", fontSize:10.5 }}>Enviar link de redefinição por e-mail</div>
+            </div>
+            <span style={{ color:"rgba(79,142,247,0.4)", fontSize:14 }}>{showResetLogin?"▲":"▼"}</span>
+          </button>
+
+          {showResetLogin && (
+            <div style={{ background:"rgba(8,10,16,0.7)", backdropFilter:"blur(10px)", border:"1px solid rgba(79,142,247,0.2)", borderRadius:12, padding:"14px", marginTop:4 }}>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8 }}>
+                Digite o e-mail cadastrado para receber o link de redefinição:
+              </div>
+              <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
+                onKeyDown={e=>e.key==="Enter"&&doLoginReset()}
+                placeholder="seu@email.com"
+                style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", marginBottom:8 }} />
+              <button onClick={doLoginReset} disabled={resetBusy}
+                style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"9px", fontSize:13, opacity:resetBusy?0.7:1 }}>
+                {resetBusy ? "Enviando..." : "📧 Enviar link"}
+              </button>
+              {resetMsg && (
+                <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11.5, marginTop:8, textAlign:"center" }}>
+                  {resetMsg}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Solicitar usuário */}
+        <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de saber como ter acesso ao Nexp Consultas. Preciso de um usuário.")}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,24,41,0.7)", backdropFilter:"blur(10px)", border:"1px solid rgba(37,211,102,0.2)", borderRadius:12, padding:"11px 14px", textDecoration:"none", marginTop:8 }}>
+          <span style={{ fontSize:17 }}>👤</span>
+          <div style={{ flex:1 }}>
+            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, fontWeight:600 }}>Solicite agora seu usuário</div>
+            <div style={{ color:"rgba(37,211,102,0.5)", fontSize:10.5 }}>Fale com o suporte pelo WhatsApp</div>
+          </div>
+          <span style={{ color:"rgba(37,211,102,0.4)", fontSize:16 }}>→</span>
+        </a>
       </div>
 
       {/* ── Lado direito: robô + frase motivacional lado a lado ── */}
@@ -1291,6 +1359,150 @@ function LoginPage({ onLogin }) {
             <div style={{ color:"rgba(79,142,247,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
             <div style={{ color:"rgba(255,255,255,0.88)", fontSize:13.5, lineHeight:1.6, fontStyle:"italic" }}>{frase}</div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Internet Page ──────────────────────────────────────────────
+const INTERNET_TABS = [
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
+      </svg>
+    ),
+    url: "https://web.whatsapp.com",
+    color: "#25D366",
+    fallback: "https://web.whatsapp.com",
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+      </svg>
+    ),
+    url: "https://www.instagram.com/",
+    color: "#E1306C",
+    fallback: "https://www.instagram.com/accounts/login/",
+  },
+  {
+    id: "chatgpt",
+    label: "ChatGPT",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.677l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0L4.01 14.15A4.485 4.485 0 0 1 2.34 7.896zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.816 2.801a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.393-.677zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.816-2.771a4.493 4.493 0 0 1 6.675 4.663zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.494 4.494 0 0 1 7.375-3.453l-.142.08-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/>
+      </svg>
+    ),
+    url: "https://chatgpt.com/",
+    color: "#10A37F",
+    fallback: "https://chatgpt.com/",
+  },
+  {
+    id: "claude",
+    label: "Claude",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128-4.72-2.648-.23-.08h-.064l-.016.016v.048l.016.032.784 2.184-.784 2.2-.016.032v.048l.016.016h.064l.23-.08v-.016zm14.582-1.678c.48-.287.5-.96.02-1.247l-4.72-2.647-.24-.064-.096.096-.24.672.896 2.496.416.016 4.72-2.647-.016.016-.016.016.096.096.48.256.224.128-.08.208-.784 2.2-.16.352.176-.128.064.16v.16l.016.016v-.048l-.016-.032-.784-2.184.784-2.2.016-.032V10.7l-.016-.016h-.064l-.23.08-4.72 2.647-.08.23.08.128 4.72 2.648.23.08h.064l.016-.016v-.048l-.016-.032-.784-2.184.784-2.2.016-.032v-.048l-.016-.016h-.064l-.23.08zm0 0"/>
+        <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/>
+      </svg>
+    ),
+    url: "https://claude.ai/",
+    color: "#CC785C",
+    fallback: "https://claude.ai/",
+  },
+];
+
+function InternetPage() {
+  const [activeTab, setActiveTab] = useState("whatsapp");
+  const iframeRef = useRef();
+  const tab = INTERNET_TABS.find(t => t.id === activeTab);
+
+  // Monitora navegação do iframe para manter dentro do domínio permitido
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const handleLoad = () => {
+      try {
+        const iframeUrl = iframe.contentWindow?.location?.href || "";
+        const allowedDomain = new URL(tab.url).hostname.replace("www.", "");
+        const currentDomain = iframeUrl ? new URL(iframeUrl).hostname.replace("www.", "") : "";
+        if (iframeUrl && currentDomain && !currentDomain.includes(allowedDomain) && !allowedDomain.includes(currentDomain)) {
+          iframe.src = tab.fallback;
+        }
+      } catch {}
+    };
+    iframe.addEventListener("load", handleLoad);
+    return () => iframe.removeEventListener("load", handleLoad);
+  }, [activeTab, tab]);
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden", background:C.bg }}>
+
+      {/* Tab bar */}
+      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 16px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0 }}>
+        <span style={{ color:C.tm, fontSize:12, fontWeight:700, marginRight:4 }}>🌐</span>
+        {INTERNET_TABS.map(t => {
+          const active = t.id === activeTab;
+          return (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              style={{
+                display:"flex", alignItems:"center", gap:7,
+                padding:"7px 16px", borderRadius:9, cursor:"pointer",
+                background: active ? t.color + "22" : C.deep,
+                color: active ? t.color : C.tm,
+                border: active ? `1.5px solid ${t.color}55` : `1px solid ${C.b2}`,
+                fontSize:12.5, fontWeight: active ? 700 : 400,
+                transition:"all 0.15s",
+                boxShadow: active ? `0 2px 10px ${t.color}33` : "none",
+              }}
+              onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background=C.abg; e.currentTarget.style.color=C.atxt; }}}
+              onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background=C.deep; e.currentTarget.style.color=C.tm; }}}
+            >
+              <span style={{ color: active ? t.color : "inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
+              {t.label}
+            </button>
+          );
+        })}
+
+        {/* Reload button */}
+        <button onClick={() => { if(iframeRef.current) iframeRef.current.src = tab.url; }}
+          style={{ marginLeft:"auto", background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
+          🔄 Recarregar
+        </button>
+      </div>
+
+      {/* iFrame area */}
+      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
+        {INTERNET_TABS.map(t => (
+          <iframe
+            key={t.id}
+            ref={t.id === activeTab ? iframeRef : null}
+            src={t.url}
+            title={t.label}
+            style={{
+              position:"absolute", inset:0, width:"100%", height:"100%",
+              border:"none", display: t.id === activeTab ? "block" : "none",
+              background:"#fff",
+            }}
+            allow="camera; microphone; geolocation; clipboard-read; clipboard-write"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+          />
+        ))}
+
+        {/* Aviso de bloqueio (sites que bloqueiam iframe) */}
+        <div id={`iframe-blocked-${activeTab}`} style={{ display:"none", position:"absolute", inset:0, background:C.bg, alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
+          <div style={{ fontSize:40 }}>{tab?.icon}</div>
+          <div style={{ color:C.ts, fontSize:15, fontWeight:700 }}>{tab?.label} bloqueou o acesso direto.</div>
+          <a href={tab?.url} target="_blank" rel="noopener noreferrer"
+            style={{ background:tab?.color, color:"#fff", padding:"10px 24px", borderRadius:10, textDecoration:"none", fontSize:13, fontWeight:700 }}>
+            Abrir em nova aba →
+          </a>
         </div>
       </div>
     </div>
@@ -1334,6 +1546,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"leds",       label:"Leds",            icon:"⬦", roles:["mestre","master"] },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
+    { id:"internet",   label:"Internet",        icon:"🌐", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
     { id:"config",     label:"Configurações",   icon:"⊞", roles:["mestre","master","indicado"] },
   ];
@@ -5604,55 +5817,55 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
   };
 
-  const changeUserPassword = async (email, oldPass, newPass) => {
-    const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
-    try {
-      // Passo 1: faz login via REST para obter idToken
-      const signInRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password: oldPass, returnSecureToken: true }),
-        }
-      );
-      const signInData = await signInRes.json();
-      if (!signInData.idToken) return false;
-
-      // Passo 2: atualiza senha via REST com o idToken obtido
-      const updateRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken: signInData.idToken, password: newPass, returnSecureToken: true }),
-        }
-      );
-      const updateData = await updateRes.json();
-      return !!updateData.idToken;
-    } catch { return false; }
-  };
 
   const doReset = async (newPassword) => {
-    const pw = newPassword || resetPw;
-    if (!pw || pw.trim().length < 6) {
+    const pw = (newPassword || resetPw || "").trim();
+    if (!pw || pw.length < 6) {
       throw new Error("A senha deve ter pelo menos 6 caracteres.");
     }
-    const email = editForm.email;
-    const uid2  = editForm.uid || editForm.id;
-    // Busca senha atual salva no Firestore
-    const snap = await getDocs(query(collection(db, "users"), where("email", "==", email)));
-    const savedPass = snap.empty ? null : (snap.docs[0].data().password || null);
-    // Tenta mudar no Firebase Auth
-    const authOk = savedPass ? await changeUserPassword(email, savedPass, pw) : false;
-    // Sempre salva no Firestore
-    await saveUserProfile(uid2, { password: pw });
-    setResetPw("");
-    if (!newPassword) {
-      flash(authOk
-        ? "✅ Senha alterada com sucesso!"
-        : "💾 Senha salva. Peça ao usuário para sair e entrar com a nova senha.");
+    const email    = editForm.email;
+    const uid2     = editForm.uid || editForm.id;
+    // Usa a senha já presente no editForm (já está no estado), sem precisar de query extra
+    const savedPass = editForm.password || null;
+
+    // Altera no Firebase Auth via API REST
+    const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
+    let authOk = false;
+    if (email && savedPass) {
+      try {
+        const signInRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
+          { method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ email, password: savedPass, returnSecureToken: true }) }
+        );
+        const signInData = await signInRes.json();
+        if (signInData.idToken) {
+          const updateRes = await fetch(
+            `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
+            { method:"POST", headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({ idToken: signInData.idToken, password: pw, returnSecureToken: true }) }
+          );
+          const updateData = await updateRes.json();
+          authOk = !!updateData.idToken;
+          if (!authOk && updateData.error) {
+            throw new Error("Auth: " + updateData.error.message);
+          }
+        } else {
+          throw new Error("Login falhou: " + (signInData.error?.message || "senha atual incorreta no sistema"));
+        }
+      } catch(e) {
+        // Repassa o erro para o componente mostrar
+        throw e;
+      }
+    } else {
+      throw new Error(!email ? "Email do usuário não encontrado." : "Senha atual não encontrada no sistema. Salve uma senha primeiro.");
     }
+
+    // Salva nova senha no Firestore
+    await saveUserProfile(uid2, { password: pw });
+    // Atualiza o editForm local para refletir a nova senha
+    setEditForm(f => f ? { ...f, password: pw } : f);
+    setResetPw("");
     return authOk;
   };
   // ── Toggle active/inactive
@@ -6190,38 +6403,40 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                           if (newPassInput !== resetConfirm) { setResetMsg("As senhas não coincidem. Verifique e tente novamente."); return; }
                           setResetting(true); setResetMsg("");
                           try {
-                            // Busca email e senha atual do Firestore
-                            const snap2 = await getDocs(query(collection(db, "users"), where("uid", "==", pUid)));
-                            const uData = snap2.empty ? null : snap2.docs[0].data();
+                            // Busca dados do usuário diretamente pelo uid (mais confiável que query por email)
+                            const userDoc = await getDoc(doc(db, "users", pUid));
+                            const uData = userDoc.exists() ? userDoc.data() : null;
                             const targetEmail = uData?.email;
                             const currentPass2 = uData?.password;
 
-                            // Atualiza no Firebase Auth via REST API (não desloga o admin)
+                            if (!targetEmail) throw new Error("Email do usuário não encontrado.");
+                            if (!currentPass2) throw new Error("Senha atual não cadastrada no sistema.");
+
+                            // Atualiza no Firebase Auth via REST API
                             const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
-                            if (targetEmail && currentPass2) {
-                              try {
-                                const signInRes = await fetch(
-                                  `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
-                                  { method:"POST", headers:{"Content-Type":"application/json"},
-                                    body: JSON.stringify({ email: targetEmail, password: currentPass2, returnSecureToken: true }) }
-                                );
-                                const signInData = await signInRes.json();
-                                if (signInData.idToken) {
-                                  await fetch(
-                                    `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
-                                    { method:"POST", headers:{"Content-Type":"application/json"},
-                                      body: JSON.stringify({ idToken: signInData.idToken, password: newPassInput, returnSecureToken: true }) }
-                                  );
-                                }
-                              } catch {}
-                            }
-                            // Salva nova senha no Firestore em todo caso
+                            const signInRes = await fetch(
+                              `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
+                              { method:"POST", headers:{"Content-Type":"application/json"},
+                                body: JSON.stringify({ email: targetEmail, password: currentPass2, returnSecureToken: true }) }
+                            );
+                            const signInData = await signInRes.json();
+                            if (!signInData.idToken) throw new Error("Login falhou: " + (signInData.error?.message || "senha atual incorreta"));
+
+                            const updateRes = await fetch(
+                              `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
+                              { method:"POST", headers:{"Content-Type":"application/json"},
+                                body: JSON.stringify({ idToken: signInData.idToken, password: newPassInput, returnSecureToken: true }) }
+                            );
+                            const updateData = await updateRes.json();
+                            if (!updateData.idToken) throw new Error("Falha ao atualizar: " + (updateData.error?.message || "erro desconhecido"));
+
+                            // Salva nova senha no Firestore
                             await setDoc(doc(db, "users", pUid), { password: newPassInput }, { merge: true });
-                            if (storedPass !== null) setStoredPass(newPassInput);
+                            setStoredPass(newPassInput);
                             setNewPassInput(""); setResetConfirm(""); setShowReset(false); setResetStep("typing");
                             setResetMsg("✅ Senha redefinida com sucesso!");
-                            setTimeout(() => setResetMsg(""), 3000);
-                          } catch(e2) { setResetMsg("Erro: " + e2.message); }
+                            setTimeout(() => setResetMsg(""), 4000);
+                          } catch(e2) { setResetMsg("❌ " + e2.message); }
                           setResetting(false);
                         };
 
@@ -12283,6 +12498,7 @@ export default function App() {
         )}
         {page === "simulador" && <SimuladorPage />}
         {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
+        {page === "internet" && <InternetPage />}
       </div>
 
       {/* ── Chat Flutuante ── */}
