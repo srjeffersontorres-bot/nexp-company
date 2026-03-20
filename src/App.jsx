@@ -10056,7 +10056,10 @@ function CartaoTab() {
 
   const c1 = calcCard(margem1, mult1);
   const c2 = calcCard(margem2, mult2);
-  const grads = [`linear-gradient(135deg,${C.lg1},${C.lg2})`, "linear-gradient(135deg,#7C3AED,#EC4899)"];
+  const grads = [
+    `linear-gradient(135deg,${C.lg1},${C.lg2})`,
+    "linear-gradient(135deg,#7C3AED,#EC4899)",
+  ];
 
   return (
     <div>
@@ -10069,9 +10072,9 @@ function CartaoTab() {
         <span style={{ color:"#059669", fontWeight:600 }}>Restante = {pr}%</span>
       </div>
 
-      {/* Painel de configuração global */}
-      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 18px", marginBottom:20 }}>
-        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:12 }}>⚙ Configurações da simulação</div>
+      {/* Configurações globais */}
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 18px", marginBottom:22 }}>
+        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:12 }}>⚙ Configurações</div>
         <div style={{ display:"flex", gap:16, alignItems:"flex-end", flexWrap:"wrap" }}>
           <div>
             <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>% Saque complementar</label>
@@ -10082,8 +10085,8 @@ function CartaoTab() {
             </div>
           </div>
           <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Restante do limite</label>
-            <div style={{ background:C.deep, border:`1px solid ${C.b2}`, borderRadius:8, padding:"9px 14px", color:C.ts, fontSize:13, fontWeight:700 }}>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>% Restante</label>
+            <div style={{ background:C.deep, border:`1px solid ${C.b2}`, borderRadius:8, padding:"9px 14px", color:C.ts, fontSize:13, fontWeight:700, minWidth:56, textAlign:"center" }}>
               {pr}%
             </div>
           </div>
@@ -10095,28 +10098,23 @@ function CartaoTab() {
               <span style={{ color:C.tm, fontSize:12 }}>x</span>
             </div>
           </div>
-          {/* Parcelas */}
-          <div style={{ display:"flex", gap:10, marginLeft:"auto", flexWrap:"wrap" }}>
-            {[{n:1,calc:c1},{n:2,calc:c2}].filter(({calc})=>calc.parcela!==null).map(({n,calc})=>(
-              <div key={n} style={{ background:C.abg, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 14px", textAlign:"center" }}>
-                <div style={{ color:C.td, fontSize:9, textTransform:"uppercase", marginBottom:2 }}>Parcela Cartão {n} — {prazo}x</div>
-                <div style={{ color:C.atxt, fontSize:15, fontWeight:800 }}>{fmtBRL(calc.parcela)}</div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
       {/* Dois cartões */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
-        {[{n:1,m:margem1,setM:setMargem1,x:mult1,setX:setMult1,calc:c1,g:grads[0]},{n:2,m:margem2,setM:setMargem2,x:mult2,setX:setMult2,calc:c2,g:grads[1]}].map(card=>(
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:22 }}>
+        {[
+          { n:1, m:margem1, setM:setMargem1, x:mult1, setX:setMult1, calc:c1, g:grads[0] },
+          { n:2, m:margem2, setM:setMargem2, x:mult2, setX:setMult2, calc:c2, g:grads[1] },
+        ].map(card => (
           <div key={card.n} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, overflow:"hidden" }}>
+            {/* Header */}
             <div style={{ background:C.deep, padding:"11px 16px", borderBottom:`1px solid ${C.b1}` }}>
               <span style={{ color:C.ts, fontSize:13, fontWeight:700 }}>Cartão {card.n}</span>
             </div>
             <div style={{ padding:"16px" }}>
               {/* Inputs */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
                 <div>
                   <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4, fontWeight:600 }}>Margem (R$)</label>
                   <input value={card.m} onChange={e=>card.setM(e.target.value)} placeholder="Ex: 500,00"
@@ -10129,46 +10127,79 @@ function CartaoTab() {
                 </div>
               </div>
 
-              {/* Cartão SVG visual */}
-              <div style={{ position:"relative", height:168, marginBottom:16 }}>
-                <div style={{ position:"absolute", top:10, left:8, right:8, bottom:0, borderRadius:13, background:card.g, opacity:0.3, transform:"rotate(-3deg)", filter:"blur(3px)" }} />
-                <div style={{ position:"absolute", inset:0, borderRadius:13, background:card.g, padding:"15px 18px", boxSizing:"border-box", boxShadow:"0 8px 28px rgba(0,0,0,0.45)" }}>
-                  <div style={{ width:26, height:19, borderRadius:3, background:"linear-gradient(135deg,#f5d06a,#c8920a)", marginBottom:10, position:"relative", overflow:"hidden" }}>
-                    <div style={{ position:"absolute", top:"50%", left:0, right:0, height:1, background:"rgba(0,0,0,0.3)" }} />
-                    <div style={{ position:"absolute", left:"38%", top:0, bottom:0, width:1, background:"rgba(0,0,0,0.2)" }} />
+              {/* ── CARTÃO VISUAL — proporção 85.6×54mm (1.585:1) ── */}
+              <div style={{ position:"relative", width:"100%", paddingTop:"63%", marginBottom:16 }}>
+                {/* Sombra */}
+                <div style={{ position:"absolute", inset:"6% 4% 0 6%", borderRadius:16, background:card.g, opacity:0.35, transform:"rotate(-2.5deg)", filter:"blur(6px)" }} />
+                {/* Frente do cartão */}
+                <div style={{ position:"absolute", inset:0, borderRadius:16, background:card.g, boxShadow:"0 12px 40px rgba(0,0,0,0.55)", padding:"8% 7%", boxSizing:"border-box", display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
+                  {/* Topo: chip + bandeira */}
+                  <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
+                    {/* Chip EMV */}
+                    <div style={{ width:"13%", aspectRatio:"8/6", borderRadius:"15%", background:"linear-gradient(135deg,#f5d46a,#c8920a)", position:"relative", overflow:"hidden", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.3)" }}>
+                      <div style={{ position:"absolute", top:"50%", left:0, right:0, height:1, background:"rgba(0,0,0,0.25)" }} />
+                      <div style={{ position:"absolute", left:"35%", top:0, bottom:0, width:1, background:"rgba(0,0,0,0.2)" }} />
+                      <div style={{ position:"absolute", left:0, top:0, width:"35%", bottom:0, borderRight:"1px solid rgba(0,0,0,0.15)" }} />
+                    </div>
+                    {/* Ícone contactless */}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ opacity:0.55 }}>
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="rgba(255,255,255,0.7)" strokeWidth="1.2" fill="none"/>
+                      <path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6" stroke="rgba(255,255,255,0.7)" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+                      <path d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3" stroke="rgba(255,255,255,0.7)" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+                    </svg>
                   </div>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9, letterSpacing:2.5, marginBottom:2 }}>•••• •••• •••• ••••</div>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:7.5, letterSpacing:0.5, marginBottom:16 }}>CARTÃO {card.n} — CONSIGNADO</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:6.5, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:4 }}>Limite Total</div>
-                      <div style={{ color:"#fff", fontSize:12, fontWeight:800 }}>{card.calc.limite !== null ? fmtBRL(card.calc.limite) : "—"}</div>
+
+                  {/* Número */}
+                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:"clamp(8px,2.2vw,12px)", letterSpacing:"0.2em", fontFamily:"monospace", textAlign:"center" }}>
+                    •••• •••• •••• ••••
+                  </div>
+
+                  {/* Rodapé: saque e restante lado a lado */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
+                    <div>
+                      <div style={{ color:"rgba(255,255,255,0.55)", fontSize:"clamp(6px,1.4vw,9px)", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>
+                        Saque Disponível
+                      </div>
+                      <div style={{ color:"#FDE68A", fontSize:"clamp(11px,2.8vw,18px)", fontWeight:900, letterSpacing:"-0.02em", lineHeight:1 }}>
+                        {card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}
+                      </div>
                     </div>
-                    <div style={{ textAlign:"center", borderLeft:"1px solid rgba(255,255,255,0.15)", borderRight:"1px solid rgba(255,255,255,0.15)" }}>
-                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:6.5, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:4 }}>Saque ({ps}%)</div>
-                      <div style={{ color:"#FDE68A", fontSize:12, fontWeight:800 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
-                    </div>
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:6.5, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:4 }}>Restante ({pr}%)</div>
-                      <div style={{ color:"#A7F3D0", fontSize:12, fontWeight:800 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ color:"rgba(255,255,255,0.55)", fontSize:"clamp(6px,1.4vw,9px)", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>
+                        Limite Restante
+                      </div>
+                      <div style={{ color:"#A7F3D0", fontSize:"clamp(11px,2.8vw,18px)", fontWeight:900, letterSpacing:"-0.02em", lineHeight:1 }}>
+                        {card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Boxes de resultado com bom contraste */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-                <div style={{ background:C.abg, border:`1px solid ${C.atxt}44`, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                  <div style={{ color:C.tm, fontSize:9, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:5 }}>Limite Total</div>
-                  <div style={{ color:C.atxt, fontSize:15, fontWeight:800, lineHeight:1 }}>{card.calc.limite !== null ? fmtBRL(card.calc.limite) : "—"}</div>
+              {/* Quadrados de info + parcela ao lado */}
+              <div style={{ display:"flex", gap:8, alignItems:"stretch" }}>
+                {/* 3 quadrados */}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:7, flex:1 }}>
+                  <div style={{ background:C.abg, border:`1px solid ${C.atxt}44`, borderRadius:10, padding:"9px 6px", textAlign:"center" }}>
+                    <div style={{ color:C.tm, fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Limite Total</div>
+                    <div style={{ color:C.atxt, fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.limite !== null ? fmtBRL(card.calc.limite) : "—"}</div>
+                  </div>
+                  <div style={{ background:"rgba(217,119,6,0.12)", border:"1px solid rgba(217,119,6,0.4)", borderRadius:10, padding:"9px 6px", textAlign:"center" }}>
+                    <div style={{ color:"#92400E", fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Saque {ps}%</div>
+                    <div style={{ color:"#B45309", fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
+                  </div>
+                  <div style={{ background:"rgba(5,150,105,0.1)", border:"1px solid rgba(5,150,105,0.35)", borderRadius:10, padding:"9px 6px", textAlign:"center" }}>
+                    <div style={{ color:"#065F46", fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Restante {pr}%</div>
+                    <div style={{ color:"#047857", fontSize:14, fontWeight:800, lineHeight:1 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
+                  </div>
                 </div>
-                <div style={{ background:"rgba(217,119,6,0.12)", border:"1px solid rgba(217,119,6,0.4)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                  <div style={{ color:"#92400E", fontSize:9, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:5 }}>Saque ({ps}%)</div>
-                  <div style={{ color:"#B45309", fontSize:15, fontWeight:800, lineHeight:1 }}>{card.calc.saque !== null ? fmtBRL(card.calc.saque) : "—"}</div>
-                </div>
-                <div style={{ background:"rgba(5,150,105,0.1)", border:"1px solid rgba(5,150,105,0.35)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                  <div style={{ color:"#065F46", fontSize:9, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:5 }}>Restante ({pr}%)</div>
-                  <div style={{ color:"#047857", fontSize:15, fontWeight:800, lineHeight:1 }}>{card.calc.resto !== null ? fmtBRL(card.calc.resto) : "—"}</div>
+                {/* Parcela — coluna à direita */}
+                <div style={{ background:`linear-gradient(135deg,${C.lg1}22,${C.lg2}22)`, border:`1px solid ${C.atxt}44`, borderRadius:10, padding:"9px 10px", textAlign:"center", display:"flex", flexDirection:"column", justifyContent:"center", minWidth:80, flexShrink:0 }}>
+                  <div style={{ color:C.tm, fontSize:8.5, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>{nPrazo}x</div>
+                  <div style={{ color:C.atxt, fontSize:13, fontWeight:800, lineHeight:1 }}>
+                    {card.calc.parcela !== null ? fmtBRL(card.calc.parcela) : "—"}
+                  </div>
+                  <div style={{ color:C.td, fontSize:7.5, marginTop:3 }}>por parcela</div>
                 </div>
               </div>
             </div>
