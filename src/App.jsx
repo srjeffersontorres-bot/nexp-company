@@ -1365,6 +1365,187 @@ function LoginPage({ onLogin }) {
   );
 }
 
+// ── WhatsApp Multi-Contas ──────────────────────────────────────
+const WA_ICON = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
+  </svg>
+);
+
+function WhatsAppContasPage() {
+  const [contas, setContas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_wpp_contas") || "[]"); } catch { return []; }
+  });
+  const [showAdd, setShowAdd] = useState(false);
+  const [novaLabel, setNovaLabel] = useState("");
+  const [novaDesc, setNovaDesc]   = useState("");
+  const winRefs = useRef({});
+  const [winState, setWinState] = useState({});
+
+  // Persiste contas no localStorage
+  useEffect(() => {
+    localStorage.setItem("nexp_wpp_contas", JSON.stringify(contas));
+  }, [contas]);
+
+  // Monitora janelas abertas
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const next = {};
+      contas.forEach(c => {
+        const w = winRefs.current[c.id];
+        next[c.id] = w && !w.closed ? "open" : "closed";
+      });
+      setWinState(next);
+    }, 900);
+    return () => clearInterval(iv);
+  }, [contas]);
+
+  const addConta = () => {
+    if (!novaLabel.trim()) return;
+    const nova = { id: Date.now(), label: novaLabel.trim(), desc: novaDesc.trim(), cor: CORES_WPP[contas.length % CORES_WPP.length], adicionadaEm: new Date().toLocaleDateString("pt-BR") };
+    setContas(p => [...p, nova]);
+    setNovaLabel(""); setNovaDesc(""); setShowAdd(false);
+  };
+
+  const removeConta = (id) => {
+    if (winRefs.current[id] && !winRefs.current[id].closed) winRefs.current[id].close();
+    setContas(p => p.filter(c => c.id !== id));
+  };
+
+  const abrirWpp = (c) => {
+    const ex = winRefs.current[c.id];
+    if (ex && !ex.closed) { ex.focus(); return; }
+    const sw = window.screen.width, sh = window.screen.height;
+    const w = Math.round(sw * 0.70), h = Math.round(sh * 0.90);
+    const left = Math.round((sw - w) / 2), top = Math.round((sh - h) / 2);
+    const win = window.open("https://web.whatsapp.com", `wpp_${c.id}`, `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=yes,scrollbars=yes,resizable=yes`);
+    winRefs.current[c.id] = win;
+    setWinState(s => ({ ...s, [c.id]: "open" }));
+  };
+
+  const CORES_WPP = ["#25D366","#128C7E","#075E54","#34D399","#059669","#10B981","#0EA5E9","#6366F1","#EC4899","#F59E0B","#EF4444","#8B5CF6"];
+
+  return (
+    <div style={{ padding:"28px 32px", background:C.bg, minHeight:"100vh" }}>
+
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:28 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+          <div style={{ width:44, height:44, borderRadius:12, background:"#0A2918", border:"1.5px solid #25D36644", display:"flex", alignItems:"center", justifyContent:"center", color:"#25D366", fontSize:22 }}>
+            {WA_ICON}
+          </div>
+          <div>
+            <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>WhatsApp Multi-Contas</div>
+            <div style={{ color:C.td, fontSize:12, marginTop:2 }}>Gerencie e acesse múltiplas contas do WhatsApp Web</div>
+          </div>
+        </div>
+        <button onClick={() => setShowAdd(p => !p)}
+          style={{ ...S.btn(showAdd ? "#0A2918" : "#25D366", showAdd ? "#25D366" : "#fff"), padding:"10px 22px", fontSize:13, fontWeight:700, borderRadius:10, border: showAdd ? "1px solid #25D36644" : "none", display:"flex", alignItems:"center", gap:8 }}>
+          {showAdd ? "✕ Cancelar" : "＋ Adicionar conta"}
+        </button>
+      </div>
+
+      {/* Formulário de nova conta */}
+      {showAdd && (
+        <div style={{ background:C.card, borderRadius:14, border:"1px solid #25D36633", padding:"22px 24px", marginBottom:24, maxWidth:500 }}>
+          <div style={{ color:"#25D366", fontSize:13, fontWeight:700, marginBottom:16 }}>📱 Nova conta WhatsApp</div>
+          <div style={{ marginBottom:12 }}>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Nome da conta *</label>
+            <input value={novaLabel} onChange={e=>setNovaLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addConta()}
+              placeholder="Ex: Conta Principal, Suporte, Vendas..."
+              style={{ ...S.input }} autoFocus />
+          </div>
+          <div style={{ marginBottom:16 }}>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Descrição (opcional)</label>
+            <input value={novaDesc} onChange={e=>setNovaDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addConta()}
+              placeholder="Ex: (84) 99999-0000 — Atendimento"
+              style={{ ...S.input }} />
+          </div>
+          <button onClick={addConta} disabled={!novaLabel.trim()}
+            style={{ ...S.btn("#25D366","#fff"), padding:"10px 24px", fontSize:13, fontWeight:700, borderRadius:10, opacity:!novaLabel.trim()?0.5:1 }}>
+            ✓ Adicionar
+          </button>
+        </div>
+      )}
+
+      {/* Lista de contas */}
+      {contas.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"60px 0" }}>
+          <div style={{ fontSize:52, marginBottom:16, opacity:0.3 }}>{WA_ICON}</div>
+          <div style={{ color:C.tm, fontSize:15, fontWeight:700, marginBottom:8 }}>Nenhuma conta adicionada</div>
+          <div style={{ color:C.td, fontSize:13 }}>Clique em "＋ Adicionar conta" para começar</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:16, marginBottom:32 }}>
+          {contas.map((c, i) => {
+            const isOpen = winState[c.id] === "open";
+            const cor = c.cor || CORES_WPP[i % CORES_WPP.length];
+            return (
+              <div key={c.id} style={{ background:C.card, borderRadius:14, border:`1px solid ${cor}33`, padding:"20px 20px", boxShadow:`0 2px 16px ${cor}11`, transition:"box-shadow 0.2s" }}>
+                {/* Top row */}
+                <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:14 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ width:42, height:42, borderRadius:12, background:cor+"22", border:`1.5px solid ${cor}55`, display:"flex", alignItems:"center", justifyContent:"center", color:cor, fontSize:20, flexShrink:0 }}>
+                      {WA_ICON}
+                    </div>
+                    <div>
+                      <div style={{ color:C.tp, fontSize:14, fontWeight:700, lineHeight:1.2 }}>{c.label}</div>
+                      {c.desc && <div style={{ color:C.td, fontSize:11, marginTop:3 }}>{c.desc}</div>}
+                      <div style={{ color:C.td, fontSize:10, marginTop:2 }}>Adicionada em {c.adicionadaEm}</div>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <span style={{ background:"#0A2918", color:"#34D399", border:"1px solid #16A34A44", borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
+                      <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
+                      Aberta
+                    </span>
+                  )}
+                </div>
+
+                {/* Botões */}
+                <div style={{ display:"flex", gap:8 }}>
+                  {!isOpen ? (
+                    <button onClick={() => abrirWpp(c)}
+                      style={{ ...S.btn(cor,"#fff"), flex:1, padding:"9px 0", fontSize:13, fontWeight:700, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", gap:7 }}>
+                      {WA_ICON} Abrir
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => { winRefs.current[c.id]?.focus(); }}
+                        style={{ ...S.btn(cor,"#fff"), flex:1, padding:"9px 0", fontSize:12, fontWeight:700, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                        🔍 Abrir
+                      </button>
+                      <button onClick={() => { winRefs.current[c.id]?.close(); setWinState(s=>({...s,[c.id]:"closed"})); }}
+                        style={{ ...S.btn("#0A2918","#34D399"), padding:"9px 12px", fontSize:12, fontWeight:600, borderRadius:9, border:"1px solid #16A34A33" }}>
+                        ✕
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => { if(window.confirm(`Remover a conta "${c.label}"?`)) removeConta(c.id); }}
+                    style={{ ...S.btn("transparent","#F87171"), padding:"9px 10px", fontSize:12, borderRadius:9, border:"1px solid #EF444422" }}>
+                    🗑
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Explicação técnica */}
+      <div style={{ background:C.deep, borderRadius:12, padding:"18px 22px", border:`1px solid ${C.b1}`, maxWidth:680 }}>
+        <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:10 }}>ℹ️ Como funciona o WhatsApp Multi-Contas?</div>
+        <div style={{ color:C.td, fontSize:12, lineHeight:1.8 }}>
+          Cada conta abre o <strong style={{color:C.tm}}>WhatsApp Web</strong> em uma janela separada do navegador.<br/>
+          Para usar <strong style={{color:C.tm}}>múltiplas contas simultaneamente</strong>, cada janela usa um perfil isolado — escaneie o QR code de cada conta na janela correspondente.<br/>
+          <br/>
+          <strong style={{color:"#FBBF24"}}>⚠️ Integração avançada (caixa única unificada)</strong> — para exibir todas as conversas em uma única tela é necessário um servidor backend com <strong style={{color:C.tm}}>Baileys</strong> (Node.js). Isso pode ser implementado como uma evolução futura do sistema.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Internet Page ──────────────────────────────────────────────
 const INTERNET_TABS = [
   {
@@ -1641,6 +1822,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
     { id:"internet",   label:"Internet",        icon:"🌐", roles:["mestre","master","indicado","visitante"] },
+    { id:"wppcontas",  label:"WhatsApp",         icon:"💬", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
     { id:"config",     label:"Configurações",   icon:"⊞", roles:["mestre","master","indicado"] },
   ];
@@ -8908,8 +9090,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
         <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 6px #4ade80" }} />
         <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>Nexp Chat</span>
         {unreadChat > 0 && <span style={{ background:"#fff", color:C.acc, borderRadius:"50%", width:18, height:18, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{unreadChat}</span>}
-        <button onClick={onRestore} title="Restaurar" style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>▲</button>
-        <button onClick={onClose} title="Fechar" style={{ background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+        <button onClick={onRestore} title="Restaurar chat" style={{ background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>▲</button>
+        <button onClick={onClose} title="Fechar — volta para bolinha" style={{ background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:"50%", width:22, height:22, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
       </div>
     );
   }
@@ -12593,40 +12775,73 @@ export default function App() {
         {page === "simulador" && <SimuladorPage />}
         {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
         {page === "internet" && <InternetPage />}
+        {page === "wppcontas" && <WhatsAppContasPage />}
       </div>
 
-      {/* ── Chat Flutuante ── */}
-      {chatOpen && (() => {
+      {/* ── Chat Flutuante + FAB ── */}
+      {(() => {
         const role = currentUser?.role;
         const uid = currentUser?.uid || currentUser?.id;
         const override = sysConfig?.userOverrides?.[uid];
-        // Per-user override takes priority
-        if (override !== undefined && override.chat === false) return null;
-        if (override === undefined) {
-          if (role === "visitante" && !sysConfig?.visitanteChatEnabled) return null;
-          if (role === "indicado" && !sysConfig?.indicadoChatEnabled) return null;
-          if (role === "master" && !sysConfig?.masterChatEnabled) return null;
-        }
+        const chatAllowed = !(
+          (override !== undefined && override.chat === false) ||
+          (override === undefined && role === "visitante" && !sysConfig?.visitanteChatEnabled) ||
+          (override === undefined && role === "indicado" && !sysConfig?.indicadoChatEnabled) ||
+          (override === undefined && role === "master" && !sysConfig?.masterChatEnabled)
+        );
+
         return (
-          <FloatingChat
-            currentUser={currentUser}
-            users={users}
-            presence={presence}
-            minimized={chatMinimized}
-            pos={chatPos}
-            onPosChange={setChatPos}
-            onMinimize={() => setChatMinimized(true)}
-            onRestore={() => setChatMinimized(false)}
-            onClose={() => { setChatOpen(false); setChatMinimized(false); }}
-            unreadChat={unreadChat}
-            stories={chatStories}
-            onOpenStory={(uid) => {
-              setChatOpen(false);
-              setPage("stories");
-              sessionStorage.setItem("nexp_page", "stories");
-              sessionStorage.setItem("nexp_story_uid", uid);
-            }}
-          />
+          <>
+            {/* FAB — bolinha flutuante sempre visível quando chat permitido */}
+            {chatAllowed && !chatOpen && (
+              <button
+                onClick={() => { setChatOpen(true); setChatMinimized(false); }}
+                title="Abrir Nexp Chat"
+                style={{
+                  position:"fixed", right:22, bottom:22, zIndex:500,
+                  width:54, height:54, borderRadius:"50%",
+                  background:`linear-gradient(135deg,${C.acc},${C.lg2})`,
+                  border:"none", cursor:"pointer",
+                  boxShadow:`0 4px 20px ${C.acc}66`,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  transition:"transform 0.18s, box-shadow 0.18s",
+                  animation:"fadeIn 0.3s ease",
+                }}
+                onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.12)"; e.currentTarget.style.boxShadow=`0 6px 28px ${C.acc}88`; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)"; e.currentTarget.style.boxShadow=`0 4px 20px ${C.acc}66`; }}
+              >
+                <NexpRobot size={30} showFaceOnly />
+                {unreadChat > 0 && (
+                  <span style={{ position:"absolute", top:2, right:2, width:18, height:18, borderRadius:"50%", background:"#EF4444", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}`, animation:"pulse 1.5s infinite" }}>
+                    {unreadChat > 9 ? "9+" : unreadChat}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Chat flutuante — sempre montado quando open, usa minimized para pill */}
+            {chatOpen && chatAllowed && (
+              <FloatingChat
+                currentUser={currentUser}
+                users={users}
+                presence={presence}
+                minimized={chatMinimized}
+                pos={chatPos}
+                onPosChange={setChatPos}
+                onMinimize={() => setChatMinimized(true)}
+                onRestore={() => setChatMinimized(false)}
+                onClose={() => { setChatOpen(false); setChatMinimized(false); }}
+                unreadChat={unreadChat}
+                stories={chatStories}
+                onOpenStory={(uid) => {
+                  setChatOpen(false);
+                  setPage("stories");
+                  sessionStorage.setItem("nexp_page", "stories");
+                  sessionStorage.setItem("nexp_story_uid", uid);
+                }}
+              />
+            )}
+          </>
         );
       })()}
     </div>
