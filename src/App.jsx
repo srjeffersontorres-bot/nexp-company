@@ -903,7 +903,7 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{ minHeight:"100vh", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-start", justifyContent:"space-between", padding:"20px 5% 0", position:"relative", overflow:"hidden", gap:32 }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 28px", position:"relative", overflow:"hidden", gap:32 }}>
 
       <style>{`
         @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
@@ -1337,9 +1337,9 @@ function LoginPage({ onLogin }) {
       </svg>
 
       {/* ── Lado esquerdo: formulário com transparência ── */}
-      <div style={{ flex:"0 0 auto", width:"min(320px,88vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease", marginTop:"auto", paddingBottom:24 }}>
+      <div style={{ flex:"0 0 auto", width:"min(320px,88vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease" }}>
         {/* Card com transparência */}
-        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:16, border:"1px solid rgba(79,142,247,0.2)", padding:"22px 22px", marginBottom:10, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
+        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:16, border:"1px solid rgba(79,142,247,0.2)", padding:"20px 20px", marginBottom:10, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
           {/* Logo + robô */}
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:26 }}>
             <NexpRobot size={46} showFaceOnly />
@@ -1433,7 +1433,7 @@ function LoginPage({ onLogin }) {
       </div>
 
       {/* ── Lado direito: robô + frase motivacional + clima ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:32, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden", height:"100%" }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:28, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
         <div style={{ display:"flex", alignItems:"center", gap:24, maxWidth:680, width:"100%" }}>
           <div style={{ flexShrink:0, animation:"robotFloat 3s ease-in-out infinite" }}>
             <NexpRobot size={130} showFaceOnly={false} />
