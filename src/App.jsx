@@ -176,6 +176,12 @@ const makeBlank = () => ({
   status: "Não simulado",
   observacao: "",
   reactions: [],
+  cep: "",
+  rua: "",
+  numero: "",
+  bairro: "",
+  cidade: "",
+  complemento: "",
 });
 
 const INITIAL_USERS = [
@@ -490,7 +496,7 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
   };
 
   const handleClick = () => {
-    const all = [1,2,3,4,5,6,7,8,9,10,11];
+    const all = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
     triggerPose(all[Math.floor(Math.random() * all.length)]);
   };
 
@@ -520,6 +526,16 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
     { leftArm: 0,   rightArm: -90, body: 10, mouth:"smile",   eyes:"normal",  anim:"kick",    label:"⚽" },
     // 11: manda beijo duplo
     { leftArm: -70, rightArm: -70, body: 0,  mouth:"kiss",    eyes:"closed",  anim:"float",   label:"💕" },
+    // 12: apaixonado (coração nos olhos)
+    { leftArm: -30, rightArm: -30, body: 0,  mouth:"smile",   eyes:"heart",   anim:"bounce",  label:"😍" },
+    // 13: surpreso
+    { leftArm: -80, rightArm: -80, body: 0,  mouth:"open",    eyes:"wide",    anim:"shake",   label:"😱" },
+    // 14: pensativo
+    { leftArm: 0,   rightArm: 60,  body: 5,  mouth:"neutral", eyes:"think",   anim:"float",   label:"🤔" },
+    // 15: animado (puxa os braços pra cima)
+    { leftArm: -90, rightArm: -90, body: -5, mouth:"laugh",   eyes:"star",    anim:"jump",    label:"🎉" },
+    // 16: envergonhado
+    { leftArm: 30,  rightArm: 30,  body: 10, mouth:"sad",     eyes:"closed",  anim:"wiggle",  label:"😳" },
   ];
 
   const p = poses[pose] || poses[0];
@@ -634,6 +650,22 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
               <path d={`M${ex1-er} ${ey+er*0.4} Q${ex1} ${ey-er} ${ex1+er} ${ey+er*0.4}`} stroke="#4F8EF7" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>
               <path d={`M${ex2-er} ${ey+er*0.4} Q${ex2} ${ey-er} ${ex2+er} ${ey+er*0.4}`} stroke="#4F8EF7" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>
             </>);
+            if (p.eyes === "heart") return (<>
+              <text x={ex1-er*0.9} y={ey+er*0.9} fontSize={er*2.2} fill="#F472B6">❤</text>
+              <text x={ex2-er*0.9} y={ey+er*0.9} fontSize={er*2.2} fill="#F472B6">❤</text>
+            </>);
+            if (p.eyes === "wide") return (<>
+              <circle cx={ex1} cy={ey} r={er*1.3} fill="#4F8EF7" opacity="0.95"/>
+              <circle cx={ex2} cy={ey} r={er*1.3} fill="#4F8EF7" opacity="0.95"/>
+              <circle cx={ex1+er*0.3} cy={ey-er*0.4} r={er*0.5} fill="#fff"/>
+              <circle cx={ex2+er*0.3} cy={ey-er*0.4} r={er*0.5} fill="#fff"/>
+            </>);
+            if (p.eyes === "think") return (<>
+              <circle cx={ex1} cy={ey} r={er} fill="#4F8EF7" opacity="0.95"/>
+              <circle cx={ex2} cy={ey} r={er} fill="#4F8EF7" opacity="0.95"/>
+              <circle cx={ex1-er*0.2} cy={ey-er*0.2} r={er*0.38} fill="#fff"/>
+              <circle cx={ex2-er*0.2} cy={ey-er*0.2} r={er*0.38} fill="#fff"/>
+            </>);
             return (<>
               <circle cx={ex1} cy={ey} r={er} fill="#4F8EF7" opacity="0.95"/>
               <circle cx={ex2} cy={ey} r={er} fill="#4F8EF7" opacity="0.95"/>
@@ -648,6 +680,7 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
             if (p.mouth === "sad") return <path d={`M${mx-mw} ${my+faceSize*0.02} Q${mx} ${my-faceSize*0.04} ${mx+mw} ${my+faceSize*0.02}`} stroke="#60A5FA" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>;
             if (p.mouth === "laugh") return <path d={`M${mx-mw*1.1} ${my-faceSize*0.02} Q${mx} ${my+faceSize*0.07} ${mx+mw*1.1} ${my-faceSize*0.02}`} stroke="#34D399" strokeWidth={faceSize*0.04} fill="rgba(52,211,153,0.2)" strokeLinecap="round"/>;
             if (p.mouth === "smile") return <path d={`M${mx-mw} ${my-faceSize*0.01} Q${mx} ${my+faceSize*0.06} ${mx+mw} ${my-faceSize*0.01}`} stroke="#34D399" strokeWidth={faceSize*0.04} fill="none" strokeLinecap="round"/>;
+            if (p.mouth === "open") return <ellipse cx={mx} cy={my} rx={faceSize*0.1} ry={faceSize*0.08} fill="#1E2A45" stroke="#4F8EF7" strokeWidth={faceSize*0.025}/>;
             return <path d={`M${mx-mw*0.7} ${my} Q${mx} ${my+faceSize*0.025} ${mx+mw*0.7} ${my}`} stroke="#4F8EF7" strokeWidth={faceSize*0.03} fill="none" strokeLinecap="round"/>;
           })()}
         </svg>
@@ -1313,14 +1346,14 @@ function LoginPage({ onLogin }) {
       </div>
 
       {/* ── Lado direito: robô + frase motivacional + clima ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", paddingTop:32, gap:20, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:20, maxWidth:520 }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-start", paddingTop:10, gap:16, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:24, maxWidth:680, width:"100%" }}>
           <div style={{ flexShrink:0, animation:"robotFloat 3s ease-in-out infinite" }}>
-            <NexpRobot size={100} showFaceOnly={false} />
+            <NexpRobot size={130} showFaceOnly={false} />
           </div>
-          <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:16, padding:"18px 22px", textAlign:"left", boxShadow:"0 4px 24px rgba(0,0,0,0.4)" }}>
-            <div style={{ color:"rgba(79,142,247,0.6)", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
-            <div style={{ color:"rgba(255,255,255,0.88)", fontSize:13.5, lineHeight:1.6, fontStyle:"italic" }}>{frase}</div>
+          <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"22px 28px", textAlign:"left", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", flex:1 }}>
+            <div style={{ color:"rgba(79,142,247,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:10 }}>✦ Frase do dia</div>
+            <div style={{ color:"rgba(255,255,255,0.92)", fontSize:15.5, lineHeight:1.7, fontStyle:"italic" }}>{frase}</div>
           </div>
           {weather && (
             <div style={{ flexShrink:0, background:"rgba(8,10,18,0.6)", backdropFilter:"blur(16px)", borderRadius:14, padding:"10px 14px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:80 }}>
@@ -1341,308 +1374,6 @@ function LoginPage({ onLogin }) {
   );
 }
 
-const DEFAULT_INTERNET_TABS = [
-  {
-    id: "youtube", label: "YouTube",
-    emoji: "▶️",
-    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>),
-    url: "https://www.youtube.com", color: "#FF0000",
-  },
-  {
-    id: "spotify", label: "Spotify",
-    emoji: "🎵",
-    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>),
-    url: "https://open.spotify.com", color: "#1DB954",
-  },
-];
-
-// ── Janela interna Internet ────────────────────────────────────
-function InternetFloatWindow({ tab, onMinimize, onClose }) {
-  const [inputUrl, setInputUrl] = useState(tab.url);
-  const [currentUrl, setCurrentUrl] = useState(tab.url);
-  const [loading, setLoading] = useState(true);
-  const [blocked, setBlocked] = useState(false);
-  const timeoutRef = useRef(null);
-
-  useEffect(() => {
-    setBlocked(false); setLoading(true);
-    setCurrentUrl(tab.url); setInputUrl(tab.url);
-    // Timeout: se não carregar em 8s, mostra aviso
-    clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      setBlocked(true); setLoading(false);
-    }, 8000);
-    return () => clearTimeout(timeoutRef.current);
-  }, [tab.id]); // eslint-disable-line
-
-  const navigate = () => {
-    let u = inputUrl.trim();
-    if (!u.startsWith("http")) u = "https://" + u;
-    setCurrentUrl(u); setBlocked(false); setLoading(true);
-    clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      setBlocked(true); setLoading(false);
-    }, 8000);
-  };
-
-  const handleLoad = () => {
-    clearTimeout(timeoutRef.current);
-    setLoading(false);
-  };
-
-  return (
-    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, zIndex:800, display:"flex", flexDirection:"column", background:C.bg, animation:"fadeIn 0.2s ease" }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-
-      {/* Barra superior */}
-      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
-          <div style={{ width:26, height:26, borderRadius:7, background:tab.color+"22", color:tab.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>
-            {tab.emoji || "🌐"}
-          </div>
-          <span style={{ color:tab.color, fontSize:13, fontWeight:700, flexShrink:0 }}>{tab.label}</span>
-        </div>
-        <div style={{ flex:1, display:"flex", gap:6 }}>
-          <input value={inputUrl} onChange={e=>setInputUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&navigate()}
-            style={{ ...S.input, flex:1, padding:"5px 10px", fontSize:12 }} placeholder="Digite uma URL..." />
-          <button onClick={navigate} style={{ background:tab.color, color:"#fff", border:"none", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>Ir</button>
-        </div>
-        <div style={{ display:"flex", gap:5, flexShrink:0 }}>
-          <button onClick={()=>window.open(currentUrl,"_blank")} title="Abrir no navegador"
-            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:7, padding:"5px 9px", fontSize:12, cursor:"pointer" }}>↗</button>
-          <button onClick={onMinimize} title="Minimizar"
-            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:7, padding:"5px 9px", fontSize:12, cursor:"pointer" }}>─</button>
-          <button onClick={onClose} title="Fechar"
-            style={{ background:"#2D1515", border:"1px solid #EF444433", color:"#F87171", borderRadius:7, padding:"5px 9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>✕</button>
-        </div>
-      </div>
-
-      {/* Conteúdo */}
-      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
-        {loading && !blocked && (
-          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, zIndex:2, flexDirection:"column", gap:14 }}>
-            <div style={{ width:40, height:40, border:`3px solid ${tab.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
-            <span style={{ color:C.tm, fontSize:13 }}>Carregando {tab.label}...</span>
-            <span style={{ color:C.td, fontSize:11 }}>Se demorar muito, o site pode não permitir incorporação</span>
-          </div>
-        )}
-
-        {blocked ? (
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:16, padding:40 }}>
-            <div style={{ fontSize:52 }}>🔒</div>
-            <div style={{ color:C.tp, fontSize:18, fontWeight:700 }}>{tab.label} não pode ser aberto aqui</div>
-            <div style={{ color:C.tm, fontSize:13, textAlign:"center", maxWidth:420, lineHeight:1.8 }}>
-              Este site bloqueou a incorporação por segurança.<br/>
-              Clique abaixo para abrir normalmente no navegador.
-            </div>
-            <button onClick={()=>window.open(tab.url,"_blank")}
-              style={{ background:tab.color, color:"#fff", border:"none", borderRadius:10, padding:"12px 28px", fontSize:14, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 16px ${tab.color}44`, display:"flex", alignItems:"center", gap:8 }}>
-              {tab.emoji} Abrir {tab.label} no navegador
-            </button>
-            <button onClick={()=>{ setBlocked(false); setLoading(true); setCurrentUrl(tab.url);
-              clearTimeout(timeoutRef.current);
-              timeoutRef.current = setTimeout(()=>{ setBlocked(true); setLoading(false); }, 8000);
-            }} style={{ background:"none", border:"none", color:C.td, fontSize:12, cursor:"pointer", textDecoration:"underline" }}>
-              Tentar novamente
-            </button>
-          </div>
-        ) : (
-          <iframe src={currentUrl} title={tab.label}
-            onLoad={handleLoad}
-            onError={()=>{ clearTimeout(timeoutRef.current); setBlocked(true); setLoading(false); }}
-            style={{ width:"100%", height:"100%", border:"none", display: loading ? "none" : "block" }}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InternetPage() {
-  const STORAGE_KEY = "nexp_internet_custom_tabs";
-  const [customTabs, setCustomTabs] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
-  });
-  const [windows, setWindows] = useState({});
-  const [activeTabId, setActiveTabId] = useState(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newUrl, setNewUrl] = useState("");
-  const [newEmoji, setNewEmoji] = useState("🌐");
-  const [addErr, setAddErr] = useState("");
-
-  const allTabs = [...DEFAULT_INTERNET_TABS, ...customTabs];
-  const minimized = allTabs.filter(t => windows[t.id] === "minimized");
-  const activeOpenTab = allTabs.find(t => t.id === activeTabId && windows[t.id] === "open");
-  const openCount = allTabs.filter(t => windows[t.id] === "open").length;
-
-  const openWindow = (id) => { setWindows(w=>({...w,[id]:"open"})); setActiveTabId(id); };
-  const minimizeWindow = (id) => setWindows(w=>({...w,[id]:"minimized"}));
-  const restoreWindow = (id) => { setWindows(w=>({...w,[id]:"open"})); setActiveTabId(id); };
-  const closeWindow = (id) => setWindows(w=>({...w,[id]:null}));
-
-  const saveCustomTabs = (tabs) => {
-    setCustomTabs(tabs);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
-  };
-
-  const addCustomTab = () => {
-    if (!newName.trim()) { setAddErr("Nome é obrigatório."); return; }
-    if (!newUrl.trim()) { setAddErr("URL é obrigatória."); return; }
-    let url = newUrl.trim();
-    if (!url.startsWith("http")) url = "https://" + url;
-    const id = "custom_" + Date.now();
-    const tab = { id, label: newName.trim(), emoji: newEmoji, icon: (<span style={{fontSize:14}}>{newEmoji}</span>), url, color: "#6366F1", custom: true };
-    saveCustomTabs([...customTabs, tab]);
-    setNewName(""); setNewUrl(""); setNewEmoji("🌐"); setAddErr(""); setShowAdd(false);
-  };
-
-  const removeCustomTab = (id) => {
-    closeWindow(id);
-    saveCustomTabs(customTabs.filter(t => t.id !== id));
-  };
-
-  const EMOJI_OPTIONS = ["🌐","📰","🎬","🎮","📊","💼","🛒","✈️","🏥","📚","🎨","💬","📧","🔧","⚽"];
-
-  return (
-    <>
-      {/* Janela interna aberta */}
-      {activeOpenTab && (
-        <InternetFloatWindow
-          key={activeOpenTab.id}
-          tab={activeOpenTab}
-          onMinimize={() => minimizeWindow(activeOpenTab.id)}
-          onClose={() => closeWindow(activeOpenTab.id)}
-        />
-      )}
-
-      {/* FABs minimizados */}
-      {minimized.map((t, i) => (
-        <button key={t.id} onClick={() => restoreWindow(t.id)} title={`Restaurar ${t.label}`}
-          style={{ position:"fixed", right:22, bottom: 90 + i * 62, zIndex:600, width:50, height:50, borderRadius:"50%",
-            background:`linear-gradient(135deg,${t.color},${t.color}bb)`, border:"none", cursor:"pointer",
-            boxShadow:`0 4px 18px ${t.color}66`, display:"flex", alignItems:"center", justifyContent:"center",
-            fontSize:20, transition:"transform 0.18s", animation:"fadeIn 0.3s ease" }}
-          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.12)"}
-          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-          {t.emoji || "🌐"}
-          <span onClick={e=>{ e.stopPropagation(); closeWindow(t.id); }}
-            style={{ position:"absolute", top:-4, right:-4, width:16, height:16, borderRadius:"50%", background:"#EF4444", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", border:"2px solid #080A10" }}>✕</span>
-        </button>
-      ))}
-
-      {/* Página */}
-      <div style={{ padding:"30px 36px", maxWidth:900 }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:10 }}>
-          <div>
-            <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>🌐 Internet</h1>
-            <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>
-              {openCount > 0 ? `${openCount} janela${openCount>1?"s":""} aberta${openCount>1?"s":""}` : "Abra sites dentro do sistema"}
-            </p>
-          </div>
-          <button onClick={() => setShowAdd(p=>!p)}
-            style={{ background: showAdd ? C.abg : `linear-gradient(135deg,${C.acc},${C.lg2})`, color: showAdd ? C.atxt : "#fff", border: showAdd ? `1px solid ${C.atxt}44` : "none", borderRadius:10, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:7 }}>
-            {showAdd ? "✕ Cancelar" : "+ Adicionar site"}
-          </button>
-        </div>
-
-        {/* Formulário adicionar site */}
-        {showAdd && (
-          <div style={{ ...S.card, padding:"22px 24px", marginBottom:20, border:`1px solid ${C.atxt}33` }}>
-            <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:16 }}>➕ Adicionar novo site</div>
-            {addErr && <div style={{ color:"#F87171", fontSize:12, marginBottom:10, background:"#2D1515", borderRadius:7, padding:"7px 11px" }}>{addErr}</div>}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12, marginBottom:14 }}>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome</label>
-                <input value={newName} onChange={e=>{setNewName(e.target.value);setAddErr("");}} placeholder="Ex: Google" style={{ ...S.input }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>URL</label>
-                <input value={newUrl} onChange={e=>{setNewUrl(e.target.value);setAddErr("");}} placeholder="Ex: google.com" style={{ ...S.input }} />
-              </div>
-            </div>
-            <div style={{ marginBottom:16 }}>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Ícone (emoji)</label>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                {EMOJI_OPTIONS.map(e => (
-                  <button key={e} onClick={()=>setNewEmoji(e)}
-                    style={{ width:34, height:34, borderRadius:8, background: newEmoji===e ? C.abg : C.deep, border: newEmoji===e ? `1.5px solid ${C.atxt}` : `1px solid ${C.b2}`, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    {e}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <button onClick={addCustomTab}
-              style={{ background:`linear-gradient(135deg,${C.acc},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 24px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-              ✓ Adicionar
-            </button>
-          </div>
-        )}
-
-        {/* Grid de sites */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:14 }}>
-          {allTabs.map(t => {
-            const state = windows[t.id];
-            return (
-              <div key={t.id} style={{ background:C.card, border:`1px solid ${state ? t.color+"55" : C.b1}`, borderRadius:14, padding:"20px 18px", display:"flex", flexDirection:"column", gap:12, transition:"all 0.15s", boxShadow: state ? `0 4px 20px ${t.color}22` : "none", position:"relative" }}>
-                {/* Botão remover site customizado */}
-                {t.custom && (
-                  <button onClick={()=>removeCustomTab(t.id)} title="Remover site"
-                    style={{ position:"absolute", top:8, right:8, background:"transparent", border:"none", color:C.td, cursor:"pointer", fontSize:13, padding:"2px 5px", borderRadius:5 }}
-                    onMouseEnter={e=>e.currentTarget.style.color="#EF4444"}
-                    onMouseLeave={e=>e.currentTarget.style.color=C.td}>✕</button>
-                )}
-
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:42, height:42, borderRadius:11, background:t.color+"22", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
-                    {t.emoji || "🌐"}
-                  </div>
-                  <div>
-                    <div style={{ color:C.tp, fontSize:13.5, fontWeight:700 }}>{t.label}</div>
-                    <div style={{ fontSize:10, marginTop:2, fontWeight:600,
-                      color: state==="open" ? "#34D399" : state==="minimized" ? "#FBBF24" : C.td }}>
-                      {state==="open" ? "● Aberto" : state==="minimized" ? "● Minimizado" : "Fechado"}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display:"flex", gap:7 }}>
-                  {!state && (
-                    <button onClick={() => openWindow(t.id)}
-                      style={{ flex:1, background:t.color, color:"#fff", border:"none", borderRadius:8, padding:"8px 0", fontSize:12.5, fontWeight:700, cursor:"pointer" }}>
-                      Abrir
-                    </button>
-                  )}
-                  {state === "minimized" && (
-                    <button onClick={() => restoreWindow(t.id)}
-                      style={{ flex:1, background:t.color+"22", color:t.color, border:`1px solid ${t.color}44`, borderRadius:8, padding:"8px 0", fontSize:12.5, fontWeight:700, cursor:"pointer" }}>
-                      Restaurar
-                    </button>
-                  )}
-                  {state === "open" && (
-                    <button onClick={() => minimizeWindow(t.id)}
-                      style={{ flex:1, background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 0", fontSize:12, cursor:"pointer" }}>
-                      ─ Minimizar
-                    </button>
-                  )}
-                  {state && (
-                    <button onClick={() => closeWindow(t.id)}
-                      style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"8px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }}>
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── Sidebar ────────────────────────────────────────────────────
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   return (
     <div style={{ flexShrink: 0 }}>
@@ -1677,9 +1408,9 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["mestre","master","indicado"] },
     { id:"apis",       label:"APIs Bancos",     icon:"⬧", roles:["mestre","master"] },
     { id:"leds",       label:"Leds",            icon:"⬦", roles:["mestre","master"] },
+    { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["mestre","master"] },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
-    { id:"internet",   label:"Internet",        icon:"🌐", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
     { id:"config",     label:"Configurações",   icon:"⊞", roles:["mestre","master","indicado"] },
   ];
@@ -1724,7 +1455,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   return (
     <>
       {/* Sidebar */}
-      <div style={{
+      <div className={sidebarOpen ? "nexp-sidebar nexp-sidebar-open" : "nexp-sidebar"} style={{
         width: sidebarOpen ? 222 : 0, background: C.sb, height: "100vh",
         display: "flex", flexDirection: "column", flexShrink: 0,
         borderRight: `1px solid ${C.b1}`, overflow: "hidden",
@@ -2193,6 +1924,20 @@ function CCard({ contact, onUpdate, onDelete }) {
                   </div>
                 ))}
               </div>
+              {/* Endereço */}
+              {(contact.cep || contact.rua || contact.cidade || contact.bairro) && (
+                <div style={{ background:C.deep, borderRadius:9, padding:"10px 13px", marginBottom:12, border:`1px solid ${C.b1}` }}>
+                  <div style={{ color:C.tm, fontSize:10.5, fontWeight:700, marginBottom:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>📍 Endereço</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"8px 16px" }}>
+                    {[["CEP",contact.cep],["Rua",contact.rua],["Número",contact.numero],["Bairro",contact.bairro],["Cidade",contact.cidade],["Complemento",contact.complemento]].map(([l,v])=>v?(
+                      <div key={l}>
+                        <div style={{ color:C.td, fontSize:10, marginBottom:2 }}>{l}</div>
+                        <div style={{ color:C.ts, fontSize:12 }}>{v}</div>
+                      </div>
+                    ):null)}
+                  </div>
+                </div>
+              )}
 
               {/* Status */}
               <div style={{ marginBottom: 12 }}>
@@ -2674,14 +2419,7 @@ function AddClient({ setContacts, setPage }) {
         <div style={{ marginBottom: 14 }}>
           {inp("Nome completo", "name", "text", "João da Silva", true)}
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 14,
-            marginBottom: 14,
-          }}
-        >
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
           {inp("CPF", "cpf", "text", "000.000.000-00")}
           {inp("Telefone 1", "phone", "tel", "(11) 99999-0000")}
           {inp("Telefone 2", "phone2", "tel", "(11) 98888-0000")}
@@ -2689,6 +2427,18 @@ function AddClient({ setContacts, setPage }) {
           {inp("CNPJ", "cnpj", "text", "00.000.000/0000-00")}
           {inp("Email", "email", "email", "email@exemplo.com")}
           {inp("Matrícula", "matricula", "text", "M0001")}
+        </div>
+        {/* Endereço */}
+        <div style={{ color:C.ts, fontSize:11.5, fontWeight:700, marginBottom:10, paddingBottom:6, borderBottom:`1px solid ${C.b1}` }}>📍 Endereço</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr 1fr", gap:14, marginBottom:10 }}>
+          {inp("CEP", "cep", "text", "00000-000")}
+          {inp("Rua / Logradouro", "rua", "text", "Ex: Rua das Flores")}
+          {inp("Número", "numero", "text", "123")}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:14 }}>
+          {inp("Bairro", "bairro", "text", "Ex: Centro")}
+          {inp("Cidade", "cidade", "text", "Ex: Natal")}
+          {inp("Complemento", "complemento", "text", "Ex: Apto 12")}
         </div>
         <div style={{ marginBottom: 14 }}>
           <label
@@ -5033,6 +4783,153 @@ function PerfisTab({ users, setUsers, currentUser }) {
   );
 }
 
+
+// ── Página de Usuários (nova aba no menu) ──────────────────────
+function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) {
+  const [tab, setTab] = useState("usuarios");
+  const isMestre = currentUser.role === "mestre";
+  const isMaster = currentUser.role === "master";
+
+  const tabs = [
+    { id:"usuarios",   label:"Criação de Usuários", icon:"➕", roles:["mestre","master"] },
+    { id:"perfis",     label:"Perfis",               icon:"📋", roles:["mestre"] },
+    { id:"permissoes", label:"Permissões",           icon:"🔐", roles:["mestre","master"] },
+  ].filter(t => t.roles.includes(currentUser.role));
+
+  return (
+    <div style={{ minHeight:"100%", background:C.bg }}>
+      <div style={{ padding:"30px 36px 0" }}>
+        <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 4px" }}>👥 Usuários</h1>
+        <p style={{ color:C.tm, fontSize:12.5, margin:"0 0 20px" }}>Gerencie usuários, perfis e permissões</p>
+        <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}` }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13,
+                fontWeight: tab===t.id ? 600 : 400, color: tab===t.id ? C.atxt : C.tm,
+                borderBottom: tab===t.id ? `2px solid ${C.atxt}` : "2px solid transparent",
+                marginBottom:"-1px", transition:"all 0.12s", display:"flex", alignItems:"center", gap:6 }}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ padding:"26px 36px", maxWidth:860 }}>
+        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
+        {tab === "perfis" && isMestre && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
+        {tab === "permissoes" && (isMestre || isMaster) && sysConfig && onSysConfig && (() => {
+          const visibleUsers = users.filter(u => {
+            if (u.role === "mestre") return false;
+            if (isMestre) return true;
+            return u.createdBy === (currentUser.uid || currentUser.id);
+          });
+          const ALL_TABS = [
+            { id:"dashboard",    label:"Leads Gerais" },
+            { id:"contacts",     label:"Contatos" },
+            { id:"review",       label:"Ver Clientes" },
+            { id:"cstatus",      label:"Status" },
+            { id:"add",          label:"Adicionar" },
+            { id:"import",       label:"Importar" },
+            { id:"simulador",    label:"Simulador" },
+            { id:"apis",         label:"APIs Bancos" },
+            { id:"leds",         label:"Leds" },
+            { id:"usuarios_page",label:"Usuários" },
+            { id:"atalhos",      label:"Atalhos" },
+            { id:"calendario",   label:"Agenda" },
+            { id:"notificacoes", label:"Notificações" },
+            { id:"chat",         label:"Nexp Chat" },
+            { id:"premium",      label:"Premium Nexp" },
+            { id:"config",       label:"Configurações" },
+          ];
+          const [permSearch, setPermSearch] = useState("");
+          const [permExpandedId, setPermExpandedId] = useState(null);
+          const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
+          const filtered = visibleUsers.filter(u => !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase()));
+
+          return (
+            <div>
+              <h2 style={{ color:C.tp, fontSize:17, fontWeight:700, marginBottom:4 }}>🔐 Permissões por Usuário</h2>
+              <p style={{ color:C.tm, fontSize:13, marginBottom:20 }}>
+                {isMestre ? "Controle o acesso de todos os usuários." : "Controle o acesso dos usuários que você criou."}
+              </p>
+              {isMestre && (
+                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:700, marginBottom:12 }}>💬 Chat por papel (padrão global)</div>
+                  {[
+                    { key:"masterChatEnabled",   label:"Master — Chat",    col:"#94a3b8" },
+                    { key:"indicadoChatEnabled", label:"Operador — Chat",  col:"#34D399" },
+                    { key:"visitanteChatEnabled",label:"Visitante — Chat", col:"#60a5fa" },
+                  ].map(opt=>(
+                    <div key={opt.key} onClick={()=>onSysConfig({...sysConfig,[opt.key]:!sysConfig[opt.key]})}
+                      style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", borderRadius:10, cursor:"pointer", marginBottom:7, background:sysConfig[opt.key]?C.abg:C.deep, border:`1px solid ${sysConfig[opt.key]?opt.col+"44":C.b2}`, transition:"all 0.15s" }}>
+                      <span style={{ color:sysConfig[opt.key]?opt.col:C.ts, fontSize:12.5, fontWeight:sysConfig[opt.key]?600:400 }}>{opt.label}</span>
+                      <div style={{ width:34, height:18, borderRadius:9, background:sysConfig[opt.key]?opt.col:C.b2, position:"relative", transition:"background 0.2s", flexShrink:0 }}>
+                        <div style={{ position:"absolute", top:1, left:sysConfig[opt.key]?16:1, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px" }}>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:700, marginBottom:10 }}>👤 Permissões individuais</div>
+                <input placeholder="🔍 Pesquisar usuário..." value={permSearch}
+                  onChange={e=>{setPermSearch(e.target.value);setPermExpandedId(null);}}
+                  style={{ ...S.input, marginBottom:14 }} />
+                {filtered.length === 0 && <div style={{ color:C.tm, fontSize:12.5, textAlign:"center", padding:"20px 0" }}>Nenhum usuário encontrado.</div>}
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {filtered.map(u => {
+                    const uid = u.uid||u.id;
+                    const col = roleColor2[u.role]||C.atxt;
+                    const override = sysConfig.userOverrides?.[uid] || {};
+                    const expanded = permExpandedId === uid;
+                    const setOv = (key, val) => {
+                      const prev = sysConfig.userOverrides||{};
+                      onSysConfig({...sysConfig, userOverrides:{...prev,[uid]:{...(prev[uid]||{}),[key]:val}}});
+                    };
+                    return (
+                      <div key={uid} style={{ borderRadius:12, background:C.deep, border:`1px solid ${expanded?C.atxt+"44":C.b2}`, overflow:"hidden" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", cursor:"pointer" }}
+                          onClick={()=>setPermExpandedId(expanded?null:uid)}>
+                          <div style={{ width:34, height:34, borderRadius:"50%", flexShrink:0, background:col+"1A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:col }}>
+                            {u.photo ? <img src={u.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover" }} /> : (u.name||"?").charAt(0).toUpperCase()}
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{u.name||u.email}</div>
+                            <div style={{ color:col, fontSize:10.5 }}>{u.role}</div>
+                          </div>
+                          <span style={{ color:C.td, fontSize:12 }}>{expanded?"▲":"▼"}</span>
+                        </div>
+                        {expanded && (
+                          <div style={{ padding:"12px 16px", borderTop:`1px solid ${C.b1}`, display:"flex", flexDirection:"column", gap:8 }}>
+                            {ALL_TABS.map(t => {
+                              const allowed = override.tabs ? override.tabs.includes(t.id) : true;
+                              return (
+                                <div key={t.id} onClick={()=>{
+                                  const cur = override.tabs || ALL_TABS.map(x=>x.id);
+                                  const next = allowed ? cur.filter(x=>x!==t.id) : [...cur, t.id];
+                                  setOv("tabs", next);
+                                }} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"7px 10px", borderRadius:8, cursor:"pointer", background: allowed?C.abg:C.card, border:`1px solid ${allowed?C.atxt+"33":C.b1}` }}>
+                                  <span style={{ color: allowed?C.atxt:C.tm, fontSize:12 }}>{t.label}</span>
+                                  <div style={{ width:30, height:16, borderRadius:8, background:allowed?C.acc:C.b2, position:"relative", flexShrink:0 }}>
+                                    <div style={{ position:"absolute", top:1, left:allowed?14:1, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.2s" }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
 function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("perfil");
   const [permSearch, setPermSearch] = useState("");
@@ -5045,28 +4942,10 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       roles: ["mestre", "master", "indicado"],
     },
     {
-      id: "usuarios",
-      label: "Usuários",
-      icon: "👤",
-      roles: ["mestre", "master"],
-    },
-    {
-      id: "perfis",
-      label: "Perfis",
-      icon: "📋",
-      roles: ["mestre"],
-    },
-    {
       id: "temas",
       label: "Temas",
       icon: "🎨",
       roles: ["mestre", "master", "indicado"],
-    },
-    {
-      id: "permissoes",
-      label: "Permissões",
-      icon: "🔐",
-      roles: ["mestre", "master"],
     },
   ].filter((t) => t.roles.includes(currentUser.role));
   return (
@@ -5117,16 +4996,8 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             currentUser={currentUser}
           />
         )}
-        {tab === "usuarios" && (
-          <UsuariosTab
-            users={users}
-            setUsers={setUsers}
-            currentUser={currentUser}
-          />
-        )}
-        {tab === "perfis" && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
-        {tab === "permissoes" && sysConfig && onSysConfig && (() => {
+        {false && (() => {
           const isMestre = currentUser.role === "mestre";
           // Master só vê usuários que ele criou; mestre vê todos
           const visibleUsers = users.filter(u => {
@@ -12193,6 +12064,7 @@ export default function App() {
   const [chatStories, setChatStories] = useState([]);
   const [unreadNotif, setUnreadNotif] = useState(0);
   const [unreadStories, setUnreadStories] = useState(0);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const lastChatCount = useRef(0);
   // System config — mestre controls what others can access
   const [sysConfig, setSysConfig] = useState({
@@ -12426,6 +12298,17 @@ export default function App() {
       <style>{`
         * { box-sizing: border-box; }
         html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        @media (max-width: 768px) {
+          .nexp-sidebar { width: 0 !important; overflow: hidden !important; }
+          .nexp-sidebar-open { width: 220px !important; position: fixed !important; z-index: 999 !important; height: 100vh !important; }
+          .nexp-main { width: 100vw !important; }
+          .nexp-mobile-fab { display: flex !important; }
+          .nexp-fab-chat { right: 16px !important; bottom: 16px !important; width: 54px !important; height: 54px !important; }
+        }
+        @media (min-width: 769px) {
+          .nexp-mobile-fab { display: none !important; }
+          .nexp-mobile-overlay { display: none !important; }
+        }
         @keyframes shake {
           0%,100%{transform:translateX(0)}
           10%,30%,50%,70%,90%{transform:translateX(-6px)}
@@ -12482,6 +12365,11 @@ export default function App() {
           animation: shake ? "shake 0.6s ease" : "none",
         }}
       >
+      {/* Overlay mobile */}
+      {mobileSidebarOpen && (
+        <div className="nexp-mobile-overlay" onClick={()=>setMobileSidebarOpen(false)}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:998, display:"flex" }} />
+      )}
       <Sidebar
         page={page}
         setPage={setPageAndSave}
@@ -12495,8 +12383,18 @@ export default function App() {
         flashUserId={flashUserId}
         stories={chatStories}
         sysConfig={sysConfig}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={()=>setMobileSidebarOpen(false)}
       />
-      <div style={{ flex: 1, overflowY: "auto", height: "100vh" }}>
+      <div className="nexp-main" style={{ flex: 1, overflowY: "auto", height: "100vh", position:"relative" }}>
+        {/* Botão hamburguer mobile */}
+        <button className="nexp-mobile-fab" onClick={()=>setMobileSidebarOpen(p=>!p)}
+          style={{ display:"none", position:"fixed", top:12, left:12, zIndex:997, width:42, height:42, borderRadius:11,
+            background:`linear-gradient(135deg,${C.acc},${C.lg2})`, border:"none", cursor:"pointer",
+            alignItems:"center", justifyContent:"center", boxShadow:`0 3px 14px ${C.acc}66`,
+            fontSize:18, color:"#fff" }}>
+          ☰
+        </button>
         {/* Widget tempo + calculadora */}
         <WeatherCalcWidget />
         {page === "dashboard" && <Dashboard contacts={contacts} />}
@@ -12517,6 +12415,9 @@ export default function App() {
         )}
         {page === "leds" && (
           <LedsPage contacts={contacts} userRole={currentUser.role} />
+        )}
+        {page === "usuarios_page" && (
+          <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
@@ -12544,7 +12445,6 @@ export default function App() {
         )}
         {page === "simulador" && <SimuladorPage />}
         {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
-        {page === "internet" && <InternetPage />}
       </div>
 
       {/* ── Chat Flutuante + FAB ── */}
@@ -12567,21 +12467,26 @@ export default function App() {
                 onClick={() => { setChatOpen(true); setChatMinimized(false); }}
                 title="Abrir Nexp Chat"
                 style={{
-                  position:"fixed", right:22, bottom:22, zIndex:500,
-                  width:54, height:54, borderRadius:"50%",
-                  background:`linear-gradient(135deg,${C.acc},${C.lg2})`,
+                  position:"fixed", right:24, bottom:24, zIndex:500,
+                  width:62, height:62, borderRadius:"50%",
+                  background:`linear-gradient(135deg,${C.lg1},${C.lg2},${C.acc})`,
+                  backgroundSize:"200% 200%",
                   border:"none", cursor:"pointer",
-                  boxShadow:`0 4px 20px ${C.acc}66`,
+                  boxShadow:`0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22, inset 0 1px 0 rgba(255,255,255,0.2)`,
                   display:"flex", alignItems:"center", justifyContent:"center",
-                  transition:"transform 0.18s, box-shadow 0.18s",
-                  animation:"fadeIn 0.3s ease",
+                  transition:"transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s",
+                  animation:"fabAppear 0.4s cubic-bezier(.34,1.56,.64,1), bgShift 4s ease infinite",
                 }}
-                onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.12)"; e.currentTarget.style.boxShadow=`0 6px 28px ${C.acc}88`; }}
-                onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)"; e.currentTarget.style.boxShadow=`0 4px 20px ${C.acc}66`; }}
+                onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.15) translateY(-3px)"; e.currentTarget.style.boxShadow=`0 12px 36px ${C.acc}88, 0 0 0 6px ${C.acc}33, inset 0 1px 0 rgba(255,255,255,0.25)`; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1) translateY(0)"; e.currentTarget.style.boxShadow=`0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22, inset 0 1px 0 rgba(255,255,255,0.2)`; }}
               >
-                <NexpRobot size={30} showFaceOnly />
+                <style>{`
+                  @keyframes fabAppear { from { transform:scale(0) rotate(-180deg); opacity:0; } to { transform:scale(1) rotate(0deg); opacity:1; } }
+                  @keyframes fabRing { 0%,100% { box-shadow: 0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22; } 50% { box-shadow: 0 6px 28px ${C.acc}99, 0 0 0 8px ${C.acc}18; } }
+                `}</style>
+                <NexpRobot size={34} showFaceOnly />
                 {unreadChat > 0 && (
-                  <span style={{ position:"absolute", top:2, right:2, width:18, height:18, borderRadius:"50%", background:"#EF4444", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}`, animation:"pulse 1.5s infinite" }}>
+                  <span style={{ position:"absolute", top:0, right:0, minWidth:20, height:20, borderRadius:10, background:"linear-gradient(135deg,#EF4444,#DC2626)", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}`, padding:"0 4px", animation:"pulse 1.5s infinite", boxShadow:"0 2px 8px #EF444466" }}>
                     {unreadChat > 9 ? "9+" : unreadChat}
                   </span>
                 )}
