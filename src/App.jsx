@@ -19,6 +19,9 @@ import {
   setPresence,
   removePresence,
   listenPresence,
+  listenCalendarNotes,
+  saveCalendarNote,
+  deleteCalendarNote,
 } from "./firebase";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -752,6 +755,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"cstatus",   label:"Cliente Status",     icon:"⊡", roles:["mestre","master","indicado","visitante"] },
     { id:"leds",      label:"Leds",               icon:"⬇", roles:["mestre","master"] },
     { id:"atalhos",   label:"Atalhos",             icon:"🔗", roles:["mestre","master","indicado","visitante"] },
+    { id:"calendario", label:"Calendário",        icon:"📅", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",   label:"Premium Nexp",       icon:"★", roles:["mestre"] },
     { id:"config",    label:"Configurações",       icon:"⚙", roles:["mestre","master","indicado"] },
   ];
@@ -766,7 +770,11 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   const isConfig = page === "config";
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [navOpen] = useState(true);
-  const [navOrder, setNavOrder] = useState(() => nav.map(it => it.id));
+  const [navOrder, setNavOrder] = useState(() => {
+    // "review" (Ver Clientes) fica em primeiro por padrão
+    const defaultOrder = ["review", ...nav.filter(it => it.id !== "review").map(it => it.id)];
+    return defaultOrder;
+  });
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
 
@@ -5227,11 +5235,76 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                           </div>
                         );
                       };
+
+                      // Componente para ver senha com confirmação
+                      const PasswordField = ({ uid: pUid }) => {
+                        const [passVisible, setPassVisible] = useState(false);
+                        const [confirmPass, setConfirmPass] = useState("");
+                        const [askConfirm, setAskConfirm] = useState(false);
+                        const [passErr, setPassErr] = useState("");
+                        const [storedPass, setStoredPass] = useState(null);
+                        const [copied, setCopied] = useState(false);
+
+                        const loadPass = async () => {
+                          try {
+                            const snap = await getDocs(query(collection(db, "users"), where("uid", "==", pUid)));
+                            if (!snap.empty) setStoredPass(snap.docs[0].data().password || null);
+                            else setStoredPass(null);
+                          } catch { setStoredPass(null); }
+                        };
+
+                        const handleReveal = () => { setAskConfirm(true); setPassErr(""); };
+                        const handleConfirm = async () => {
+                          // Verifica senha do usuário atual via Firebase Auth
+                          try {
+                            const cred = EmailAuthProvider.credential(currentUser.email, confirmPass);
+                            await reauthenticateWithCredential(auth.currentUser, cred);
+                            await loadPass();
+                            setPassVisible(true); setAskConfirm(false); setConfirmPass("");
+                          } catch { setPassErr("Senha incorreta"); }
+                        };
+                        const copy = () => { if (!storedPass) return; navigator.clipboard.writeText(storedPass).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1800);}); };
+
+                        return (
+                          <div style={{ gridColumn:"1/-1" }}>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
+                              <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.4px" }}>Senha</div>
+                              <div style={{ display:"flex", gap:4 }}>
+                                {passVisible && storedPass && <button onClick={copy} style={{ background:"none", border:"none", color:copied?"#34D399":C.td, cursor:"pointer", fontSize:10 }}>{copied?"✓":"⎘"}</button>}
+                                <button onClick={()=>{ if(passVisible){setPassVisible(false);setStoredPass(null);} else handleReveal(); }}
+                                  style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:10 }}>
+                                  {passVisible?"🙈 Ocultar":"👁 Ver senha"}
+                                </button>
+                              </div>
+                            </div>
+                            {passVisible ? (
+                              <div style={{ color:C.tp, fontSize:12.5, fontWeight:500, letterSpacing:1 }}>{storedPass || "Não disponível"}</div>
+                            ) : (
+                              <div style={{ color:C.tm, fontSize:12.5 }}>••••••••</div>
+                            )}
+                            {askConfirm && !passVisible && (
+                              <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
+                                <div style={{ color:C.tm, fontSize:11 }}>Digite sua senha para confirmar:</div>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <input type="password" value={confirmPass} onChange={e=>{setConfirmPass(e.target.value);setPassErr("");}}
+                                    onKeyDown={e=>e.key==="Enter"&&handleConfirm()}
+                                    placeholder="Sua senha atual..." style={{ ...S.input, flex:1, padding:"5px 10px", fontSize:12 }} autoFocus />
+                                  <button onClick={handleConfirm} style={{ ...S.btn(C.acc,"#fff"), padding:"5px 12px", fontSize:12 }}>OK</button>
+                                  <button onClick={()=>{setAskConfirm(false);setConfirmPass("");setPassErr("");}} style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"5px 10px", fontSize:12 }}>✕</button>
+                                </div>
+                                {passErr && <div style={{ color:"#F87171", fontSize:11 }}>{passErr}</div>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      };
+
                       return (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                           <CopyField label="Nome completo" val={u.name} />
                           <CopyField label="CPF" val={u.cpf} />
                           <CopyField label="Email (login)" val={u.email} />
+                          <PasswordField uid={u.uid||u.id} />
                           <CopyField label="CEP" val={u.cep} />
                           <CopyField label="Rua / Nº" val={[u.rua, u.numero].filter(Boolean).join(", ")} />
                           <CopyField label="Cidade / UF" val={[u.cidade, u.uf].filter(Boolean).join(" - ")} />
@@ -7892,13 +7965,24 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       </div>
                       {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                     </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"flex", alignItems:"center", gap:5 }}>
-                        {u.name || u.email}
-                        {muted && <span style={{ fontSize:10, opacity:0.5 }}>🔇</span>}
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"flex", alignItems:"center", gap:5 }}>
+                          {u.name || u.email}
+                          {muted && <span style={{ fontSize:10, opacity:0.5 }}>🔇</span>}
+                        </div>
+                        {isOnline ? (
+                          <div style={{ color:"#16A34A", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
+                            <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
+                            online agora
+                          </div>
+                        ) : presence[uid]?.lastSeen?.seconds ? (
+                          <div style={{ color:C.td, fontSize:10.5 }}>
+                            👁 Visto {new Date(presence[uid].lastSeen.seconds*1000).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})} às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
+                          </div>
+                        ) : (
+                          <div style={{ color:C.tm, fontSize:11 }}>{roleLabel[u.role]}</div>
+                        )}
                       </div>
-                      <div style={{ color: isOnline ? "#16A34A" : C.tm, fontSize:11 }}>{isOnline ? "● online" : roleLabel[u.role]}</div>
-                    </div>
                     {unread > 0 && !muted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
                   </button>
                   {/* Mute button — not allowed for mestre */}
@@ -8895,6 +8979,288 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   );
 }
 
+// ── Weather + Calculadora Widget ──────────────────────────────
+function WeatherCalcWidget() {
+  const [weather, setWeather] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  const [calcVal, setCalcVal] = useState("");
+  const [calcResult, setCalcResult] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [activeSection, setActiveSection] = useState("weather"); // "weather" | "calc"
+
+  useEffect(() => {
+    setLoading(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            const { latitude: lat, longitude: lon } = pos.coords;
+            const res = await fetch(
+              `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&current_weather=true&timezone=auto&forecast_days=5`
+            );
+            const data = await res.json();
+            setWeather(data);
+          } catch { setErr("Erro ao buscar previsão"); }
+          setLoading(false);
+        },
+        () => { setErr("Localização negada"); setLoading(false); }
+      );
+    } else { setErr("Geolocalização não suportada"); setLoading(false); }
+  }, []);
+
+  const WMO_DESC = {
+    0:"Céu limpo",1:"Principalmente limpo",2:"Parcialmente nublado",3:"Nublado",
+    45:"Névoa",48:"Névoa com gelo",51:"Garoa leve",53:"Garoa moderada",55:"Garoa intensa",
+    61:"Chuva leve",63:"Chuva moderada",65:"Chuva forte",71:"Neve leve",73:"Neve moderada",
+    75:"Neve forte",80:"Pancadas leves",81:"Pancadas moderadas",82:"Pancadas fortes",
+    95:"Trovoada",96:"Trovoada com granizo",99:"Trovoada forte"
+  };
+  const WMO_ICON = {
+    0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",
+    61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈",
+    95:"⛈",96:"⛈",99:"⛈"
+  };
+  const weekDay = (dateStr) => new Date(dateStr + "T12:00:00").toLocaleDateString("pt-BR", { weekday:"short" });
+
+  const calcPress = (v) => {
+    if (v === "C") { setCalcVal(""); setCalcResult(null); return; }
+    if (v === "=") {
+      try {
+        // eslint-disable-next-line no-new-func
+        const r = new Function("return " + calcVal.replace(/×/g,"*").replace(/÷/g,"/"))();
+        setCalcResult(String(parseFloat(r.toFixed(10))));
+        setCalcVal(String(parseFloat(r.toFixed(10))));
+      } catch { setCalcResult("Erro"); }
+      return;
+    }
+    if (v === "⌫") { setCalcVal(p => p.slice(0, -1)); setCalcResult(null); return; }
+    setCalcResult(null);
+    setCalcVal(p => p + v);
+  };
+  const calcBtns = [
+    ["C","(",")","%"],
+    ["7","8","9","÷"],
+    ["4","5","6","×"],
+    ["1","2","3","-"],
+    ["0",".","⌫","+"],
+    ["=","=","=","="],
+  ];
+
+  if (collapsed) return (
+    <div onClick={() => setCollapsed(false)} style={{ position:"fixed", top:10, right:10, zIndex:300, background:C.card, border:`1px solid ${C.b1}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+      <span style={{ fontSize:16 }}>🌤</span>
+      <span style={{ color:C.ts, fontSize:11 }}>{weather?.current_weather ? `${Math.round(weather.current_weather.temperature)}°C` : "—"}</span>
+      <span style={{ color:C.td, fontSize:10 }}>▼</span>
+    </div>
+  );
+
+  return (
+    <div style={{ position:"fixed", top:10, right:10, zIndex:300, width:240, background:C.sb, border:`1px solid ${C.b1}`, borderRadius:14, boxShadow:"0 4px 24px rgba(0,0,0,0.5)", overflow:"hidden" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", borderBottom:`1px solid ${C.b1}` }}>
+        <div style={{ display:"flex", gap:4 }}>
+          <button onClick={()=>setActiveSection("weather")} style={{ background:activeSection==="weather"?C.abg:"transparent", border:"none", color:activeSection==="weather"?C.atxt:C.tm, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer", fontWeight:activeSection==="weather"?700:400 }}>🌤 Tempo</button>
+          <button onClick={()=>setActiveSection("calc")} style={{ background:activeSection==="calc"?C.abg:"transparent", border:"none", color:activeSection==="calc"?C.atxt:C.tm, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer", fontWeight:activeSection==="calc"?700:400 }}>🧮 Calc</button>
+        </div>
+        <button onClick={()=>setCollapsed(true)} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:14, lineHeight:1 }}>▲</button>
+      </div>
+
+      {/* Weather */}
+      {activeSection === "weather" && (
+        <div style={{ padding:"10px 12px" }}>
+          {loading && <div style={{ color:C.tm, fontSize:12, textAlign:"center", padding:"12px 0" }}>Carregando...</div>}
+          {err && <div style={{ color:"#F87171", fontSize:11, textAlign:"center", padding:"12px 0" }}>{err}</div>}
+          {weather && !loading && (
+            <>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                <span style={{ fontSize:28 }}>{WMO_ICON[weather.current_weather.weathercode] || "🌡"}</span>
+                <div>
+                  <div style={{ color:C.tp, fontSize:20, fontWeight:700 }}>{Math.round(weather.current_weather.temperature)}°C</div>
+                  <div style={{ color:C.tm, fontSize:10.5 }}>{WMO_DESC[weather.current_weather.weathercode] || "—"}</div>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:4 }}>
+                {(weather.daily.time||[]).map((d, i) => (
+                  <div key={d} style={{ background:C.deep, borderRadius:8, padding:"6px 4px", textAlign:"center" }}>
+                    <div style={{ color:C.td, fontSize:9, textTransform:"capitalize" }}>{i===0?"Hoje":weekDay(d)}</div>
+                    <div style={{ fontSize:14, margin:"4px 0" }}>{WMO_ICON[weather.daily.weathercode[i]] || "🌡"}</div>
+                    <div style={{ color:C.tp, fontSize:9.5, fontWeight:700 }}>{Math.round(weather.daily.temperature_2m_max[i])}°</div>
+                    <div style={{ color:C.td, fontSize:9 }}>{Math.round(weather.daily.temperature_2m_min[i])}°</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Calculadora */}
+      {activeSection === "calc" && (
+        <div style={{ padding:"10px 12px" }}>
+          <div style={{ background:C.deep, borderRadius:8, padding:"8px 10px", marginBottom:8, textAlign:"right", minHeight:44 }}>
+            <div style={{ color:C.td, fontSize:11, minHeight:16 }}>{calcVal || "0"}</div>
+            {calcResult !== null && <div style={{ color:C.atxt, fontSize:18, fontWeight:700 }}>{calcResult}</div>}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:5 }}>
+            {calcBtns.flat().map((btn, i) => {
+              const isEq = btn === "="; const isOp = ["÷","×","-","+","%"].includes(btn); const isClear = btn === "C";
+              return (
+                <button key={i} onClick={()=>calcPress(btn)}
+                  style={{ background:isEq?C.acc:isClear?"#2D1515":isOp?C.abg:C.card, color:isEq?"#fff":isClear?"#F87171":isOp?C.atxt:C.tp, border:"none", borderRadius:7, padding:"10px 0", fontSize:13, fontWeight:600, cursor:"pointer", transition:"all 0.1s" }}
+                  onMouseEnter={e=>e.currentTarget.style.opacity="0.8"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+                  {btn}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Calendário ────────────────────────────────────────────────
+function CalendarPage({ currentUser }) {
+  const myId = currentUser.uid || currentUser.id;
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [notes, setNotes] = useState([]);
+  const [selectedDay, setSelectedDay] = useState(null); // "YYYY-MM-DD"
+  const [noteText, setNoteText] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // note id
+  const [deletePass, setDeletePass] = useState("");
+  const [deleteErr, setDeleteErr] = useState("");
+
+  useEffect(() => {
+    const unsub = listenCalendarNotes(myId, setNotes);
+    return () => unsub();
+  }, [myId]);
+
+  const notesForDay = (dateStr) => notes.filter(n => n.date === dateStr);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const addNote = async () => {
+    if (!noteText.trim() || !selectedDay) return;
+    await saveCalendarNote({ uid: myId, date: selectedDay, text: noteText.trim(), createdAt: new Date().toISOString() });
+    setNoteText("");
+  };
+
+  const confirmDelete = async () => {
+    if (deletePass !== "MestredaNexp2027@" && deletePass !== currentUser.email) {
+      setDeleteErr("Senha incorreta");
+      return;
+    }
+    await deleteCalendarNote(deleteConfirm);
+    setDeleteConfirm(null); setDeletePass(""); setDeleteErr("");
+  };
+
+  const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const WEEK = ["D","S","T","Q","Q","S","S"];
+
+  const renderMonth = (monthIdx) => {
+    const firstDay = new Date(year, monthIdx, 1).getDay();
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    const dateStr = (d) => `${year}-${String(monthIdx+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    return (
+      <div key={monthIdx} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px" }}>
+        <div style={{ color:C.tp, fontSize:12.5, fontWeight:700, marginBottom:8, textAlign:"center" }}>{MONTHS[monthIdx]}</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4 }}>
+          {WEEK.map((w,i) => <div key={i} style={{ color:C.td, fontSize:9, textAlign:"center", fontWeight:600 }}>{w}</div>)}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+          {cells.map((d, i) => {
+            if (!d) return <div key={i} />;
+            const ds = dateStr(d);
+            const hasNotes = notesForDay(ds).length > 0;
+            const isToday = ds === today;
+            const isSel = ds === selectedDay;
+            return (
+              <div key={i} onClick={() => setSelectedDay(isSel ? null : ds)}
+                style={{ textAlign:"center", padding:"3px 2px", borderRadius:5, cursor:"pointer", background:isSel?C.acc:isToday?C.abg:"transparent", color:isSel?"#fff":isToday?C.atxt:C.ts, fontSize:10.5, fontWeight:isToday||isSel?700:400, position:"relative", transition:"all 0.12s" }}
+                onMouseEnter={e=>{ if(!isSel&&!isToday) e.currentTarget.style.background=C.deep; }}
+                onMouseLeave={e=>{ if(!isSel&&!isToday) e.currentTarget.style.background="transparent"; }}>
+                {d}
+                {hasNotes && <div style={{ width:4, height:4, borderRadius:"50%", background:isSel?"#fff":C.acc, margin:"1px auto 0" }} />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding:"24px 28px", maxWidth:1100 }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+        <div>
+          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📅 Calendário {year}</h1>
+          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Clique em um dia para adicionar notas</p>
+        </div>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <button onClick={()=>setYear(y=>y-1)} style={{ ...S.btn(C.deep, C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>← {year-1}</button>
+          <button onClick={()=>setYear(new Date().getFullYear())} style={{ ...S.btn(C.abg, C.atxt), padding:"7px 14px", fontSize:12 }}>Hoje</button>
+          <button onClick={()=>setYear(y=>y+1)} style={{ ...S.btn(C.deep, C.tm), border:`1px solid ${C.b2}`, padding:"7px 14px", fontSize:13 }}>{year+1} →</button>
+        </div>
+      </div>
+
+      {/* Painel de nota do dia selecionado */}
+      {selectedDay && (
+        <div style={{ ...S.card, padding:"16px 20px", marginBottom:18, border:`1px solid ${C.atxt}33` }}>
+          <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>
+            📝 Notas — {new Date(selectedDay+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}
+          </div>
+          {notesForDay(selectedDay).length === 0 && <div style={{ color:C.tm, fontSize:12, marginBottom:10 }}>Nenhuma nota neste dia ainda.</div>}
+          <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:10 }}>
+            {notesForDay(selectedDay).map(n => (
+              <div key={n.id} style={{ display:"flex", alignItems:"flex-start", gap:10, background:C.deep, borderRadius:9, padding:"9px 12px", border:`1px solid ${C.b1}` }}>
+                <div style={{ flex:1, color:C.ts, fontSize:12.5, lineHeight:1.5 }}>{n.text}</div>
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
+                  <div style={{ color:C.td, fontSize:10 }}>{new Date(n.createdAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>
+                  <button onClick={()=>setDeleteConfirm(n.id)}
+                    style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>🗑 Apagar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input value={noteText} onChange={e=>setNoteText(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addNote()}
+              placeholder="Adicionar nota para este dia..."
+              style={{ ...S.input, flex:1, padding:"8px 12px" }} />
+            <button onClick={addNote} disabled={!noteText.trim()} style={{ ...S.btn(noteText.trim()?C.acc:C.deep, noteText.trim()?"#fff":C.td), padding:"8px 16px", opacity:noteText.trim()?1:0.5 }}>＋</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmação apagar nota */}
+      {deleteConfirm && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"24px", maxWidth:340, width:"90%" }}>
+            <div style={{ color:"#F87171", fontSize:15, fontWeight:700, marginBottom:8 }}>🗑 Apagar nota</div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:14 }}>Digite sua senha para confirmar a exclusão permanente.</div>
+            <input type="password" value={deletePass} onChange={e=>{setDeletePass(e.target.value);setDeleteErr("");}}
+              placeholder="Sua senha..." style={{ ...S.input, marginBottom:8 }} autoFocus />
+            {deleteErr && <div style={{ color:"#F87171", fontSize:11.5, marginBottom:8 }}>{deleteErr}</div>}
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>{setDeleteConfirm(null);setDeletePass("");setDeleteErr("");}} style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, flex:1 }}>Cancelar</button>
+              <button onClick={confirmDelete} style={{ ...S.btn("#EF4444","#fff"), flex:1 }}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grade anual */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12 }}>
+        {Array.from({length:12},(_,i)=>renderMonth(i))}
+      </div>
+    </div>
+  );
+}
+
 // ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
@@ -9191,6 +9557,8 @@ export default function App() {
         sysConfig={sysConfig}
       />
       <div style={{ flex: 1, overflowY: "auto", height: "100vh" }}>
+        {/* Widget tempo + calculadora */}
+        <WeatherCalcWidget />
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
           <ContactsPage contacts={contacts} setContacts={setContacts} />
@@ -9230,6 +9598,9 @@ export default function App() {
         )}
         {page === "config" && (
           <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+        )}
+        {page === "calendario" && (
+          <CalendarPage currentUser={currentUser} />
         )}
       </div>
 

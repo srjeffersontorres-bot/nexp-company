@@ -25,13 +25,6 @@ import {
   updatePassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
-import {
-  getStorage,
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
 
 // ── Substitua aqui com suas credenciais ──────────────────────────
 const firebaseConfig = {
@@ -47,34 +40,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const storage = getStorage(app);
 
 // ── Mantém a sessão do usuário após recarregar a página ──────────
 setPersistence(auth, browserLocalPersistence);
-
-// ── Storage — Upload de mídia para stories ───────────────────────
-export function uploadMedia(file, path, onProgress) {
-  return new Promise((resolve, reject) => {
-    const storageRef = ref(storage, path);
-    const task = uploadBytesResumable(storageRef, file);
-    task.on(
-      "state_changed",
-      (snap) => {
-        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-        if (onProgress) onProgress(pct);
-      },
-      reject,
-      async () => {
-        const url = await getDownloadURL(task.snapshot.ref);
-        resolve(url);
-      }
-    );
-  });
-}
-
-export async function deleteMedia(storagePath) {
-  try { await deleteObject(ref(storage, storagePath)); } catch(e) {}
-}
 
 // ── Contacts (Leads) ─────────────────────────────────────────────
 
@@ -144,7 +112,29 @@ export function listenPresence(callback) {
   });
 }
 
-// ── Chat ─────────────────────────────────────────────────────────
+// ── Calendário ────────────────────────────────────────────────────
+
+/** Ouve notas do calendário de um usuário em tempo real. */
+export function listenCalendarNotes(uid, callback) {
+  return onSnapshot(collection(db, "calendar_notes"), (snap) => {
+    const notes = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(n => n.uid === uid);
+    callback(notes);
+  });
+}
+
+/** Salva uma nota no calendário. */
+export async function saveCalendarNote(note) {
+  const id = note.id || `note_${Date.now()}`;
+  await setDoc(doc(db, "calendar_notes", id), { ...note, id, updatedAt: serverTimestamp() }, { merge: true });
+  return id;
+}
+
+/** Remove uma nota do calendário. */
+export async function deleteCalendarNote(id) {
+  await deleteDoc(doc(db, "calendar_notes", id));
+}
 
 /** Ouve mensagens do chat em tempo real. */
 export function listenChat(callback) {
