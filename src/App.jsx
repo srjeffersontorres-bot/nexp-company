@@ -766,7 +766,6 @@ function LoginPage({ onLogin }) {
   const wcode = weather?.weathercode ?? -1;
   const isRain   = wcode >= 51 && wcode <= 82;
   const isCloudy = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
-  const isClear  = wcode === 0 || wcode === 1;
 
   const getBgGradient = () => {
     if (isRain)    return "linear-gradient(180deg, #1a2535 0%, #263040 60%, #1a2535 100%)";
