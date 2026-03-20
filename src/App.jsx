@@ -80,47 +80,41 @@ const EMOJIS = [
 
 // ── Accent Themes ──────────────────────────────────────────────
 const ACCENT_THEMES = {
-  Padrão: {
-    acc: "#3B6EF5",
-    abg: "#141A2E",
-    atxt: "#4F8EF7",
-    lg1: "#3B6EF5",
-    lg2: "#7C3AED",
+  Padrão:   { acc:"#3B6EF5", abg:"#141A2E", atxt:"#4F8EF7", lg1:"#3B6EF5", lg2:"#7C3AED" },
+  Verde:    { acc:"#16A34A", abg:"#0A2918", atxt:"#34D399", lg1:"#16A34A", lg2:"#059669" },
+  Vermelho: { acc:"#DC2626", abg:"#2D0A0A", atxt:"#F87171", lg1:"#DC2626", lg2:"#B91C1C" },
+  Azul:     { acc:"#0EA5E9", abg:"#082033", atxt:"#38BDF8", lg1:"#0EA5E9", lg2:"#0284C7" },
+  Amarelo:  { acc:"#D97706", abg:"#2B1D03", atxt:"#FBBF24", lg1:"#D97706", lg2:"#B45309" },
+  Rosa:     { acc:"#DB2777", abg:"#2D0E30", atxt:"#F472B6", lg1:"#DB2777", lg2:"#BE185D" },
+  Galáxia:  { acc:"#8B5CF6", abg:"#1A0533", atxt:"#C084FC", lg1:"#7C3AED", lg2:"#EC4899" },
+  Lava:     { acc:"#F97316", abg:"#1F0A00", atxt:"#FB923C", lg1:"#EF4444", lg2:"#F97316" },
+  Oceano:   { acc:"#06B6D4", abg:"#001A2E", atxt:"#22D3EE", lg1:"#0EA5E9", lg2:"#6366F1" },
+  Floresta: { acc:"#15803D", abg:"#071A0A", atxt:"#4ADE80", lg1:"#16A34A", lg2:"#0D9488" },
+  // Temas Claros
+  "☀️ Claro": {
+    light:true, acc:"#2563EB", abg:"#EFF6FF", atxt:"#1D4ED8", lg1:"#3B82F6", lg2:"#6366F1",
+    bg:"#F8FAFC", sb:"#F1F5F9", card:"#FFFFFF", deep:"#F1F5F9",
+    b1:"#E2E8F0", b2:"#CBD5E1", tp:"#0F172A", ts:"#334155", tm:"#64748B", td:"#94A3B8",
   },
-  Verde: {
-    acc: "#16A34A",
-    abg: "#0A2918",
-    atxt: "#34D399",
-    lg1: "#16A34A",
-    lg2: "#059669",
+  "🌸 Sakura": {
+    light:true, acc:"#DB2777", abg:"#FDF2F8", atxt:"#BE185D", lg1:"#EC4899", lg2:"#A855F7",
+    bg:"#FFF7FB", sb:"#FDF2F8", card:"#FFFFFF", deep:"#FDF2F8",
+    b1:"#FBCFE8", b2:"#F9A8D4", tp:"#500724", ts:"#9D174D", tm:"#BE185D", td:"#F9A8D4",
   },
-  Vermelho: {
-    acc: "#DC2626",
-    abg: "#2D0A0A",
-    atxt: "#F87171",
-    lg1: "#DC2626",
-    lg2: "#B91C1C",
+  "🍃 Menta": {
+    light:true, acc:"#059669", abg:"#ECFDF5", atxt:"#047857", lg1:"#10B981", lg2:"#06B6D4",
+    bg:"#F0FDF4", sb:"#ECFDF5", card:"#FFFFFF", deep:"#ECFDF5",
+    b1:"#D1FAE5", b2:"#A7F3D0", tp:"#064E3B", ts:"#065F46", tm:"#059669", td:"#A7F3D0",
   },
-  Azul: {
-    acc: "#0EA5E9",
-    abg: "#082033",
-    atxt: "#38BDF8",
-    lg1: "#0EA5E9",
-    lg2: "#0284C7",
+  "🌤 Céu": {
+    light:true, acc:"#0284C7", abg:"#E0F2FE", atxt:"#0369A1", lg1:"#38BDF8", lg2:"#818CF8",
+    bg:"#F0F9FF", sb:"#E0F2FE", card:"#FFFFFF", deep:"#E0F2FE",
+    b1:"#BAE6FD", b2:"#7DD3FC", tp:"#0C4A6E", ts:"#075985", tm:"#0284C7", td:"#BAE6FD",
   },
-  Amarelo: {
-    acc: "#D97706",
-    abg: "#2B1D03",
-    atxt: "#FBBF24",
-    lg1: "#D97706",
-    lg2: "#B45309",
-  },
-  Rosa: {
-    acc: "#DB2777",
-    abg: "#2D0E30",
-    atxt: "#F472B6",
-    lg1: "#DB2777",
-    lg2: "#BE185D",
+  "🧡 Pêssego": {
+    light:true, acc:"#EA580C", abg:"#FFF7ED", atxt:"#C2410C", lg1:"#F97316", lg2:"#EAB308",
+    bg:"#FFFBF5", sb:"#FFF7ED", card:"#FFFFFF", deep:"#FFF7ED",
+    b1:"#FED7AA", b2:"#FDBA74", tp:"#431407", ts:"#7C2D12", tm:"#9A3412", td:"#FED7AA",
   },
 };
 
@@ -656,9 +650,6 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
             return <path d={`M${mx-mw*0.7} ${my} Q${mx} ${my+faceSize*0.025} ${mx+mw*0.7} ${my}`} stroke="#4F8EF7" strokeWidth={faceSize*0.03} fill="none" strokeLinecap="round"/>;
           })()}
         </svg>
-        {pose > 0 && poses[pose]?.label && (
-          <div style={{ textAlign:"center", fontSize:faceSize*0.35, lineHeight:1, marginTop:2, animation:"fadeIn 0.2s ease" }}>{poses[pose].label}</div>
-        )}
       </div>
     );
   }
@@ -721,9 +712,6 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
           <ellipse cx={s*0.365} cy={legY+legH} rx={s*0.12} ry={s*0.04} fill="#4F8EF7" opacity="0.6"/>
           <ellipse cx={s*0.635} cy={legY+legH} rx={s*0.12} ry={s*0.04} fill="#4F8EF7" opacity="0.6"/>
         </svg>
-        {pose > 0 && poses[pose]?.label && (
-          <div style={{ textAlign:"center", fontSize:s*0.28, lineHeight:1, marginTop:2, animation:"fadeIn 0.2s ease" }}>{poses[pose].label}</div>
-        )}
       </div>
     </div>
   );
@@ -807,7 +795,30 @@ function LoginPage({ onLogin }) {
       {/* ── Elementos de clima ── */}
       {isNight && <>
         {/* Lua */}
-        <div style={{ position:"absolute", top:"12%", right:"15%", width:52, height:52, borderRadius:"50%", background:"#FBBF24", boxShadow:"0 0 30px #FBBF2466", animation:"moonMove 60s linear infinite alternate", zIndex:0 }} />
+        <div style={{ position:"absolute", top:"12%", right:"15%", animation:"moonMove 60s linear infinite alternate", zIndex:0 }}>
+          <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+            <defs>
+              <radialGradient id="moonGrad" cx="40%" cy="35%" r="60%">
+                <stop offset="0%" stopColor="#FEF9C3"/>
+                <stop offset="60%" stopColor="#FDE68A"/>
+                <stop offset="100%" stopColor="#F59E0B"/>
+              </radialGradient>
+              <filter id="moonGlow">
+                <feGaussianBlur stdDeviation="3" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            {/* Glow */}
+            <circle cx="26" cy="26" r="24" fill="#FBBF24" opacity="0.12"/>
+            {/* Lua crescente — forma com clip */}
+            <circle cx="26" cy="26" r="22" fill="url(#moonGrad)" filter="url(#moonGlow)"/>
+            <circle cx="36" cy="22" r="18" fill="#020408"/>
+            {/* Crateras */}
+            <circle cx="14" cy="28" r="2.5" fill="#E9A827" opacity="0.5"/>
+            <circle cx="18" cy="36" r="1.5" fill="#E9A827" opacity="0.4"/>
+            <circle cx="10" cy="20" r="1.8" fill="#E9A827" opacity="0.35"/>
+          </svg>
+        </div>
         {/* Estrelas */}
         {Array.from({length:24}).map((_,i)=>(
           <div key={i} style={{ position:"absolute", top:`${5+(i*17%55)}%`, left:`${(i*13)%90}%`, width: i%3===0?3:2, height: i%3===0?3:2, borderRadius:"50%", background:"#fff", opacity:0.5, animation:`starTwinkle ${1.2+(i%4)*0.5}s ease-in-out ${i*0.3}s infinite`, zIndex:0 }} />
@@ -945,17 +956,19 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
-    { id:"dashboard", label:"Leads Gerais",    icon:"◈", roles:["mestre","master","indicado","visitante"] },
-    { id:"contacts",  label:"Contatos",         icon:"⬡", roles:["mestre","master","indicado","visitante"] },
-    { id:"add",       label:"Adicionar",         icon:"⊕", roles:["mestre","master","indicado"] },
-    { id:"import",    label:"Importar",           icon:"⤓", roles:["mestre","master","indicado"] },
-    { id:"review",    label:"Ver Clientes",       icon:"◎", roles:["mestre","master","indicado","visitante"] },
-    { id:"cstatus",   label:"Status",             icon:"◐", roles:["mestre","master","indicado","visitante"] },
-    { id:"leds",      label:"Leds",               icon:"⬦", roles:["mestre","master"] },
-    { id:"atalhos",   label:"Atalhos",             icon:"⌘", roles:["mestre","master","indicado","visitante"] },
-    { id:"calendario", label:"Agenda",            icon:"◷", roles:["mestre","master","indicado","visitante"] },
-    { id:"premium",   label:"Premium Nexp",       icon:"◈", roles:["mestre"] },
-    { id:"config",    label:"Configurações",       icon:"⊞", roles:["mestre","master","indicado"] },
+    { id:"dashboard",  label:"Leads Gerais",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
+    { id:"contacts",   label:"Contatos",       icon:"⬡", roles:["mestre","master","indicado","visitante"] },
+    { id:"add",        label:"Adicionar",       icon:"⊕", roles:["mestre","master","indicado"] },
+    { id:"import",     label:"Importar",        icon:"⤓", roles:["mestre","master","indicado"] },
+    { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["mestre","master","indicado","visitante"] },
+    { id:"cstatus",    label:"Status",          icon:"◐", roles:["mestre","master","indicado","visitante"] },
+    { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["mestre","master","indicado"] },
+    { id:"apis",       label:"APIs Bancos",     icon:"⬧", roles:["mestre","master"] },
+    { id:"leds",       label:"Leds",            icon:"⬦", roles:["mestre","master"] },
+    { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
+    { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
+    { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
+    { id:"config",     label:"Configurações",   icon:"⊞", roles:["mestre","master","indicado"] },
   ];
   // For visitante: filter by mestre-controlled tab config
   const cfg = sysConfig?.visitanteTabs || {};
@@ -2533,14 +2546,22 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const [extraLeads, setExtraLeads] = useState(cur.extraLeads || []);
   const [extraStatus, setExtraStatus] = useState(cur.extraStatus || []);
 
-  // Sincroniza ao trocar de cliente
+  // Ref para bloquear re-sync quando é o próprio save que atualiza contacts
+  const savingRef = useRef(false);
+  const prevIdRef = useRef(cur.id);
+
+  // Sincroniza APENAS quando troca de cliente (não durante saves)
   useEffect(() => {
-    setReactions(cur.reactions || []);
-    setLeadType(cur.leadType || "FGTS");
-    setExtraLeads(cur.extraLeads || []);
-    setExtraStatus(cur.extraStatus || []);
-    setDone(false);
-  }, [cur.id]); // eslint-disable-line
+    if (savingRef.current) return;
+    if (cur.id !== prevIdRef.current) {
+      prevIdRef.current = cur.id;
+      setReactions(cur.reactions || []);
+      setLeadType(cur.leadType || "FGTS");
+      setExtraLeads(cur.extraLeads || []);
+      setExtraStatus(cur.extraStatus || []);
+      setDone(false);
+    }
+  }); // eslint-disable-line
 
   if (!list.length)
     return (
@@ -2561,8 +2582,10 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   const nexts = list.slice(si + 1, si + 11);
 
   const upd = async (u) => {
+    savingRef.current = true;
     await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
+    setTimeout(() => { savingRef.current = false; }, 150);
   };
 
   // Emojis — máx 3, isolados por cliente
@@ -2570,19 +2593,19 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     setReactions((prev) => {
       if (prev.includes(e)) {
         const newR = prev.filter((x) => x !== e);
-        upd({ ...cur, reactions: newR, leadType });
+        upd({ ...cur, reactions: newR, leadType, extraLeads, extraStatus });
         return newR;
       }
       if (prev.length >= 3) return prev;
       const newR = [...prev, e];
-      upd({ ...cur, reactions: newR, leadType });
+      upd({ ...cur, reactions: newR, leadType, extraLeads, extraStatus });
       return newR;
     });
   };
 
-  // Tipo de lead — toggle multi-seleção
+  // Tipo de lead — ILIMITADO, clique alterna; clique duplo no principal define outro como principal
   const selectLead = (t) => {
-    if (t === leadType) return; // principal não pode desmarcar
+    if (t === leadType) return; // não remove o principal direto
     const isExtra = extraLeads.includes(t);
     const newExtra = isExtra ? extraLeads.filter(x => x !== t) : [...extraLeads, t];
     setExtraLeads(newExtra);
@@ -2590,8 +2613,11 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   };
 
   const selectLeadPrimary = (t) => {
+    if (t === leadType) return;
+    const newExtra = [leadType, ...extraLeads.filter(x => x !== t)];
     setLeadType(t);
-    upd({ ...cur, leadType: t, extraLeads, reactions, extraStatus });
+    setExtraLeads(newExtra);
+    upd({ ...cur, leadType: t, extraLeads: newExtra, reactions, extraStatus });
   };
 
   // Status — toggle multi-seleção
@@ -9793,6 +9819,233 @@ function CalendarPage({ currentUser }) {
   );
 }
 
+// ── Simulador ─────────────────────────────────────────────────
+function SimuladorPage() {
+  const [coef, setCoef] = useState("");
+  const [margem, setMargem] = useState("");
+  const [resultado, setResultado] = useState(null);
+
+  const fmt = (v) => Number(v).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+
+  const calcular = () => {
+    const c = parseFloat(String(coef).replace(",","."));
+    const m = parseFloat(String(margem).replace(/\./g,"").replace(",","."));
+    if (isNaN(c) || isNaN(m) || c <= 0 || m <= 0) { setResultado(null); return; }
+    setResultado(m * c);
+  };
+
+  const REFS = [1.5, 2.0, 2.5, 3.0];
+  const REF_MARGENS = [300, 500, 800, 1000];
+
+  return (
+    <div style={{ padding:"28px 36px", maxWidth:620 }}>
+      <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 6px" }}>⊟ Simulador</h1>
+      <p style={{ color:C.tm, fontSize:13, marginBottom:26 }}>Calcule o valor liberado com base no coeficiente e margem do cliente.</p>
+
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"26px 28px", marginBottom:18 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
+          <div>
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Coeficiente</label>
+            <input value={coef} onChange={e=>setCoef(e.target.value)} onKeyDown={e=>e.key==="Enter"&&calcular()}
+              placeholder="Ex: 2.5" style={{ ...S.input }} />
+            <div style={{ color:C.td, fontSize:10.5, marginTop:3 }}>Multiplicador do banco</div>
+          </div>
+          <div>
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Margem disponível (R$)</label>
+            <input value={margem} onChange={e=>setMargem(e.target.value)} onKeyDown={e=>e.key==="Enter"&&calcular()}
+              placeholder="Ex: 500,00" style={{ ...S.input }} />
+            <div style={{ color:C.td, fontSize:10.5, marginTop:3 }}>Margem consignável do cliente</div>
+          </div>
+        </div>
+        <button onClick={calcular}
+          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, width:"100%", padding:"13px", fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 18px ${C.acc}44`, marginBottom: resultado !== null ? 20 : 0 }}>
+          Calcular →
+        </button>
+        {resultado !== null && (
+          <div style={{ background:C.abg, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"20px 22px", textAlign:"center" }}>
+            <div style={{ color:C.tm, fontSize:11, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:6, fontWeight:600 }}>Valor liberado no total de</div>
+            <div style={{ color:C.atxt, fontSize:38, fontWeight:900, letterSpacing:"-1.5px", lineHeight:1 }}>{fmt(resultado)}</div>
+            <div style={{ color:C.td, fontSize:12, marginTop:10 }}>Margem {fmt(parseFloat(String(margem).replace(/\./g,"").replace(",",".")) || 0)} × Coeficiente {coef}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Tabela referência */}
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 22px" }}>
+        <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:14 }}>📊 Tabela de referência rápida</div>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead>
+              <tr>
+                <th style={{ color:C.tm, fontWeight:600, padding:"7px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>Margem</th>
+                {REFS.map(r=><th key={r} style={{ color:C.atxt, fontWeight:700, padding:"7px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>{r}×</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {REF_MARGENS.map(m=>(
+                <tr key={m}>
+                  <td style={{ color:C.ts, fontWeight:600, padding:"7px 10px", borderBottom:`1px solid ${C.b1}` }}>{fmt(m)}</td>
+                  {REFS.map(r=><td key={r} style={{ color:C.tp, padding:"7px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>{fmt(m*r)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── APIs Bancos ────────────────────────────────────────────────
+function ApisBancosPage({ currentUser }) {
+  const isMestre = currentUser.role === "mestre";
+  const [apis, setApis] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_bank_apis") || "[]"); } catch { return []; }
+  });
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ banco:"", apiKey:"", endpoint:"", descricao:"" });
+  const [cpf, setCpf] = useState("");
+  const [selectedApi, setSelectedApi] = useState(null);
+  const [simResult, setSimResult] = useState(null);
+  const [simLoading, setSimLoading] = useState(false);
+  const [simErr, setSimErr] = useState("");
+
+  const saveApis = (list) => { setApis(list); localStorage.setItem("nexp_bank_apis", JSON.stringify(list)); };
+  const addApi = () => {
+    if (!form.banco.trim() || !form.apiKey.trim()) return;
+    saveApis([...apis, { ...form, id: Date.now() }]);
+    setForm({ banco:"", apiKey:"", endpoint:"", descricao:"" });
+    setShowAdd(false);
+  };
+  const removeApi = (id) => { if (selectedApi === id) setSelectedApi(null); saveApis(apis.filter(a => a.id !== id)); };
+
+  const fmtCpf = (v) => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
+
+  const simulate = async () => {
+    const clean = cpf.replace(/\D/g,"");
+    if (clean.length !== 11) { setSimErr("CPF inválido — digite 11 dígitos."); return; }
+    if (!selectedApi) { setSimErr("Selecione um banco para simular."); return; }
+    const api = apis.find(a => a.id === selectedApi);
+    if (!api?.endpoint) { setSimErr("Este banco não tem endpoint configurado."); return; }
+    setSimLoading(true); setSimErr(""); setSimResult(null);
+    try {
+      const url = api.endpoint.replace("{cpf}", clean).replace("{apiKey}", api.apiKey);
+      const res = await fetch(url, { headers:{ "Authorization":`Bearer ${api.apiKey}`, "Content-Type":"application/json" } });
+      if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
+      const data = await res.json();
+      setSimResult(data);
+    } catch (e) { setSimErr(e.message || "Erro ao consultar API."); }
+    setSimLoading(false);
+  };
+
+  return (
+    <div style={{ padding:"28px 36px", maxWidth:820 }}>
+      <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 6px" }}>⬧ APIs Bancos</h1>
+      <p style={{ color:C.tm, fontSize:13, marginBottom:22 }}>Conecte APIs bancárias e simule crédito diretamente pelo CPF do cliente.</p>
+
+      {/* Simulação rápida */}
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
+        <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>🔍 Simular pelo CPF</div>
+        <div style={{ display:"flex", gap:10, alignItems:"flex-end", flexWrap:"wrap", marginBottom:14 }}>
+          <div style={{ flex:"0 0 190px" }}>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
+            <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00"
+              style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&simulate()} />
+          </div>
+          <div style={{ flex:1, minWidth:150 }}>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco</label>
+            <select value={selectedApi||""} onChange={e=>setSelectedApi(Number(e.target.value)||null)}
+              style={{ ...S.input, cursor:"pointer" }}>
+              <option value="">Selecione um banco...</option>
+              {apis.map(a=><option key={a.id} value={a.id}>{a.banco}</option>)}
+            </select>
+          </div>
+          <button onClick={simulate} disabled={simLoading||!cpf||!selectedApi}
+            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:simLoading||!cpf||!selectedApi?0.5:1, flexShrink:0, boxShadow:`0 2px 12px ${C.acc}44` }}>
+            {simLoading ? "⏳ Consultando..." : "Simular →"}
+          </button>
+        </div>
+        {simErr && <div style={{ color:"#F87171", fontSize:12.5, background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"8px 12px", marginBottom:10 }}>⚠ {simErr}</div>}
+        {simResult && (
+          <div style={{ background:C.deep, borderRadius:10, padding:"14px 16px", border:`1px solid ${C.atxt}33` }}>
+            <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:8 }}>✅ Resultado</div>
+            <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simResult, null, 2)}</pre>
+          </div>
+        )}
+        {apis.length === 0 && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"8px 0" }}>Configure um banco abaixo para começar a simular.</div>}
+      </div>
+
+      {/* Gerenciar APIs */}
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>🔑 APIs configuradas ({apis.length})</div>
+          {isMestre && (
+            <button onClick={()=>setShowAdd(p=>!p)}
+              style={{ background:showAdd?C.deep:C.acc, color:showAdd?C.tm:"#fff", border:showAdd?`1px solid ${C.b2}`:"none", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+              {showAdd ? "✕ Cancelar" : "＋ Nova API"}
+            </button>
+          )}
+        </div>
+
+        {showAdd && isMestre && (
+          <div style={{ background:C.deep, borderRadius:11, padding:"16px", marginBottom:14, border:`1px solid ${C.b1}` }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome do banco *</label>
+                <input value={form.banco} onChange={e=>setForm(f=>({...f,banco:e.target.value}))} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave API *</label>
+                <input value={form.apiKey} onChange={e=>setForm(f=>({...f,apiKey:e.target.value}))} placeholder="Chave secreta" style={{ ...S.input }} type="password" />
+              </div>
+              <div style={{ gridColumn:"1/-1" }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Endpoint (URL com variáveis)</label>
+                <input value={form.endpoint} onChange={e=>setForm(f=>({...f,endpoint:e.target.value}))} placeholder="https://api.banco.com/consulta?cpf={cpf}&key={apiKey}" style={{ ...S.input }} />
+                <div style={{ color:C.td, fontSize:10, marginTop:3 }}>Use {"{cpf}"} e {"{apiKey}"} como variáveis dinâmicas</div>
+              </div>
+              <div style={{ gridColumn:"1/-1" }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição</label>
+                <input value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} placeholder="Ex: Crédito consignado" style={{ ...S.input }} />
+              </div>
+            </div>
+            <button onClick={addApi} disabled={!form.banco.trim()||!form.apiKey.trim()}
+              style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", opacity:!form.banco.trim()||!form.apiKey.trim()?0.5:1 }}>
+              Salvar API
+            </button>
+          </div>
+        )}
+
+        {apis.length === 0 && !showAdd && (
+          <div style={{ textAlign:"center", padding:"28px 0", color:C.tm }}>
+            <div style={{ fontSize:30, marginBottom:10, opacity:0.5 }}>🔌</div>
+            <div style={{ fontSize:13 }}>{isMestre ? "Clique em ＋ Nova API para adicionar" : "Solicite ao mestre configurar as APIs"}</div>
+          </div>
+        )}
+
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {apis.map(a => (
+            <div key={a.id} onClick={()=>setSelectedApi(selectedApi===a.id?null:a.id)}
+              style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:C.deep, borderRadius:10, border:`1px solid ${selectedApi===a.id?C.atxt+"55":C.b2}`, cursor:"pointer", transition:"all 0.14s" }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:C.abg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>🏦</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{a.banco}</div>
+                <div style={{ color:C.td, fontSize:11 }}>{a.descricao || "API configurada"}{a.endpoint ? " · Endpoint ✓" : " · ⚠ Sem endpoint"}</div>
+              </div>
+              {selectedApi === a.id && <span style={{ color:C.atxt, fontSize:10, fontWeight:700, background:C.abg, borderRadius:7, padding:"2px 8px" }}>✓ Selecionado</span>}
+              {isMestre && (
+                <button onClick={e=>{e.stopPropagation();removeApi(a.id);}}
+                  style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:7, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}>
+                  <svg width="11" height="12" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
@@ -9800,7 +10053,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
   const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
-  const [theme, setTheme] = useState("Padrão");
+  const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
   const [shake, setShake] = useState(false);
   const [presence, setPresenceData] = useState({});
@@ -9950,7 +10203,9 @@ export default function App() {
   }, [currentUser]); // eslint-disable-line
 
   // Apply accent theme to module-level C so all components pick it up on re-render
-  Object.assign(C, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
+  // Reset dark base, then apply selected theme (light themes override bg/card/etc)
+  const DARK_BASE = { bg:"#080A10", sb:"#08090F", card:"#0F1320", deep:"#0B0D14", b1:"#13161F", b2:"#1A1F2E", tp:"#E8EAEF", ts:"#9CA3AF", tm:"#525870", td:"#2D3348" };
+  Object.assign(C, DARK_BASE, ACCENT_THEMES[theme] || ACCENT_THEMES["Padrão"]);
   // Rebuild S with updated C
   S.card = {
     background: C.card,
@@ -10129,11 +10384,13 @@ export default function App() {
           </div>
         )}
         {page === "config" && (
-          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={(t) => { setTheme(t); localStorage.setItem("nexp_theme", t); }} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "calendario" && (
           <CalendarPage currentUser={currentUser} />
         )}
+        {page === "simulador" && <SimuladorPage />}
+        {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
       </div>
 
       {/* ── Chat Flutuante ── */}
