@@ -5247,6 +5247,71 @@ function PerfilTab({ users, setUsers, currentUser }) {
   );
 }
 
+// Subcomponente isolado para exibir/redefinir senha no painel de edição
+function EditPasswordPanel({ savedPw, resetPw, setResetPw, doReset }) {
+  const [showCurr, setShowCurr] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  return (
+    <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
+
+      {/* ── Senha atual ── */}
+      <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", marginBottom:14, border:`1px solid ${C.b1}` }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+          <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>
+            🔑 Senha atual
+          </span>
+          <button onClick={() => setShowCurr(p => !p)}
+            style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
+            {showCurr ? "🙈 Ocultar" : "👁 Mostrar senha"}
+          </button>
+        </div>
+        {showCurr ? (
+          <div style={{ color:"#34D399", fontSize:14, fontWeight:700, fontFamily:"monospace", letterSpacing:2, background:C.card, borderRadius:7, padding:"9px 12px", wordBreak:"break-all" }}>
+            {savedPw || (
+              <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0, fontSize:12 }}>
+                Senha não cadastrada — defina uma abaixo
+              </span>
+            )}
+          </div>
+        ) : (
+          <div style={{ color:C.tm, fontSize:15, fontFamily:"monospace", letterSpacing:3 }}>••••••••</div>
+        )}
+      </div>
+
+      {/* ── Redefinir senha ── */}
+      <div>
+        <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>
+          🔄 Redefinir senha
+        </div>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ position:"relative", flex:1 }}>
+            <input
+              value={resetPw}
+              onChange={e => setResetPw(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && doReset()}
+              type={showNew ? "text" : "password"}
+              placeholder="Nova senha (mín. 6 caracteres)"
+              style={{ ...S.input, background:C.card, padding:"9px 40px 9px 12px", fontSize:12.5, width:"100%", fontFamily:"monospace" }}
+            />
+            <button onClick={() => setShowNew(p => !p)}
+              style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:14 }}>
+              {showNew ? "🙈" : "👁"}
+            </button>
+          </div>
+          <button onClick={doReset}
+            style={{ ...S.btn("#F59E0B","#000"), padding:"9px 20px", fontSize:13, flexShrink:0, fontWeight:700, borderRadius:9, whiteSpace:"nowrap" }}>
+            ✅ Redefinir
+          </button>
+        </div>
+        <div style={{ color:C.td, fontSize:10.5, marginTop:6 }}>
+          A senha será atualizada no Firebase Auth e salva para consulta futura.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UsuariosTab({ users, setUsers, currentUser }) {
   const [mode, setMode] = useState("list");
   const [form, setForm] = useState({
@@ -5385,11 +5450,21 @@ function UsuariosTab({ users, setUsers, currentUser }) {
 
   // ── Delete user
   const deleteUser = async (u) => {
-    if (!window.confirm(`Excluir o usuário "${u.name}"?\nEsta ação não pode ser desfeita.`)) return;
+    if (!window.confirm(`Excluir DEFINITIVAMENTE "${u.name}"?\nO e-mail ficará liberado para novo cadastro.\nEsta ação não pode ser desfeita.`)) return;
     try {
-      // Marca como deletado no Firestore — impede login futuro
-      await saveUserProfile(u.uid || u.id, { ...u, active: false, deleted: true });
-      flash(`Usuário "${u.name}" excluído com sucesso!`);
+      const uid2 = u.uid || u.id;
+      // 1. Tenta apagar do Firebase Auth via instância secundária
+      if (u.email && u.password) {
+        const secApp = initFirebaseApp(FB_CFG_DEL, "del_" + Date.now());
+        const secAuth = getAuth(secApp);
+        try {
+          const c = await signInSecondary(secAuth, u.email, u.password);
+          await c.user.delete();
+        } catch {} finally { try { await secAuth.signOut(); } catch {} }
+      }
+      // 2. Remove do Firestore definitivamente
+      await deleteDoc(doc(db, "users", uid2));
+      flash(`Usuário "${u.name}" excluído definitivamente!`);
     } catch (e) { setErr("Erro ao excluir: " + e.message); }
   };
   const openEdit = (u) => {
@@ -5448,6 +5523,16 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     messagingSenderId: "1043432853586",
     appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
   };
+  // Config para deleção
+  const FB_CFG_DEL = {
+    apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+    authDomain: "nexpcompany-9a7ba.firebaseapp.com",
+    projectId: "nexpcompany-9a7ba",
+    storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
+    messagingSenderId: "1043432853586",
+    appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
+  };
+
   const changeUserPassword = async (email, oldPass, newPass) => {
     const appName = "pwreset_" + Date.now();
     const sec = initFirebaseApp(FB_CFG, appName);
@@ -6379,55 +6464,14 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       (currentUser.role === "master" &&
                         u.role === "indicado" &&
                         u.createdBy === currentUser.id)) &&
-                      !isSelf && (() => {
-                        const [showCurr, setShowCurr] = useState(false);
-                        const savedPw = editForm.password || u.password || null;
-                        return (
-                          <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
-                            {/* Senha atual */}
-                            <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:12, border:`1px solid ${C.b1}` }}>
-                              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-                                <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha atual</span>
-                                <button onClick={()=>setShowCurr(p=>!p)}
-                                  style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
-                                  {showCurr ? "🙈 Ocultar" : "👁 Mostrar"}
-                                </button>
-                              </div>
-                              {showCurr ? (
-                                <div style={{ color:"#34D399", fontSize:14, fontWeight:700, fontFamily:"monospace", letterSpacing:2, background:C.deep, borderRadius:7, padding:"8px 12px" }}>
-                                  {savedPw || <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0 }}>Não cadastrada ainda — defina abaixo</span>}
-                                </div>
-                              ) : (
-                                <div style={{ color:C.tm, fontSize:13, fontFamily:"monospace" }}>••••••••</div>
-                              )}
-                            </div>
-
-                            {/* Nova senha */}
-                            <div>
-                              <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>
-                                🔄 Redefinir senha
-                              </div>
-                              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                                <input
-                                  value={resetPw}
-                                  onChange={e=>setResetPw(e.target.value)}
-                                  onKeyDown={e=>e.key==="Enter"&&doReset()}
-                                  type="text"
-                                  placeholder="Digite a nova senha (mín. 6 caracteres)"
-                                  style={{ ...S.input, background:C.card, padding:"9px 12px", fontSize:12.5, flex:1, fontFamily:"monospace" }}
-                                />
-                                <button onClick={doReset}
-                                  style={{ ...S.btn("#F59E0B","#000"), padding:"9px 20px", fontSize:13, flexShrink:0, fontWeight:700, borderRadius:9 }}>
-                                  ✅ Salvar
-                                </button>
-                              </div>
-                              <div style={{ color:C.td, fontSize:10.5, marginTop:6 }}>
-                                A senha será alterada no Firebase e salva no sistema para consulta futura.
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      !isSelf && (
+                        <EditPasswordPanel
+                          savedPw={editForm.password || u.password || null}
+                          resetPw={resetPw}
+                          setResetPw={setResetPw}
+                          doReset={doReset}
+                        />
+                      )}
                   </div>
                 )}
               </div>
