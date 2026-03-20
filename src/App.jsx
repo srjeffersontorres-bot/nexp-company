@@ -9818,437 +9818,478 @@ function CalendarPage({ currentUser }) {
   );
 }
 
-// ── Simulador ─────────────────────────────────────────────────
-function SimuladorPage() {
-  const [aba, setAba] = useState("credito"); // "credito" | "cartao" | "emprestimo"
+// ── Simulador helpers ──────────────────────────────────────────
+const fmtBRL = (v) => { const n = parseFloat(v); if (isNaN(n)) return "—"; return n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); };
+const toF = (s) => parseFloat(String(s).replace(/\./g,"").replace(",",".")) || 0;
 
-  // ── Bancos compartilhados ──
-  const [bancos, setBancos] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("nexp_sim_bancos") || "null") || [
-      { id:1, nome:"PAN",          coef_cred:"0.02305", coef_emp:"0.02718" },
-      { id:2, nome:"SAFRA",        coef_cred:"0.022988", coef_emp:"0.02718" },
-      { id:3, nome:"FACTA - GOLD", coef_cred:"0.022997", coef_emp:"0.02718" },
-      { id:4, nome:"C6 BANK",      coef_cred:"0.022996", coef_emp:"0.02718" },
-      { id:5, nome:"BMG",          coef_cred:"0.02300", coef_emp:"0.02718" },
-      { id:6, nome:"MERCANTIL",    coef_cred:"0.02310", coef_emp:"0.02718" },
-    ]; } catch { return []; }
-  });
-  const [novoBanco, setNovoBanco] = useState({ nome:"", coef_cred:"", coef_emp:"" });
-  const [showAddBanco, setShowAddBanco] = useState(false);
-
-  const saveBancos = (list) => { setBancos(list); localStorage.setItem("nexp_sim_bancos", JSON.stringify(list)); };
-  const addBanco = () => {
-    if (!novoBanco.nome.trim()) return;
-    saveBancos([...bancos, { ...novoBanco, id: Date.now() }]);
-    setNovoBanco({ nome:"", coef_cred:"", coef_emp:"" });
-    setShowAddBanco(false);
-  };
-
-  const fmt = (v) => {
-    const n = parseFloat(v);
-    if (isNaN(n)) return "—";
-    return n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
-  };
-  const toNum = (s) => parseFloat(String(s).replace(/\./g,"").replace(",",".")) || 0;
-
-  // ─── ABA: Crédito do Trabalhador ───────────────────────────
-  // Regra: valor_liberado = margem / coeficiente
-  const CreditoTab = () => {
-    const [margem, setMargem] = useState("");
-    // Linhas de prazo configuráveis
-    const [linhas, setLinhas] = useState([
-      { id:1, prazo:"6x",  coef:"0.19612" },
-      { id:2, prazo:"8x",  coef:"0.14857" },
-      { id:3, prazo:"12x", coef:"0.10378" },
-      { id:4, prazo:"14x", coef:"0.09180" },
-      { id:5, prazo:"16x", coef:"0.08178" },
-      { id:6, prazo:"18x", coef:"0.07393" },
-      { id:7, prazo:"24x", coef:"0.05860" },
-      { id:8, prazo:"36x", coef:"0.04263" },
-      { id:9, prazo:"48x", coef:"0.03429" },
-    ]);
-    const [novaLinha, setNovaLinha] = useState({ prazo:"", coef:"" });
-    const [showAddLinha, setShowAddLinha] = useState(false);
-    const m = toNum(margem);
-
-    const addLinha = () => {
-      if (!novaLinha.prazo || !novaLinha.coef) return;
-      setLinhas(p => [...p, { ...novaLinha, id: Date.now() }]);
-      setNovaLinha({ prazo:"", coef:"" });
-      setShowAddLinha(false);
-    };
-    const removeLinha = (id) => setLinhas(p => p.filter(l => l.id !== id));
-    const updateCoef = (id, val) => setLinhas(p => p.map(l => l.id === id ? { ...l, coef: val } : l));
-
-    return (
-      <div>
-        <div style={{ color:C.td, fontSize:11.5, marginBottom:16, padding:"10px 14px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
-          <b style={{ color:C.atxt }}>Regra:</b> Valor Liberado = Margem ÷ Coeficiente
-        </div>
-
-        {/* Margem */}
-        <div style={{ display:"flex", gap:14, alignItems:"flex-end", marginBottom:20, flexWrap:"wrap" }}>
-          <div style={{ flex:"0 0 220px" }}>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Margem do cliente (R$)</label>
-            <input value={margem} onChange={e=>setMargem(e.target.value)} placeholder="Ex: 424,00"
-              style={{ ...S.input, fontSize:15, fontWeight:600 }} autoFocus />
+// Cartão visual SVG
+function CardVisual({ label, gradient, limite, saque }) {
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+      <div style={{ position:"relative", width:300, height:185 }}>
+        {/* Sombra/cartão traseiro */}
+        <div style={{ position:"absolute", top:12, left:12, width:276, height:165, borderRadius:16, background:gradient, opacity:0.45, transform:"rotate(-4deg)", boxShadow:"0 6px 24px rgba(0,0,0,0.5)" }} />
+        {/* Cartão frente */}
+        <div style={{ position:"absolute", top:0, left:0, width:276, height:165, borderRadius:16, background:gradient, boxShadow:"0 10px 36px rgba(0,0,0,0.6)", padding:"18px 20px", boxSizing:"border-box" }}>
+          {/* Chip */}
+          <div style={{ width:32, height:24, borderRadius:4, background:"linear-gradient(135deg,#f0c040,#c89a0a)", marginBottom:12, position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:"50%", left:0, right:0, height:1, background:"rgba(0,0,0,0.25)" }} />
+            <div style={{ position:"absolute", left:"40%", top:0, bottom:0, width:1, background:"rgba(0,0,0,0.2)" }} />
           </div>
-          <div style={{ color:C.td, fontSize:12, paddingBottom:9 }}>
-            {m > 0 ? <span>Margem: <b style={{ color:C.atxt }}>{fmt(m)}</b></span> : "Digite a margem acima"}
-          </div>
-        </div>
-
-        {/* Tabela de prazos × bancos */}
-        <div style={{ overflowX:"auto", marginBottom:14 }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, minWidth:500 }}>
-            <thead>
-              <tr style={{ background:C.deep }}>
-                <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, width:90 }}>Prazo</th>
-                <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, width:110 }}>Coeficiente</th>
-                {bancos.map(b => (
-                  <th key={b.id} style={{ color:C.atxt, fontWeight:700, padding:"9px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>
-                    {b.nome}
-                  </th>
-                ))}
-                <th style={{ width:28, borderBottom:`1px solid ${C.b1}` }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.map((l, i) => {
-                const c = toNum(l.coef);
-                return (
-                  <tr key={l.id} style={{ background: i%2===0 ? C.card : C.deep }}>
-                    <td style={{ color:C.tp, fontWeight:700, padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>{l.prazo}</td>
-                    <td style={{ padding:"6px 10px", borderBottom:`1px solid ${C.b1}` }}>
-                      <input value={l.coef} onChange={e=>updateCoef(l.id, e.target.value)}
-                        style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:6, color:C.ts, fontSize:12, padding:"4px 7px", width:"100%", textAlign:"center" }} />
-                    </td>
-                    {bancos.map(b => {
-                      const bc = toNum(b.coef_cred) || c;
-                      const val = m > 0 && bc > 0 ? m / bc : null;
-                      return (
-                        <td key={b.id} style={{ textAlign:"center", padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>
-                          {val !== null ? <span style={{ color:C.tp, fontWeight:600 }}>{fmt(val)}</span> : <span style={{ color:C.td }}>—</span>}
-                        </td>
-                      );
-                    })}
-                    <td style={{ borderBottom:`1px solid ${C.b1}`, textAlign:"center" }}>
-                      <button onClick={()=>removeLinha(l.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:14, padding:"2px 6px" }}>×</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Linha única com coef manual para simular qualquer prazo */}
-        {m > 0 && (
-          <div style={{ background:C.abg, border:`1px solid ${C.atxt}22`, borderRadius:10, padding:"12px 16px", marginBottom:14 }}>
-            <div style={{ color:C.atxt, fontSize:11, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Simulação rápida — qualquer coeficiente</div>
-            <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
-              {bancos.map(b => {
-                const c = toNum(b.coef_cred);
-                return c > 0 ? (
-                  <div key={b.id} style={{ background:C.card, borderRadius:9, padding:"10px 14px", textAlign:"center", minWidth:120 }}>
-                    <div style={{ color:C.tm, fontSize:10, marginBottom:3 }}>{b.nome}</div>
-                    <div style={{ color:C.atxt, fontSize:17, fontWeight:800 }}>{fmt(m / c)}</div>
-                    <div style={{ color:C.td, fontSize:9, marginTop:2 }}>coef {b.coef_cred}</div>
-                  </div>
-                ) : null;
-              })}
+          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, letterSpacing:3, marginBottom:3 }}>•••• •••• •••• ••••</div>
+          <div style={{ color:"rgba(255,255,255,0.55)", fontSize:8.5, letterSpacing:1, marginBottom:12 }}>{label}</div>
+          <div style={{ display:"flex", gap:18 }}>
+            <div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:7.5, textTransform:"uppercase", letterSpacing:"0.5px" }}>Limite</div>
+              <div style={{ color:"#fff", fontSize:15, fontWeight:800, lineHeight:1.1 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
+            </div>
+            <div>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:7.5, textTransform:"uppercase", letterSpacing:"0.5px" }}>Saque</div>
+              <div style={{ color:"#FBBF24", fontSize:15, fontWeight:800, lineHeight:1.1 }}>{saque !== null ? fmtBRL(saque) : "—"}</div>
             </div>
           </div>
-        )}
-
-        {/* Add linha */}
-        <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-          {showAddLinha ? (
-            <>
-              <input value={novaLinha.prazo} onChange={e=>setNovaLinha(p=>({...p,prazo:e.target.value}))} placeholder="Prazo (ex: 6x)" style={{ ...S.input, width:110 }} />
-              <input value={novaLinha.coef} onChange={e=>setNovaLinha(p=>({...p,coef:e.target.value}))} placeholder="Coeficiente" style={{ ...S.input, width:130 }} />
-              <button onClick={addLinha} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", cursor:"pointer", fontSize:12, fontWeight:600 }}>＋ Adicionar</button>
-              <button onClick={()=>setShowAddLinha(false)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"8px 12px", cursor:"pointer", fontSize:12 }}>Cancelar</button>
-            </>
-          ) : (
-            <button onClick={()=>setShowAddLinha(true)} style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"8px 14px", cursor:"pointer", fontSize:12 }}>
-              ＋ Adicionar prazo
-            </button>
-          )}
         </div>
       </div>
-    );
+      <div style={{ display:"flex", gap:10, width:276 }}>
+        <div style={{ flex:1, background:"rgba(79,142,247,0.1)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", marginBottom:3 }}>Valor Liberado — Limite</div>
+          <div style={{ color:C.atxt, fontSize:20, fontWeight:900 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
+        </div>
+        <div style={{ flex:1, background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", marginBottom:3 }}>Valor Liberado — Saque</div>
+          <div style={{ color:"#FBBF24", fontSize:20, fontWeight:900 }}>{saque !== null ? fmtBRL(saque) : "—"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Balão de detalhe ao clicar numa célula
+function BalaoCelula({ info, onClose }) {
+  if (!info) return null;
+  const parcela = info.val > 0 && info.nPrazo > 0 ? info.val / info.nPrazo : null;
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:900, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.card, border:`1px solid ${C.atxt}44`, borderRadius:18, padding:"24px 28px", minWidth:280, boxShadow:"0 12px 48px rgba(0,0,0,0.7)", animation:"fadeIn 0.2s ease" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div style={{ color:C.atxt, fontSize:14, fontWeight:800 }}>📋 Detalhes da simulação</div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, lineHeight:1 }}>×</button>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:C.abg, borderRadius:9 }}>
+            <span style={{ color:C.tm, fontSize:12.5 }}>Valor liberado</span>
+            <span style={{ color:C.atxt, fontSize:15, fontWeight:800 }}>{fmtBRL(info.val)}</span>
+          </div>
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:C.deep, borderRadius:9 }}>
+            <span style={{ color:C.tm, fontSize:12.5 }}>Prazo</span>
+            <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{info.prazo}</span>
+          </div>
+          {parcela !== null && (
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:C.deep, borderRadius:9 }}>
+              <span style={{ color:C.tm, fontSize:12.5 }}>Valor da parcela</span>
+              <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{fmtBRL(parcela)}</span>
+            </div>
+          )}
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.2)", borderRadius:9 }}>
+            <span style={{ color:"#FBBF24", fontSize:12.5, fontWeight:600 }}>⚡ Liberação rápida — Cliente VIP</span>
+            <span style={{ color:"#FBBF24", fontSize:13, fontWeight:700 }}>{fmtBRL(info.val * 0.95)}</span>
+          </div>
+          <div style={{ color:C.td, fontSize:10, textAlign:"center", marginTop:4 }}>{info.banco} · coef {info.coef}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tabela genérica para abas com bancos e prazos + balão
+function TabelaSimulacao({ margem, margemReaj, bancos, prazos, chaveCoef }) {
+  const [balao, setBalao] = useState(null);
+  const m = toF(margem);
+  const mReaj = margemReaj || 0;
+
+  return (
+    <>
+      <BalaoCelula info={balao} onClose={()=>setBalao(null)} />
+      <div style={{ overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, minWidth:400 }}>
+          <thead>
+            <tr style={{ background:C.deep }}>
+              <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>Banco</th>
+              <th style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, fontSize:11 }}>Coef</th>
+              {prazos.map(p => (
+                <th key={p.prazo} style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>{p.prazo}</th>
+              ))}
+              {mReaj > 0 && prazos.map(p => (
+                <th key={"r"+p.prazo} style={{ color:"#34D399", fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, fontSize:11 }}>{p.prazo}+R</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bancos.map((b, i) => {
+              const c = toF(b[chaveCoef]) || toF(b.coef_emp) || 0.02718;
+              return (
+                <tr key={b.id} style={{ background: i%2===0 ? C.card : C.deep }}>
+                  <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{b.nome}</td>
+                  <td style={{ color:C.td, textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}`, fontSize:11 }}>{c}</td>
+                  {prazos.map(p => {
+                    const val = m > 0 && c > 0 ? m / c : null;
+                    const nPrazo = parseInt(p.prazo) || 0;
+                    return (
+                      <td key={p.prazo} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
+                        {val !== null
+                          ? <span onClick={()=>setBalao({ val, prazo:p.prazo, nPrazo, banco:b.nome, coef:c })}
+                              style={{ color:C.tp, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block", transition:"background 0.15s" }}
+                              onMouseEnter={e=>e.currentTarget.style.background=C.abg}
+                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                              {fmtBRL(val)}
+                            </span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                    );
+                  })}
+                  {mReaj > 0 && prazos.map(p => {
+                    const val = (m + mReaj) > 0 && c > 0 ? (m + mReaj) / c : null;
+                    const nPrazo = parseInt(p.prazo) || 0;
+                    return (
+                      <td key={"r"+p.prazo} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
+                        {val !== null
+                          ? <span onClick={()=>setBalao({ val, prazo:p.prazo, nPrazo, banco:b.nome, coef:c })}
+                              style={{ color:"#34D399", fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block", transition:"background 0.15s" }}
+                              onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.1)"}
+                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                              {fmtBRL(val)}
+                            </span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ── Crédito do Trabalhador ─────────────────────────────────────
+function CreditoTab({ bancos }) {
+  const [margem, setMargem] = useState("");
+  const [linhas, setLinhas] = useState([
+    { id:1, prazo:"6x",  coef:"0.19612" }, { id:2, prazo:"8x",  coef:"0.14857" },
+    { id:3, prazo:"12x", coef:"0.10378" }, { id:4, prazo:"14x", coef:"0.09180" },
+    { id:5, prazo:"16x", coef:"0.08178" }, { id:6, prazo:"18x", coef:"0.07393" },
+    { id:7, prazo:"24x", coef:"0.05860" }, { id:8, prazo:"36x", coef:"0.04263" },
+    { id:9, prazo:"48x", coef:"0.03429" },
+  ]);
+  const [novaLinha, setNovaLinha] = useState({ prazo:"", coef:"" });
+  const [showAdd, setShowAdd] = useState(false);
+  const m = toF(margem);
+
+  const addLinha = () => { if (!novaLinha.prazo || !novaLinha.coef) return; setLinhas(p=>[...p,{...novaLinha,id:Date.now()}]); setNovaLinha({prazo:"",coef:""}); setShowAdd(false); };
+  const [balao, setBalao] = useState(null);
+
+  return (
+    <div>
+      <BalaoCelula info={balao} onClose={()=>setBalao(null)} />
+      <div style={{ color:C.td, fontSize:11.5, marginBottom:14, padding:"9px 13px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
+        <b style={{ color:C.atxt }}>Regra:</b> Valor Liberado = Margem ÷ Coeficiente
+      </div>
+      <div style={{ display:"flex", gap:14, alignItems:"flex-end", marginBottom:18, flexWrap:"wrap" }}>
+        <div style={{ flex:"0 0 220px" }}>
+          <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Margem do cliente (R$)</label>
+          <input value={margem} onChange={e=>setMargem(e.target.value)} placeholder="Ex: 424,00"
+            style={{ ...S.input, fontSize:15, fontWeight:600 }} />
+        </div>
+        {m > 0 && <div style={{ color:C.atxt, fontSize:13, fontWeight:700, paddingBottom:8 }}>{fmtBRL(m)}</div>}
+      </div>
+      <div style={{ overflowX:"auto", marginBottom:12 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, minWidth:420 }}>
+          <thead>
+            <tr style={{ background:C.deep }}>
+              <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>Prazo</th>
+              <th style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, width:120 }}>Coeficiente</th>
+              {bancos.filter(b=>toF(b.coef_cred)>0).map(b=>(
+                <th key={b.id} style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{b.nome}</th>
+              ))}
+              <th style={{ width:28, borderBottom:`1px solid ${C.b1}` }} />
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l, i) => {
+              const c = toF(l.coef);
+              return (
+                <tr key={l.id} style={{ background: i%2===0 ? C.card : C.deep }}>
+                  <td style={{ color:C.tp, fontWeight:700, padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>{l.prazo}</td>
+                  <td style={{ padding:"5px 8px", borderBottom:`1px solid ${C.b1}` }}>
+                    <input value={l.coef} onChange={e=>setLinhas(p=>p.map(x=>x.id===l.id?{...x,coef:e.target.value}:x))}
+                      style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:6, color:C.ts, fontSize:12, padding:"4px 7px", width:"100%", textAlign:"center" }} />
+                  </td>
+                  {bancos.filter(b=>toF(b.coef_cred)>0).map(b => {
+                    const bc = toF(b.coef_cred);
+                    const val = m > 0 && bc > 0 ? m / bc : null;
+                    const nPrazo = parseInt(l.prazo) || 0;
+                    return (
+                      <td key={b.id} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
+                        {val !== null
+                          ? <span onClick={()=>setBalao({val,prazo:l.prazo,nPrazo,banco:b.nome,coef:bc})}
+                              style={{ color:C.tp, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block" }}
+                              onMouseEnter={e=>e.currentTarget.style.background=C.abg}
+                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                              {fmtBRL(val)}
+                            </span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                    );
+                  })}
+                  <td style={{ borderBottom:`1px solid ${C.b1}`, textAlign:"center" }}>
+                    <button onClick={()=>setLinhas(p=>p.filter(x=>x.id!==l.id))} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:15 }}>×</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {showAdd ? (
+          <>
+            <input value={novaLinha.prazo} onChange={e=>setNovaLinha(p=>({...p,prazo:e.target.value}))} placeholder="Prazo (ex: 6x)" style={{ ...S.input, width:110 }} />
+            <input value={novaLinha.coef} onChange={e=>setNovaLinha(p=>({...p,coef:e.target.value}))} placeholder="Coeficiente" style={{ ...S.input, width:130 }} />
+            <button onClick={addLinha} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", cursor:"pointer", fontSize:12, fontWeight:600 }}>＋ Adicionar</button>
+            <button onClick={()=>setShowAdd(false)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"8px 12px", cursor:"pointer", fontSize:12 }}>Cancelar</button>
+          </>
+        ) : (
+          <button onClick={()=>setShowAdd(true)} style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px 13px", cursor:"pointer", fontSize:12 }}>＋ Adicionar prazo</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Cartão Consignado ──────────────────────────────────────────
+function CartaoTab({ bancos }) {
+  const [modo, setModo] = useState("salario");
+  const [salario1, setSalario1] = useState(""); const [margem1, setMargem1] = useState("");
+  const [salario2, setSalario2] = useState(""); const [margem2, setMargem2] = useState("");
+  const [multLimite1, setMultLimite1] = useState("3.0"); const [multSaque1, setMultSaque1] = useState("1.0");
+  const [multLimite2, setMultLimite2] = useState("3.0"); const [multSaque2, setMultSaque2] = useState("1.0");
+
+  const base1 = modo==="salario" ? toF(salario1) : toF(margem1);
+  const base2 = modo==="salario" ? toF(salario2) : toF(margem2);
+  const lim1 = base1 > 0 ? base1 * toF(multLimite1) : null;
+  const saq1 = base1 > 0 ? base1 * toF(multSaque1)  : null;
+  const lim2 = base2 > 0 ? base2 * toF(multLimite2) : null;
+  const saq2 = base2 > 0 ? base2 * toF(multSaque2)  : null;
+
+  const gradients = [
+    `linear-gradient(135deg,${C.lg1},${C.lg2})`,
+    "linear-gradient(135deg,#7C3AED,#EC4899)",
+  ];
+
+  return (
+    <div>
+      <div style={{ color:C.td, fontSize:11.5, marginBottom:14, padding:"9px 13px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
+        <b style={{ color:C.atxt }}>Cartão Consignado:</b> Limite = Base × Mult. Limite · Saque = Base × Mult. Saque
+      </div>
+      <div style={{ display:"flex", gap:8, marginBottom:18 }}>
+        {[{v:"salario",l:"Por Salário"},{v:"margem",l:"Por Margem"}].map(op=>(
+          <button key={op.v} onClick={()=>setModo(op.v)}
+            style={{ background:modo===op.v?C.acc:C.deep, color:modo===op.v?"#fff":C.tm, border:modo===op.v?"none":`1px solid ${C.b2}`, borderRadius:8, padding:"7px 16px", cursor:"pointer", fontSize:12.5, fontWeight:modo===op.v?700:400 }}>
+            {op.l}
+          </button>
+        ))}
+      </div>
+
+      {/* Dois cartões lado a lado */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24, marginBottom:20 }}>
+        {[
+          { n:1, base:base1, lim:lim1, saq:saq1, sal:salario1, setSal:setSalario1, mar:margem1, setMar:setMargem1, mL:multLimite1, setML:setMultLimite1, mS:multSaque1, setMS:setMultSaque1, grad:gradients[0] },
+          { n:2, base:base2, lim:lim2, saq:saq2, sal:salario2, setSal:setSalario2, mar:margem2, setMar:setMargem2, mL:multLimite2, setML:setMultLimite2, mS:multSaque2, setMS:setMultSaque2, grad:gradients[1] },
+        ].map(card => (
+          <div key={card.n} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
+            <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:12 }}>Cartão {card.n}</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+              <div>
+                <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>{modo==="salario"?"Salário (R$)":"Margem (R$)"}</label>
+                <input value={modo==="salario"?card.sal:card.mar} onChange={e=>modo==="salario"?card.setSal(e.target.value):card.setMar(e.target.value)}
+                  placeholder="Ex: 2.500,00" style={{ ...S.input, padding:"7px 10px", fontSize:12 }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Mult. Limite</label>
+                <input value={card.mL} onChange={e=>card.setML(e.target.value)} placeholder="3.0" style={{ ...S.input, padding:"7px 10px", fontSize:12 }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Mult. Saque</label>
+                <input value={card.mS} onChange={e=>card.setMS(e.target.value)} placeholder="1.0" style={{ ...S.input, padding:"7px 10px", fontSize:12 }} />
+              </div>
+            </div>
+            <CardVisual label={`CARTÃO ${card.n} — CONSIGNADO`} gradient={card.grad} limite={card.lim} saque={card.saq} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Aba genérica de empréstimo com balão ──────────────────────
+function EmprestimoGenTab({ bancos, chaveCoef, titulo, prazosDefault }) {
+  const [margem, setMargem] = useState("");
+  const [salarioAntigo, setSalarioAntigo] = useState("");
+  const [salarioAtual, setSalarioAtual] = useState("");
+  const m = toF(margem);
+  const margemReaj = salarioAtual && salarioAntigo ? Math.max(0, (toF(salarioAtual) - toF(salarioAntigo)) * 0.35) : 0;
+
+  return (
+    <div>
+      <div style={{ color:C.td, fontSize:11.5, marginBottom:14, padding:"9px 13px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
+        <b style={{ color:C.atxt }}>Regra ({titulo}):</b> Valor Liberado = Margem ÷ Coeficiente · Clique num valor para ver detalhes
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14, marginBottom:16, flexWrap:"wrap" }}>
+        <div>
+          <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Margem disponível (R$)</label>
+          <input value={margem} onChange={e=>setMargem(e.target.value)} placeholder="Ex: 424,00" style={{ ...S.input }} />
+        </div>
+        <div>
+          <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Salário antigo (opcional)</label>
+          <input value={salarioAntigo} onChange={e=>setSalarioAntigo(e.target.value)} placeholder="Ex: 1.212,00" style={{ ...S.input }} />
+        </div>
+        <div>
+          <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Salário atual (opcional)</label>
+          <input value={salarioAtual} onChange={e=>setSalarioAtual(e.target.value)} placeholder="Ex: 1.302,00" style={{ ...S.input }} />
+        </div>
+      </div>
+      {margemReaj > 0 && (
+        <div style={{ background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:9, padding:"9px 14px", marginBottom:14, display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
+          <div><span style={{ color:C.tm, fontSize:11 }}>Margem de reajuste: </span><b style={{ color:"#34D399" }}>{fmtBRL(margemReaj)}</b></div>
+          <div><span style={{ color:C.tm, fontSize:11 }}>Margem total: </span><b style={{ color:C.atxt }}>{fmtBRL(m + margemReaj)}</b></div>
+        </div>
+      )}
+      <TabelaSimulacao margem={margem} margemReaj={margemReaj > 0 ? margemReaj : null} bancos={bancos} prazos={prazosDefault} chaveCoef={chaveCoef} />
+    </div>
+  );
+}
+
+// ── Simulador ─────────────────────────────────────────────────
+function SimuladorPage() {
+  const [aba, setAba] = useState("credito");
+
+  // Estados dos bancos separados por categoria
+  const loadBancos = (key, defaults) => { try { return JSON.parse(localStorage.getItem(key) || "null") || defaults; } catch { return defaults; } };
+  const saveBancos = (key, list, setter) => { setter(list); localStorage.setItem(key, JSON.stringify(list)); };
+
+  const defCLT = [
+    { id:1, nome:"PAN",          coef_cred:"0.02305", coef_emp:"0.02718" },
+    { id:2, nome:"SAFRA",        coef_cred:"0.022988", coef_emp:"0.02718" },
+    { id:3, nome:"FACTA - GOLD", coef_cred:"0.022997", coef_emp:"0.02718" },
+    { id:4, nome:"C6 BANK",      coef_cred:"0.022996", coef_emp:"0.02718" },
+    { id:5, nome:"BMG",          coef_cred:"0.02300", coef_emp:"0.02718" },
+    { id:6, nome:"MERCANTIL",    coef_cred:"0.02310", coef_emp:"0.02718" },
+  ];
+  const defINSS = [
+    { id:1, nome:"PAN",    coef_emp:"0.024950" },
+    { id:2, nome:"SAFRA",  coef_emp:"0.024500" },
+    { id:3, nome:"FACTA",  coef_emp:"0.024800" },
+    { id:4, nome:"C6",     coef_emp:"0.024700" },
+    { id:5, nome:"BMG",    coef_emp:"0.025000" },
+  ];
+  const defGOV = [
+    { id:1, nome:"PAN",      coef_emp:"0.020500" },
+    { id:2, nome:"SAFRA",    coef_emp:"0.020000" },
+    { id:3, nome:"FACTA",    coef_emp:"0.020300" },
+    { id:4, nome:"BMG",      coef_emp:"0.020100" },
+    { id:5, nome:"MERCANTIL",coef_emp:"0.019800" },
+  ];
+
+  const [bancosCLT,  setBancosCLT]  = useState(() => loadBancos("nexp_bancos_clt",  defCLT));
+  const [bancosINSS, setBancosINSS] = useState(() => loadBancos("nexp_bancos_inss", defINSS));
+  const [bancosGOV,  setBancosGOV]  = useState(() => loadBancos("nexp_bancos_gov",  defGOV));
+
+  const [gerenciar, setGerenciar] = useState(null); // "clt" | "inss" | "gov" | null
+  const [novoB, setNovoB] = useState({ nome:"", coef_cred:"", coef_emp:"" });
+
+  const addBancoTo = (key, list, setter) => {
+    if (!novoB.nome.trim()) return;
+    const updated = [...list, { ...novoB, id: Date.now() }];
+    saveBancos(key, updated, setter);
+    setNovoB({ nome:"", coef_cred:"", coef_emp:"" });
+  };
+  const remBanco = (key, list, setter, id) => saveBancos(key, list.filter(b=>b.id!==id), setter);
+
+  const bancosMap = {
+    clt:  { list: bancosCLT,  setter: setBancosCLT,  key:"nexp_bancos_clt",  label:"CLT" },
+    inss: { list: bancosINSS, setter: setBancosINSS, key:"nexp_bancos_inss", label:"INSS" },
+    gov:  { list: bancosGOV,  setter: setBancosGOV,  key:"nexp_bancos_gov",  label:"Governos e Prefeituras" },
   };
 
-  // ─── ABA: Cartão Consignado ────────────────────────────────
-  // Regra: limite = salário × multiplicador_limite; saque = salário × multiplicador_saque
-  // Ou: limite = margem × mult_limite; saque = margem × mult_saque
-  const CartaoTab = () => {
-    const [modo, setModo] = useState("salario"); // "salario" | "margem"
-    const [salario, setSalario] = useState("");
-    const [margemCartao, setMargemCartao] = useState("");
-    const [multLimite, setMultLimite] = useState("3.0");
-    const [multSaque, setMultSaque] = useState("1.0");
+  const PRAZOS_INSS = [{prazo:"72X"},{prazo:"84X"},{prazo:"96X"}];
+  const PRAZOS_GOV  = [{prazo:"60X"},{prazo:"72X"},{prazo:"84X"},{prazo:"96X"},{prazo:"108X"},{prazo:"120X"}];
 
-    const base = modo === "salario" ? toNum(salario) : toNum(margemCartao);
-    const limite = base > 0 ? base * toNum(multLimite) : null;
-    const saque  = base > 0 ? base * toNum(multSaque)  : null;
-
-    return (
-      <div>
-        <div style={{ color:C.td, fontSize:11.5, marginBottom:16, padding:"10px 14px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
-          <b style={{ color:C.atxt }}>Cartão Consignado:</b> Limite = Base × Multiplicador Limite · Saque = Base × Multiplicador Saque
+  return (
+    <div style={{ padding:"22px 28px", maxWidth:1150 }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18, flexWrap:"wrap", gap:10 }}>
+        <div>
+          <h1 style={{ color:C.tp, fontSize:20, fontWeight:700, margin:0 }}>⊟ Simulador Nexp</h1>
+          <p style={{ color:C.tm, fontSize:12, margin:"3px 0 0" }}>Simule crédito por produto · Clique num valor para ver os detalhes</p>
         </div>
-
-        {/* Toggle modo */}
-        <div style={{ display:"flex", gap:8, marginBottom:18 }}>
-          {[{v:"salario",l:"Por Salário"},{v:"margem",l:"Por Margem"}].map(op=>(
-            <button key={op.v} onClick={()=>setModo(op.v)}
-              style={{ background:modo===op.v?C.acc:C.deep, color:modo===op.v?"#fff":C.tm, border:modo===op.v?"none":`1px solid ${C.b2}`, borderRadius:8, padding:"7px 16px", cursor:"pointer", fontSize:12.5, fontWeight:modo===op.v?700:400 }}>
-              {op.l}
+        <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+          {[{k:"clt",label:"🏢 Bancos — CLT"},{k:"inss",label:"🏥 Bancos — INSS"},{k:"gov",label:"🏛 Bancos — Governos"}].map(btn=>(
+            <button key={btn.k} onClick={()=>setGerenciar(gerenciar===btn.k?null:btn.k)}
+              style={{ background:gerenciar===btn.k?C.acc:C.abg, color:gerenciar===btn.k?"#fff":C.atxt, border:`1px solid ${gerenciar===btn.k?"transparent":C.atxt+"33"}`, borderRadius:8, padding:"7px 12px", cursor:"pointer", fontSize:11.5, fontWeight:600 }}>
+              {btn.label} ({bancosMap[btn.k].list.length})
             </button>
           ))}
         </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:14, marginBottom:20, flexWrap:"wrap" }}>
-          <div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>{modo==="salario"?"Salário (R$)":"Margem (R$)"}</label>
-            <input value={modo==="salario"?salario:margemCartao}
-              onChange={e=>modo==="salario"?setSalario(e.target.value):setMargemCartao(e.target.value)}
-              placeholder="Ex: 2.500,00" style={{ ...S.input }} />
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Multiplicador Limite</label>
-            <input value={multLimite} onChange={e=>setMultLimite(e.target.value)} placeholder="Ex: 3.0" style={{ ...S.input }} />
-            <div style={{ color:C.td, fontSize:10, marginTop:2 }}>Vezes o valor base</div>
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Multiplicador Saque</label>
-            <input value={multSaque} onChange={e=>setMultSaque(e.target.value)} placeholder="Ex: 1.0" style={{ ...S.input }} />
-            <div style={{ color:C.td, fontSize:10, marginTop:2 }}>Vezes o valor base</div>
-          </div>
-        </div>
-
-        {/* Cartões visuais */}
-        <div style={{ display:"flex", gap:20, flexWrap:"wrap", justifyContent:"center", marginBottom:24 }}>
-          {/* Dois cartões SVG + valores */}
-          <div style={{ position:"relative", width:340, height:210 }}>
-            {/* Cartão de trás */}
-            <div style={{ position:"absolute", top:14, left:14, width:300, height:180, borderRadius:18, background:`linear-gradient(135deg,${C.lg1}CC,${C.lg2}CC)`, boxShadow:"0 8px 30px rgba(0,0,0,0.5)", transform:"rotate(-4deg)" }} />
-            {/* Cartão da frente */}
-            <div style={{ position:"absolute", top:0, left:0, width:300, height:180, borderRadius:18, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, boxShadow:"0 12px 40px rgba(0,0,0,0.6)", padding:"20px 22px", boxSizing:"border-box" }}>
-              {/* Chip */}
-              <div style={{ width:36, height:28, borderRadius:5, background:"linear-gradient(135deg,#f0c040,#c8960c)", marginBottom:16, boxShadow:"inset 0 1px 3px rgba(0,0,0,0.3)" }}>
-                <div style={{ width:"100%", height:"50%", borderBottom:"1px solid rgba(0,0,0,0.2)", display:"flex" }}>
-                  <div style={{ width:"50%", borderRight:"1px solid rgba(0,0,0,0.15)" }} />
-                </div>
-              </div>
-              {/* Número fake */}
-              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, letterSpacing:2, marginBottom:4 }}>•••• •••• •••• ••••</div>
-              <div style={{ color:"rgba(255,255,255,0.7)", fontSize:9.5, marginBottom:14 }}>CARTÃO CONSIGNADO</div>
-              <div style={{ display:"flex", gap:20 }}>
-                <div>
-                  <div style={{ color:"rgba(255,255,255,0.55)", fontSize:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Limite Total</div>
-                  <div style={{ color:"#fff", fontSize:18, fontWeight:800 }}>{limite !== null ? fmt(limite) : "—"}</div>
-                </div>
-                <div>
-                  <div style={{ color:"rgba(255,255,255,0.55)", fontSize:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Saque Disponível</div>
-                  <div style={{ color:"#FBBF24", fontSize:18, fontWeight:800 }}>{saque !== null ? fmt(saque) : "—"}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Detalhes ao lado */}
-          <div style={{ display:"flex", flexDirection:"column", gap:12, justifyContent:"center" }}>
-            <div style={{ background:C.abg, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px", textAlign:"center", minWidth:160 }}>
-              <div style={{ color:C.tm, fontSize:10.5, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:4 }}>Valor Liberado</div>
-              <div style={{ color:C.tm, fontSize:10, marginBottom:4 }}>Limite de Crédito</div>
-              <div style={{ color:C.atxt, fontSize:26, fontWeight:900, lineHeight:1 }}>{limite !== null ? fmt(limite) : "—"}</div>
-            </div>
-            <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:12, padding:"16px 20px", textAlign:"center", minWidth:160 }}>
-              <div style={{ color:C.tm, fontSize:10.5, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:4 }}>Valor Liberado</div>
-              <div style={{ color:C.tm, fontSize:10, marginBottom:4 }}>Para Saque</div>
-              <div style={{ color:"#FBBF24", fontSize:26, fontWeight:900, lineHeight:1 }}>{saque !== null ? fmt(saque) : "—"}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabela bancos */}
-        {base > 0 && (
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
-              <thead>
-                <tr style={{ background:C.deep }}>
-                  <th style={{ color:C.tm, fontWeight:700, padding:"8px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>Banco</th>
-                  <th style={{ color:C.atxt, fontWeight:700, padding:"8px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>Limite (×{multLimite})</th>
-                  <th style={{ color:"#FBBF24", fontWeight:700, padding:"8px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>Saque (×{multSaque})</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bancos.map((b,i) => (
-                  <tr key={b.id} style={{ background: i%2===0 ? C.card : C.deep }}>
-                    <td style={{ color:C.tp, fontWeight:600, padding:"8px 12px", borderBottom:`1px solid ${C.b1}` }}>{b.nome}</td>
-                    <td style={{ color:C.atxt, textAlign:"center", padding:"8px 12px", borderBottom:`1px solid ${C.b1}`, fontWeight:700 }}>{fmt(base * toNum(multLimite))}</td>
-                    <td style={{ color:"#FBBF24", textAlign:"center", padding:"8px 12px", borderBottom:`1px solid ${C.b1}`, fontWeight:700 }}>{fmt(base * toNum(multSaque))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ─── ABA: Empréstimo do Trabalhador ───────────────────────
-  // Regra: valor_liberado = margem / coeficiente (prazos 72x, 84x, 96x)
-  const EmprestimoTab = () => {
-    const [margem, setMargem] = useState("");
-    const [salarioAntigo, setSalarioAntigo] = useState("");
-    const [salarioAtual, setSalarioAtual] = useState("");
-    const m = toNum(margem);
-
-    // Coeficientes para empréstimo — prazos longos (72x/84x/96x)
-    const prazos = [
-      { prazo:"72X", coef:"0.02150" },
-      { prazo:"84X", coef:"0.02718" },
-      { prazo:"96X", coef:"0.02230" },
-    ];
-
-    // Margem de reajuste quando salário muda
-    const margemReaj = salarioAtual && salarioAntigo
-      ? (toNum(salarioAtual) - toNum(salarioAntigo)) * 0.35
-      : null;
-
-    return (
-      <div>
-        <div style={{ color:C.td, fontSize:11.5, marginBottom:16, padding:"10px 14px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
-          <b style={{ color:C.atxt }}>Regra:</b> Valor Liberado = Margem ÷ Coeficiente · Prazos: 72x, 84x, 96x
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:14, marginBottom:20, flexWrap:"wrap" }}>
-          <div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Margem disponível (R$)</label>
-            <input value={margem} onChange={e=>setMargem(e.target.value)} placeholder="Ex: 424,00" style={{ ...S.input }} />
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Salário antigo (opcional)</label>
-            <input value={salarioAntigo} onChange={e=>setSalarioAntigo(e.target.value)} placeholder="Ex: 1.212,00" style={{ ...S.input }} />
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Salário atual (opcional)</label>
-            <input value={salarioAtual} onChange={e=>setSalarioAtual(e.target.value)} placeholder="Ex: 1.302,00" style={{ ...S.input }} />
-          </div>
-        </div>
-
-        {margemReaj !== null && margemReaj > 0 && (
-          <div style={{ background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:10, padding:"10px 16px", marginBottom:16, display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
-            <div><span style={{ color:C.tm, fontSize:11 }}>Margem de reajuste: </span><b style={{ color:"#34D399" }}>{fmt(margemReaj)}</b></div>
-            <div><span style={{ color:C.tm, fontSize:11 }}>Margem total: </span><b style={{ color:C.atxt }}>{fmt(m + margemReaj)}</b></div>
-          </div>
-        )}
-
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
-            <thead>
-              <tr style={{ background:C.deep }}>
-                <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>Banco</th>
-                <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>Coeficiente</th>
-                {prazos.map(p => (
-                  <th key={p.prazo} style={{ color:C.atxt, fontWeight:700, padding:"9px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>{p.prazo}</th>
-                ))}
-                {margemReaj !== null && margemReaj > 0 && prazos.map(p => (
-                  <th key={"r"+p.prazo} style={{ color:"#34D399", fontWeight:700, padding:"9px 12px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, fontSize:11 }}>{p.prazo} + Reaj</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {bancos.map((b, i) => {
-                const c = toNum(b.coef_emp) || 0.02718;
-                return (
-                  <tr key={b.id} style={{ background: i%2===0 ? C.card : C.deep }}>
-                    <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>{b.nome}</td>
-                    <td style={{ color:C.tm, textAlign:"center", padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>{c}</td>
-                    {prazos.map(p => {
-                      const val = m > 0 ? m / c : null;
-                      return (
-                        <td key={p.prazo} style={{ textAlign:"center", padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>
-                          {val !== null ? <span style={{ color:C.tp, fontWeight:700 }}>{fmt(val)}</span> : <span style={{ color:C.td }}>—</span>}
-                        </td>
-                      );
-                    })}
-                    {margemReaj !== null && margemReaj > 0 && prazos.map(p => {
-                      const val = (m + margemReaj) > 0 ? (m + margemReaj) / c : null;
-                      return (
-                        <td key={"r"+p.prazo} style={{ textAlign:"center", padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>
-                          {val !== null ? <span style={{ color:"#34D399", fontWeight:700 }}>{fmt(val)}</span> : <span style={{ color:C.td }}>—</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div style={{ padding:"24px 30px", maxWidth:1100 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:10 }}>
-        <div>
-          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>⊟ Simulador Nexp</h1>
-          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Simule crédito por produto e banco</p>
-        </div>
-        {/* Botão bancos */}
-        <button onClick={()=>setShowAddBanco(p=>!p)}
-          style={{ background:showAddBanco?C.deep:C.abg, color:showAddBanco?C.tm:C.atxt, border:`1px solid ${showAddBanco?C.b2:C.atxt+"44"}`, borderRadius:9, padding:"7px 14px", cursor:"pointer", fontSize:12, fontWeight:600 }}>
-          🏦 Gerenciar bancos ({bancos.length})
-        </button>
       </div>
 
       {/* Painel gerenciar bancos */}
-      {showAddBanco && (
-        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"16px 18px", marginBottom:18 }}>
-          <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:12 }}>🏦 Bancos da lista de simulação</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
-            {bancos.map(b => (
-              <div key={b.id} style={{ background:C.deep, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 12px", display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
-                <span style={{ color:C.tp, fontWeight:600 }}>{b.nome}</span>
-                <span style={{ color:C.td }}>coef_emp: {b.coef_emp}</span>
-                <button onClick={()=>saveBancos(bancos.filter(x=>x.id!==b.id))} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:14, padding:0, lineHeight:1 }}>×</button>
-              </div>
-            ))}
+      {gerenciar && (() => {
+        const g = bancosMap[gerenciar];
+        return (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
+            <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:10 }}>🏦 {g.label} — bancos configurados</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:7, marginBottom:12 }}>
+              {g.list.map(b=>(
+                <div key={b.id} style={{ background:C.deep, border:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 11px", display:"flex", alignItems:"center", gap:8, fontSize:11.5 }}>
+                  <span style={{ color:C.tp, fontWeight:600 }}>{b.nome}</span>
+                  {b.coef_cred && <span style={{ color:C.td }}>cred:{b.coef_cred}</span>}
+                  <span style={{ color:C.td }}>emp:{b.coef_emp}</span>
+                  <button onClick={()=>remBanco(g.key,g.list,g.setter,b.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:14, padding:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <input value={novoB.nome} onChange={e=>setNovoB(p=>({...p,nome:e.target.value}))} placeholder="Nome" style={{ ...S.input, width:130 }} />
+              {gerenciar==="clt" && <input value={novoB.coef_cred} onChange={e=>setNovoB(p=>({...p,coef_cred:e.target.value}))} placeholder="Coef. Crédito" style={{ ...S.input, width:120 }} />}
+              <input value={novoB.coef_emp} onChange={e=>setNovoB(p=>({...p,coef_emp:e.target.value}))} placeholder="Coef. Empréstimo" style={{ ...S.input, width:135 }} />
+              <button onClick={()=>addBancoTo(g.key,g.list,g.setter)} disabled={!novoB.nome.trim()}
+                style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", cursor:"pointer", fontSize:12.5, fontWeight:600, opacity:!novoB.nome.trim()?0.5:1 }}>＋</button>
+            </div>
           </div>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            <input value={novoBanco.nome} onChange={e=>setNovoBanco(p=>({...p,nome:e.target.value}))} placeholder="Nome do banco" style={{ ...S.input, width:150 }} />
-            <input value={novoBanco.coef_cred} onChange={e=>setNovoBanco(p=>({...p,coef_cred:e.target.value}))} placeholder="Coef. Crédito" style={{ ...S.input, width:120 }} />
-            <input value={novoBanco.coef_emp} onChange={e=>setNovoBanco(p=>({...p,coef_emp:e.target.value}))} placeholder="Coef. Empréstimo" style={{ ...S.input, width:140 }} />
-            <button onClick={addBanco} disabled={!novoBanco.nome.trim()} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"8px 16px", cursor:"pointer", fontSize:12.5, fontWeight:600, opacity:!novoBanco.nome.trim()?0.5:1 }}>＋ Adicionar</button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {/* Abas de produto */}
-      <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:22 }}>
+      {/* Tabs produto */}
+      <div style={{ display:"flex", gap:1, borderBottom:`1px solid ${C.b1}`, marginBottom:20, overflowX:"auto" }}>
         {[
           { id:"credito",    label:"Crédito do Trabalhador" },
           { id:"cartao",     label:"Cartão Consignado" },
-          { id:"emprestimo", label:"Empréstimo do Trabalhador" },
-        ].map(t => (
+          { id:"inss",       label:"Crédito Consignado INSS" },
+          { id:"gov",        label:"Governo e Prefeituras" },
+        ].map(t=>(
           <button key={t.id} onClick={()=>setAba(t.id)}
-            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, fontWeight:aba===t.id?700:400, color:aba===t.id?C.atxt:C.tm, borderBottom:aba===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px", transition:"all 0.12s" }}>
+            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 16px", fontSize:12.5, fontWeight:aba===t.id?700:400, color:aba===t.id?C.atxt:C.tm, borderBottom:aba===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px", transition:"all 0.12s", whiteSpace:"nowrap" }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {aba === "credito"    && <CreditoTab />}
-      {aba === "cartao"     && <CartaoTab />}
-      {aba === "emprestimo" && <EmprestimoTab />}
+      {aba === "credito" && <CreditoTab bancos={bancosCLT} />}
+      {aba === "cartao"  && <CartaoTab  bancos={bancosCLT} />}
+      {aba === "inss"    && <EmprestimoGenTab bancos={bancosINSS} chaveCoef="coef_emp" titulo="INSS" prazosDefault={PRAZOS_INSS} />}
+      {aba === "gov"     && <EmprestimoGenTab bancos={bancosGOV}  chaveCoef="coef_emp" titulo="Governo/Prefeitura" prazosDefault={PRAZOS_GOV} />}
     </div>
   );
 }
