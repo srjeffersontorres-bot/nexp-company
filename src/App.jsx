@@ -2549,12 +2549,14 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
   // Ref para bloquear re-sync quando é o próprio save que atualiza contacts
   const savingRef = useRef(false);
   const prevIdRef = useRef(cur.id);
-
-  // Sincroniza APENAS quando troca de cliente (id muda), nunca durante saves
   const curId = cur.id;
+
+  // Sincroniza APENAS quando o ID do cliente realmente muda
+  // Nunca reseta durante saves (savingRef bloqueia)
   useEffect(() => {
-    if (savingRef.current) return;
-    prevIdRef.current = curId;
+    if (cur.id === prevIdRef.current) return; // mesmo cliente, não reseta
+    if (savingRef.current) return;             // salvando, não reseta
+    prevIdRef.current = cur.id;
     setReactions(cur.reactions || []);
     setLeadType(cur.leadType || "FGTS");
     setExtraLeads(cur.extraLeads || []);
@@ -2584,7 +2586,7 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
     savingRef.current = true;
     await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
-    setTimeout(() => { savingRef.current = false; }, 150);
+    setTimeout(() => { savingRef.current = false; }, 600);
   };
 
   // Emojis — máx 3, isolados por cliente
@@ -9823,41 +9825,51 @@ const fmtBRL = (v) => { const n = parseFloat(v); if (isNaN(n)) return "—"; ret
 const toF = (s) => parseFloat(String(s).replace(/\./g,"").replace(",",".")) || 0;
 
 // Cartão visual SVG
-function CardVisual({ label, gradient, limite, saque }) {
+function CardVisual({ label, gradient, limite, saque70, resto30 }) {
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+      {/* Cartão com sombra */}
       <div style={{ position:"relative", width:300, height:185 }}>
-        {/* Sombra/cartão traseiro */}
         <div style={{ position:"absolute", top:12, left:12, width:276, height:165, borderRadius:16, background:gradient, opacity:0.45, transform:"rotate(-4deg)", boxShadow:"0 6px 24px rgba(0,0,0,0.5)" }} />
-        {/* Cartão frente */}
         <div style={{ position:"absolute", top:0, left:0, width:276, height:165, borderRadius:16, background:gradient, boxShadow:"0 10px 36px rgba(0,0,0,0.6)", padding:"18px 20px", boxSizing:"border-box" }}>
           {/* Chip */}
-          <div style={{ width:32, height:24, borderRadius:4, background:"linear-gradient(135deg,#f0c040,#c89a0a)", marginBottom:12, position:"relative", overflow:"hidden" }}>
+          <div style={{ width:32, height:24, borderRadius:4, background:"linear-gradient(135deg,#f0c040,#c89a0a)", marginBottom:10, position:"relative", overflow:"hidden" }}>
             <div style={{ position:"absolute", top:"50%", left:0, right:0, height:1, background:"rgba(0,0,0,0.25)" }} />
             <div style={{ position:"absolute", left:"40%", top:0, bottom:0, width:1, background:"rgba(0,0,0,0.2)" }} />
           </div>
           <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, letterSpacing:3, marginBottom:3 }}>•••• •••• •••• ••••</div>
-          <div style={{ color:"rgba(255,255,255,0.55)", fontSize:8.5, letterSpacing:1, marginBottom:12 }}>{label}</div>
-          <div style={{ display:"flex", gap:18 }}>
+          <div style={{ color:"rgba(255,255,255,0.55)", fontSize:8.5, letterSpacing:1, marginBottom:10 }}>{label}</div>
+          <div style={{ display:"flex", gap:14 }}>
             <div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:7.5, textTransform:"uppercase", letterSpacing:"0.5px" }}>Limite</div>
-              <div style={{ color:"#fff", fontSize:15, fontWeight:800, lineHeight:1.1 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>Limite Total</div>
+              <div style={{ color:"#fff", fontSize:14, fontWeight:800, lineHeight:1.1 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
             </div>
             <div>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:7.5, textTransform:"uppercase", letterSpacing:"0.5px" }}>Saque</div>
-              <div style={{ color:"#FBBF24", fontSize:15, fontWeight:800, lineHeight:1.1 }}>{saque !== null ? fmtBRL(saque) : "—"}</div>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>Saque (70%)</div>
+              <div style={{ color:"#FBBF24", fontSize:14, fontWeight:800, lineHeight:1.1 }}>{saque70 !== null ? fmtBRL(saque70) : "—"}</div>
+            </div>
+            <div>
+              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>Restante (30%)</div>
+              <div style={{ color:"#34D399", fontSize:14, fontWeight:800, lineHeight:1.1 }}>{resto30 !== null ? fmtBRL(resto30) : "—"}</div>
             </div>
           </div>
         </div>
       </div>
-      <div style={{ display:"flex", gap:10, width:276 }}>
-        <div style={{ flex:1, background:"rgba(79,142,247,0.1)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", marginBottom:3 }}>Valor Liberado — Limite</div>
-          <div style={{ color:C.atxt, fontSize:20, fontWeight:900 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
+      {/* Três boxes abaixo */}
+      <div style={{ display:"flex", gap:8, width:276 }}>
+        <div style={{ flex:1, background:`${C.abg}`, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+          <div style={{ color:C.td, fontSize:8, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Limite Total</div>
+          <div style={{ color:C.atxt, fontSize:17, fontWeight:900, lineHeight:1 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
         </div>
-        <div style={{ flex:1, background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
-          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", marginBottom:3 }}>Valor Liberado — Saque</div>
-          <div style={{ color:"#FBBF24", fontSize:20, fontWeight:900 }}>{saque !== null ? fmtBRL(saque) : "—"}</div>
+        <div style={{ flex:1, background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+          <div style={{ color:C.td, fontSize:8, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Saque Complementar</div>
+          <div style={{ color:"#FBBF24", fontSize:17, fontWeight:900, lineHeight:1 }}>{saque70 !== null ? fmtBRL(saque70) : "—"}</div>
+          <div style={{ color:"rgba(251,191,36,0.5)", fontSize:8, marginTop:2 }}>70% do limite</div>
+        </div>
+        <div style={{ flex:1, background:"rgba(52,211,153,0.07)", border:"1px solid rgba(52,211,153,0.2)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+          <div style={{ color:C.td, fontSize:8, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Restante do Limite</div>
+          <div style={{ color:"#34D399", fontSize:17, fontWeight:900, lineHeight:1 }}>{resto30 !== null ? fmtBRL(resto30) : "—"}</div>
+          <div style={{ color:"rgba(52,211,153,0.5)", fontSize:8, marginTop:2 }}>30% do limite</div>
         </div>
       </div>
     </div>
@@ -10068,19 +10080,22 @@ function CreditoTab({ bancos }) {
 }
 
 // ── Cartão Consignado ──────────────────────────────────────────
-function CartaoTab({ bancos }) {
-  const [modo, setModo] = useState("salario");
-  const [salario1, setSalario1] = useState(""); const [margem1, setMargem1] = useState("");
-  const [salario2, setSalario2] = useState(""); const [margem2, setMargem2] = useState("");
-  const [multLimite1, setMultLimite1] = useState("3.0"); const [multSaque1, setMultSaque1] = useState("1.0");
-  const [multLimite2, setMultLimite2] = useState("3.0"); const [multSaque2, setMultSaque2] = useState("1.0");
+function CartaoTab() {
+  const [margem1, setMargem1] = useState("");
+  const [mult1,   setMult1]   = useState("3.0");
+  const [margem2, setMargem2] = useState("");
+  const [mult2,   setMult2]   = useState("3.0");
 
-  const base1 = modo==="salario" ? toF(salario1) : toF(margem1);
-  const base2 = modo==="salario" ? toF(salario2) : toF(margem2);
-  const lim1 = base1 > 0 ? base1 * toF(multLimite1) : null;
-  const saq1 = base1 > 0 ? base1 * toF(multSaque1)  : null;
-  const lim2 = base2 > 0 ? base2 * toF(multLimite2) : null;
-  const saq2 = base2 > 0 ? base2 * toF(multSaque2)  : null;
+  const calcCard = (margem, mult) => {
+    const m = toF(margem);
+    const x = toF(mult);
+    if (m <= 0 || x <= 0) return { limite: null, saque70: null, resto30: null };
+    const limite = m * x;
+    return { limite, saque70: limite * 0.70, resto30: limite * 0.30 };
+  };
+
+  const c1 = calcCard(margem1, mult1);
+  const c2 = calcCard(margem2, mult2);
 
   const gradients = [
     `linear-gradient(135deg,${C.lg1},${C.lg2})`,
@@ -10089,42 +10104,64 @@ function CartaoTab({ bancos }) {
 
   return (
     <div>
-      <div style={{ color:C.td, fontSize:11.5, marginBottom:14, padding:"9px 13px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
-        <b style={{ color:C.atxt }}>Cartão Consignado:</b> Limite = Base × Mult. Limite · Saque = Base × Mult. Saque
-      </div>
-      <div style={{ display:"flex", gap:8, marginBottom:18 }}>
-        {[{v:"salario",l:"Por Salário"},{v:"margem",l:"Por Margem"}].map(op=>(
-          <button key={op.v} onClick={()=>setModo(op.v)}
-            style={{ background:modo===op.v?C.acc:C.deep, color:modo===op.v?"#fff":C.tm, border:modo===op.v?"none":`1px solid ${C.b2}`, borderRadius:8, padding:"7px 16px", cursor:"pointer", fontSize:12.5, fontWeight:modo===op.v?700:400 }}>
-            {op.l}
-          </button>
-        ))}
+      {/* Regra explicada */}
+      <div style={{ color:C.td, fontSize:11.5, marginBottom:18, padding:"10px 14px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22`, lineHeight:1.7 }}>
+        <b style={{ color:C.atxt }}>Regras do Cartão Consignado:</b><br />
+        • <b style={{ color:C.tp }}>Limite Total</b> = Margem × Multiplicador<br />
+        • <b style={{ color:"#FBBF24" }}>Saque Complementar</b> = 70% do Limite Total<br />
+        • <b style={{ color:"#34D399" }}>Restante do Limite</b> = 30% do Limite Total
       </div>
 
       {/* Dois cartões lado a lado */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
         {[
-          { n:1, base:base1, lim:lim1, saq:saq1, sal:salario1, setSal:setSalario1, mar:margem1, setMar:setMargem1, mL:multLimite1, setML:setMultLimite1, mS:multSaque1, setMS:setMultSaque1, grad:gradients[0] },
-          { n:2, base:base2, lim:lim2, saq:saq2, sal:salario2, setSal:setSalario2, mar:margem2, setMar:setMargem2, mL:multLimite2, setML:setMultLimite2, mS:multSaque2, setMS:setMultSaque2, grad:gradients[1] },
+          { n:1, margem:margem1, setMargem:setMargem1, mult:mult1, setMult:setMult1, calc:c1, grad:gradients[0] },
+          { n:2, margem:margem2, setMargem:setMargem2, mult:mult2, setMult:setMult2, calc:c2, grad:gradients[1] },
         ].map(card => (
-          <div key={card.n} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
-            <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:12 }}>Cartão {card.n}</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+          <div key={card.n} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 16px" }}>
+            {/* Header */}
+            <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:14 }}>
+              Cartão {card.n}
+            </div>
+
+            {/* Campos */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
               <div>
-                <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>{modo==="salario"?"Salário (R$)":"Margem (R$)"}</label>
-                <input value={modo==="salario"?card.sal:card.mar} onChange={e=>modo==="salario"?card.setSal(e.target.value):card.setMar(e.target.value)}
-                  placeholder="Ex: 2.500,00" style={{ ...S.input, padding:"7px 10px", fontSize:12 }} />
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Margem (R$)</label>
+                <input
+                  value={card.margem}
+                  onChange={e => card.setMargem(e.target.value)}
+                  placeholder="Ex: 500,00"
+                  style={{ ...S.input, padding:"9px 12px", fontSize:14, fontWeight:600 }}
+                />
               </div>
               <div>
-                <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Mult. Limite</label>
-                <input value={card.mL} onChange={e=>card.setML(e.target.value)} placeholder="3.0" style={{ ...S.input, padding:"7px 10px", fontSize:12 }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Mult. Saque</label>
-                <input value={card.mS} onChange={e=>card.setMS(e.target.value)} placeholder="1.0" style={{ ...S.input, padding:"7px 10px", fontSize:12 }} />
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Multiplicador</label>
+                <input
+                  value={card.mult}
+                  onChange={e => card.setMult(e.target.value)}
+                  placeholder="Ex: 3.0"
+                  style={{ ...S.input, padding:"9px 12px", fontSize:14, fontWeight:600 }}
+                />
               </div>
             </div>
-            <CardVisual label={`CARTÃO ${card.n} — CONSIGNADO`} gradient={card.grad} limite={card.lim} saque={card.saq} />
+
+            {/* Cálculo resumido antes do cartão */}
+            {card.calc.limite !== null && (
+              <div style={{ display:"flex", gap:6, marginBottom:14, fontSize:11.5, flexWrap:"wrap" }}>
+                <span style={{ color:C.td }}>{fmtBRL(toF(card.margem))} × {card.mult} =</span>
+                <span style={{ color:C.atxt, fontWeight:700 }}>{fmtBRL(card.calc.limite)}</span>
+              </div>
+            )}
+
+            {/* Cartão visual */}
+            <CardVisual
+              label={`CARTÃO ${card.n} — CONSIGNADO`}
+              gradient={card.grad}
+              limite={card.calc.limite}
+              saque70={card.calc.saque70}
+              resto30={card.calc.resto30}
+            />
           </div>
         ))}
       </div>
@@ -10286,7 +10323,7 @@ function SimuladorPage() {
       </div>
 
       {aba === "credito" && <CreditoTab bancos={bancosCLT} />}
-      {aba === "cartao"  && <CartaoTab  bancos={bancosCLT} />}
+      {aba === "cartao"  && <CartaoTab  />}
       {aba === "inss"    && <EmprestimoGenTab bancos={bancosINSS} chaveCoef="coef_emp" titulo="INSS" prazosDefault={PRAZOS_INSS} />}
       {aba === "gov"     && <EmprestimoGenTab bancos={bancosGOV}  chaveCoef="coef_emp" titulo="Governo/Prefeitura" prazosDefault={PRAZOS_GOV} />}
     </div>
