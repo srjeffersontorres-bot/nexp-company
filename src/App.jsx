@@ -1341,211 +1341,279 @@ function LoginPage({ onLogin }) {
   );
 }
 
-const INTERNET_TABS = [
+const DEFAULT_INTERNET_TABS = [
   {
-    id: "whatsapp", label: "WhatsApp",
-    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>),
-    url: "https://web.whatsapp.com", color: "#25D366", fallback: "https://web.whatsapp.com",
+    id: "youtube", label: "YouTube",
+    emoji: "▶️",
+    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>),
+    url: "https://www.youtube.com", color: "#FF0000",
   },
   {
-    id: "instagram", label: "Instagram",
-    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>),
-    url: "https://www.instagram.com/", color: "#E1306C", fallback: "https://www.instagram.com/accounts/login/",
-  },
-  {
-    id: "chatgpt", label: "ChatGPT",
-    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.677l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0L4.01 14.15A4.485 4.485 0 0 1 2.34 7.896zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.816 2.801a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.393-.677zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.816-2.771a4.493 4.493 0 0 1 6.675 4.663zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.494 4.494 0 0 1 7.375-3.453l-.142.08-4.778 2.758a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/></svg>),
-    url: "https://chatgpt.com/", color: "#10A37F", fallback: "https://chatgpt.com/",
-  },
-  {
-    id: "claude", label: "Claude",
-    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/></svg>),
-    url: "https://claude.ai/", color: "#CC785C", fallback: "https://claude.ai/",
+    id: "spotify", label: "Spotify",
+    emoji: "🎵",
+    icon: (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>),
+    url: "https://open.spotify.com", color: "#1DB954",
   },
 ];
 
-function InternetPage() {
-  const [activeTab, setActiveTab] = useState("whatsapp");
-  // Guarda referência da janela aberta por cada aba
-  const winRefs = useRef({});
-  // Estado visual: "closed" | "open"
-  const [winState, setWinState] = useState({});
-  const tab = INTERNET_TABS.find(t => t.id === activeTab);
+// ── Janela interna Internet ────────────────────────────────────
+function InternetFloatWindow({ tab, onMinimize, onClose }) {
+  const [inputUrl, setInputUrl] = useState(tab.url);
+  const [currentUrl, setCurrentUrl] = useState(tab.url);
+  const [loading, setLoading] = useState(true);
+  const [blocked, setBlocked] = useState(false);
 
-  // Verifica a cada 800ms se a janela ainda está aberta
   useEffect(() => {
-    const interval = setInterval(() => {
-      const next = {};
-      INTERNET_TABS.forEach(t => {
-        const w = winRefs.current[t.id];
-        next[t.id] = w && !w.closed ? "open" : "closed";
-      });
-      setWinState(next);
-    }, 800);
-    return () => clearInterval(interval);
-  }, []);
+    setBlocked(false); setLoading(true);
+    setCurrentUrl(tab.url); setInputUrl(tab.url);
+  }, [tab.id]); // eslint-disable-line
 
-  const openTab = (t) => {
-    setActiveTab(t.id);
-    const existing = winRefs.current[t.id];
-    if (existing && !existing.closed) {
-      existing.focus();
-      return;
-    }
-    // Calcula posição e tamanho: ocupa a maior parte da tela deixando a sidebar visível
-    const sw = window.screen.width;
-    const sh = window.screen.height;
-    const w  = Math.round(sw * 0.72);
-    const h  = Math.round(sh * 0.92);
-    const left = Math.round((sw - w) / 2);
-    const top  = Math.round((sh - h) / 2);
-    const win = window.open(
-      t.url,
-      `nexp_${t.id}`,
-      `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes`
-    );
-    winRefs.current[t.id] = win;
-    setWinState(s => ({ ...s, [t.id]: "open" }));
-  };
-
-  const closeTab = (t) => {
-    const w = winRefs.current[t.id];
-    if (w && !w.closed) w.close();
-    winRefs.current[t.id] = null;
-    setWinState(s => ({ ...s, [t.id]: "closed" }));
-  };
-
-  const focusTab = (t) => {
-    const w = winRefs.current[t.id];
-    if (w && !w.closed) w.focus();
+  const navigate = () => {
+    let u = inputUrl.trim();
+    if (!u.startsWith("http")) u = "https://" + u;
+    setCurrentUrl(u); setBlocked(false); setLoading(true);
   };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100vh", overflow:"hidden", background:C.bg }}>
+    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, zIndex:800, display:"flex", flexDirection:"column", background:C.bg, animation:"fadeIn 0.2s ease" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Tab bar */}
-      <div style={{ display:"flex", alignItems:"center", gap:6, padding:"10px 16px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0, flexWrap:"wrap" }}>
-        <span style={{ color:C.atxt, fontSize:13, fontWeight:800, marginRight:4 }}>🌐 Internet</span>
-        {INTERNET_TABS.map(t => {
-          const active = t.id === activeTab;
-          const isOpen = winState[t.id] === "open";
-          return (
-            <button key={t.id}
-              onClick={() => active && isOpen ? focusTab(t) : openTab(t)}
-              style={{
-                display:"flex", alignItems:"center", gap:7,
-                padding:"7px 16px", borderRadius:9, cursor:"pointer",
-                background: active ? t.color + "22" : C.deep,
-                color: active ? t.color : C.tm,
-                border: active ? `1.5px solid ${t.color}55` : `1px solid ${C.b2}`,
-                fontSize:12.5, fontWeight: active ? 700 : 400,
-                transition:"all 0.15s",
-                boxShadow: active ? `0 2px 10px ${t.color}33` : "none",
-                position:"relative",
-              }}
-              onMouseEnter={e=>{ if(!active){ e.currentTarget.style.background=C.abg; e.currentTarget.style.color=C.atxt; }}}
-              onMouseLeave={e=>{ if(!active){ e.currentTarget.style.background=C.deep; e.currentTarget.style.color=C.tm; }}}
-            >
-              <span style={{ color: active ? t.color : "inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
-              {t.label}
-              {/* Indicador verde se aberta */}
-              {isOpen && (
-                <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", marginLeft:2, boxShadow:"0 0 6px #16A34A88" }} />
-              )}
-            </button>
-          );
-        })}
+      {/* Barra superior */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:C.sb, borderBottom:`1px solid ${C.b1}`, flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
+          <div style={{ width:26, height:26, borderRadius:7, background:tab.color+"22", color:tab.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>
+            {tab.emoji || "🌐"}
+          </div>
+          <span style={{ color:tab.color, fontSize:13, fontWeight:700, flexShrink:0 }}>{tab.label}</span>
+        </div>
+        <div style={{ flex:1, display:"flex", gap:6 }}>
+          <input value={inputUrl} onChange={e=>setInputUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&navigate()}
+            style={{ ...S.input, flex:1, padding:"5px 10px", fontSize:12 }} placeholder="Digite uma URL..." />
+          <button onClick={navigate} style={{ background:tab.color, color:"#fff", border:"none", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>Ir</button>
+        </div>
+        <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+          <button onClick={()=>window.open(currentUrl,"_blank")} title="Abrir no navegador"
+            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:7, padding:"5px 9px", fontSize:12, cursor:"pointer" }}>↗</button>
+          <button onClick={onMinimize} title="Minimizar"
+            style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:7, padding:"5px 9px", fontSize:12, cursor:"pointer" }}>─</button>
+          <button onClick={onClose} title="Fechar"
+            style={{ background:"#2D1515", border:"1px solid #EF444433", color:"#F87171", borderRadius:7, padding:"5px 9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>✕</button>
+        </div>
       </div>
 
-      {/* Área principal — cards de cada aba */}
-      <div style={{ flex:1, overflowY:"auto", padding:"32px 40px", display:"flex", flexDirection:"column", gap:20 }}>
-
-        {/* Card da aba ativa */}
-        {(() => {
-          const t = tab;
-          if (!t) return null;
-          const isOpen = winState[t.id] === "open";
-          return (
-            <div style={{ background:C.card, borderRadius:16, border:`1px solid ${t.color}33`, padding:"32px 36px", maxWidth:560, boxShadow:`0 4px 32px ${t.color}11` }}>
-              <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
-                <div style={{ width:56, height:56, borderRadius:14, background:t.color+"22", border:`1.5px solid ${t.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:t.color }}>
-                  {t.icon}
-                </div>
-                <div>
-                  <div style={{ color:C.tp, fontSize:18, fontWeight:800 }}>{t.label}</div>
-                  <div style={{ color:C.td, fontSize:12, marginTop:3 }}>{t.url}</div>
-                </div>
-                {isOpen && (
-                  <span style={{ marginLeft:"auto", background:"#0A2918", color:"#34D399", border:"1px solid #16A34A44", borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:5 }}>
-                    <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                    Aberta
-                  </span>
-                )}
-              </div>
-
-              <div style={{ color:C.ts, fontSize:13, lineHeight:1.7, marginBottom:24 }}>
-                {t.id === "whatsapp" && "Abre o WhatsApp Web em uma janela separada. Escaneie o QR code para conectar ou continue onde parou."}
-                {t.id === "instagram" && "Abre o Instagram em uma janela separada. Faça login e acesse seu feed normalmente."}
-                {t.id === "chatgpt" && "Abre o ChatGPT em uma janela separada. Use a IA da OpenAI para auxílio nas suas tarefas."}
-                {t.id === "claude" && "Abre o Claude (Anthropic) em uma janela separada. Converse com a IA para ajuda em qualquer tarefa."}
-              </div>
-
-              <div style={{ display:"flex", gap:10 }}>
-                {!isOpen ? (
-                  <button onClick={() => openTab(t)}
-                    style={{ ...S.btn(t.color, "#fff"), padding:"11px 28px", fontSize:14, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:8, boxShadow:`0 4px 18px ${t.color}44` }}>
-                    {t.icon} Abrir {t.label}
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={() => focusTab(t)}
-                      style={{ ...S.btn(t.color, "#fff"), padding:"11px 22px", fontSize:13, fontWeight:700, borderRadius:10, display:"flex", alignItems:"center", gap:7 }}>
-                      🔍 Trazer para frente
-                    </button>
-                    <button onClick={() => closeTab(t)}
-                      style={{ ...S.btn("transparent", "#F87171"), padding:"11px 18px", fontSize:13, fontWeight:600, borderRadius:10, border:"1px solid #EF444433" }}>
-                      ✕ Fechar
-                    </button>
-                  </>
-                )}
-              </div>
+      {/* Conteúdo */}
+      <div style={{ flex:1, position:"relative", overflow:"hidden" }}>
+        {loading && !blocked && (
+          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:C.bg, zIndex:2, flexDirection:"column", gap:12 }}>
+            <div style={{ width:34, height:34, border:`3px solid ${tab.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 0.8s linear infinite" }} />
+            <span style={{ color:C.tm, fontSize:13 }}>Carregando {tab.label}...</span>
+          </div>
+        )}
+        {!blocked ? (
+          <iframe src={currentUrl} title={tab.label}
+            onLoad={()=>setLoading(false)}
+            onError={()=>{ setBlocked(true); setLoading(false); }}
+            style={{ width:"100%", height:"100%", border:"none", display:"block" }}
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
+          />
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:16, padding:40 }}>
+            <div style={{ fontSize:48 }}>🔒</div>
+            <div style={{ color:C.tp, fontSize:18, fontWeight:700 }}>{tab.label} bloqueou a incorporação</div>
+            <div style={{ color:C.tm, fontSize:13, textAlign:"center", maxWidth:400, lineHeight:1.7 }}>
+              Este site não permite ser aberto dentro de outros sistemas por segurança. Clique abaixo para abrir no navegador.
             </div>
-          );
-        })()}
-
-        {/* Grid de atalhos rápidos para todas as abas */}
-        <div>
-          <div style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>Todas as ferramentas</div>
-          <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-            {INTERNET_TABS.map(t => {
-              const isOpen = winState[t.id] === "open";
-              return (
-                <button key={t.id}
-                  onClick={() => { setActiveTab(t.id); isOpen ? focusTab(t) : openTab(t); }}
-                  style={{ display:"flex", alignItems:"center", gap:9, padding:"10px 18px", borderRadius:10, cursor:"pointer",
-                    background: isOpen ? t.color+"18" : C.deep,
-                    color: isOpen ? t.color : C.tm,
-                    border: isOpen ? `1px solid ${t.color}44` : `1px solid ${C.b2}`,
-                    fontSize:12.5, fontWeight: isOpen ? 700 : 400, transition:"all 0.15s" }}>
-                  <span style={{ color:"inherit", display:"flex", alignItems:"center" }}>{t.icon}</span>
-                  {t.label}
-                  {isOpen && <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block" }} />}
-                </button>
-              );
-            })}
+            <button onClick={()=>window.open(tab.url,"_blank")}
+              style={{ background:tab.color, color:"#fff", border:"none", borderRadius:10, padding:"11px 26px", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:`0 4px 16px ${tab.color}44` }}>
+              {tab.emoji} Abrir {tab.label} no navegador
+            </button>
           </div>
-        </div>
-
-        {/* Aviso explicativo */}
-        <div style={{ background:C.deep, borderRadius:10, padding:"14px 18px", border:`1px solid ${C.b1}`, maxWidth:560 }}>
-          <div style={{ color:C.td, fontSize:11.5, lineHeight:1.7 }}>
-            ℹ️ <strong style={{ color:C.tm }}>Por que abre em janela separada?</strong><br/>
-            WhatsApp, Instagram, ChatGPT e Claude bloqueiam incorporação direta por segurança (<code style={{ background:C.card, padding:"1px 5px", borderRadius:4, fontSize:10.5 }}>X-Frame-Options</code>).
-            A janela aberta fica vinculada a esta aba — você pode fechá-la por aqui quando quiser.
-          </div>
-        </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function InternetPage() {
+  const STORAGE_KEY = "nexp_internet_custom_tabs";
+  const [customTabs, setCustomTabs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+  });
+  const [windows, setWindows] = useState({});
+  const [activeTabId, setActiveTabId] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [newEmoji, setNewEmoji] = useState("🌐");
+  const [addErr, setAddErr] = useState("");
+
+  const allTabs = [...DEFAULT_INTERNET_TABS, ...customTabs];
+  const minimized = allTabs.filter(t => windows[t.id] === "minimized");
+  const activeOpenTab = allTabs.find(t => t.id === activeTabId && windows[t.id] === "open");
+  const openCount = allTabs.filter(t => windows[t.id] === "open").length;
+
+  const openWindow = (id) => { setWindows(w=>({...w,[id]:"open"})); setActiveTabId(id); };
+  const minimizeWindow = (id) => setWindows(w=>({...w,[id]:"minimized"}));
+  const restoreWindow = (id) => { setWindows(w=>({...w,[id]:"open"})); setActiveTabId(id); };
+  const closeWindow = (id) => setWindows(w=>({...w,[id]:null}));
+
+  const saveCustomTabs = (tabs) => {
+    setCustomTabs(tabs);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
+  };
+
+  const addCustomTab = () => {
+    if (!newName.trim()) { setAddErr("Nome é obrigatório."); return; }
+    if (!newUrl.trim()) { setAddErr("URL é obrigatória."); return; }
+    let url = newUrl.trim();
+    if (!url.startsWith("http")) url = "https://" + url;
+    const id = "custom_" + Date.now();
+    const tab = { id, label: newName.trim(), emoji: newEmoji, icon: (<span style={{fontSize:14}}>{newEmoji}</span>), url, color: "#6366F1", custom: true };
+    saveCustomTabs([...customTabs, tab]);
+    setNewName(""); setNewUrl(""); setNewEmoji("🌐"); setAddErr(""); setShowAdd(false);
+  };
+
+  const removeCustomTab = (id) => {
+    closeWindow(id);
+    saveCustomTabs(customTabs.filter(t => t.id !== id));
+  };
+
+  const EMOJI_OPTIONS = ["🌐","📰","🎬","🎮","📊","💼","🛒","✈️","🏥","📚","🎨","💬","📧","🔧","⚽"];
+
+  return (
+    <>
+      {/* Janela interna aberta */}
+      {activeOpenTab && (
+        <InternetFloatWindow
+          key={activeOpenTab.id}
+          tab={activeOpenTab}
+          onMinimize={() => minimizeWindow(activeOpenTab.id)}
+          onClose={() => closeWindow(activeOpenTab.id)}
+        />
+      )}
+
+      {/* FABs minimizados */}
+      {minimized.map((t, i) => (
+        <button key={t.id} onClick={() => restoreWindow(t.id)} title={`Restaurar ${t.label}`}
+          style={{ position:"fixed", right:22, bottom: 90 + i * 62, zIndex:600, width:50, height:50, borderRadius:"50%",
+            background:`linear-gradient(135deg,${t.color},${t.color}bb)`, border:"none", cursor:"pointer",
+            boxShadow:`0 4px 18px ${t.color}66`, display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize:20, transition:"transform 0.18s", animation:"fadeIn 0.3s ease" }}
+          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.12)"}
+          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+          {t.emoji || "🌐"}
+          <span onClick={e=>{ e.stopPropagation(); closeWindow(t.id); }}
+            style={{ position:"absolute", top:-4, right:-4, width:16, height:16, borderRadius:"50%", background:"#EF4444", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", border:"2px solid #080A10" }}>✕</span>
+        </button>
+      ))}
+
+      {/* Página */}
+      <div style={{ padding:"30px 36px", maxWidth:900 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:10 }}>
+          <div>
+            <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>🌐 Internet</h1>
+            <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>
+              {openCount > 0 ? `${openCount} janela${openCount>1?"s":""} aberta${openCount>1?"s":""}` : "Abra sites dentro do sistema"}
+            </p>
+          </div>
+          <button onClick={() => setShowAdd(p=>!p)}
+            style={{ background: showAdd ? C.abg : `linear-gradient(135deg,${C.acc},${C.lg2})`, color: showAdd ? C.atxt : "#fff", border: showAdd ? `1px solid ${C.atxt}44` : "none", borderRadius:10, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:7 }}>
+            {showAdd ? "✕ Cancelar" : "+ Adicionar site"}
+          </button>
+        </div>
+
+        {/* Formulário adicionar site */}
+        {showAdd && (
+          <div style={{ ...S.card, padding:"22px 24px", marginBottom:20, border:`1px solid ${C.atxt}33` }}>
+            <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:16 }}>➕ Adicionar novo site</div>
+            {addErr && <div style={{ color:"#F87171", fontSize:12, marginBottom:10, background:"#2D1515", borderRadius:7, padding:"7px 11px" }}>{addErr}</div>}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12, marginBottom:14 }}>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome</label>
+                <input value={newName} onChange={e=>{setNewName(e.target.value);setAddErr("");}} placeholder="Ex: Google" style={{ ...S.input }} />
+              </div>
+              <div>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>URL</label>
+                <input value={newUrl} onChange={e=>{setNewUrl(e.target.value);setAddErr("");}} placeholder="Ex: google.com" style={{ ...S.input }} />
+              </div>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Ícone (emoji)</label>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {EMOJI_OPTIONS.map(e => (
+                  <button key={e} onClick={()=>setNewEmoji(e)}
+                    style={{ width:34, height:34, borderRadius:8, background: newEmoji===e ? C.abg : C.deep, border: newEmoji===e ? `1.5px solid ${C.atxt}` : `1px solid ${C.b2}`, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={addCustomTab}
+              style={{ background:`linear-gradient(135deg,${C.acc},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 24px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              ✓ Adicionar
+            </button>
+          </div>
+        )}
+
+        {/* Grid de sites */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:14 }}>
+          {allTabs.map(t => {
+            const state = windows[t.id];
+            return (
+              <div key={t.id} style={{ background:C.card, border:`1px solid ${state ? t.color+"55" : C.b1}`, borderRadius:14, padding:"20px 18px", display:"flex", flexDirection:"column", gap:12, transition:"all 0.15s", boxShadow: state ? `0 4px 20px ${t.color}22` : "none", position:"relative" }}>
+                {/* Botão remover site customizado */}
+                {t.custom && (
+                  <button onClick={()=>removeCustomTab(t.id)} title="Remover site"
+                    style={{ position:"absolute", top:8, right:8, background:"transparent", border:"none", color:C.td, cursor:"pointer", fontSize:13, padding:"2px 5px", borderRadius:5 }}
+                    onMouseEnter={e=>e.currentTarget.style.color="#EF4444"}
+                    onMouseLeave={e=>e.currentTarget.style.color=C.td}>✕</button>
+                )}
+
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:42, height:42, borderRadius:11, background:t.color+"22", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
+                    {t.emoji || "🌐"}
+                  </div>
+                  <div>
+                    <div style={{ color:C.tp, fontSize:13.5, fontWeight:700 }}>{t.label}</div>
+                    <div style={{ fontSize:10, marginTop:2, fontWeight:600,
+                      color: state==="open" ? "#34D399" : state==="minimized" ? "#FBBF24" : C.td }}>
+                      {state==="open" ? "● Aberto" : state==="minimized" ? "● Minimizado" : "Fechado"}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display:"flex", gap:7 }}>
+                  {!state && (
+                    <button onClick={() => openWindow(t.id)}
+                      style={{ flex:1, background:t.color, color:"#fff", border:"none", borderRadius:8, padding:"8px 0", fontSize:12.5, fontWeight:700, cursor:"pointer" }}>
+                      Abrir
+                    </button>
+                  )}
+                  {state === "minimized" && (
+                    <button onClick={() => restoreWindow(t.id)}
+                      style={{ flex:1, background:t.color+"22", color:t.color, border:`1px solid ${t.color}44`, borderRadius:8, padding:"8px 0", fontSize:12.5, fontWeight:700, cursor:"pointer" }}>
+                      Restaurar
+                    </button>
+                  )}
+                  {state === "open" && (
+                    <button onClick={() => minimizeWindow(t.id)}
+                      style={{ flex:1, background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 0", fontSize:12, cursor:"pointer" }}>
+                      ─ Minimizar
+                    </button>
+                  )}
+                  {state && (
+                    <button onClick={() => closeWindow(t.id)}
+                      style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"8px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
