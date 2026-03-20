@@ -9828,56 +9828,8 @@ const fmtBRL = (v) => { const n = parseFloat(v); if (isNaN(n)) return "—"; ret
 const toF = (s) => parseFloat(String(s).replace(/\./g,"").replace(",",".")) || 0;
 
 // Cartão visual SVG
-function CardVisual({ label, gradient, limite, saque70, resto30 }) {
-  return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
-      {/* Cartão com sombra */}
-      <div style={{ position:"relative", width:300, height:185 }}>
-        <div style={{ position:"absolute", top:12, left:12, width:276, height:165, borderRadius:16, background:gradient, opacity:0.45, transform:"rotate(-4deg)", boxShadow:"0 6px 24px rgba(0,0,0,0.5)" }} />
-        <div style={{ position:"absolute", top:0, left:0, width:276, height:165, borderRadius:16, background:gradient, boxShadow:"0 10px 36px rgba(0,0,0,0.6)", padding:"18px 20px", boxSizing:"border-box" }}>
-          {/* Chip */}
-          <div style={{ width:32, height:24, borderRadius:4, background:"linear-gradient(135deg,#f0c040,#c89a0a)", marginBottom:10, position:"relative", overflow:"hidden" }}>
-            <div style={{ position:"absolute", top:"50%", left:0, right:0, height:1, background:"rgba(0,0,0,0.25)" }} />
-            <div style={{ position:"absolute", left:"40%", top:0, bottom:0, width:1, background:"rgba(0,0,0,0.2)" }} />
-          </div>
-          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, letterSpacing:3, marginBottom:3 }}>•••• •••• •••• ••••</div>
-          <div style={{ color:"rgba(255,255,255,0.55)", fontSize:8.5, letterSpacing:1, marginBottom:10 }}>{label}</div>
-          <div style={{ display:"flex", gap:14 }}>
-            <div>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>Limite Total</div>
-              <div style={{ color:"#fff", fontSize:14, fontWeight:800, lineHeight:1.1 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
-            </div>
-            <div>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>Saque (70%)</div>
-              <div style={{ color:"#FBBF24", fontSize:14, fontWeight:800, lineHeight:1.1 }}>{saque70 !== null ? fmtBRL(saque70) : "—"}</div>
-            </div>
-            <div>
-              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:7, textTransform:"uppercase", letterSpacing:"0.5px" }}>Restante (30%)</div>
-              <div style={{ color:"#34D399", fontSize:14, fontWeight:800, lineHeight:1.1 }}>{resto30 !== null ? fmtBRL(resto30) : "—"}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* Três boxes abaixo */}
-      <div style={{ display:"flex", gap:8, width:276 }}>
-        <div style={{ flex:1, background:`${C.abg}`, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-          <div style={{ color:C.td, fontSize:8, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Limite Total</div>
-          <div style={{ color:C.atxt, fontSize:17, fontWeight:900, lineHeight:1 }}>{limite !== null ? fmtBRL(limite) : "—"}</div>
-        </div>
-        <div style={{ flex:1, background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-          <div style={{ color:C.td, fontSize:8, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Saque Complementar</div>
-          <div style={{ color:"#FBBF24", fontSize:17, fontWeight:900, lineHeight:1 }}>{saque70 !== null ? fmtBRL(saque70) : "—"}</div>
-          <div style={{ color:"rgba(251,191,36,0.5)", fontSize:8, marginTop:2 }}>70% do limite</div>
-        </div>
-        <div style={{ flex:1, background:"rgba(52,211,153,0.07)", border:"1px solid rgba(52,211,153,0.2)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-          <div style={{ color:C.td, fontSize:8, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:4 }}>Restante do Limite</div>
-          <div style={{ color:"#34D399", fontSize:17, fontWeight:900, lineHeight:1 }}>{resto30 !== null ? fmtBRL(resto30) : "—"}</div>
-          <div style={{ color:"rgba(52,211,153,0.5)", fontSize:8, marginTop:2 }}>30% do limite</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+
+
 
 // Balão de detalhe ao clicar numa célula
 function BalaoCelula({ info, onClose }) {
