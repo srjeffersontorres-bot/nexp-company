@@ -13626,18 +13626,6 @@ function PropostasPage({ currentUser }) {
     await setDoc(doc(db,"propostas",id),{...data,...extra},{merge:true});
   };
 
-  // Dashboard metrics
-  const total = propostas.filter(p=>canSeeAll||p.criadoPor===myId);
-  const concluidas = total.filter(p=>p.status==="Proposta Concluída");
-  const pendentes = total.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização"].includes(p.status));
-  const canceladas = total.filter(p=>p.status==="Cancelada");
-  const totalValor = concluidas.reduce((acc,p)=>{
-    const v = parseFloat((p.valorSolicitado||"0").replace(/\./g,"").replace(",","."));
-    return acc + (isNaN(v)?0:v);
-  },0);
-
-  const fmtBRL = (v) => "R$ " + v.toLocaleString("pt-BR",{minimumFractionDigits:2});
-
   return (
     <div style={{padding:"24px 32px",maxWidth:1060,position:"relative"}}>
       {/* Modal ação digitador */}
