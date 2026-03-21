@@ -12266,6 +12266,16 @@ function DGrid({ cols=3, children, gap=10 }) {
     <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,marginBottom:12}}>{children}</div>
   );
 }
+function DDat({ form, setF, label, k, min, max }) {
+  return (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}</label>
+      <input type="date" value={form[k]||""} onChange={e=>setF(k,e.target.value)}
+        min={min} max={max}
+        style={{...S.input,fontSize:12,padding:"7px 10px"}}/>
+    </div>
+  );
+}
 function DInp({ form, setF, label, k, type="text", ph="", req=false, mask="" }) {
   return <DField label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} type={type} ph={ph} mask={mask} />;
 }
@@ -12919,8 +12929,8 @@ function DigitacaoPage({ contacts, currentUser }) {
           <DInp form={form} setF={setF} label="RG" k="rg"/>
         </DGrid>
         <DGrid cols={4}>
-          <DInp form={form} setF={setF} label="Data de Nascimento" k="dataNasc" type="date"/>
-          <DInp form={form} setF={setF} label="Data de Expedição" k="dataExpedicao" type="date"/>
+          <DDat form={form} setF={setF} label="Data de Nascimento" k="dataNasc" min="1950-01-01" max="2026-12-31"/>
+          <DDat form={form} setF={setF} label="Data de Expedição" k="dataExpedicao" min="2001-01-01" max="2026-12-31"/>
           <DInp form={form} setF={setF} label="Órgão Emissor" k="orgaoEmissor" ph="Ex: DETRAN"/>
           <DUF val={form.ufDoc||""} onChange={v=>setF("ufDoc",v)} label="UF do Documento"/>
         </DGrid>
@@ -12947,8 +12957,8 @@ function DigitacaoPage({ contacts, currentUser }) {
             <DInp form={form} setF={setF} label="RG do Representante" k="rgRep"/>
           </DGrid>
           <DGrid cols={4}>
-            <DInp form={form} setF={setF} label="Data de Nascimento" k="dataNascRep" type="date"/>
-            <DInp form={form} setF={setF} label="Data de Expedição" k="dataExpRep" type="date"/>
+            <DDat form={form} setF={setF} label="Data de Nascimento" k="dataNascRep" min="1950-01-01" max="2026-12-31"/>
+            <DDat form={form} setF={setF} label="Data de Expedição" k="dataExpRep" min="2001-01-01" max="2026-12-31"/>
             <DInp form={form} setF={setF} label="Órgão Emissor" k="orgaoRep" ph="Ex: DETRAN"/>
             <DInp form={form} setF={setF} label="UF do Documento" k="ufDocRep" ph="Ex: RJ"/>
           </DGrid>
@@ -13304,6 +13314,256 @@ function ModalAcaoProposta({ proposta, onClose, onSave }) {
 }
 
 // ── PropostasPage ───────────────────────────────────────────────
+
+// ── Relatório Mensal + Anual de Propostas ──────────────────────
+function RelatorioProposta({ propostas, canSeeAll, myId }) {
+  const now = new Date();
+  const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const fmtBRL = v => "R$ "+(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
+  const parseVal = v => { const d=(v||"0").replace(/[R$\s.]/g,"").replace(",","."); const n=parseFloat(d); return isNaN(n)?0:n; };
+
+  const mine = canSeeAll ? propostas : propostas.filter(p=>p.criadoPor===myId);
+  const mesAtual = now.getMonth();
+  const anoAtual = now.getFullYear();
+
+  const calcMet = list => ({
+    total: list.length,
+    concluidas: list.filter(p=>p.status==="Proposta Concluída").length,
+    pendentes: list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).length,
+    canceladas: list.filter(p=>p.status==="Cancelada").length,
+    valor: list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
+  });
+
+  const doMes = mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===mesAtual&&d.getFullYear()===anoAtual; });
+  const doAno = mine.filter(p=>new Date(p.createdAt||0).getFullYear()===anoAtual);
+  const mMes = calcMet(doMes);
+  const mAno = calcMet(doAno);
+
+  const porMes = Array.from({length:12},(_,m)=>{
+    const l = mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===m&&d.getFullYear()===anoAtual; });
+    return {mes:MESES[m],...calcMet(l)};
+  });
+
+  const Card = ({icon,label,val,color,money=false}) => (
+    <div style={{...S.card,padding:"16px",textAlign:"center",border:`1px solid ${color}33`}}>
+      <div style={{fontSize:24,marginBottom:6}}>{icon}</div>
+      <div style={{color,fontSize:money?14:24,fontWeight:800,marginBottom:4,wordBreak:"break-all"}}>{val}</div>
+      <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px"}}>{label}</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* ── Mensal ── */}
+      <div style={{marginBottom:28}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <span style={{color:C.tp,fontSize:16,fontWeight:700}}>📅 {MESES[mesAtual]} {anoAtual}</span>
+          <span style={{background:C.abg,color:C.atxt,fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700}}>Mês atual</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+          <Card icon="📤" label="Enviadas" val={mMes.total} color={C.atxt}/>
+          <Card icon="✅" label="Concluídas" val={mMes.concluidas} color="#34D399"/>
+          <Card icon="⏳" label="Pendentes" val={mMes.pendentes} color="#FBBF24"/>
+          <Card icon="❌" label="Canceladas" val={mMes.canceladas} color="#EF4444"/>
+        </div>
+        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>💰</span>
+          <div>
+            <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px",marginBottom:3}}>Total liberado em {MESES[mesAtual]}</div>
+            <div style={{color:"#34D399",fontSize:20,fontWeight:800}}>{fmtBRL(mMes.valor)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Anual ── */}
+      <div>
+        <div style={{color:C.tp,fontSize:16,fontWeight:700,marginBottom:14}}>📆 Relatório Anual — {anoAtual}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+          <Card icon="📤" label="Enviadas" val={mAno.total} color={C.atxt}/>
+          <Card icon="✅" label="Concluídas" val={mAno.concluidas} color="#34D399"/>
+          <Card icon="⏳" label="Pendentes" val={mAno.pendentes} color="#FBBF24"/>
+          <Card icon="❌" label="Canceladas" val={mAno.canceladas} color="#EF4444"/>
+        </div>
+        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",marginBottom:18,display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>🏆</span>
+          <div>
+            <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px",marginBottom:3}}>Total liberado em {anoAtual}</div>
+            <div style={{color:"#34D399",fontSize:20,fontWeight:800}}>{fmtBRL(mAno.valor)}</div>
+          </div>
+        </div>
+        <div style={{...S.card,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.b1}`,color:C.ts,fontSize:12,fontWeight:700}}>Desempenho mês a mês</div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{background:C.deep}}>
+                {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Valor Liberado"].map(h=>(
+                  <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"9px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {porMes.map((m,i)=>{
+                const isAt = i===mesAtual;
+                return (
+                  <tr key={m.mes} style={{background:isAt?C.abg:"transparent",borderBottom:`1px solid ${C.b1}`}}>
+                    <td style={{padding:"9px 12px",color:isAt?C.atxt:C.ts,fontWeight:isAt?700:400}}>{m.mes}{isAt&&" ←"}</td>
+                    <td style={{padding:"9px 12px",color:C.ts}}>{m.total||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.valor>0?"#34D399":C.td,fontWeight:m.valor>0?600:400}}>{m.valor>0?fmtBRL(m.valor):"—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Card expandido de proposta com TODOS os dados ──────────────
+function PropCard({ p, myId, canSeeAll, onAtualizar }) {
+  const [open, setOpen] = useState(false);
+  const st = p.status||"Proposta Digitada";
+  const col = STATUS_PROPOSTA_COLORS[st]||C.td;
+  const isNew = !p.viewedBy?.includes(myId);
+
+  const Row = ({label,val}) => val ? (
+    <div style={{display:"flex",gap:8,marginBottom:3}}>
+      <span style={{color:C.td,fontSize:11,minWidth:140,flexShrink:0}}>{label}:</span>
+      <span style={{color:C.ts,fontSize:11.5,fontWeight:500,wordBreak:"break-all"}}>{val}</span>
+    </div>
+  ) : null;
+
+  const Sec = ({title,children}) => (
+    <div style={{marginBottom:12}}>
+      <div style={{color:C.tm,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6,paddingBottom:4,borderBottom:`1px solid ${C.b1}`}}>{title}</div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div style={{...S.card,padding:"14px 18px",border:`1px solid ${isNew?"#EF444466":col+"33"}`,boxShadow:isNew?`0 0 14px #EF444422`:"none"}}>
+      {/* Cabeçalho */}
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:180,cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3,flexWrap:"wrap"}}>
+            {isNew&&<span style={{width:7,height:7,borderRadius:"50%",background:"#EF4444",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
+            <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
+            <span style={{background:`${col}22`,color:col,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:`1px solid ${col}33`}}>{st}</span>
+            <span style={{background:`${C.abg}`,color:C.atxt,fontSize:10,padding:"2px 7px",borderRadius:20,fontWeight:600}}>{p.tipo||p.produto||"—"}</span>
+          </div>
+          <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf||"—"} · {p.contato1||p.telefone||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
+          <div style={{color:C.td,fontSize:11,marginTop:1}}>Por: {p.criadoPorNome||"—"}</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={()=>setOpen(o=>!o)}
+            style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>
+            {open?"▲ Fechar":"▼ Ver dados"}
+          </button>
+          {canSeeAll&&(
+            <button onClick={()=>onAtualizar(p)}
+              style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              ✏ Atualizar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Dados expandidos */}
+      {open && (
+        <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.b1}`}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 24px"}}>
+            <Sec title="👤 Dados do Cliente">
+              <Row label="Nome" val={p.nome}/>
+              <Row label="CPF" val={p.cpf}/>
+              <Row label="RG" val={p.rg}/>
+              <Row label="Data Nasc." val={p.dataNasc}/>
+              <Row label="Data Expedição" val={p.dataExpedicao}/>
+              <Row label="Órgão Emissor" val={p.orgaoEmissor}/>
+              <Row label="UF Doc" val={p.ufDoc}/>
+              <Row label="Nome da Mãe" val={p.nomeMae}/>
+              <Row label="Nome do Pai" val={p.nomePai}/>
+              <Row label="Naturalidade" val={p.naturalidade}/>
+            </Sec>
+            <Sec title="📞 Contato">
+              <Row label="Tel 1" val={p.contato1}/>
+              <Row label="Tel 2" val={p.contato2}/>
+              <Row label="Email 1" val={p.email1}/>
+              <Row label="Email 2" val={p.email2}/>
+            </Sec>
+            <Sec title="📍 Endereço">
+              <Row label="CEP" val={p.cep}/>
+              <Row label="Rua" val={p.rua}/>
+              <Row label="Número" val={p.numero}/>
+              <Row label="Bairro" val={p.bairro}/>
+              <Row label="Cidade" val={p.cidade}/>
+              <Row label="UF" val={p.ufEnd}/>
+              <Row label="Complemento" val={p.complemento}/>
+            </Sec>
+            <Sec title="💰 Proposta">
+              <Row label="Tipo" val={p.tipo||p.produto}/>
+              <Row label="Banco Proposta" val={p.bancoProposta}/>
+              <Row label="Tabela" val={p.tabela}/>
+              <Row label="Anos Antecipação" val={p.anosAntecipacao}/>
+              <Row label="Com Seguro" val={p.comSeguro}/>
+              <Row label="Valor Liberado" val={p.valorLiberado}/>
+              <Row label="Valor Prometido" val={p.valorPrometido}/>
+              <Row label="Valor Desconto" val={p.valorDesconto}/>
+              <Row label="Parcelas" val={p.parcelas}/>
+              <Row label="Prazo" val={p.prazo}/>
+              <Row label="Matrícula" val={p.matricula}/>
+              <Row label="Empresa" val={p.empresa}/>
+              <Row label="CNPJ" val={p.cnpj}/>
+              <Row label="Nº Benefício" val={p.numBeneficio}/>
+              <Row label="Nº Matrícula" val={p.numMatricula}/>
+              <Row label="Margem" val={p.margem}/>
+              <Row label="Averbador" val={p.averbador}/>
+              <Row label="Protocolo" val={p.protocolo}/>
+            </Sec>
+            <Sec title="🏦 Dados Bancários">
+              <Row label="Banco" val={p.bancoPagto}/>
+              <Row label="Agência" val={p.agencia}/>
+              <Row label="Conta c/ Dígito" val={p.contaDigito}/>
+              <Row label="Tipo de Conta" val={p.tipoConta}/>
+              <Row label="PIX 1" val={p.pix1}/>
+              <Row label="PIX 2" val={p.pix2}/>
+            </Sec>
+            <Sec title="📝 Observação">
+              <Row label="Obs" val={p.observacao}/>
+            </Sec>
+          </div>
+          {/* Documentos */}
+          {(p.docFiles||[]).length>0&&(
+            <Sec title="📎 Documentos">
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {p.docFiles.map((f,i)=>(
+                  <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
+                    {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
+                  </span>
+                ))}
+              </div>
+            </Sec>
+          )}
+          {/* Representante (cartão) */}
+          {p.nomeRep&&(
+            <Sec title="👥 Representante">
+              <Row label="Nome" val={p.nomeRep}/>
+              <Row label="CPF" val={p.cpfRep}/>
+              <Row label="Tel 1" val={p.contato1Rep}/>
+              <Row label="Tel 2" val={p.contato2Rep}/>
+              <Row label="Email" val={p.email1Rep}/>
+            </Sec>
+          )}
+          <MensagemProposta proposta={p}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PropostasPage({ currentUser }) {
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13403,7 +13663,7 @@ function PropostasPage({ currentUser }) {
 
       {/* Abas */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[{id:"lista",label:"📋 Propostas"},{id:"dashboard",label:"📊 Dashboard"}].map(t=>(
+        {[{id:"lista",label:"📋 Propostas"},{id:"relatorio",label:"📊 Relatório Mensal"}].map(t=>(
           <button key={t.id} onClick={()=>setAbaProp(t.id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
               fontWeight:abaProp===t.id?700:400,color:abaProp===t.id?C.atxt:C.tm,
@@ -13413,38 +13673,9 @@ function PropostasPage({ currentUser }) {
         ))}
       </div>
 
-      {/* Dashboard */}
-      {abaProp==="dashboard" && (
-        <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
-            {[
-              {label:"Concluídas",val:concluidas.length,color:"#34D399",icon:"✅"},
-              {label:"Pendentes",val:pendentes.length,color:"#FBBF24",icon:"⏳"},
-              {label:"Canceladas",val:canceladas.length,color:"#EF4444",icon:"❌"},
-              {label:"Total Liberado",val:fmtBRL(totalValor),color:C.atxt,icon:"💰",big:true},
-            ].map((m,i)=>(
-              <div key={i} style={{...S.card,padding:"20px",textAlign:"center",border:`1px solid ${m.color}33`}}>
-                <div style={{fontSize:28,marginBottom:8}}>{m.icon}</div>
-                <div style={{color:m.color,fontSize:m.big?16:28,fontWeight:800,letterSpacing:m.big?"-0.5px":"-1px",marginBottom:4}}>{m.val}</div>
-                <div style={{color:C.td,fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px"}}>{m.label}</div>
-              </div>
-            ))}
-          </div>
-          {/* Lista concluídas */}
-          <div style={{...S.card,padding:"20px"}}>
-            <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>✅ Propostas Concluídas</div>
-            {concluidas.length===0&&<div style={{color:C.td,fontSize:12}}>Nenhuma proposta concluída ainda.</div>}
-            {concluidas.map(p=>(
-              <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.b1}`}}>
-                <div>
-                  <div style={{color:C.tp,fontSize:13,fontWeight:600}}>{p.nome}</div>
-                  <div style={{color:C.td,fontSize:11}}>CPF: {p.cpf} · {p.tipo||p.produto}</div>
-                </div>
-                <div style={{color:"#34D399",fontWeight:700,fontSize:14}}>{fmtBRL(parseFloat((p.valorSolicitado||"0").replace(/\./g,"").replace(",","."))||0)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Relatório Mensal + Anual */}
+      {abaProp==="relatorio" && (
+        <RelatorioProposta propostas={propostas} canSeeAll={canSeeAll} myId={myId} />
       )}
 
       {/* Lista de Propostas */}
@@ -13469,43 +13700,9 @@ function PropostasPage({ currentUser }) {
 
           {loading&&<div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>}
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {visible.map(p=>{
-              const st = p.status||"Proposta Digitada";
-              const col = STATUS_PROPOSTA_COLORS[st]||C.td;
-              const isNew = !p.viewedBy?.includes(myId);
-              return (
-                <div key={p.id} style={{...S.card,padding:"16px 20px",border:`1px solid ${isNew?"#EF444466":col+"33"}`,boxShadow:isNew?`0 0 14px #EF444422`:"none"}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:14,flexWrap:"wrap"}}>
-                    <div style={{flex:1,minWidth:200}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                        {isNew&&<span style={{width:8,height:8,borderRadius:"50%",background:"#EF4444",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
-                        <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
-                        <span style={{background:col+"22",color:col,fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:700,border:`1px solid ${col}33`}}>{st}</span>
-                      </div>
-                      <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf} · {p.tipo||p.produto} · R$ {p.valorSolicitado||"—"}</div>
-                      <div style={{color:C.td,fontSize:11,marginTop:2}}>Por: {p.criadoPorNome} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
-                    </div>
-                    {canSeeAll&&(
-                      <button onClick={()=>setModalProp(p)}
-                        style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:9,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
-                        ✏ Atualizar
-                      </button>
-                    )}
-                  </div>
-                  {/* Mensagem para o digitador (quem criou a proposta) */}
-                  <MensagemProposta proposta={p} />
-                  {(p.docFiles||[]).length>0&&(
-                    <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.b1}`,display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {p.docFiles.map((f,i)=>(
-                        <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
-                          {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {visible.map(p=>(
+              <PropCard key={p.id} p={p} myId={myId} canSeeAll={canSeeAll} onAtualizar={setModalProp}/>
+            ))}
             {!loading&&visible.length===0&&(
               <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
                 <div style={{fontSize:36,opacity:0.3,marginBottom:10}}>📋</div>
