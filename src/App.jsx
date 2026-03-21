@@ -24,6 +24,65 @@ import {
   saveCalendarNote,
   deleteCalendarNote,
 } from "./firebase";
+import { uploadArquivo } from "./firebase";
+
+// ── Compressão de imagem via Canvas (máx 1200px, qualidade 80%) ─
+async function comprimirImagem(base64, maxW=1200, quality=0.8) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      res(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => res(base64); // fallback sem compressão
+    img.src = base64;
+  });
+}
+
+// ── Upload para Cloudinary (gratuito, 25 GB) ──────────────────────
+const CLOUDINARY_CLOUD = "nexpcompany"; // ← troque pelo seu cloud name
+const CLOUDINARY_PRESET = "nexp_docs";  // ← troque pelo seu upload preset
+
+async function uploadCloudinary(base64, fileName) {
+  const formData = new FormData();
+  formData.append("file", base64);
+  formData.append("upload_preset", CLOUDINARY_PRESET);
+  formData.append("folder", "nexp_propostas");
+  formData.append("public_id", `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g,"_")}`);
+  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, {
+    method: "POST", body: formData,
+  });
+  if (!r.ok) throw new Error("Cloudinary " + r.status);
+  const d = await r.json();
+  return d.secure_url;
+}
+
+// ── Upload inteligente: Cloudinary primeiro, Firebase como fallback ─
+async function uploadArquivoOtimizado(base64, fileName, tipo, propId) {
+  // 1. Comprimir se for imagem
+  let dadoFinal = base64;
+  if (tipo?.startsWith("image/")) {
+    dadoFinal = await comprimirImagem(base64);
+  }
+  // 2. Tentar Cloudinary primeiro
+  try {
+    const url = await uploadCloudinary(dadoFinal, fileName);
+    return { url, source: "cloudinary" };
+  } catch {}
+  // 3. Fallback: Firebase Storage
+  try {
+    const path = `propostas/${propId}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
+    const url = await uploadArquivo(dadoFinal, path);
+    return { url, source: "firebase", path };
+  } catch {}
+  // 4. Último fallback: base64 em memória (sem storage externo)
+  return { url: dadoFinal, source: "local" };
+}
 
 // ── Constants ──────────────────────────────────────────────────
 const LEAD_TYPES = [
@@ -12448,6 +12507,157 @@ function RelatorioDigitacao({ myId }) {
   );
 }
 
+// ── Minhas Digitações — aba do digitador ───────────────────────
+function MinhasDigitacoes({ minhasPropostas, myId }) {
+  const [modalDev, setModalDev] = useState(null); // proposta para devolução de pgto
+  const [saving, setSaving] = useState(false);
+  // Campos de devolução
+  const [devBanco,  setDevBanco]  = useState("");
+  const [devAg,     setDevAg]     = useState("");
+  const [devConta,  setDevConta]  = useState("");
+  const [devTipo,   setDevTipo]   = useState("corrente");
+  const [devPix1,   setDevPix1]   = useState("");
+  const [devPix2,   setDevPix2]   = useState("");
+  const [devObs,    setDevObs]    = useState("");
+
+  const abrirDev = (p) => {
+    setModalDev(p);
+    setDevBanco(p.bancoPendente||""); setDevAg(p.agenciaPendente||"");
+    setDevConta(p.contaPendente||""); setDevTipo(p.tipoContaPendente||"corrente");
+    setDevPix1(p.pix1Pendente||""); setDevPix2(p.pix2Pendente||"");
+    setDevObs(p.obsPendente||"");
+  };
+
+  const enviarDevolucao = async () => {
+    if (!devBanco||!devAg||!devConta) { alert("Preencha banco, agência e conta."); return; }
+    setSaving(true);
+    await setDoc(doc(db,"propostas",modalDev.id),{
+      status:"Análise Manual",
+      bancoPendente:devBanco, agenciaPendente:devAg, contaPendente:devConta,
+      tipoContaPendente:devTipo, pix1Pendente:devPix1, pix2Pendente:devPix2,
+      obsPendente:devObs,
+      hasNewInteraction:true, viewedByDigitador:[myId],
+      respostaDevAt:Date.now(),
+    },{merge:true});
+    setSaving(false);
+    setModalDev(null);
+  };
+
+  const confirmarFormalizacao = async (propId) => {
+    await setDoc(doc(db,"propostas",propId),{
+      status:"Aguardando Checagem de Formalização",
+      hasNewInteraction:true, viewedByDigitador:[myId],
+      formalizadoAt:Date.now(),
+    },{merge:true});
+  };
+
+  const marcarVisto = async (p) => {
+    if (p.hasNewInteraction && !(p.viewedByDigitador||[]).includes(myId)) {
+      await setDoc(doc(db,"propostas",p.id),{viewedByDigitador:[...(p.viewedByDigitador||[]),myId]},{merge:true});
+    }
+  };
+
+  const inp = (label,val,set,ph="") => (
+    <div style={{marginBottom:8}}>
+      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:3}}>{label}</label>
+      <input value={val} onChange={e=>set(e.target.value)} placeholder={ph} style={{...S.input,fontSize:12}}/>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Modal devolução de pagamento */}
+      {modalDev && (
+        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn 0.2s ease"}}
+          onClick={()=>setModalDev(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:460,width:"92%",maxHeight:"88vh",overflowY:"auto",border:`1px solid #F87171`,boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{color:"#F87171",fontSize:14,fontWeight:800}}>🔴 Responder Devolução — {modalDev.nome}</div>
+              <button onClick={()=>setModalDev(null)} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
+            </div>
+            <div style={{color:C.td,fontSize:11.5,marginBottom:14,lineHeight:1.7}}>
+              Preencha os dados bancários corretos para reapresentação da proposta.
+            </div>
+            {inp("Banco",devBanco,setDevBanco,"Ex: Banco do Brasil")}
+            {inp("Agência",devAg,setDevAg,"Ex: 0001")}
+            {inp("Conta com dígito",devConta,setDevConta,"Ex: 12345-6")}
+            <div style={{marginBottom:8}}>
+              <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:3}}>Tipo de Conta</label>
+              <select value={devTipo} onChange={e=>setDevTipo(e.target.value)} style={{...S.input,fontSize:12,cursor:"pointer"}}>
+                <option value="corrente">Corrente</option>
+                <option value="poupanca">Poupança</option>
+              </select>
+            </div>
+            {inp("1ª Chave PIX",devPix1,setDevPix1,"CPF, email, telefone...")}
+            {inp("2ª Chave PIX",devPix2,setDevPix2,"Opcional")}
+            {inp("Observação",devObs,setDevObs,"Informações adicionais")}
+            <button onClick={enviarDevolucao} disabled={saving}
+              style={{background:"linear-gradient(135deg,#F87171,#EF4444)",color:"#fff",border:"none",borderRadius:9,padding:"11px 0",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
+              {saving?"⏳ Enviando...":"✅ Confirmar Dados Bancários"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <p style={{color:C.tm,fontSize:12.5,marginBottom:16}}>Acompanhe todas as suas propostas. Novidades são destacadas automaticamente.</p>
+
+      {minhasPropostas.length===0&&(
+        <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
+          <div style={{fontSize:36,opacity:0.3,marginBottom:10}}>📝</div>
+          <div style={{fontSize:14,fontWeight:600}}>Nenhuma digitação enviada ainda</div>
+        </div>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {minhasPropostas.map(p=>{
+          const st = p.status||"Aguardando Digitação";
+          const col = STATUS_PROPOSTA_COLORS[st]||C.td;
+          const temNova = p.hasNewInteraction && !(p.viewedByDigitador||[]).includes(myId);
+          const isPendente = st === "Pendente"; // devolução de pgto
+          const isAguardForm = st === "Aguardando Formalização"; // mostrar botão "Cliente Formalizado"
+
+          return (
+            <div key={p.id}
+              onClick={()=>marcarVisto(p)}
+              style={{...S.card,padding:"16px 20px",border:`1px solid ${temNova?"#34D39966":col+"33"}`,boxShadow:temNova?`0 0 16px #34D39922`:"none",cursor:temNova?"pointer":"default",transition:"border 0.2s"}}>
+
+              {/* Cabeçalho */}
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                {temNova&&<span style={{width:9,height:9,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
+                <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
+                <span style={{background:col+"22",color:col,fontSize:10.5,padding:"3px 10px",borderRadius:20,fontWeight:700,border:`1px solid ${col}44`}}>{st}</span>
+                {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #34D39933"}}>🔔 Atualizado</span>}
+                <span style={{color:C.td,fontSize:11,marginLeft:"auto"}}>{p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</span>
+              </div>
+
+              <div style={{color:C.tm,fontSize:11.5,marginBottom:10}}>CPF: {p.cpf||"—"} · {p.tipo||p.produto||"—"} · Por: {p.criadoPorNome||"—"}</div>
+
+              {/* Mensagem de status */}
+              <MensagemProposta proposta={p}/>
+
+              {/* Botão: Responder devolução de pagamento */}
+              {isPendente && (
+                <button onClick={()=>abrirDev(p)}
+                  style={{background:"linear-gradient(135deg,#F87171,#EF4444)",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",fontSize:12.5,fontWeight:700,cursor:"pointer",marginTop:12,display:"flex",alignItems:"center",gap:8}}>
+                  🔴 Responder Devolução de Pagamento
+                </button>
+              )}
+
+              {/* Botão: Cliente Formalizado (só aparece quando status = Aguardando Formalização e tem link) */}
+              {isAguardForm && p.linkFormalizacao && (
+                <button onClick={()=>confirmarFormalizacao(p.id)}
+                  style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",fontSize:12.5,fontWeight:700,cursor:"pointer",marginTop:12,display:"flex",alignItems:"center",gap:8}}>
+                  ✅ Cliente Formalizado — Confirmar
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DigitacaoPage({ contacts, currentUser }) {
   const EMAILJS_SVC = "nexp_service";
   const EMAILJS_KEY = "GaZRJdTXt0UMdEY3H";
@@ -12556,7 +12766,14 @@ function DigitacaoPage({ contacts, currentUser }) {
     const files = Array.from(e.target.files);
     const readers = files.map(f => new Promise(res => {
       const r = new FileReader();
-      r.onload = () => res({ name:f.name, type:f.type, data:r.result });
+      r.onload = async () => {
+        let data = r.result;
+        // Comprimir imagens já na seleção para preview mais leve
+        if (f.type?.startsWith("image/")) {
+          data = await comprimirImagem(r.result, 1200, 0.82);
+        }
+        res({ name: f.name, type: f.type, data, originalType: f.type });
+      };
       r.readAsDataURL(f);
     }));
     Promise.all(readers).then(arr => setF("docFiles", [...form.docFiles, ...arr]));
@@ -12578,7 +12795,21 @@ function DigitacaoPage({ contacts, currentUser }) {
     try {
       const propId = "prop_" + Date.now();
 
-      // Montar corpo do email legível
+      // ── Upload otimizado: comprime imagens + Cloudinary + fallback Firebase ──
+      setMsg("⏳ Comprimindo e enviando arquivos...");
+      const docFilesUpload = [];
+      for (const f of form.docFiles) {
+        const result = await uploadArquivoOtimizado(f.data, f.name, f.type, propId);
+        docFilesUpload.push({
+          name: f.name,
+          type: f.type,
+          url: result.url,
+          source: result.source,
+          path: result.path || "",
+        });
+      }
+      const sourceInfo = docFilesUpload.map(f=>f.source).join(", ");
+      setMsg(`⏳ Arquivos enviados (${sourceInfo}) — salvando proposta...`);
       const linhas = [
         `━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `📝 NOVA PROPOSTA — ${tipoProposta}`,
@@ -12680,10 +12911,10 @@ function DigitacaoPage({ contacts, currentUser }) {
 
       await setDoc(doc(db,"propostas",propId), {
         id:propId, tipo:tipoProposta, ...form,
-        docFiles: form.docFiles.map(f=>({name:f.name,type:f.type})),
+        docFiles: docFilesUpload.map(f=>({name:f.name, type:f.type, url:f.url, path:f.path})),
         criadoPor: currentUser.uid||currentUser.id,
         criadoPorNome: currentUser.name||currentUser.email,
-        status:"Proposta Digitada", createdAt:Date.now(),
+        status:"Aguardando Digitação", createdAt:Date.now(),
       });
 
       await fetch("https://api.emailjs.com/api/v1.0/email/send",{
@@ -12736,46 +12967,7 @@ function DigitacaoPage({ contacts, currentUser }) {
 
       {/* Aba Minhas Propostas */}
       {abaDigitacao==="minhas" && (
-        <div>
-          <p style={{color:C.tm,fontSize:12.5,marginBottom:16}}>Acompanhe todas as suas propostas enviadas</p>
-          {minhasPropostas.length===0&&(
-            <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
-              <div style={{fontSize:36,opacity:0.3,marginBottom:10}}>📋</div>
-              <div style={{fontSize:14,fontWeight:600}}>Nenhuma proposta enviada ainda</div>
-            </div>
-          )}
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {minhasPropostas.map(p=>{
-              const st = p.status||"Proposta Digitada";
-              const col = STATUS_PROPOSTA_COLORS[st]||C.td;
-              const temNova = p.hasNewInteraction && !(p.viewedByDigitador||[]).includes(myId);
-              return (
-                <div key={p.id} style={{...S.card,padding:"16px 20px",border:`1px solid ${temNova?"#34D39966":col+"33"}`,boxShadow:temNova?`0 0 14px #34D39922`:"none"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                    <div style={{flex:1,minWidth:180}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                        {temNova&&<span style={{width:8,height:8,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
-                        <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
-                        <span style={{background:col+"22",color:col,fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:700,border:`1px solid ${col}33`}}>{st}</span>
-                        {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700}}>✓ Atualizado</span>}
-                      </div>
-                      <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf} · {p.tipo||p.produto}</div>
-                      <div style={{color:C.td,fontSize:11,marginTop:2}}>{p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:3,minWidth:160}}>
-                      {STATUS_PROPOSTA.map(s=>(
-                        <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 8px",borderRadius:7,background:st===s?(STATUS_PROPOSTA_COLORS[s]||C.acc)+"18":C.deep,border:`1px solid ${st===s?(STATUS_PROPOSTA_COLORS[s]||C.atxt)+"33":C.b1}`}}>
-                          <span style={{width:6,height:6,borderRadius:"50%",background:st===s?(STATUS_PROPOSTA_COLORS[s]||C.atxt):C.td,flexShrink:0}}/>
-                          <span style={{color:st===s?(STATUS_PROPOSTA_COLORS[s]||C.atxt):C.td,fontSize:10.5,fontWeight:st===s?700:400}}>{s}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <MinhasDigitacoes minhasPropostas={minhasPropostas} myId={myId} />
       )}
 
       {/* Aba Nova Digitação */}
@@ -13062,8 +13254,13 @@ function DigitacaoPage({ contacts, currentUser }) {
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {form.docFiles.map((f,i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:C.deep,borderRadius:8,padding:"6px 12px",border:`1px solid ${C.b1}`}}>
-                <span style={{fontSize:15}}>{f.type?.startsWith("image/")?"🖼":"📄"}</span>
+                {f.type?.startsWith("image/") && f.data ? (
+                  <img src={f.data} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:5,flexShrink:0}}/>
+                ) : (
+                  <span style={{fontSize:18,flexShrink:0}}>📄</span>
+                )}
                 <span style={{flex:1,color:C.ts,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                <span style={{color:C.td,fontSize:10,flexShrink:0}}>{(f.data?.length/1.37/1024).toFixed(0)} KB</span>
                 <button onClick={()=>removeFile(i)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,flexShrink:0}}>✕</button>
               </div>
             ))}
@@ -13094,21 +13291,37 @@ function DigitacaoPage({ contacts, currentUser }) {
 
 // ── Status e cores de proposta ─────────────────────────────────
 const STATUS_PROPOSTA = [
+  "Aguardando Digitação",
   "Proposta Digitada",
   "Aguardando Formalização",
+  "Cliente Formalizado",
+  "Aguardando Checagem de Formalização",
   "Pendente",
+  "Análise Manual",
   "Pago Aguardando Confirmação",
   "Proposta Concluída",
   "Cancelada",
 ];
 const STATUS_PROPOSTA_COLORS = {
-  "Proposta Digitada":           "#60A5FA",
-  "Aguardando Formalização":     "#FBBF24",
-  "Pendente":                    "#F87171",
-  "Pago Aguardando Confirmação": "#C084FC",
-  "Proposta Concluída":          "#34D399",
-  "Cancelada":                   "#EF4444",
+  "Aguardando Digitação":              "#94A3B8",
+  "Proposta Digitada":                 "#60A5FA",
+  "Aguardando Formalização":           "#FBBF24",
+  "Cliente Formalizado":               "#34D399",
+  "Aguardando Checagem de Formalização":"#A78BFA",
+  "Pendente":                          "#F87171",
+  "Análise Manual":                    "#FB923C",
+  "Pago Aguardando Confirmação":       "#C084FC",
+  "Proposta Concluída":                "#34D399",
+  "Cancelada":                         "#EF4444",
 };
+// Status que o digitador (quem criou) pode alterar
+const STATUS_DIGITADOR_PODE_ALTERAR = ["Análise Manual"];
+// Status visíveis apenas para propostas (mestre/master/digitador)
+const STATUS_APENAS_PROPOSTA = [
+  "Aguardando Digitação","Proposta Digitada","Aguardando Formalização",
+  "Pendente","Pago Aguardando Confirmação","Proposta Concluída","Cancelada",
+  "Aguardando Checagem de Formalização",
+];
 
 // ── Mensagem que o digitador vê em Minhas Propostas ─────────────
 function MensagemProposta({ proposta }) {
@@ -13174,19 +13387,7 @@ function MensagemProposta({ proposta }) {
   );
 
   if (st === "Pago Aguardando Confirmação") return (
-    <div style={{background:"#0D0A1A",borderRadius:10,padding:"12px 16px",border:"1px solid #C084FC44",marginTop:10}}>
-      <div style={{color:"#C084FC",fontWeight:800,fontSize:14,marginBottom:6}}>✅ PROPOSTA PAGA COM SUCESSO</div>
-      <div style={{color:"#34D399",fontWeight:700,fontSize:13,marginBottom:8}}>🏆 PARABÉNS PELA VENDA!</div>
-      <div style={{color:C.ts,fontSize:12,lineHeight:1.8}}>
-        Confirme com seu cliente se o mesmo recebeu o valor.<br/>
-        Tire um print de evidência e anexe para que possamos finalizar sua proposta!
-      </div>
-      {!(proposta.evidenciaConfirmacao?.length>0) && (
-        <div style={{background:"#1A1000",borderRadius:8,padding:"8px 12px",marginTop:8,color:"#FBBF24",fontSize:11.5,fontWeight:600}}>
-          ⏳ PENDENTE DE EVIDÊNCIA DE PAGAMENTO — Anexe o print de confirmação
-        </div>
-      )}
-    </div>
+    <PagoBlock proposta={proposta}/>
   );
 
   if (st === "Proposta Concluída") return (
@@ -13198,6 +13399,80 @@ function MensagemProposta({ proposta }) {
   );
 
   return null;
+}
+
+// ── Bloco de pagamento com upload de evidência ──────────────────
+function PagoBlock({ proposta }) {
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const evFileRef = useRef();
+
+  const handleEvidencia = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setUploading(true); setMsg("");
+    try {
+      const uploads = [];
+      for (const f of files) {
+        const data = await new Promise(res => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.readAsDataURL(f);
+        });
+        const result = await uploadArquivoOtimizado(data, f.name, f.type, proposta.id);
+        uploads.push({ name: f.name, type: f.type, url: result.url, source: result.source });
+      }
+      const prev = proposta.evidenciaConfirmacao || [];
+      await setDoc(doc(db,"propostas",proposta.id), {
+        evidenciaConfirmacao: [...prev, ...uploads],
+        hasNewInteraction: true,
+        viewedByDigitador: [],
+      }, {merge:true});
+      setMsg("✅ Evidências enviadas com sucesso!");
+    } catch (err) {
+      setMsg("❌ Erro ao enviar: " + err.message);
+    }
+    setUploading(false);
+  };
+
+  const evidencias = proposta.evidenciaConfirmacao || [];
+
+  return (
+    <div style={{background:"#0D0A1A",borderRadius:10,padding:"12px 16px",border:"1px solid #C084FC44",marginTop:10}}>
+      <div style={{color:"#C084FC",fontWeight:800,fontSize:14,marginBottom:6}}>✅ PROPOSTA PAGA COM SUCESSO</div>
+      <div style={{color:"#34D399",fontWeight:700,fontSize:13,marginBottom:8}}>🏆 PARABÉNS PELA VENDA!</div>
+      <div style={{color:C.ts,fontSize:12,lineHeight:1.8,marginBottom:10}}>
+        Confirme com seu cliente se o mesmo recebeu o valor.<br/>
+        Tire um print de evidência e anexe para que possamos finalizar sua proposta!
+      </div>
+
+      {/* Evidências já enviadas */}
+      {evidencias.length > 0 && (
+        <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:10}}>
+          {evidencias.map((ev,i) => (
+            <a key={i} href={ev.url} target="_blank" rel="noopener noreferrer"
+              style={{background:"#0D2037",color:"#34D399",fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid #34D39933",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+              {ev.type?.startsWith("image/")?"🖼":"📄"} {ev.name} ↗
+            </a>
+          ))}
+        </div>
+      )}
+
+      {msg && <div style={{color:msg.startsWith("✅")?"#34D399":"#F87171",fontSize:11.5,marginBottom:8,fontWeight:600}}>{msg}</div>}
+
+      {evidencias.length === 0 && (
+        <div style={{background:"#1A1000",borderRadius:8,padding:"8px 12px",marginBottom:10,color:"#FBBF24",fontSize:11.5,fontWeight:600}}>
+          ⏳ PENDENTE DE EVIDÊNCIA DE PAGAMENTO — Anexe o print de confirmação abaixo
+        </div>
+      )}
+
+      <input ref={evFileRef} type="file" multiple accept="image/*,.pdf" onChange={handleEvidencia} style={{display:"none"}}/>
+      <button onClick={()=>evFileRef.current?.click()} disabled={uploading}
+        style={{background:uploading?"#333":"linear-gradient(135deg,#C084FC,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:uploading?"not-allowed":"pointer",opacity:uploading?0.7:1}}>
+        {uploading?"⏳ Enviando...":"📎 Anexar Print de Confirmação"}
+      </button>
+    </div>
+  );
 }
 
 // ── Modal de ação do digitador ─────────────────────────────────
@@ -13234,7 +13509,12 @@ function ModalAcaoProposta({ proposta, onClose, onSave }) {
     const data = { status: novoStatus, hasNewInteraction:true, viewedByDigitador:[] };
     if (novoStatus==="Aguardando Formalização") data.linkFormalizacao = link;
     if (novoStatus==="Cancelada") { data.motivoCancelamento=motivo; data.solucaoCancelamento=solucao; data.obsCancelamento=obs; }
-    if (novoStatus==="Pendente") { data.bancoPendente=banco; data.agenciaPendente=agencia; data.contaPendente=conta; data.tipoContaPendente=tipoConta; data.pix1Pendente=pix1; data.pix2Pendente=pix2; data.obsPendente=obsPend; }
+    if (novoStatus==="Pendente") {
+      // Devolução de pagamento — preencher campos para o digitador responder
+      data.bancoPendente=banco; data.agenciaPendente=agencia; data.contaPendente=conta;
+      data.tipoContaPendente=tipoConta; data.pix1Pendente=pix1; data.pix2Pendente=pix2; data.obsPendente=obsPend;
+    }
+    if (novoStatus==="Pago Aguardando Confirmação") data.pagoAt = Date.now();
     await onSave(proposta.id, data);
     setSaving(false);
     onClose();
@@ -13458,7 +13738,19 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
           <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf||"—"} · {p.contato1||p.telefone||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
           <div style={{color:C.td,fontSize:11,marginTop:1}}>Por: {p.criadoPorNome||"—"}</div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {/* Botão Cliente Formalizado — aparece em Propostas quando status=Aguardando Formalização e há link */}
+          {st==="Aguardando Formalização" && p.linkFormalizacao && (
+            <button onClick={async e=>{
+              e.stopPropagation();
+              await setDoc(doc(db,"propostas",p.id),{
+                status:"Aguardando Checagem de Formalização",
+                hasNewInteraction:true, viewedByDigitador:[], formalizadoAt:Date.now(),
+              },{merge:true});
+            }} style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+              ✅ Cliente Formalizado
+            </button>
+          )}
           <button onClick={()=>setOpen(o=>!o)}
             style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>
             {open?"▲ Fechar":"▼ Ver dados"}
@@ -13538,11 +13830,18 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
           {/* Documentos */}
           {(p.docFiles||[]).length>0&&(
             <Sec title="📎 Documentos">
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 {p.docFiles.map((f,i)=>(
-                  <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
-                    {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
-                  </span>
+                  f.url ? (
+                    <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                      style={{background:C.abg,color:C.atxt,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                      {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
+                    </a>
+                  ) : (
+                    <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
+                      {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
+                    </span>
+                  )
                 ))}
               </div>
             </Sec>
