@@ -26,6 +26,24 @@ import {
 } from "./firebase";
 import { uploadArquivo } from "./firebase";
 
+// ── Download forçado via fetch+blob (resolve CORS do Firebase Storage) ──
+async function forcarDownload(url, nome) {
+  try {
+    const resp = await fetch(url, { mode: "cors" });
+    if (!resp.ok) throw new Error("fetch falhou");
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = nome || "arquivo";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); document.body.removeChild(a); }, 2000);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
 // ── Compressão de imagem via Canvas (máx 1200px, qualidade 82%) ──
 async function comprimirImagem(base64, maxW=1200, quality=0.82) {
   return new Promise((res) => {
@@ -12648,11 +12666,11 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                           style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:"8px 0 0 8px",border:`1px solid ${C.atxt}33`,borderRight:"none",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
                           {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
                         </a>
-                        <a href={f.url} download={f.name}
+                        <button onClick={()=>forcarDownload(f.url,f.name)}
                           title="Baixar arquivo"
-                          style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"6px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",cursor:"pointer",fontWeight:800}}>
+                          style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"6px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center"}}>
                           ⬇
-                        </a>
+                        </button>
                       </div>
                     ) : (
                       <span key={i} style={{background:C.deep,color:C.td,fontSize:11,padding:"5px 10px",borderRadius:7,border:`1px solid ${C.b1}`}}>
@@ -14024,12 +14042,11 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
                         style={{background:C.abg,color:C.atxt,fontSize:11,padding:"5px 12px",borderRadius:"8px 0 0 8px",border:`1px solid ${C.atxt}33`,borderRight:"none",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
                         {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
                       </a>
-                      <a href={f.url} download={f.name}
-                        onClick={e=>e.stopPropagation()}
+                      <button onClick={e=>{e.stopPropagation();forcarDownload(f.url,f.name);}}
                         title="Baixar arquivo"
-                        style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"5px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",cursor:"pointer",fontWeight:800}}>
+                        style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"5px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center"}}>
                         ⬇
-                      </a>
+                      </button>
                     </div>
                   ) : (
                     <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
