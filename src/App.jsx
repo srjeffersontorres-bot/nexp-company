@@ -12532,9 +12532,62 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
   const [modalDev, setModalDev] = useState(null);
   const [modalVer, setModalVer] = useState(null);    // visualizar proposta
   const [modalEdit, setModalEdit] = useState(null);  // editar proposta
+  const [modalDoc, setModalDoc] = useState(null);    // pendente de documentação
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editMsg, setEditMsg] = useState("");
+
+  // Novos documentos para pendente de documentação
+  const docFileRef = useRef(null);
+  const [novoDocTipo, setNovoDocTipo] = useState("CNH");
+  const [novoDocCategoria, setNovoDocCategoria] = useState("Documentação");
+  const [novosArquivos, setNovosArquivos] = useState([]);
+  const [docMsg, setDocMsg] = useState("");
+
+  const handleNovosArquivos = (e) => {
+    const files = Array.from(e.target.files);
+    const readers = files.map(f => new Promise(res => {
+      const r = new FileReader();
+      r.onload = ev => res({ name:f.name, type:f.type, data:ev.target.result, size:f.size });
+      r.readAsDataURL(f);
+    }));
+    Promise.all(readers).then(arr => setNovosArquivos(prev=>[...prev,...arr]));
+  };
+
+  const enviarNovosDocumentos = async () => {
+    if (novosArquivos.length===0) { setDocMsg("❌ Anexe ao menos um arquivo."); return; }
+    setSaving(true);
+    setDocMsg("⏳ Enviando arquivos...");
+    try {
+      const uploads = [];
+      for (const f of novosArquivos) {
+        const res = await uploadArquivoOtimizado(f.data, f.name, f.type, modalDoc.id);
+        uploads.push({ name:f.name, type:f.type, url:res.url, source:res.source, path:res.path||"", docTipo:novoDocTipo, docCategoria:novoDocCategoria });
+      }
+      const docFilesAtuais = (modalDoc.docFiles||[]).map(f=>({name:f.name,type:f.type,url:f.url||"",source:f.source||"",path:f.path||""}));
+      await setDoc(doc(db,"propostas",modalDoc.id),{
+        docFiles: [...docFilesAtuais, ...uploads],
+        pendenteDocumentacao: false,
+        hasNewInteraction: true,
+        viewedBy: [],
+        viewedByDigitador: [myId],
+        docEnviadoAt: Date.now(),
+      },{merge:true});
+      await setDoc(doc(db,"notifications","docenv_"+modalDoc.id+"_"+Date.now()),{
+        toRole: ["mestre","master"],
+        type: "documentos_enviados",
+        text: `📎 Documentos enviados — ${modalDoc.nome} (${modalDoc.cpf})`,
+        propostaId: modalDoc.id,
+        createdAt: Date.now(),
+        broadcast: true,
+        viewedBy: [],
+      });
+      setDocMsg("✅ Documentos enviados com sucesso!");
+      setNovosArquivos([]);
+      setTimeout(()=>setModalDoc(null),1500);
+    } catch(e) { setDocMsg("❌ Erro: "+e.message); }
+    setSaving(false);
+  };
 
   // Devolução
   const [devBanco, setDevBanco] = useState("");
@@ -12724,6 +12777,78 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
         </div>
       )}
 
+      {/* Modal Pendente de Documentação */}
+      {modalDoc && (
+        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setModalDoc(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:520,width:"94%",maxHeight:"90vh",overflowY:"auto",border:"2px solid #818CF8",boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{color:"#818CF8",fontSize:15,fontWeight:800}}>📎 Enviar Documentação — {modalDoc.nome}</div>
+              <button onClick={()=>setModalDoc(null)} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
+            </div>
+            <div style={{background:"#818CF811",border:"1px solid #818CF833",borderRadius:10,padding:"10px 14px",marginBottom:14,color:"#818CF8",fontSize:12}}>
+              📋 O mestre solicitou que você envie documentação adicional para esta proposta.
+            </div>
+            {docMsg&&<div style={{color:docMsg.startsWith("✅")?"#34D399":docMsg.startsWith("⏳")?"#FBBF24":"#F87171",fontSize:12,marginBottom:10,fontWeight:600}}>{docMsg}</div>}
+
+            {/* Tipo de documento */}
+            <div style={{marginBottom:10}}>
+              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Tipo de Documento</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {["CNH","RG","Carteira de Trabalho","RNE","Comprovante de Residência","Outro"].map(t=>(
+                  <button key={t} onClick={()=>setNovoDocTipo(t)}
+                    style={{background:novoDocTipo===t?"#818CF822":C.deep,color:novoDocTipo===t?"#818CF8":C.tm,
+                      border:`1px solid ${novoDocTipo===t?"#818CF844":C.b2}`,
+                      borderRadius:20,padding:"4px 13px",fontSize:11.5,cursor:"pointer",fontWeight:novoDocTipo===t?700:400}}>
+                    {novoDocTipo===t?"✓ ":""}{t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Categoria */}
+            <div style={{marginBottom:12}}>
+              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Categoria</label>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {["Documentação","Evidências","Outros"].map(cat=>(
+                  <button key={cat} onClick={()=>setNovoDocCategoria(cat)}
+                    style={{background:novoDocCategoria===cat?"#818CF822":C.deep,color:novoDocCategoria===cat?"#818CF8":C.tm,
+                      border:`1px solid ${novoDocCategoria===cat?"#818CF844":C.b2}`,
+                      borderRadius:20,padding:"4px 13px",fontSize:11.5,cursor:"pointer",fontWeight:novoDocCategoria===cat?700:400}}>
+                    {novoDocCategoria===cat?"✓ ":""}{cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Upload */}
+            <input ref={docFileRef} type="file" multiple accept="image/*,.pdf" onChange={handleNovosArquivos} style={{display:"none"}}/>
+            <button onClick={()=>docFileRef.current?.click()}
+              style={{background:"#818CF822",color:"#818CF8",border:"1px solid #818CF844",borderRadius:9,padding:"8px 18px",fontSize:12.5,fontWeight:600,cursor:"pointer",marginBottom:8,width:"100%"}}>
+              📎 Adicionar arquivos
+            </button>
+
+            {/* Lista de arquivos */}
+            {novosArquivos.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+                {novosArquivos.map((f,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:C.deep,borderRadius:8,padding:"6px 12px",border:`1px solid ${C.b1}`}}>
+                    {f.type?.startsWith("image/") ? <img src={f.data} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:5,flexShrink:0}}/> : <span style={{fontSize:18}}>📄</span>}
+                    <span style={{flex:1,color:C.ts,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                    <button onClick={()=>setNovosArquivos(prev=>prev.filter((_,idx)=>idx!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button onClick={enviarNovosDocumentos} disabled={saving||novosArquivos.length===0}
+              style={{background:"linear-gradient(135deg,#818CF8,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontSize:13,fontWeight:800,cursor:saving||novosArquivos.length===0?"not-allowed":"pointer",width:"100%",opacity:saving||novosArquivos.length===0?0.6:1}}>
+              {saving?"⏳ Enviando...":"📤 Enviar Documentos"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal Devolução */}
       {modalDev && (
         <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
@@ -12772,19 +12897,22 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
           const isPendente = st==="Pendente";
           const isAguardForm = st==="Aguardando Formalização";
           const editLiberado = !!p.editPermitido;
+          const pendenteDoc = !!p.pendenteDocumentacao;
 
           return (
             <div key={p.id} onClick={()=>marcarVisto(p)}
-              style={{...S.card,padding:"16px 20px",border:`1px solid ${editLiberado?"#FBBF2466":temNova?"#34D39966":col+"33"}`,boxShadow:editLiberado?`0 0 16px #FBBF2422`:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
+              style={{...S.card,padding:"16px 20px",border:`1px solid ${pendenteDoc?"#818CF866":editLiberado?"#FBBF2466":temNova?"#34D39966":col+"33"}`,boxShadow:pendenteDoc?`0 0 16px #818CF822`:editLiberado?`0 0 16px #FBBF2422`:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
 
               {/* Cabeçalho */}
               <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
                 {temNova&&<span style={{width:9,height:9,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
                 {editLiberado&&<span style={{width:9,height:9,borderRadius:"50%",background:"#FBBF24",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
+                {pendenteDoc&&<span style={{width:9,height:9,borderRadius:"50%",background:"#818CF8",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
                 <span style={{color:C.tp,fontSize:14,fontWeight:700,flex:1}}>{p.nome||"—"}</span>
                 <span style={{background:col+"22",color:col,fontSize:10.5,padding:"3px 10px",borderRadius:20,fontWeight:700,border:`1px solid ${col}44`}}>{st}{p.subStatus?" · "+p.subStatus:""}</span>
                 {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #34D39933"}}>🔔 Atualizado</span>}
                 {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #FBBF2444"}}>🔓 Edição liberada</span>}
+                {pendenteDoc&&<span style={{background:"#818CF822",color:"#818CF8",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #818CF844"}}>📎 Pendente de Documentação</span>}
               </div>
 
               <div style={{color:C.tm,fontSize:11.5,marginBottom:10}}>CPF: {p.cpf||"—"} · {p.tipo||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
@@ -12795,10 +12923,16 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                   style={{background:C.deep,color:C.ts,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                   👁 Visualizar
                 </button>
-                {p.editavel && (
+                {editLiberado && (
                   <button onClick={e=>{e.stopPropagation();abrirEdit(p);}}
-                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF24",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,animation:"pulse 1.5s infinite",boxShadow:"0 0 10px #FBBF2444"}}>
                     ✏️ Editar Proposta
+                  </button>
+                )}
+                {pendenteDoc&&(
+                  <button onClick={e=>{e.stopPropagation();setModalDoc(p);setNovosArquivos([]);setDocMsg("");}}
+                    style={{background:"#0D0D1A",color:"#818CF8",border:"2px solid #818CF8",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,animation:"pulse 1.5s infinite",boxShadow:"0 0 10px #818CF844"}}>
+                    📎 Enviar Documentação
                   </button>
                 )}
                 {isPendente&&(
@@ -13637,7 +13771,7 @@ function PagoBlock({ proposta }) {
 }
 
 // ── Modal de ação do digitador ─────────────────────────────────
-function ModalAcaoProposta({ proposta, onClose, onSave }) {
+function ModalAcaoProposta({ proposta, onClose, onSave, onDelete }) {
   const [novoStatus, setNovoStatus] = useState(proposta.status||"Proposta Digitada");
   const [link, setLink] = useState(proposta.linkFormalizacao||"");
   const [motivo, setMotivo] = useState(proposta.motivoCancelamento||"");
@@ -13773,6 +13907,45 @@ function ModalAcaoProposta({ proposta, onClose, onSave }) {
           style={{background:"#1A1400",color:"#FBBF24",border:"2px solid #FBBF2444",borderRadius:10,
             padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
           🔓 Permitir Edição de Proposta
+        </button>
+
+        {/* Botão Pendente de Documentação */}
+        <button onClick={async()=>{
+          if (!window.confirm(`Solicitar documentação pendente para ${proposta.nome}?`)) return;
+          setSaving(true);
+          await setDoc(doc(db,"propostas",proposta.id),{
+            pendenteDocumentacao: true,
+            hasNewInteraction: true,
+            viewedByDigitador: [],
+          },{merge:true});
+          await setDoc(doc(db,"notifications","pendoc_"+proposta.id+"_"+Date.now()),{
+            toId: proposta.criadoPor,
+            type: "pendente_documentacao",
+            text: `📎 Documentação pendente — envie os documentos da proposta de ${proposta.nome} (${proposta.cpf})`,
+            propostaId: proposta.id,
+            createdAt: Date.now(),
+            readAt: null,
+          });
+          setSaving(false);
+          onClose();
+        }} disabled={saving}
+          style={{background:"#0D0D1A",color:"#818CF8",border:"2px solid #818CF844",borderRadius:10,
+            padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
+          📎 Pendente de Documentação
+        </button>
+
+        {/* Botão Excluir Proposta */}
+        <button onClick={async()=>{
+          if (!window.confirm(`⚠️ Excluir DEFINITIVAMENTE a proposta de ${proposta.nome}?\n\nEsta ação não pode ser desfeita.`)) return;
+          setSaving(true);
+          await deleteDoc(doc(db,"propostas",proposta.id));
+          setSaving(false);
+          onDelete && onDelete(proposta.id);
+          onClose();
+        }} disabled={saving}
+          style={{background:"#1A0000",color:"#EF4444",border:"2px solid #EF444433",borderRadius:10,
+            padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
+          🗑 Excluir Proposta
         </button>
       </div>
     </div>
@@ -14212,6 +14385,7 @@ function PropostasPage({ currentUser }) {
           proposta={modalProp}
           onClose={()=>setModalProp(null)}
           onSave={updateStatus}
+          onDelete={(id)=>setPropostas(prev=>prev.filter(p=>p.id!==id))}
         />
       )}
 
