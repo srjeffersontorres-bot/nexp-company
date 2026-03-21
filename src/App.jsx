@@ -26,24 +26,6 @@ import {
 } from "./firebase";
 import { uploadArquivo } from "./firebase";
 
-// ── Download forçado via fetch+blob (resolve CORS do Firebase Storage) ──
-async function forcarDownload(url, nome) {
-  try {
-    const resp = await fetch(url, { mode: "cors" });
-    if (!resp.ok) throw new Error("fetch falhou");
-    const blob = await resp.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = nome || "arquivo";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(blobUrl); document.body.removeChild(a); }, 2000);
-  } catch {
-    window.open(url, "_blank");
-  }
-}
-
 // ── Compressão de imagem via Canvas (máx 1200px, qualidade 82%) ──
 async function comprimirImagem(base64, maxW=1200, quality=0.82) {
   return new Promise((res) => {
@@ -1597,6 +1579,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["mestre","master"] },
     { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["mestre","master","indicado","digitador"] },
     { id:"propostas",  label:"Propostas",       icon:"📋", roles:["mestre","master","digitador"], badge:"propostas" },
+    { id:"comissoes",  label:"Comissões",        icon:"💰", roles:["mestre","master","indicado","digitador"] },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
@@ -5037,6 +5020,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"config",       label:"Configurações" },
             { id:"digitacao",    label:"Digitação" },
             { id:"propostas",    label:"Propostas" },
+            { id:"comissoes",    label:"Comissões" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
           const filtered = visibleUsers.filter(u => !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase()));
@@ -5224,6 +5208,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             { id:"config",       label:"Configurações" },
             { id:"digitacao",    label:"Digitação" },
             { id:"propostas",    label:"Propostas" },
+            { id:"comissoes",    label:"Comissões" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
 
@@ -12532,62 +12517,9 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
   const [modalDev, setModalDev] = useState(null);
   const [modalVer, setModalVer] = useState(null);    // visualizar proposta
   const [modalEdit, setModalEdit] = useState(null);  // editar proposta
-  const [modalDoc, setModalDoc] = useState(null);    // pendente de documentação
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editMsg, setEditMsg] = useState("");
-
-  // Novos documentos para pendente de documentação
-  const docFileRef = useRef(null);
-  const [novoDocTipo, setNovoDocTipo] = useState("CNH");
-  const [novoDocCategoria, setNovoDocCategoria] = useState("Documentação");
-  const [novosArquivos, setNovosArquivos] = useState([]);
-  const [docMsg, setDocMsg] = useState("");
-
-  const handleNovosArquivos = (e) => {
-    const files = Array.from(e.target.files);
-    const readers = files.map(f => new Promise(res => {
-      const r = new FileReader();
-      r.onload = ev => res({ name:f.name, type:f.type, data:ev.target.result, size:f.size });
-      r.readAsDataURL(f);
-    }));
-    Promise.all(readers).then(arr => setNovosArquivos(prev=>[...prev,...arr]));
-  };
-
-  const enviarNovosDocumentos = async () => {
-    if (novosArquivos.length===0) { setDocMsg("❌ Anexe ao menos um arquivo."); return; }
-    setSaving(true);
-    setDocMsg("⏳ Enviando arquivos...");
-    try {
-      const uploads = [];
-      for (const f of novosArquivos) {
-        const res = await uploadArquivoOtimizado(f.data, f.name, f.type, modalDoc.id);
-        uploads.push({ name:f.name, type:f.type, url:res.url, source:res.source, path:res.path||"", docTipo:novoDocTipo, docCategoria:novoDocCategoria });
-      }
-      const docFilesAtuais = (modalDoc.docFiles||[]).map(f=>({name:f.name,type:f.type,url:f.url||"",source:f.source||"",path:f.path||""}));
-      await setDoc(doc(db,"propostas",modalDoc.id),{
-        docFiles: [...docFilesAtuais, ...uploads],
-        pendenteDocumentacao: false,
-        hasNewInteraction: true,
-        viewedBy: [],
-        viewedByDigitador: [myId],
-        docEnviadoAt: Date.now(),
-      },{merge:true});
-      await setDoc(doc(db,"notifications","docenv_"+modalDoc.id+"_"+Date.now()),{
-        toRole: ["mestre","master"],
-        type: "documentos_enviados",
-        text: `📎 Documentos enviados — ${modalDoc.nome} (${modalDoc.cpf})`,
-        propostaId: modalDoc.id,
-        createdAt: Date.now(),
-        broadcast: true,
-        viewedBy: [],
-      });
-      setDocMsg("✅ Documentos enviados com sucesso!");
-      setNovosArquivos([]);
-      setTimeout(()=>setModalDoc(null),1500);
-    } catch(e) { setDocMsg("❌ Erro: "+e.message); }
-    setSaving(false);
-  };
 
   // Devolução
   const [devBanco, setDevBanco] = useState("");
@@ -12719,11 +12651,11 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                           style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:"8px 0 0 8px",border:`1px solid ${C.atxt}33`,borderRight:"none",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
                           {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
                         </a>
-                        <button onClick={()=>forcarDownload(f.url,f.name)}
+                        <a href={f.url} download={f.name}
                           title="Baixar arquivo"
-                          style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"6px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center"}}>
+                          style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"6px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",cursor:"pointer",fontWeight:800}}>
                           ⬇
-                        </button>
+                        </a>
                       </div>
                     ) : (
                       <span key={i} style={{background:C.deep,color:C.td,fontSize:11,padding:"5px 10px",borderRadius:7,border:`1px solid ${C.b1}`}}>
@@ -12777,78 +12709,6 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
         </div>
       )}
 
-      {/* Modal Pendente de Documentação */}
-      {modalDoc && (
-        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
-          onClick={()=>setModalDoc(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:520,width:"94%",maxHeight:"90vh",overflowY:"auto",border:"2px solid #818CF8",boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div style={{color:"#818CF8",fontSize:15,fontWeight:800}}>📎 Enviar Documentação — {modalDoc.nome}</div>
-              <button onClick={()=>setModalDoc(null)} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
-            </div>
-            <div style={{background:"#818CF811",border:"1px solid #818CF833",borderRadius:10,padding:"10px 14px",marginBottom:14,color:"#818CF8",fontSize:12}}>
-              📋 O mestre solicitou que você envie documentação adicional para esta proposta.
-            </div>
-            {docMsg&&<div style={{color:docMsg.startsWith("✅")?"#34D399":docMsg.startsWith("⏳")?"#FBBF24":"#F87171",fontSize:12,marginBottom:10,fontWeight:600}}>{docMsg}</div>}
-
-            {/* Tipo de documento */}
-            <div style={{marginBottom:10}}>
-              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Tipo de Documento</label>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {["CNH","RG","Carteira de Trabalho","RNE","Comprovante de Residência","Outro"].map(t=>(
-                  <button key={t} onClick={()=>setNovoDocTipo(t)}
-                    style={{background:novoDocTipo===t?"#818CF822":C.deep,color:novoDocTipo===t?"#818CF8":C.tm,
-                      border:`1px solid ${novoDocTipo===t?"#818CF844":C.b2}`,
-                      borderRadius:20,padding:"4px 13px",fontSize:11.5,cursor:"pointer",fontWeight:novoDocTipo===t?700:400}}>
-                    {novoDocTipo===t?"✓ ":""}{t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Categoria */}
-            <div style={{marginBottom:12}}>
-              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Categoria</label>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {["Documentação","Evidências","Outros"].map(cat=>(
-                  <button key={cat} onClick={()=>setNovoDocCategoria(cat)}
-                    style={{background:novoDocCategoria===cat?"#818CF822":C.deep,color:novoDocCategoria===cat?"#818CF8":C.tm,
-                      border:`1px solid ${novoDocCategoria===cat?"#818CF844":C.b2}`,
-                      borderRadius:20,padding:"4px 13px",fontSize:11.5,cursor:"pointer",fontWeight:novoDocCategoria===cat?700:400}}>
-                    {novoDocCategoria===cat?"✓ ":""}{cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Upload */}
-            <input ref={docFileRef} type="file" multiple accept="image/*,.pdf" onChange={handleNovosArquivos} style={{display:"none"}}/>
-            <button onClick={()=>docFileRef.current?.click()}
-              style={{background:"#818CF822",color:"#818CF8",border:"1px solid #818CF844",borderRadius:9,padding:"8px 18px",fontSize:12.5,fontWeight:600,cursor:"pointer",marginBottom:8,width:"100%"}}>
-              📎 Adicionar arquivos
-            </button>
-
-            {/* Lista de arquivos */}
-            {novosArquivos.length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
-                {novosArquivos.map((f,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:C.deep,borderRadius:8,padding:"6px 12px",border:`1px solid ${C.b1}`}}>
-                    {f.type?.startsWith("image/") ? <img src={f.data} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:5,flexShrink:0}}/> : <span style={{fontSize:18}}>📄</span>}
-                    <span style={{flex:1,color:C.ts,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
-                    <button onClick={()=>setNovosArquivos(prev=>prev.filter((_,idx)=>idx!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13}}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <button onClick={enviarNovosDocumentos} disabled={saving||novosArquivos.length===0}
-              style={{background:"linear-gradient(135deg,#818CF8,#6366F1)",color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontSize:13,fontWeight:800,cursor:saving||novosArquivos.length===0?"not-allowed":"pointer",width:"100%",opacity:saving||novosArquivos.length===0?0.6:1}}>
-              {saving?"⏳ Enviando...":"📤 Enviar Documentos"}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Modal Devolução */}
       {modalDev && (
         <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
@@ -12897,22 +12757,19 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
           const isPendente = st==="Pendente";
           const isAguardForm = st==="Aguardando Formalização";
           const editLiberado = !!p.editPermitido;
-          const pendenteDoc = !!p.pendenteDocumentacao;
 
           return (
             <div key={p.id} onClick={()=>marcarVisto(p)}
-              style={{...S.card,padding:"16px 20px",border:`1px solid ${pendenteDoc?"#818CF866":editLiberado?"#FBBF2466":temNova?"#34D39966":col+"33"}`,boxShadow:pendenteDoc?`0 0 16px #818CF822`:editLiberado?`0 0 16px #FBBF2422`:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
+              style={{...S.card,padding:"16px 20px",border:`1px solid ${editLiberado?"#FBBF2466":temNova?"#34D39966":col+"33"}`,boxShadow:editLiberado?`0 0 16px #FBBF2422`:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
 
               {/* Cabeçalho */}
               <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
                 {temNova&&<span style={{width:9,height:9,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
                 {editLiberado&&<span style={{width:9,height:9,borderRadius:"50%",background:"#FBBF24",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
-                {pendenteDoc&&<span style={{width:9,height:9,borderRadius:"50%",background:"#818CF8",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
                 <span style={{color:C.tp,fontSize:14,fontWeight:700,flex:1}}>{p.nome||"—"}</span>
                 <span style={{background:col+"22",color:col,fontSize:10.5,padding:"3px 10px",borderRadius:20,fontWeight:700,border:`1px solid ${col}44`}}>{st}{p.subStatus?" · "+p.subStatus:""}</span>
                 {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #34D39933"}}>🔔 Atualizado</span>}
                 {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #FBBF2444"}}>🔓 Edição liberada</span>}
-                {pendenteDoc&&<span style={{background:"#818CF822",color:"#818CF8",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #818CF844"}}>📎 Pendente de Documentação</span>}
               </div>
 
               <div style={{color:C.tm,fontSize:11.5,marginBottom:10}}>CPF: {p.cpf||"—"} · {p.tipo||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
@@ -12923,16 +12780,10 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                   style={{background:C.deep,color:C.ts,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                   👁 Visualizar
                 </button>
-                {editLiberado && (
+                {p.editavel && (
                   <button onClick={e=>{e.stopPropagation();abrirEdit(p);}}
-                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF24",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,animation:"pulse 1.5s infinite",boxShadow:"0 0 10px #FBBF2444"}}>
+                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                     ✏️ Editar Proposta
-                  </button>
-                )}
-                {pendenteDoc&&(
-                  <button onClick={e=>{e.stopPropagation();setModalDoc(p);setNovosArquivos([]);setDocMsg("");}}
-                    style={{background:"#0D0D1A",color:"#818CF8",border:"2px solid #818CF8",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,animation:"pulse 1.5s infinite",boxShadow:"0 0 10px #818CF844"}}>
-                    📎 Enviar Documentação
                   </button>
                 )}
                 {isPendente&&(
@@ -13738,17 +13589,24 @@ function PagoBlock({ proposta }) {
       <div style={{color:"#34D399",fontWeight:700,fontSize:13,marginBottom:8}}>🏆 PARABÉNS PELA VENDA!</div>
       <div style={{color:C.ts,fontSize:12,lineHeight:1.8,marginBottom:10}}>
         Confirme com seu cliente se o mesmo recebeu o valor.<br/>
-        Tire um print de evidência e anexe para que possamos finalizar sua proposta!
+        Anexe uma evidência (print, foto ou áudio do cliente) para finalizar sua proposta!
       </div>
 
       {/* Evidências já enviadas */}
       {evidencias.length > 0 && (
         <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:10}}>
           {evidencias.map((ev,i) => (
-            <a key={i} href={ev.url} target="_blank" rel="noopener noreferrer"
-              style={{background:"#0D2037",color:"#34D399",fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid #34D39933",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-              {ev.type?.startsWith("image/")?"🖼":"📄"} {ev.name} ↗
-            </a>
+            ev.type?.startsWith("audio/") ? (
+              <div key={i} style={{background:"#0D2037",borderRadius:8,padding:"6px 10px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:"#34D399",fontSize:11,fontWeight:600}}>🎵 {ev.name}</span>
+                <audio src={ev.url} controls style={{height:28,maxWidth:160}}/>
+              </div>
+            ) : (
+              <a key={i} href={ev.url} target="_blank" rel="noopener noreferrer"
+                style={{background:"#0D2037",color:"#34D399",fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid #34D39933",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                {ev.type?.startsWith("image/")?"🖼":"📄"} {ev.name} ↗
+              </a>
+            )
           ))}
         </div>
       )}
@@ -13757,21 +13615,21 @@ function PagoBlock({ proposta }) {
 
       {evidencias.length === 0 && (
         <div style={{background:"#1A1000",borderRadius:8,padding:"8px 12px",marginBottom:10,color:"#FBBF24",fontSize:11.5,fontWeight:600}}>
-          ⏳ PENDENTE DE EVIDÊNCIA DE PAGAMENTO — Anexe o print de confirmação abaixo
+          ⏳ PENDENTE DE EVIDÊNCIA — Anexe print, foto ou áudio do cliente abaixo
         </div>
       )}
 
-      <input ref={evFileRef} type="file" multiple accept="image/*,.pdf" onChange={handleEvidencia} style={{display:"none"}}/>
+      <input ref={evFileRef} type="file" multiple accept="image/*,.pdf,audio/*" onChange={handleEvidencia} style={{display:"none"}}/>
       <button onClick={()=>evFileRef.current?.click()} disabled={uploading}
         style={{background:uploading?"#333":"linear-gradient(135deg,#C084FC,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:uploading?"not-allowed":"pointer",opacity:uploading?0.7:1}}>
-        {uploading?"⏳ Enviando...":"📎 Anexar Print de Confirmação"}
+        {uploading?"⏳ Enviando...":"📎 Anexar Evidência"}
       </button>
     </div>
   );
 }
 
 // ── Modal de ação do digitador ─────────────────────────────────
-function ModalAcaoProposta({ proposta, onClose, onSave, onDelete }) {
+function ModalAcaoProposta({ proposta, onClose, onSave }) {
   const [novoStatus, setNovoStatus] = useState(proposta.status||"Proposta Digitada");
   const [link, setLink] = useState(proposta.linkFormalizacao||"");
   const [motivo, setMotivo] = useState(proposta.motivoCancelamento||"");
@@ -13907,45 +13765,6 @@ function ModalAcaoProposta({ proposta, onClose, onSave, onDelete }) {
           style={{background:"#1A1400",color:"#FBBF24",border:"2px solid #FBBF2444",borderRadius:10,
             padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
           🔓 Permitir Edição de Proposta
-        </button>
-
-        {/* Botão Pendente de Documentação */}
-        <button onClick={async()=>{
-          if (!window.confirm(`Solicitar documentação pendente para ${proposta.nome}?`)) return;
-          setSaving(true);
-          await setDoc(doc(db,"propostas",proposta.id),{
-            pendenteDocumentacao: true,
-            hasNewInteraction: true,
-            viewedByDigitador: [],
-          },{merge:true});
-          await setDoc(doc(db,"notifications","pendoc_"+proposta.id+"_"+Date.now()),{
-            toId: proposta.criadoPor,
-            type: "pendente_documentacao",
-            text: `📎 Documentação pendente — envie os documentos da proposta de ${proposta.nome} (${proposta.cpf})`,
-            propostaId: proposta.id,
-            createdAt: Date.now(),
-            readAt: null,
-          });
-          setSaving(false);
-          onClose();
-        }} disabled={saving}
-          style={{background:"#0D0D1A",color:"#818CF8",border:"2px solid #818CF844",borderRadius:10,
-            padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
-          📎 Pendente de Documentação
-        </button>
-
-        {/* Botão Excluir Proposta */}
-        <button onClick={async()=>{
-          if (!window.confirm(`⚠️ Excluir DEFINITIVAMENTE a proposta de ${proposta.nome}?\n\nEsta ação não pode ser desfeita.`)) return;
-          setSaving(true);
-          await deleteDoc(doc(db,"propostas",proposta.id));
-          setSaving(false);
-          onDelete && onDelete(proposta.id);
-          onClose();
-        }} disabled={saving}
-          style={{background:"#1A0000",color:"#EF4444",border:"2px solid #EF444433",borderRadius:10,
-            padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
-          🗑 Excluir Proposta
         </button>
       </div>
     </div>
@@ -14215,11 +14034,12 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
                         style={{background:C.abg,color:C.atxt,fontSize:11,padding:"5px 12px",borderRadius:"8px 0 0 8px",border:`1px solid ${C.atxt}33`,borderRight:"none",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
                         {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
                       </a>
-                      <button onClick={e=>{e.stopPropagation();forcarDownload(f.url,f.name);}}
+                      <a href={f.url} download={f.name}
+                        onClick={e=>e.stopPropagation()}
                         title="Baixar arquivo"
-                        style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"5px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center"}}>
+                        style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"5px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",cursor:"pointer",fontWeight:800}}>
                         ⬇
-                      </button>
+                      </a>
                     </div>
                   ) : (
                     <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
@@ -14385,7 +14205,6 @@ function PropostasPage({ currentUser }) {
           proposta={modalProp}
           onClose={()=>setModalProp(null)}
           onSave={updateStatus}
-          onDelete={(id)=>setPropostas(prev=>prev.filter(p=>p.id!==id))}
         />
       )}
 
@@ -14457,6 +14276,255 @@ function PropostasPage({ currentUser }) {
 }
 
 
+
+// ── Tabela de Comissões ─────────────────────────────────────────
+const COMISSOES_INICIAIS = [
+  { id:"c1",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"COMETA",               produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.19",   obs:"X" },
+  { id:"c2",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"NORMAL",               produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.09",   obs:"X" },
+  { id:"c3",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"TURBO",                produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.12",   obs:"X" },
+  { id:"c4",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"ACELERA",              produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.25",   obs:"X" },
+  { id:"c5",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"PITSTOP",              produto:"NOVO - BMS",          status:"ATIVA",    comissao:"3,60%%", obs:"X" },
+  { id:"c6",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"COMETA",               produto:"NOVO - CARTOS",       status:"ATIVA",    comissao:"0.1766", obs:"X" },
+  { id:"c7",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"NORMAL",               produto:"NOVO - CARTOS",       status:"ATIVA",    comissao:"0.09",   obs:"X" },
+  { id:"c8",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"TURBO",                produto:"NOVO - CARTOS",       status:"ATIVA",    comissao:"0.12",   obs:"X" },
+  { id:"c9",  banco:"V8 DIGITAL",         convenio:"PRIVADO - CLT",           tabela:"ACELERA - SEGURO",     produto:"3X",                  status:"ATIVA",    comissao:"0.0175", obs:"X" },
+  { id:"c10", banco:"V8 DIGITAL",         convenio:"PRIVADO - CLT",           tabela:"ACELERA - SEGURO",     produto:"6X A 18",             status:"ATIVA",    comissao:"0.034",  obs:"X" },
+  { id:"c11", banco:"V8 DIGITAL",         convenio:"PRIVADO - CLT",           tabela:"ACELERA - SEM SEGURO", produto:"24X",                 status:"ATIVA",    comissao:"0.035",  obs:"X" },
+  { id:"c12", banco:"V8 DIGITAL",         convenio:"ENERGIA",                 tabela:"FIT ENERGIA",          produto:"ACIMA DE R$150,00",   status:"ATIVA",    comissao:"0.075",  obs:"X" },
+  { id:"c13", banco:"SANTANDER",          convenio:"ENERGIA",                 tabela:"10 A 15% DE DESCONTO", produto:"FIT SANTANDER",       status:"ATIVA",    comissao:"0.085",  obs:"" },
+  { id:"c14", banco:"C6 BANK",            convenio:"PRIVADO - CLT",           tabela:"80015",                produto:"MARGEM NOVA 6X A 18X", status:"ATIVA",   comissao:"0.015",  obs:"CONTA C6 + 0,25%" },
+  { id:"c15", banco:"C6 BANK",            convenio:"PRIVADO - CLT",           tabela:"80015",                produto:"MARGEM NOVA 24x",     status:"ATIVA",    comissao:"0.02",   obs:"CONTA C6 + 0,25%" },
+  { id:"c16", banco:"C6 BANK",            convenio:"PRIVADO - CLT",           tabela:"80015",                produto:"MARGEM NOVA 36X A 48X",status:"ATIVA",   comissao:"0.025",  obs:"CONTA C6 + 0,25%" },
+  { id:"c17", banco:"MERCANTIL DO BRASIL", convenio:"PRIVADO - CLT",          tabela:"COM SEGURO",           produto:"MARGEM NOVA 1X A 48X", status:"ATIVA",   comissao:"0.03",   obs:"" },
+  { id:"c18", banco:"MERCANTIL DO BRASIL", convenio:"PRIVADO - CLT",          tabela:"SEM SEGURO",           produto:"MARGEM NOVA 1X A 48X", status:"ATIVA",   comissao:"0.02",   obs:"" },
+  { id:"c19", banco:"FACTA",              convenio:"PRIVADO - CLT",           tabela:"SMART",                produto:"12 a 36",             status:"ATIVA",    comissao:"0.015",  obs:"" },
+  { id:"c20", banco:"FACTA",              convenio:"PRIVADO - CLT",           tabela:"REFIN CARTEIRA",       produto:"36 A 48",             status:"ATIVA",    comissao:"0.015",  obs:"" },
+  { id:"c21", banco:"FACTA",              convenio:"PRIVADO - CLT",           tabela:"PORTABILIDADE",        produto:"1 A 48",              status:"ATIVA",    comissao:"0.005",  obs:"" },
+  { id:"c22", banco:"C6 CARRO",           convenio:"CRÉDITO COM GARANTIA DE MOVEL", tabela:"CARRO ACIMA DE 60 MIL", produto:"1 A 120X",    status:"ATIVA",    comissao:"0.011",  obs:"" },
+  { id:"c23", banco:"BV CARRO",           convenio:"CRÉDITO COM GARANTIA DE MOVEL", tabela:"CARRO ACIMA DE 60 MIL", produto:"2 A 120X",    status:"ATIVA",    comissao:"0.01",   obs:"" },
+  { id:"c24", banco:"CREFISA",            convenio:"BOLSA FAMILIA",           tabela:"BAIXA RENDA",          produto:"1 A 12",              status:"ATIVA",    comissao:"0.04",   obs:"" },
+  { id:"c25", banco:"PRATA DIGITAL",      convenio:"PRIVADO - CLT",           tabela:"CLT - QI",             produto:"6X",                  status:"ATIVA",    comissao:"0.025",  obs:"" },
+  { id:"c26", banco:"PRATA DIGITAL",      convenio:"PRIVADO - CLT",           tabela:"CLT - QI",             produto:"12X",                 status:"ATIVA",    comissao:"0.03",   obs:"" },
+  { id:"c27", banco:"PRATA DIGITAL",      convenio:"PRIVADO - CLT",           tabela:"CLT - QI",             produto:"24X",                 status:"ATIVA",    comissao:"0.043",  obs:"" },
+  { id:"c28", banco:"PRATA DIGITAL",      convenio:"FGTS",                    tabela:"MONEY - BMP HR ESTRELA", produto:"R$25,00 A R$250,00", status:"ATIVA",   comissao:"0.192",  obs:"" },
+  { id:"c29", banco:"PRATA DIGITAL",      convenio:"FGTS",                    tabela:"MONEY - BMP MAGNIFICOS", produto:"R$25,00 A R$10.000,00",status:"ATIVA", comissao:"0.22",   obs:"" },
+  { id:"c30", banco:"PRATA DIGITAL",      convenio:"FGTS",                    tabela:"QI S. QI D. - PENSA EM MIM", produto:"R$25,00 A R$250,00", status:"ATIVA", comissao:"0.12", obs:"" },
+  { id:"c31", banco:"NEON",               convenio:"PRIVADO - CLT",           tabela:"TABELA 1",             produto:"6 A 36X",             status:"EM BREVE", comissao:"0.02",   obs:"" },
+  { id:"c32", banco:"BANCO DO BRASIL",    convenio:"PRIVADO - CLT",           tabela:"TABELA 1",             produto:"6 A 36X",             status:"EM BREVE", comissao:"0",      obs:"" },
+  { id:"c33", banco:"BMG",                convenio:"PRIVADO - CLT",           tabela:"CLT",                  produto:"EM BREVE",            status:"ATIVA",    comissao:"0",      obs:"EM ATUALIZAÇÃO" },
+];
+
+function ComissoesPage({ currentUser, sysConfig, onSysConfig }) {
+  const isMestre = currentUser.role === "mestre";
+  const isMaster = currentUser.role === "master";
+  const canEdit = isMestre || isMaster;
+
+  const [comissoes, setComissoes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterBanco, setFilterBanco] = useState("Todos");
+  const [filterStatus, setFilterStatus] = useState("Todos");
+  const [modalAdd, setModalAdd] = useState(false);
+  const [modalEdit, setModalEdit] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const FORM_VAZIO = { banco:"", convenio:"", tabela:"", produto:"", status:"ATIVA", comissao:"", obs:"" };
+  const [form, setForm] = useState(FORM_VAZIO);
+  const sf = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Carregar do Firestore (ou usar iniciais se vazio)
+  useEffect(()=>{
+    const unsub = onSnapshot(collection(db,"comissoes"), snap => {
+      if (snap.empty) {
+        // Primeira vez — salvar os dados iniciais
+        const batch = COMISSOES_INICIAIS.map(c => setDoc(doc(db,"comissoes",c.id), c));
+        Promise.all(batch).then(()=>{});
+        setComissoes(COMISSOES_INICIAIS);
+      } else {
+        const all = snap.docs.map(d=>({...d.data(),id:d.id}));
+        all.sort((a,b)=>(a.banco||"").localeCompare(b.banco||""));
+        setComissoes(all);
+      }
+      setLoading(false);
+    });
+    return ()=>unsub();
+  },[]);
+
+  const bancos = ["Todos", ...Array.from(new Set(comissoes.map(c=>c.banco).filter(Boolean))).sort()];
+  const statusOpts = ["Todos","ATIVA","INATIVA","EM BREVE"];
+
+  const visible = comissoes.filter(c => {
+    if (filterBanco!=="Todos" && c.banco!==filterBanco) return false;
+    if (filterStatus!=="Todos" && c.status!==filterStatus) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (c.banco+c.convenio+c.tabela+c.produto+c.comissao).toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const salvar = async (isEdit) => {
+    if (!form.banco||!form.convenio||!form.tabela) { setMsg("❌ Banco, Convênio e Tabela são obrigatórios."); return; }
+    setSaving(true); setMsg("");
+    try {
+      const id = isEdit ? modalEdit.id : "c_"+Date.now();
+      await setDoc(doc(db,"comissoes",id), {...form, id}, {merge:true});
+      setMsg("✅ Salvo!");
+      setTimeout(()=>{ setModalAdd(false); setModalEdit(null); setMsg(""); setForm(FORM_VAZIO); }, 1000);
+    } catch(e) { setMsg("❌ Erro: "+e.message); }
+    setSaving(false);
+  };
+
+  const excluir = async (id) => {
+    if (!window.confirm("Excluir esta linha de comissão?")) return;
+    await deleteDoc(doc(db,"comissoes",id));
+  };
+
+  const statusColor = { "ATIVA":"#34D399", "INATIVA":"#EF4444", "EM BREVE":"#FBBF24" };
+
+  const ModalForm = ({ isEdit }) => (
+    <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center"}}
+      onClick={()=>{ setModalAdd(false); setModalEdit(null); setForm(FORM_VAZIO); setMsg(""); }}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:520,width:"94%",maxHeight:"90vh",overflowY:"auto",border:`1px solid ${C.atxt}33`,boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{color:C.atxt,fontSize:15,fontWeight:800}}>{isEdit?"✏️ Editar Comissão":"➕ Nova Comissão"}</div>
+          <button onClick={()=>{ setModalAdd(false); setModalEdit(null); setForm(FORM_VAZIO); setMsg(""); }} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
+        </div>
+        {msg&&<div style={{color:msg.startsWith("✅")?"#34D399":"#F87171",fontSize:12,marginBottom:10,fontWeight:600}}>{msg}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+          {[["Banco","banco"],["Convênio","convenio"],["Tabela","tabela"],["Produto / Prazo","produto"],["Comissão","comissao"],["Observação","obs"]].map(([label,key])=>(
+            <div key={key} style={{gridColumn:key==="obs"?"span 2":undefined}}>
+              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}</label>
+              <input value={form[key]||""} onChange={e=>sf(key,e.target.value)}
+                style={{...S.input,fontSize:12,padding:"6px 10px"}}/>
+            </div>
+          ))}
+          <div>
+            <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>Status</label>
+            <select value={form.status} onChange={e=>sf("status",e.target.value)} style={{...S.input,fontSize:12,cursor:"pointer"}}>
+              <option>ATIVA</option><option>INATIVA</option><option>EM BREVE</option>
+            </select>
+          </div>
+        </div>
+        <button onClick={()=>salvar(isEdit)} disabled={saving}
+          style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontSize:13,fontWeight:800,cursor:saving?"not-allowed":"pointer",width:"100%",opacity:saving?0.7:1}}>
+          {saving?"⏳ Salvando...":"💾 Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"24px 32px",maxWidth:1100}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:0}}>💰 Tabela de Comissões</h1>
+          <p style={{color:C.tm,fontSize:12.5,margin:"4px 0 0"}}>Gerencie bancos, tabelas e percentuais de comissão. Última atualização: 14/03/2026</p>
+        </div>
+        {canEdit && (
+          <button onClick={()=>{ setForm(FORM_VAZIO); setMsg(""); setModalAdd(true); }}
+            style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+            ➕ Adicionar Banco / Linha
+          </button>
+        )}
+      </div>
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar..."
+          style={{...S.input,flex:1,minWidth:160,fontSize:12,padding:"7px 12px"}}/>
+        <select value={filterBanco} onChange={e=>setFilterBanco(e.target.value)} style={{...S.input,fontSize:12,cursor:"pointer",minWidth:160}}>
+          {bancos.map(b=><option key={b}>{b}</option>)}
+        </select>
+        <div style={{display:"flex",gap:5}}>
+          {statusOpts.map(s=>(
+            <button key={s} onClick={()=>setFilterStatus(s)}
+              style={{background:filterStatus===s?(statusColor[s]||C.acc)+"22":C.deep,color:filterStatus===s?(statusColor[s]||C.atxt):C.tm,
+                border:`1px solid ${filterStatus===s?(statusColor[s]||C.atxt)+"44":C.b2}`,borderRadius:20,padding:"5px 12px",fontSize:11,cursor:"pointer",fontWeight:filterStatus===s?700:400}}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Resumo */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
+        {[
+          {label:"Ativas",val:comissoes.filter(c=>c.status==="ATIVA").length,color:"#34D399"},
+          {label:"Inativas",val:comissoes.filter(c=>c.status==="INATIVA").length,color:"#EF4444"},
+          {label:"Em Breve",val:comissoes.filter(c=>c.status==="EM BREVE").length,color:"#FBBF24"},
+        ].map(({label,val,color})=>(
+          <div key={label} style={{...S.card,padding:"12px 16px",border:`1px solid ${color}33`,display:"flex",alignItems:"center",gap:10}}>
+            <div style={{color,fontSize:22,fontWeight:800}}>{val}</div>
+            <div style={{color:C.td,fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px"}}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabela */}
+      {loading ? (
+        <div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>
+      ) : (
+        <div style={{...S.card,overflow:"hidden"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:C.deep}}>
+                  {["Banco","Convênio","Tabela","Produto / Prazo","Status","Comissão","Obs",canEdit?"Ações":""].filter(Boolean).map(h=>(
+                    <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((c,i)=>{
+                  const sc = statusColor[c.status]||C.td;
+                  return (
+                    <tr key={c.id} style={{background:i%2===0?"transparent":C.deep+"66",borderBottom:`1px solid ${C.b1}`}}>
+                      <td style={{padding:"8px 12px",color:C.tp,fontWeight:600,whiteSpace:"nowrap"}}>{c.banco}</td>
+                      <td style={{padding:"8px 12px",color:C.ts}}>{c.convenio}</td>
+                      <td style={{padding:"8px 12px",color:C.ts}}>{c.tabela}</td>
+                      <td style={{padding:"8px 12px",color:C.tm}}>{c.produto}</td>
+                      <td style={{padding:"8px 12px"}}>
+                        <span style={{background:sc+"22",color:sc,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:`1px solid ${sc}33`}}>{c.status}</span>
+                      </td>
+                      <td style={{padding:"8px 12px",color:c.status==="ATIVA"?"#34D399":C.td,fontWeight:700,whiteSpace:"nowrap"}}>{c.comissao||"—"}</td>
+                      <td style={{padding:"8px 12px",color:C.td,fontSize:11}}>{c.obs||"—"}</td>
+                      {canEdit&&(
+                        <td style={{padding:"8px 12px"}}>
+                          <div style={{display:"flex",gap:5}}>
+                            <button onClick={()=>{ setForm({...c}); setModalEdit(c); setMsg(""); }}
+                              style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2433",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                              ✏️
+                            </button>
+                            <button onClick={()=>excluir(c.id)}
+                              style={{background:"#1A0000",color:"#EF4444",border:"1px solid #EF444433",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                              🗑
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {visible.length===0&&(
+            <div style={{textAlign:"center",padding:"40px 0",color:C.tm}}>
+              <div style={{fontSize:30,opacity:0.3,marginBottom:8}}>💰</div>
+              <div style={{fontSize:13,fontWeight:600}}>Nenhuma comissão encontrada</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modais */}
+      {modalAdd && <ModalForm isEdit={false}/>}
+      {modalEdit && <ModalForm isEdit={true}/>}
+    </div>
+  );
+}
 
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
@@ -14855,6 +14923,9 @@ export default function App() {
         )}
         {page === "propostas" && (
           <PropostasPage currentUser={currentUser} />
+        )}
+        {page === "comissoes" && (
+          <ComissoesPage currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
