@@ -176,13 +176,6 @@ function canSeePassword(myRole, targetRole) {
   return (ROLE_HIERARCHY[myRole] ?? 99) < (ROLE_HIERARCHY[targetRole] ?? 99);
 }
 // Pode editar um usuário
-function canEditUser(myRole, targetRole, targetCreatedBy, myId) {
-  const myLvl = ROLE_HIERARCHY[myRole] ?? 99;
-  const tgLvl = ROLE_HIERARCHY[targetRole] ?? 99;
-  if (myLvl === 0) return true; // administrador vê todos
-  return myLvl < tgLvl && targetCreatedBy === myId;
-}
-
 const EMOJIS = [
   "👍",
   "🔥",
@@ -5489,89 +5482,6 @@ function PerfilTab({ users, setUsers, currentUser }) {
 }
 
 // Subcomponente isolado para exibir/redefinir senha no painel de edição
-function EditPasswordPanel({ savedPw, userEmail, userId }) {
-  const [showCurr, setShowCurr]   = useState(false);
-  const [realPw, setRealPw]       = useState(savedPw || null);
-  const [loadingPw, setLoadingPw] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
-  const [emailMsg, setEmailMsg]   = useState("");
-
-  const handleToggle = async () => {
-    if (showCurr) { setShowCurr(false); return; }
-    // Busca senha direto do Firestore se não tiver
-    if (!realPw && userId) {
-      setLoadingPw(true);
-      try {
-        const snap = await getDoc(doc(db, "users", String(userId)));
-        if (snap.exists()) setRealPw(snap.data().password || null);
-      } catch {}
-      setLoadingPw(false);
-    }
-    setShowCurr(true);
-  };
-
-  const sendResetEmail = async () => {
-    if (!userEmail) { setEmailMsg("❌ Email do usuário não encontrado."); return; }
-    setEmailBusy(true); setEmailMsg("");
-    try {
-      const { sendPasswordResetEmail } = await import("firebase/auth");
-      const { auth: fbAuth } = await import("./firebase");
-      await sendPasswordResetEmail(fbAuth, userEmail);
-      setEmailSent(true);
-      setEmailMsg("✅ Email de redefinição enviado para " + userEmail);
-    } catch(e) {
-      const code = e.code || "";
-      if (code === "auth/user-not-found") setEmailMsg("❌ Email não encontrado no sistema.");
-      else if (code === "auth/invalid-email") setEmailMsg("❌ Email inválido.");
-      else setEmailMsg("❌ Erro: " + e.message);
-    }
-    setEmailBusy(false);
-  };
-
-  return (
-    <div style={{ borderTop:`1px solid ${C.b1}`, paddingTop:16 }}>
-      <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", marginBottom:14, border:`1px solid ${C.b1}` }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-          <span style={{ color:C.tm, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha do usuário</span>
-          <button onClick={handleToggle} disabled={loadingPw} style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:11 }}>
-            {loadingPw ? "⏳ Buscando..." : showCurr ? "🙈 Ocultar" : "👁 Ver senha"}
-          </button>
-        </div>
-        {showCurr ? (
-          <div style={{ color:"#34D399", fontSize:14, fontWeight:700, fontFamily:"monospace", letterSpacing:2, background:C.card, borderRadius:7, padding:"9px 12px", wordBreak:"break-all" }}>
-            {realPw || <span style={{ color:C.td, fontStyle:"italic", fontFamily:"sans-serif", fontWeight:400, letterSpacing:0, fontSize:12 }}>Senha não encontrada no banco</span>}
-          </div>
-        ) : (
-          <div style={{ color:C.tm, fontSize:15, fontFamily:"monospace", letterSpacing:3 }}>••••••••</div>
-        )}
-      </div>
-      <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", border:`1px solid #FBBF2433` }}>
-        <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>📧 Redefinir senha por email</div>
-        <div style={{ color:C.ts, fontSize:12, marginBottom:12, lineHeight:1.5 }}>
-          Enviar link de redefinição para: <span style={{ color:C.atxt, fontWeight:600 }}>{userEmail || "—"}</span>
-        </div>
-        {emailMsg && (
-          <div style={{ color: emailSent ? "#34D399" : "#F87171", fontSize:12, marginBottom:10, background: emailSent ? "#091E12" : "#2D1515", borderRadius:8, padding:"8px 12px", border:`1px solid ${emailSent ? "#34D39933" : "#EF444433"}` }}>
-            {emailMsg}
-          </div>
-        )}
-        {!emailSent ? (
-          <button onClick={sendResetEmail} disabled={emailBusy}
-            style={{ background:"#D97706", color:"#000", border:"none", borderRadius:8, padding:"9px 20px", fontSize:12.5, fontWeight:700, cursor:emailBusy?"not-allowed":"pointer", opacity:emailBusy?0.7:1 }}>
-            {emailBusy ? "⏳ Enviando..." : "📧 Enviar email de redefinição"}
-          </button>
-        ) : (
-          <button onClick={() => { setEmailSent(false); setEmailMsg(""); }}
-            style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 16px", fontSize:12, cursor:"pointer" }}>
-            Enviar novamente
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function UsuariosTab({ users, setUsers, currentUser }) {
   const myRole = currentUser.role || "operador";
   const myId   = currentUser.uid || currentUser.id;
