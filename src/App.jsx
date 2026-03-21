@@ -967,19 +967,22 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden" }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 32px", position:"relative", overflow:"hidden", gap:32 }}>
 
       <style>{`
-        @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
-        @keyframes starTwinkle { 0%,100%{opacity:0.3} 50%{opacity:1} }
-        @keyframes rainDrop { 0%{top:-5%;opacity:0.7} 100%{top:110%;opacity:0.2} }
-        @keyframes cloudFloat { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
         @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
         @keyframes moonMove { 0%{right:10%} 100%{right:80%} }
+        @keyframes cloudFloat { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
+        @keyframes cloudFloat2 { 0%{transform:translateX(0)} 100%{transform:translateX(-40px)} }
+        @keyframes rainDrop { 0%{top:-5%;opacity:0.7} 100%{top:110%;opacity:0.2} }
+        @keyframes starTwinkle { 0%,100%{opacity:0.3} 50%{opacity:1} }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
       `}</style>
 
-      {/* ── CENA SVG — fundo completo sem corte ── */}
+      {/* previsão movida para o lado direito */}
+
+      {/* ══ CENA COMPLETA ══ */}
       <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
         viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -988,6 +991,13 @@ function LoginPage({ onLogin }) {
             <stop offset="50%" stopColor="#FDE68A" stopOpacity="0.7"/>
             <stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/>
           </radialGradient>
+          <radialGradient id="moonGlow2" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FEF9C3"/>
+            <stop offset="60%" stopColor="#FDE68A"/>
+            <stop offset="100%" stopColor="#E9A827" stopOpacity="0"/>
+          </radialGradient>
+          <filter id="glow4"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glow2"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           <linearGradient id="grassGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#22c55e"/>
             <stop offset="100%" stopColor="#14532d"/>
@@ -996,186 +1006,535 @@ function LoginPage({ onLogin }) {
             <stop offset="0%" stopColor="#4b5563"/>
             <stop offset="100%" stopColor="#1f2937"/>
           </linearGradient>
+          <linearGradient id="sidewalkGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#9ca3af"/>
+            <stop offset="100%" stopColor="#6b7280"/>
+          </linearGradient>
         </defs>
 
-        {/* Estrelas (noite) */}
-        {isNight && [[120,45],[380,22],[670,68],[920,15],[1180,52],[1380,38],[55,110],[290,88],[510,130],[740,75],[990,105],[1240,90],[1420,125],[180,180],[430,155],[700,195],[950,165],[1100,185],[1330,170],[80,240],[320,220],[580,255],[830,230],[1070,248],[1280,235]].map(([cx,cy],i)=>(
-          <circle key={i} cx={cx} cy={cy} r={i%4===0?1.8:i%2===0?1.2:0.7} fill={i%3===0?"#FEF9C3":"#fff"} opacity="0.5">
-            <animate attributeName="opacity" values="0.2;0.9;0.2" dur={`${1.5+i%5*0.4}s`} begin={`${i*0.13}s`} repeatCount="indefinite"/>
+        {/* ── ESTRELAS (noite) — posições aleatórias espalhadas ── */}
+        {isNight && [
+          [120,45],[380,22],[670,68],[920,15],[1180,52],[1380,38],
+          [55,110],[290,88],[510,130],[740,75],[990,105],[1240,90],[1420,125],
+          [180,180],[430,155],[700,195],[950,165],[1100,185],[1330,170],
+          [80,240],[320,220],[580,255],[830,230],[1070,248],[1280,235],
+          [210,310],[470,290],[720,325],[970,305],[1150,315],[1350,295],
+          [40,370],[260,350],[500,385],[760,362],[1010,378],[1200,390],
+          [150,30],[600,50],[1050,28],[1300,55],[450,200],[850,140],
+          [160,420],[550,440],[900,410],[1250,435],[350,460],[750,475],
+        ].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r={i%7===0?2.4:i%4===0?1.6:i%2===0?1.1:0.7}
+            fill={i%5===0?"#FEF9C3":i%3===0?"#BAE6FD":"#fff"} opacity={0.4+(i%4)*0.15}>
+            <animate attributeName="opacity"
+              values={`${0.2+(i%3)*0.18};${0.85+(i%2)*0.12};${0.2+(i%3)*0.18}`}
+              dur={`${1.4+(i%6)*0.5}s`} begin={`${i*0.11}s`} repeatCount="indefinite"/>
           </circle>
         ))}
 
-        {/* Lua (noite) */}
-        {isNight && (<g>
-          <circle r="50" fill="#F0D060"><animateMotion dur="90s" repeatCount="indefinite" path="M -100,160 C 280,80 860,70 1540,150"/></circle>
-          <circle r="46" fill="#030810" opacity="0.92"><animateMotion dur="90s" repeatCount="indefinite" path="M -78,152 C 302,72 882,62 1562,142"/></circle>
-        </g>)}
-
-        {/* Sol (dia) */}
-        {!isNight && (<g>
-          <circle r="60" fill="url(#sunGlow)"><animateMotion dur="60s" repeatCount="indefinite" path="M -80,180 C 300,60 1000,50 1520,170"/></circle>
-          <circle r="38" fill="#FDE68A"><animateMotion dur="60s" repeatCount="indefinite" path="M -80,180 C 300,60 1000,50 1520,170"/></circle>
-        </g>)}
-
-        {/* Nuvens */}
-        {(isCloudy||!isNight) && [
-          {x:100,y:120,s:1,d:"8s"},{x:400,y:80,s:0.8,d:"12s"},{x:800,y:100,s:1.1,d:"15s"},{x:1200,y:70,s:0.9,d:"10s"}
-        ].map((c,i)=>(
-          <g key={i} transform={`translate(${c.x},${c.y}) scale(${c.s})`} opacity="0.75">
-            <ellipse cx="0" cy="0" rx="55" ry="22" fill="#e2e8f0"/>
-            <ellipse cx="-20" cy="-10" rx="30" ry="20" fill="#f1f5f9"/>
-            <ellipse cx="20" cy="-8" rx="35" ry="18" fill="#f8fafc"/>
-            <animateTransform attributeName="transform" type="translate" additive="sum" values="0 0;50 0;0 0" dur={c.d} repeatCount="indefinite"/>
+        {/* ── LUA crescente realista — mais baixa, mais bonita ── */}
+        {isNight && (
+          <g>
+            {/* Halo suave */}
+            <circle r="80" fill="#FEF9C3" opacity="0.05">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,200 C 280,110 860,95 1540,190"/>
+            </circle>
+            {/* Corpo da lua */}
+            <circle r="50" fill="#F0D060">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,200 C 280,110 860,95 1540,190"/>
+            </circle>
+            {/* Gradiente de textura fria */}
+            <circle r="50" fill="#C8B040" opacity="0.3">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,200 C 280,110 860,95 1540,190"/>
+            </circle>
+            {/* Sombra meia-lua crescente */}
+            <circle r="46" fill="#030810" opacity="0.92">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -78,192 C 302,102 882,87 1562,182"/>
+            </circle>
+            {/* Brilho borda direita */}
+            <circle r="50" fill="none" stroke="#FDE68A" strokeWidth="1.5" opacity="0.4">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -100,200 C 280,110 860,95 1540,190"/>
+            </circle>
+            {/* Cratera 1 */}
+            <circle r="7" fill="#B8960A" opacity="0.55">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -126,215 C 254,125 834,110 1514,205"/>
+            </circle>
+            <circle r="5" fill="#96780A" opacity="0.35">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -126,215 C 254,125 834,110 1514,205"/>
+            </circle>
+            {/* Cratera 2 */}
+            <circle r="4.5" fill="#B8960A" opacity="0.5">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -85,188 C 295,98 875,83 1555,178"/>
+            </circle>
+            {/* Cratera 3 pequena */}
+            <circle r="3" fill="#A07808" opacity="0.45">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -110,210 C 270,120 850,105 1530,200"/>
+            </circle>
+            {/* Brilho especular topo */}
+            <circle r="10" fill="#FFFDE7" opacity="0.3">
+              <animateMotion dur="90s" repeatCount="indefinite"
+                path="M -118,185 C 262,95 842,80 1522,175"/>
+            </circle>
           </g>
-        ))}
+        )}
 
-        {/* Prédios */}
-        {[[0,580,80,320],[100,600,60,280],[180,560,100,340],[290,590,70,310],[370,570,90,330],[470,600,65,290],[545,575,85,325],[640,595,75,305],[725,565,95,335],[830,585,70,315],[910,570,100,330],[1020,600,60,290],[1090,575,85,325],[1185,590,75,305],[1270,565,100,340],[1380,585,60,295],[1450,575,80,325]].map(([x,y,w,h],i)=>(
-          <g key={i}>
-            <rect x={x} y={y-h} width={w} height={h} fill={isNight?"#0f172a":"#1e293b"} opacity="0.9"/>
-            <rect x={x} y={y-h} width={w} height={4} fill={isNight?"#334155":"#475569"}/>
-            {Array.from({length:Math.floor(h/25)}).map((_,r)=>
-              Array.from({length:Math.floor(w/18)}).map((_,c2)=>(
-                <rect key={`${r}-${c2}`} x={x+4+c2*18} y={y-h+8+r*25} width={10} height={14} rx="1"
-                  fill={isNight?(Math.random()>0.4?"#FDE68A":"#1e3a5f"):"#374151"} opacity={isNight?0.9:0.5}/>
-              ))
+        {/* ── SOL percorre o céu lentamente ── */}
+        {!isNight && !isRain && (
+          <g filter="url(#glow4)">
+            {/* Halo externo */}
+            <circle r="90" fill="url(#sunGlow)" opacity="0.4">
+              <animateMotion dur="240s" repeatCount="indefinite"
+                path="M -100,200 C 200,40 700,20 1540,180"/>
+            </circle>
+            {/* Raios — giram em torno do centro */}
+            {Array.from({length:12}).map((_,ri)=>{
+              const a = ri*30;
+              return (
+                <line key={ri}
+                  x1={Math.cos(a*Math.PI/180)*52} y1={Math.sin(a*Math.PI/180)*52}
+                  x2={Math.cos(a*Math.PI/180)*76} y2={Math.sin(a*Math.PI/180)*76}
+                  stroke="#FDE68A" strokeWidth="2.5" strokeLinecap="round" opacity="0.55">
+                  <animateMotion dur="240s" repeatCount="indefinite"
+                    path="M -100,200 C 200,40 700,20 1540,180"/>
+                  <animateTransform attributeName="transform" type="rotate"
+                    from="0 0 0" to="360 0 0" dur="50s" repeatCount="indefinite"
+                    additive="sum"/>
+                </line>
+              );
+            })}
+            {/* Núcleo */}
+            <circle r="44" fill="#FDE68A">
+              <animateMotion dur="240s" repeatCount="indefinite"
+                path="M -100,200 C 200,40 700,20 1540,180"/>
+            </circle>
+            <circle r="36" fill="#FFFDE7">
+              <animateMotion dur="240s" repeatCount="indefinite"
+                path="M -100,200 C 200,40 700,20 1540,180"/>
+            </circle>
+          </g>
+        )}
+
+        {/* ── NUVENS ── */}
+        {!isNight && (
+          <>
+            <g opacity={isCloudy||isRain?0.92:0.6}>
+              <ellipse cx="320" cy="170" rx="100" ry="46" fill="white" opacity="0.9">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="22s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="255" cy="185" rx="68" ry="36" fill="white" opacity="0.85">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="22s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="385" cy="188" rx="58" ry="32" fill="white" opacity="0.78">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="22s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+            <g opacity={isCloudy||isRain?0.85:0.48}>
+              <ellipse cx="900" cy="130" rx="88" ry="40" fill="white" opacity="0.85">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-28 0;0 0" dur="30s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="848" cy="144" rx="58" ry="30" fill="white" opacity="0.78">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-28 0;0 0" dur="30s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="958" cy="147" rx="52" ry="28" fill="white" opacity="0.72">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-28 0;0 0" dur="30s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+            {(isCloudy||isRain) && (
+              <>
+                <g opacity="0.82">
+                  <ellipse cx="620" cy="100" rx="120" ry="54" fill={isRain?"#94a3b8":"white"} opacity="0.7">
+                    <animateTransform attributeName="transform" type="translate" values="0 0;22 0;0 0" dur="36s" repeatCount="indefinite"/>
+                  </ellipse>
+                  <ellipse cx="548" cy="118" rx="80" ry="42" fill={isRain?"#94a3b8":"white"} opacity="0.68">
+                    <animateTransform attributeName="transform" type="translate" values="0 0;22 0;0 0" dur="36s" repeatCount="indefinite"/>
+                  </ellipse>
+                  <ellipse cx="698" cy="115" rx="75" ry="38" fill={isRain?"#94a3b8":"white"} opacity="0.65">
+                    <animateTransform attributeName="transform" type="translate" values="0 0;22 0;0 0" dur="36s" repeatCount="indefinite"/>
+                  </ellipse>
+                </g>
+                <g opacity="0.75">
+                  <ellipse cx="1200" cy="158" rx="96" ry="44" fill={isRain?"#6b7280":"white"} opacity="0.68">
+                    <animateTransform attributeName="transform" type="translate" values="0 0;-16 0;0 0" dur="26s" repeatCount="indefinite"/>
+                  </ellipse>
+                  <ellipse cx="1148" cy="172" rx="66" ry="34" fill={isRain?"#6b7280":"white"} opacity="0.62">
+                    <animateTransform attributeName="transform" type="translate" values="0 0;-16 0;0 0" dur="26s" repeatCount="indefinite"/>
+                  </ellipse>
+                </g>
+              </>
             )}
+          </>
+        )}
+        {/* Nuvens noturnas escuras */}
+        {isNight && (
+          <g opacity="0.35">
+            <ellipse cx="500" cy="150" rx="90" ry="38" fill="#1e293b">
+              <animateTransform attributeName="transform" type="translate" values="0 0;20 0;0 0" dur="40s" repeatCount="indefinite"/>
+            </ellipse>
+            <ellipse cx="1100" cy="120" rx="110" ry="44" fill="#1e293b">
+              <animateTransform attributeName="transform" type="translate" values="0 0;-18 0;0 0" dur="50s" repeatCount="indefinite"/>
+            </ellipse>
+          </g>
+        )}
+
+        {/* ── CHUVA ── */}
+        {isRain && Array.from({length:70}).map((_,i)=>(
+          <line key={i} x1={(i*21)%1440} y1="-10" x2={(i*21+6)%1440} y2="28"
+            stroke="rgba(147,197,253,0.45)" strokeWidth="1.4" strokeLinecap="round">
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;0 ${930}`}
+              dur={`${0.55+(i%5)*0.11}s`} begin={`${(i*0.04)%1.1}s`} repeatCount="indefinite"/>
+          </line>
+        ))}
+
+        {/* ── PRÉDIOS FUNDO — menores, bem atrás ── */}
+        {[
+          {x:30,  w:44,h:130},{x:84, w:34,h:105},{x:128,w:40,h:150},
+          {x:178,w:30,h:115},{x:218,w:52,h:170},{x:280,w:36,h:130},
+          {x:326,w:48,h:160},{x:384,w:30,h:120},{x:424,w:58,h:195},
+          {x:492,w:34,h:135},{x:536,w:44,h:165},{x:590,w:42,h:190},
+          {x:642,w:34,h:145},{x:686,w:52,h:175},{x:748,w:40,h:155},
+          {x:798,w:32,h:120},{x:840,w:50,h:170},{x:900,w:36,h:140},
+          {x:946,w:46,h:168},{x:1002,w:32,h:125},{x:1044,w:48,h:158},
+          {x:1102,w:30,h:118},{x:1142,w:58,h:200},{x:1210,w:34,h:138},
+          {x:1254,w:44,h:162},{x:1308,w:36,h:128},{x:1354,w:52,h:172},
+          {x:1416,w:34,h:135},
+        ].map((b,i)=>(
+          <rect key={i} x={b.x} y={680-b.h} width={b.w} height={b.h} rx="2"
+            fill={isNight?"#0d1526":"#1e293b"} opacity="0.65"/>
+        ))}
+
+        {/* ── PRÉDIOS FRENTE — menores, com janelas e antenas ── */}
+        {[
+          {x:0,   w:60, h:185, fill:"#0f172a", wins:[[8,18],[8,50],[8,82],[34,18],[34,50],[34,82]]},
+          {x:120, w:78, h:240, fill:"#0f172a", wins:[[10,18],[10,55],[10,92],[10,129],[44,18],[44,55],[44,92],[44,129]]},
+          {x:310, w:68, h:200, fill:"#1a2535", wins:[[10,18],[10,55],[10,92],[38,18],[38,55],[38,92]]},
+          {x:480, w:82, h:278, fill:"#0f172a", wins:[[11,18],[11,60],[11,102],[11,144],[46,18],[46,60],[46,102],[46,144]]},
+          {x:660, w:72, h:220, fill:"#1a2535", wins:[[10,18],[10,56],[10,94],[40,18],[40,56],[40,94]]},
+          {x:840, w:78, h:258, fill:"#0f172a", wins:[[10,18],[10,58],[10,98],[10,138],[44,18],[44,58],[44,98],[44,138]]},
+          {x:1020,w:68, h:210, fill:"#1a2535", wins:[[10,18],[10,56],[10,94],[38,18],[38,56],[38,94]]},
+          {x:1190,w:80, h:260, fill:"#0f172a", wins:[[10,18],[10,58],[10,98],[10,138],[45,18],[45,58],[45,98],[45,138]]},
+          {x:1370,w:70, h:195, fill:"#1a2535", wins:[[10,18],[10,56],[10,94],[38,18],[38,56],[38,94]]},
+        ].map((b,bi)=>(
+          <g key={bi}>
+            <rect x={b.x} y={680-b.h} width={b.w} height={b.h} fill={b.fill}/>
+            <line x1={b.x+b.w/2} y1={680-b.h} x2={b.x+b.w/2} y2={680-b.h-16}
+              stroke="#475569" strokeWidth="2"/>
+            <circle cx={b.x+b.w/2} cy={680-b.h-18} r="2.5" fill="#EF4444" opacity="0.9">
+              <animate attributeName="opacity" values="0.9;0.15;0.9" dur="1.8s" repeatCount="indefinite"/>
+            </circle>
+            {b.wins.map(([wx,wy],wi)=>(
+              <rect key={wi} x={b.x+wx} y={680-b.h+wy} width={14} height={10} rx={1}
+                fill={isNight?(wi%3===0?"#FDE68A":wi%5===0?"#93C5FD":"#1e3a5f"):"#7dd3fc"}
+                opacity={isNight?0.92:(wi%4===0?0.6:0.25)}/>
+            ))}
           </g>
         ))}
 
+        {/* ── POSTES DE LUZ (noite) ── */}
+        {isNight && [100,300,500,700,900,1100,1300].map((x,i)=>(
+          <g key={i} transform={`translate(${x},680)`}>
+            <rect x="-3" y="-70" width="6" height="70" rx="2" fill="#475569"/>
+            <rect x="-16" y="-73" width="32" height="6" rx="3" fill="#64748b"/>
+            {/* Lâmpada */}
+            <ellipse cx="0" cy="-76" rx="7" ry="5" fill="#FDE68A" opacity="0.9" filter="url(#glow2)"/>
+            {/* Cone de luz */}
+            <path d={`M -7,-73 L -28,-10 L 28,-10 L 7,-73 Z`} fill="#FDE68A" opacity="0.08"/>
+          </g>
+        ))}
+
+        {/* ── CALÇADA + ESTRADA + MAIS CALÇADA ── */}
+        {/* Calçada superior */}
+        <rect x="0" y="678" width="1440" height="14" fill="url(#sidewalkGrad)" opacity="0.85"/>
         {/* Estrada */}
-        <rect x="0" y="820" width="1440" height="80" fill="url(#roadGrad)"/>
-        <rect x="0" y="830" width="1440" height="3" fill="#374151" opacity="0.7"/>
+        <rect x="0" y="692" width="1440" height="38" fill="url(#roadGrad)"/>
+        {/* Linha central da estrada */}
+        <rect x="0" y="709" width="1440" height="3" fill="#374151" opacity="0.7"/>
+        {/* Faixas amarelas animadas */}
         {Array.from({length:12}).map((_,i)=>(
-          <rect key={i} x={i*130} y="832" width="60" height="3" rx="1" fill="#FCD34D" opacity="0.75">
-            <animateTransform attributeName="transform" type="translate" values="0 0;-130 0" dur="3.5s" begin={`${i*0.29}s`} repeatCount="indefinite"/>
+          <rect key={i} x={i*130} y="710" width="60" height="3" rx="1" fill="#FCD34D" opacity="0.75">
+            <animateTransform attributeName="transform" type="translate"
+              values="0 0;-130 0" dur="3.5s" begin={`${i*0.29}s`} repeatCount="indefinite"/>
           </rect>
         ))}
-        <rect x="0" y="810" width="1440" height="12" fill="#9ca3af" opacity="0.6"/>
-        <rect x="0" y="860" width="1440" height="40" fill="url(#grassGrad)"/>
+        {/* Calçada inferior */}
+        <rect x="0" y="730" width="1440" height="14" fill="url(#sidewalkGrad)" opacity="0.75"/>
+
+        {/* ── GRAMA (abaixo da calçada) ── */}
+        <rect x="0" y="742" width="1440" height="158" fill="url(#grassGrad)"/>
+        {/* Tufos de grama */}
+        {Array.from({length:36}).map((_,i)=>(
+          <g key={i} transform={`translate(${i*40+4},742)`} opacity="0.55">
+            <line x1="0" y1="0" x2="-5" y2="-10" stroke="#22c55e" strokeWidth="1.5"/>
+            <line x1="0" y1="0" x2="0" y2="-13" stroke="#16a34a" strokeWidth="1.5"/>
+            <line x1="0" y1="0" x2="5" y2="-10" stroke="#22c55e" strokeWidth="1.5"/>
+          </g>
+        ))}
+
+        {/* ── ÁRVORES DA CALÇADA ── */}
+        {[60,220,420,640,860,1060,1260,1420].map((x,i)=>(
+          <g key={i} transform={`translate(${x},676)`}>
+            <rect x="-4" y="-30" width="8" height="30" rx="2" fill="#7c4f2a"/>
+            <ellipse cx="0" cy="-36" rx="20" ry="28" fill="#166534" opacity="0.9"/>
+            <ellipse cx="-8" cy="-28" rx="15" ry="20" fill="#16a34a" opacity="0.7"/>
+            <ellipse cx="8" cy="-32" rx="14" ry="18" fill="#22c55e" opacity="0.6"/>
+          </g>
+        ))}
+
+        {/* ── BANCOS DE PRAÇA (noite) ── */}
+        {isNight && [170,570,970,1350].map((x,i)=>(
+          <g key={i} transform={`translate(${x},740)`}>
+            {/* Banco */}
+            <rect x="-18" y="-10" width="36" height="4" rx="2" fill="#78350f"/>
+            <rect x="-16" y="-6"  width="32" height="3" rx="1" fill="#92400e"/>
+            <rect x="-14" y="-16" width="28" height="6" rx="2" fill="#78350f"/>
+            <rect x="-15" y="-6"  width="4"  height="8" rx="1" fill="#57250a"/>
+            <rect x="11"  y="-6"  width="4"  height="8" rx="1" fill="#57250a"/>
+            {/* Pessoa sentada — simples stickman */}
+            <circle cx={i%2===0?-4:4} cy="-24" r="5" fill={isNight?"#cbd5e1":"#94a3b8"}/>
+            <line x1={i%2===0?-4:4} y1="-19" x2={i%2===0?-4:4} y2="-10" stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2.5"/>
+            <line x1={i%2===0?-4:4} y1="-16" x2={i%2===0?-12:12} y2="-13" stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2"/>
+            <line x1={i%2===0?-4:4} y1="-10" x2={i%2===0?-2:2}  y2="-4"  stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2"/>
+            <line x1={i%2===0?-4:4} y1="-10" x2={i%2===0?-8:8}  y2="-4"  stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2"/>
+          </g>
+        ))}
+
+        {/* ── CARROS (dia) ── */}
+        {!isNight && (
+          <>
+            {/* Carro 1 — vai para direita */}
+            <g>
+              <rect rx="5" width="68" height="26" fill="#2563eb" y="-13">
+                <animateMotion dur="8s" repeatCount="indefinite"
+                  path="M -80,700 L 1520,700"/>
+              </rect>
+              <rect rx="3" width="42" height="16" fill="#93c5fd" y="-25" x="10">
+                <animateMotion dur="8s" repeatCount="indefinite"
+                  path="M -80,700 L 1520,700"/>
+              </rect>
+              <circle r="6" fill="#1e293b" cx="12">
+                <animateMotion dur="8s" repeatCount="indefinite"
+                  path="M -80,713 L 1520,713"/>
+              </circle>
+              <circle r="6" fill="#1e293b" cx="56">
+                <animateMotion dur="8s" repeatCount="indefinite"
+                  path="M -80,713 L 1520,713"/>
+              </circle>
+            </g>
+            {/* Carro 2 — vai para esquerda mais devagar */}
+            <g>
+              <rect rx="5" width="72" height="28" fill="#dc2626" y="-14">
+                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
+                  path="M 1520,705 L -80,705"/>
+              </rect>
+              <rect rx="3" width="44" height="17" fill="#fca5a5" y="-27" x="12">
+                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
+                  path="M 1520,705 L -80,705"/>
+              </rect>
+              <circle r="6" fill="#1e293b" cx="14">
+                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
+                  path="M 1520,719 L -80,719"/>
+              </circle>
+              <circle r="6" fill="#1e293b" cx="58">
+                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
+                  path="M 1520,719 L -80,719"/>
+              </circle>
+            </g>
+            {/* Carro 3 — amarelo, rápido */}
+            <g>
+              <rect rx="5" width="60" height="24" fill="#d97706" y="-12">
+                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
+                  path="M -80,698 L 1520,698"/>
+              </rect>
+              <rect rx="3" width="36" height="14" fill="#fcd34d" y="-22" x="10">
+                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
+                  path="M -80,698 L 1520,698"/>
+              </rect>
+              <circle r="6" fill="#1e293b" cx="10">
+                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
+                  path="M -80,710 L 1520,710"/>
+              </circle>
+              <circle r="6" fill="#1e293b" cx="50">
+                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
+                  path="M -80,710 L 1520,710"/>
+              </circle>
+            </g>
+          </>
+        )}
+
+        {/* ── PESSOAS CAMINHANDO (dia) ── */}
+        {!isNight && [
+          {x:-20, dur:"12s", begin:"0s",  dir:1,  skin:"#fbbf24", shirt:"#3b82f6"},
+          {x:-20, dur:"18s", begin:"4s",  dir:1,  skin:"#d97706", shirt:"#ef4444"},
+          {x:1480,dur:"14s", begin:"2s",  dir:-1, skin:"#fbbf24", shirt:"#8b5cf6"},
+          {x:1480,dur:"20s", begin:"7s",  dir:-1, skin:"#92400e", shirt:"#10b981"},
+        ].map((p,i)=>(
+          <g key={i}>
+            {/* Cabeça */}
+            <circle r="5" fill={p.skin}>
+              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
+                path={p.dir===1?`M ${p.x},736 L 1500,736`:`M ${p.x},736 L -100,736`}/>
+            </circle>
+            {/* Corpo */}
+            <rect rx="2" width="8" height="14" fill={p.shirt} x="-4" y="-2">
+              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
+                path={p.dir===1?`M ${p.x},741 L 1500,741`:`M ${p.x},741 L -100,741`}/>
+            </rect>
+            {/* Pernas */}
+            <line x1="0" y1="0" x2={p.dir*-4} y2="10" stroke="#1e293b" strokeWidth="2">
+              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
+                path={p.dir===1?`M ${p.x},755 L 1500,755`:`M ${p.x},755 L -100,755`}/>
+              <animate attributeName="x2" values={`${p.dir*-4};${p.dir*4};${p.dir*-4}`} dur="0.5s" repeatCount="indefinite"/>
+            </line>
+            <line x1="0" y1="0" x2={p.dir*4} y2="10" stroke="#1e293b" strokeWidth="2">
+              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
+                path={p.dir===1?`M ${p.x},755 L 1500,755`:`M ${p.x},755 L -100,755`}/>
+              <animate attributeName="x2" values={`${p.dir*4};${p.dir*-4};${p.dir*4}`} dur="0.5s" repeatCount="indefinite"/>
+            </line>
+          </g>
+        ))}
       </svg>
 
-      {/* ── Previsão do tempo — topo centralizado ── */}
-      {forecast?.days && (
-        <div style={{ position:"absolute", top:16, left:"50%", transform:"translateX(-50%)", zIndex:10, display:"flex", flexDirection:"column", alignItems:"center", gap:6, animation:"fadeIn 0.5s ease" }}>
-          <div style={{ background:"rgba(8,10,18,0.72)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", gap:12 }}>
-            <span style={{ fontSize:20 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":"☀️"}</span>
-            {cityName&&<span style={{ color:"rgba(255,255,255,0.5)", fontSize:10 }}>📍 {cityName}</span>}
-            <span style={{ color:"#fff", fontSize:18, fontWeight:800 }}>{weather?Math.round(weather.temperature)+"°C":"—"}</span>
-            <div style={{ display:"flex", gap:8 }}>
-              {(forecast.days||[]).map((d,i)=>{
-                const wmo={0:"☀️",1:"🌤",2:"⛅",3:"☁️",51:"🌦",61:"🌧",71:"❄️",80:"🌦",82:"⛈"};
-                const icon=wmo[d.wcode]||"🌡";
-                const day=i===0?"Hoje":["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d.date).getDay()];
-                return (
-                  <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:1, minWidth:32 }}>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:8, fontWeight:600 }}>{day}</div>
-                    <div style={{ fontSize:12 }}>{icon}</div>
-                    <div style={{ color:"#F87171", fontSize:8.5, fontWeight:700 }}>↑{Math.round(d.tmax)}°</div>
-                    <div style={{ color:"#93C5FD", fontSize:8.5 }}>↓{Math.round(d.tmin)}°</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Robô centralizado acima do card ── */}
-      <div style={{ position:"relative", zIndex:2, animation:"robotFloat 3s ease-in-out infinite, fadeIn 0.5s ease", marginBottom:8 }}>
-        <NexpRobot size={80} showFaceOnly={false}/>
-      </div>
-
-      {/* ── Card central compacto ── */}
-      <div style={{ position:"relative", zIndex:2, width:"min(340px,92vw)", animation:"fadeIn 0.6s ease" }}>
-        <div style={{ background:"rgba(15,19,32,0.82)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderRadius:16, border:"1px solid rgba(79,142,247,0.2)", padding:"18px 20px", boxShadow:"0 8px 40px rgba(0,0,0,0.6)" }}>
-
-          {/* Logo */}
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
-            <NexpRobot size={32} showFaceOnly/>
+      {/* ── Lado esquerdo: formulário com transparência ── */}
+      <div style={{ flex:"0 0 auto", width:"min(320px,88vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease", display:"flex", flexDirection:"column", gap:8 }}>
+        {/* Card com transparência */}
+        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:14, border:"1px solid rgba(79,142,247,0.2)", padding:"16px 18px", boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
+          {/* Logo + robô */}
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:26 }}>
+            <NexpRobot size={46} showFaceOnly />
             <div>
-              <div style={{ fontWeight:900, fontSize:17, letterSpacing:"-0.5px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>Nexp Consultas</div>
-              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:9.5 }}>Sistema de Leads</div>
+              <div style={{ fontWeight:900, fontSize:20, letterSpacing:"-0.8px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>
+                Nexp Consultas
+              </div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>Sistema de Leads</div>
             </div>
           </div>
 
-          {err&&<div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:7, padding:"7px 11px", marginBottom:12, color:"#F87171", fontSize:11.5 }}>⚠ {err}</div>}
+          {err && <div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:16, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
 
-          <div style={{ marginBottom:10 }}>
-            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:10.5, display:"block", marginBottom:4 }}>E-mail</label>
+          <div style={{ marginBottom:13 }}>
+            <label style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, display:"block", marginBottom:5 }}>E-mail</label>
             <input value={un} onChange={e=>setUn(e.target.value)} placeholder="seu@email.com" onKeyDown={e=>e.key==="Enter"&&go()}
-              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", padding:"8px 11px", fontSize:12 }}/>
+              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF" }} />
           </div>
-          <div style={{ marginBottom:14 }}>
-            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:10.5, display:"block", marginBottom:4 }}>Senha</label>
+          <div style={{ marginBottom:22 }}>
+            <label style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, display:"block", marginBottom:5 }}>Senha</label>
             <div style={{ position:"relative" }}>
               <input value={pw} onChange={e=>setPw(e.target.value)} type={show?"text":"password"} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()}
-                style={{ ...S.input, paddingRight:38, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", padding:"8px 11px", fontSize:12 }}/>
-              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:13 }}>
+                style={{ ...S.input, paddingRight:40, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF" }} />
+              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:14 }}>
                 {show?"🙈":"👁"}
               </button>
             </div>
           </div>
           <button onClick={go} disabled={loading}
-            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"10px", fontSize:13, fontWeight:700, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 18px rgba(59,110,245,0.35)" }}>
-            {loading?"Entrando...":"Entrar →"}
+            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 20px rgba(59,110,245,0.4)" }}>
+            {loading ? "Entrando..." : "Entrar →"}
           </button>
-
-          {/* Redefinir senha */}
-          <div style={{ marginTop:10, borderTop:"1px solid rgba(255,255,255,0.08)", paddingTop:10 }}>
-            <button onClick={()=>{setShowResetLogin(p=>!p);setResetMsg("");setResetEmail("");}}
-              style={{ width:"100%", background:"rgba(59,110,245,0.08)", border:"1px solid rgba(79,142,247,0.2)", borderRadius:8, padding:"8px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, textAlign:"left" }}>
-              <span style={{ fontSize:14 }}>🔑</span>
-              <div style={{ flex:1 }}>
-                <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, fontWeight:600 }}>Redefinir senha</div>
-                <div style={{ color:"rgba(79,142,247,0.45)", fontSize:9.5 }}>Enviar link por e-mail</div>
-              </div>
-              <span style={{ color:"rgba(79,142,247,0.4)", fontSize:11 }}>{showResetLogin?"▲":"▼"}</span>
-            </button>
-            {showResetLogin&&(
-              <div style={{ marginTop:6, padding:"10px", background:"rgba(8,10,16,0.6)", borderRadius:8, border:"1px solid rgba(79,142,247,0.15)" }}>
-                <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
-                  onKeyDown={e=>e.key==="Enter"&&doLoginReset()} placeholder="seu@email.com"
-                  style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.2)", color:"#E8EAEF", marginBottom:7, fontSize:11.5 }}/>
-                <button onClick={doLoginReset} disabled={resetBusy}
-                  style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"8px", fontSize:12, opacity:resetBusy?0.7:1 }}>
-                  {resetBusy?"Enviando...":"📧 Enviar link"}
-                </button>
-                {resetMsg&&<div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:10.5, marginTop:6, textAlign:"center" }}>{resetMsg}</div>}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Solicitar usuário — separado */}
-        <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de solicitar um usuário para o Nexp Consultas.")}`}
-          target="_blank" rel="noopener noreferrer"
-          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,24,41,0.75)", backdropFilter:"blur(10px)", border:"1px solid rgba(37,211,102,0.2)", borderRadius:10, padding:"10px 14px", textDecoration:"none", marginTop:8 }}>
-          <span style={{ fontSize:16 }}>👤</span>
+        {/* Suporte */}
+        <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,41,24,0.7)", backdropFilter:"blur(10px)", border:"1px solid #25D36633", borderRadius:12, padding:"12px 14px", textDecoration:"none" }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
           <div style={{ flex:1 }}>
-            <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, fontWeight:600 }}>Solicitar usuário</div>
-            <div style={{ color:"rgba(37,211,102,0.45)", fontSize:9.5 }}>Fale pelo WhatsApp</div>
+            <div style={{ color:err?"#25D366":"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600 }}>{err?"Problemas? Fale com o suporte":"Suporte WhatsApp"}</div>
+            <div style={{ color:"#2D6B47", fontSize:10.5 }}>(84) 98132-3542</div>
           </div>
-          <span style={{ color:"rgba(37,211,102,0.4)", fontSize:14 }}>→</span>
+          <span style={{ color:"#25D36666", fontSize:16 }}>→</span>
         </a>
 
-        {/* Suporte — separado */}
-        <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
-          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,41,24,0.75)", backdropFilter:"blur(10px)", border:"1px solid #25D36622", borderRadius:10, padding:"10px 14px", textDecoration:"none", marginTop:6 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52z"/></svg>
+        {/* Redefinir senha */}
+        <div style={{ marginTop:8 }}>
+          <button onClick={() => { setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
+            style={{ width:"100%", display:"flex", alignItems:"center", gap:10, background:"rgba(59,110,245,0.1)", backdropFilter:"blur(10px)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:12, padding:"11px 14px", cursor:"pointer", textDecoration:"none" }}>
+            <span style={{ fontSize:17 }}>🔑</span>
+            <div style={{ flex:1, textAlign:"left" }}>
+              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600 }}>Redefinir senha</div>
+              <div style={{ color:"rgba(79,142,247,0.5)", fontSize:10.5 }}>Enviar link de redefinição por e-mail</div>
+            </div>
+            <span style={{ color:"rgba(79,142,247,0.4)", fontSize:14 }}>{showResetLogin?"▲":"▼"}</span>
+          </button>
+
+          {showResetLogin && (
+            <div style={{ background:"rgba(8,10,16,0.7)", backdropFilter:"blur(10px)", border:"1px solid rgba(79,142,247,0.2)", borderRadius:12, padding:"14px", marginTop:4 }}>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8 }}>
+                Digite o e-mail cadastrado para receber o link de redefinição:
+              </div>
+              <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
+                onKeyDown={e=>e.key==="Enter"&&doLoginReset()}
+                placeholder="seu@email.com"
+                style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", marginBottom:8 }} />
+              <button onClick={doLoginReset} disabled={resetBusy}
+                style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"9px", fontSize:13, opacity:resetBusy?0.7:1 }}>
+                {resetBusy ? "Enviando..." : "📧 Enviar link"}
+              </button>
+              {resetMsg && (
+                <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11.5, marginTop:8, textAlign:"center" }}>
+                  {resetMsg}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Solicitar usuário */}
+        <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de saber como ter acesso ao Nexp Consultas. Preciso de um usuário.")}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,24,41,0.7)", backdropFilter:"blur(10px)", border:"1px solid rgba(37,211,102,0.2)", borderRadius:12, padding:"11px 14px", textDecoration:"none", marginTop:8 }}>
+          <span style={{ fontSize:17 }}>👤</span>
           <div style={{ flex:1 }}>
-            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, fontWeight:600 }}>Suporte</div>
-            <div style={{ color:"rgba(37,211,102,0.4)", fontSize:9.5 }}>(84) 98132-3542</div>
+            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, fontWeight:600 }}>Solicite agora seu usuário</div>
+            <div style={{ color:"rgba(37,211,102,0.5)", fontSize:10.5 }}>Fale com o suporte pelo WhatsApp</div>
           </div>
-          <span style={{ color:"rgba(37,211,102,0.35)", fontSize:14 }}>→</span>
+          <span style={{ color:"rgba(37,211,102,0.4)", fontSize:16 }}>→</span>
         </a>
       </div>
 
-      {/* ── Frase do dia — centro embaixo do card ── */}
-      <div style={{ position:"relative", zIndex:2, marginTop:12, maxWidth:420, width:"90vw", animation:"fadeIn 0.8s ease" }}>
-        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.15)", borderRadius:14, padding:"12px 20px", textAlign:"center" }}>
-          <div style={{ color:"rgba(79,142,247,0.55)", fontSize:9.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:5 }}>✦ Frase do dia</div>
-          <div style={{ color:"rgba(255,255,255,0.88)", fontSize:13, lineHeight:1.65, fontStyle:"italic" }}>{frase}</div>
+      {/* ── Lado direito: robô → previsão do tempo → frase do dia ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:32, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
+        {/* Robô */}
+        <div style={{ animation:"robotFloat 3s ease-in-out infinite" }}>
+          <NexpRobot size={130} showFaceOnly={false} />
+        </div>
+        {/* Previsão do tempo */}
+        {forecast?.days && (
+          <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"center", width:"100%", maxWidth:480 }}>
+            <div style={{ background:"rgba(8,10,18,0.65)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", gap:12, width:"100%" }}>
+              <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
+              <div>
+                {cityName && <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
+                <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{weather ? Math.round(weather.temperature)+"°C" : "—"}</div>
+              </div>
+              <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
+                {(forecast.days||[]).map((d,i) => {
+                  const wmo = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",80:"🌦",81:"🌧",82:"⛈"};
+                  const icon = wmo[d.wcode] || "🌡";
+                  const day = i===0?"Hoje":["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d.date).getDay()];
+                  return (
+                    <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, minWidth:36 }}>
+                      <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9, fontWeight:600 }}>{day}</div>
+                      <div style={{ fontSize:14 }}>{icon}</div>
+                      <div style={{ color:"#F87171", fontSize:9.5, fontWeight:700 }}>↑{Math.round(d.tmax)}°</div>
+                      <div style={{ color:"#93C5FD", fontSize:9.5 }}>↓{Math.round(d.tmin)}°</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Frase do dia */}
+        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"18px 28px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", maxWidth:480, width:"100%" }}>
+          <div style={{ color:"rgba(79,142,247,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
+          <div style={{ color:"rgba(255,255,255,0.92)", fontSize:15, lineHeight:1.7, fontStyle:"italic" }}>{frase}</div>
         </div>
       </div>
     </div>
@@ -2821,13 +3180,14 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 }
 
 // ── Review Client ──────────────────────────────────────────────
-function ReviewClient({ contacts, setContacts, filtered = null }) {
+function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null }) {
   const list = filtered || contacts;
 
   // Rastrear pelo ID do cliente, não pelo índice — evita pulos quando contacts muda de ordem
   const [curId, setCurId] = useState(() => list[0]?.id || null);
   const [sc, setSc] = useState(false);
   const [done, setDone] = useState(false);
+  const [modalDigitar, setModalDigitar] = useState(false); // modal de digitação
 
   // Encontrar o cliente atual pelo ID (nunca pelo índice)
   const cur = list.find(c => c.id === curId) || list[0] || {};
@@ -3086,6 +3446,14 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
             {done ? "✓ Concluído — avançando..." : "✅ Concluído"}
           </button>
 
+          {/* Prosseguir com Digitação */}
+          <button
+            onClick={() => setModalDigitar(true)}
+            style={{ background:"linear-gradient(135deg,#6366F1,#4F46E5)", color:"#fff", border:"none", borderRadius:8, padding:"10px 18px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap" }}
+          >
+            📝 Digitar
+          </button>
+
           {/* Simular comissão */}
           <button
             onClick={() => setSc((p) => !p)}
@@ -3101,6 +3469,49 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
           </div>
         )}
       </div>
+
+      {/* ── Modal: Prosseguir com Digitação ── */}
+      {modalDigitar && (
+        <div style={{ position:"fixed", inset:0, zIndex:9900, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", animation:"fadeIn 0.2s ease" }}
+          onClick={() => setModalDigitar(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:18, padding:"24px 28px", maxWidth:460, width:"92%", border:"1px solid #6366F155", boxShadow:"0 12px 48px rgba(0,0,0,0.8)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div style={{ color:"#818CF8", fontSize:15, fontWeight:800 }}>📝 Prosseguir com Digitação</div>
+              <button onClick={()=>setModalDigitar(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18 }}>✕</button>
+            </div>
+            {/* Info do cliente */}
+            <div style={{ background:C.deep, borderRadius:10, padding:"12px 16px", marginBottom:16, border:`1px solid ${C.b1}` }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>{cur.name||"—"}</div>
+              <div style={{ color:C.tm, fontSize:11.5 }}>CPF: {cur.cpf||"—"}</div>
+              {cur.phone&&<div style={{ color:C.tm, fontSize:11.5 }}>Tel: {cur.phone}</div>}
+              {cur.email&&<div style={{ color:C.tm, fontSize:11.5 }}>Email: {cur.email}</div>}
+              {(cur.cep||cur.cidade)&&<div style={{ color:C.tm, fontSize:11.5 }}>Endereço: {[cur.rua,cur.numero,cur.bairro,cur.cidade,cur.ufEnd].filter(Boolean).join(", ")}</div>}
+              {cur.nomeMae&&<div style={{ color:C.tm, fontSize:11.5 }}>Mãe: {cur.nomeMae}</div>}
+            </div>
+            <div style={{ color:C.td, fontSize:11.5, marginBottom:16 }}>
+              Todos os dados do cliente serão preenchidos automaticamente na tela de Digitação. Você poderá editar qualquer informação antes de enviar.
+            </div>
+            {/* Tipo de proposta */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ color:C.tm, fontSize:11, marginBottom:8, fontWeight:600 }}>Selecione o tipo de proposta:</div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {["FGTS","CLT","INSS","CARTÃO"].map(t=>(
+                  <button key={t} onClick={()=>{
+                    // Salvar cliente em sessionStorage para DigitacaoPage carregar
+                    sessionStorage.setItem("nexp_digitar_cliente", JSON.stringify(cur));
+                    sessionStorage.setItem("nexp_digitar_tipo", t);
+                    setModalDigitar(false);
+                    if (onDigitar) onDigitar(cur);
+                  }}
+                    style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:700, cursor:"pointer", flex:1 }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lista próximos */}
       {nexts.length > 0 && (
@@ -6628,9 +7039,13 @@ function NotificacoesPage({ currentUser, users }) {
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
+      const TIPOS_PROPOSTA = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia","edicao_liberada"];
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(n => n.toId === myId || n.broadcast === true)
+        .filter(n => {
+          if (TIPOS_PROPOSTA.includes(n.type)) return false; // nunca aparecem em notificações
+          return n.toId === myId || n.broadcast === true;
+        })
         .sort((a, b) => {
           // Broadcasts pinned at top, then by date
           if (a.broadcast && !b.broadcast) return -1;
@@ -12160,10 +12575,10 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
   const [modalDev, setModalDev] = useState(null);
   const [modalVer, setModalVer] = useState(null);    // visualizar proposta
   const [modalEdit, setModalEdit] = useState(null);  // editar proposta
-  const [buscaMD, setBuscaMD] = useState("");         // busca em minhas digitações
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [editMsg, setEditMsg] = useState("");
+  const [buscaMD, setBuscaMD] = useState("");         // busca em minhas digitações
 
   // Devolução
   const [devBanco, setDevBanco] = useState("");
@@ -12425,25 +12840,27 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                 {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:9,padding:"1px 5px",borderRadius:20,fontWeight:700}}>🔓</span>}
                 {p.pendenteDocumentacao&&<span style={{background:"#818CF822",color:"#818CF8",fontSize:9,padding:"1px 5px",borderRadius:20,fontWeight:700}}>📎</span>}
               </div>
+                {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #FBBF2444"}}>🔓 Edição liberada</span>}
+              </div>
 
               <div style={{color:C.tm,fontSize:10.5,marginBottom:6}}>CPF: {p.cpf||"—"} · {p.tipo||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
 
-              {/* Botões compactos */}
-              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:5}}>
+              {/* Botões de ação */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
                 <button onClick={e=>{e.stopPropagation();setModalVer(p);}}
-                  style={{background:C.deep,color:C.ts,border:`1px solid ${C.b2}`,borderRadius:7,padding:"4px 10px",fontSize:10.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                  👁 Ver
+                  style={{background:C.deep,color:C.ts,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                  👁 Visualizar
                 </button>
-                {editLiberado && (
+                {p.editavel && (
                   <button onClick={e=>{e.stopPropagation();abrirEdit(p);}}
-                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:7,padding:"4px 10px",fontSize:10.5,fontWeight:600,cursor:"pointer"}}>
-                    ✏️ Editar
+                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    ✏️ Editar Proposta
                   </button>
                 )}
                 {isPendente&&(
                   <button onClick={e=>{e.stopPropagation();abrirDev(p);}}
-                    style={{background:"#1A0000",color:"#F87171",border:"1px solid #F8717144",borderRadius:7,padding:"4px 10px",fontSize:10.5,fontWeight:600,cursor:"pointer"}}>
-                    🔴 Devolução
+                    style={{background:"#1A0000",color:"#F87171",border:"1px solid #F8717144",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    🔴 Responder Devolução
                   </button>
                 )}
                 {isAguardForm&&p.linkFormalizacao&&(
@@ -12550,6 +12967,32 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
     else if (t==="INSS") setForm(blankINSS());
     else setForm(blankCartao());
   };
+
+  // Pré-preencher quando vindo de Ver Clientes via sessionStorage
+  useEffect(() => {
+    const raw = sessionStorage.getItem("nexp_digitar_cliente");
+    const tipo = sessionStorage.getItem("nexp_digitar_tipo");
+    if (!raw) return;
+    sessionStorage.removeItem("nexp_digitar_cliente");
+    sessionStorage.removeItem("nexp_digitar_tipo");
+    try {
+      const c = JSON.parse(raw);
+      if (tipo && ["FGTS","CLT","INSS","CARTÃO"].includes(tipo)) setTipoProposta(tipo);
+      setAbaDigitacao("nova");
+      setClienteEncontrado(true);
+      setForm(f=>({...f,
+        cpf:c.cpf||"", nome:c.name||"", contato1:c.phone||"", contato2:c.phone2||"",
+        email1:c.email||"", cep:c.cep||"", rua:c.rua||"", numero:c.numero||"",
+        bairro:c.bairro||"", cidade:c.cidade||"", complemento:c.complemento||"",
+        ufEnd:c.ufEnd||c.uf||"", matricula:c.matricula||"",
+        nomeMae:c.nomeMae||"", nomePai:c.nomePai||"",
+        rg:c.rg||"", dataNasc:c.dataNasc||"",
+        bancoPagto:c.bancoPagto||"", agencia:c.agencia||"",
+        contaDigito:c.contaDigito||"", tipoConta:c.tipoConta||"corrente",
+        pix1:c.pix1||"", pix2:c.pix2||"",
+      }));
+    } catch {}
+  }, []); // eslint-disable-line
 
   // Busca automática por CPF
   const buscarCPF = (cpf) => {
@@ -13876,7 +14319,7 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
               borderBottom:abaProp===t.id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px",
               display:"flex",alignItems:"center",gap:7}}>
             {t.label}
-            {t.badge>0&&<span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800,animation:"pulse 1.5s infinite"}}>{t.badge}</span>}
+            {(t.badge||0)>0&&<span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800,animation:"pulse 1.5s infinite"}}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -14021,15 +14464,16 @@ export default function App() {
     const isDigitador = currentUser.role === "digitador";
     const unsub = onSnapshot(collection(db, "propostas"), (snap) => {
       const all = snap.docs.map(d=>({...d.data(), id:d.id}));
-      // Badge sidebar Propostas — mestre/master: não vistas; digitador: interação nova
       const unread = all.filter(p => {
         if (isMestreOrMaster) return !p.viewedBy?.includes(myId);
         return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
       }).length;
       setUnreadPropostas(unread);
-      // Badge sidebar Digitação + aba Minhas Propostas — só para digitador
+      // Badge aba "Minhas Propostas" + sidebar "Digitação" — só digitador
       if (isDigitador) {
-        setUnreadDigitacao(all.filter(p=>p.criadoPor===myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)).length);
+        setUnreadDigitacao(all.filter(p =>
+          p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)
+        ).length);
       }
     });
     return () => unsub();
@@ -14041,7 +14485,8 @@ export default function App() {
     const myId = currentUser.uid || currentUser.id;
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
       const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const mine = notifs.filter(n => n.toId === myId || n.broadcast === true);
+      const TIPOS_PROPOSTA = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
+      const mine = notifs.filter(n => !TIPOS_PROPOSTA.includes(n.type) && (n.toId === myId || n.broadcast === true));
       const unread = mine.filter(n => {
         if (n.broadcast) return !(n.readBy || []).includes(myId);
         return !n.readAt;
@@ -14313,7 +14758,10 @@ export default function App() {
           <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPageAndSave} currentUser={currentUser} />
         )}
         {page === "review" && (
-          <ReviewClient contacts={contacts} setContacts={setContacts} />
+          <ReviewClient contacts={contacts} setContacts={setContacts} onDigitar={(c)=>{
+            sessionStorage.setItem("nexp_digitar_cliente", JSON.stringify(c));
+            setPageAndSave("digitacao");
+          }} />
         )}
         {page === "cstatus" && (
           <ClienteStatus contacts={contacts} setContacts={setContacts} />
@@ -14358,8 +14806,8 @@ export default function App() {
         {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
       </div>
 
-      {/* ── Chat Flutuante (sem FAB) ── */}
-      {chatOpen && (() => {
+      {/* ── Chat Flutuante + FAB ── */}
+      {(() => {
         const role = currentUser?.role;
         const uid = currentUser?.uid || currentUser?.id;
         const override = sysConfig?.userOverrides?.[uid];
@@ -14369,27 +14817,64 @@ export default function App() {
           (override === undefined && role === "indicado" && !sysConfig?.indicadoChatEnabled) ||
           (override === undefined && role === "master" && !sysConfig?.masterChatEnabled)
         );
-        if (!chatAllowed) return null;
+
         return (
-          <FloatingChat
-            currentUser={currentUser}
-            users={users}
-            presence={presence}
-            minimized={chatMinimized}
-            pos={chatPos}
-            onPosChange={setChatPos}
-            onMinimize={() => setChatMinimized(true)}
-            onRestore={() => setChatMinimized(false)}
-            onClose={() => { setChatOpen(false); setChatMinimized(false); }}
-            unreadChat={unreadChat}
-            stories={chatStories}
-            onOpenStory={(uid) => {
-              setChatOpen(false);
-              setPage("stories");
-              sessionStorage.setItem("nexp_page", "stories");
-              sessionStorage.setItem("nexp_story_uid", uid);
-            }}
-          />
+          <>
+            {/* FAB — bolinha flutuante sempre visível quando chat permitido */}
+            {chatAllowed && !chatOpen && (
+              <button
+                onClick={() => { setChatOpen(true); setChatMinimized(false); }}
+                title="Abrir Nexp Chat"
+                style={{
+                  position:"fixed", right:24, bottom:24, zIndex:500,
+                  width:62, height:62, borderRadius:"50%",
+                  background:`linear-gradient(135deg,${C.lg1},${C.lg2},${C.acc})`,
+                  backgroundSize:"200% 200%",
+                  border:"none", cursor:"pointer",
+                  boxShadow:`0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22, inset 0 1px 0 rgba(255,255,255,0.2)`,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  transition:"transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s",
+                  animation:"fabAppear 0.4s cubic-bezier(.34,1.56,.64,1), bgShift 4s ease infinite",
+                }}
+                onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.15) translateY(-3px)"; e.currentTarget.style.boxShadow=`0 12px 36px ${C.acc}88, 0 0 0 6px ${C.acc}33, inset 0 1px 0 rgba(255,255,255,0.25)`; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1) translateY(0)"; e.currentTarget.style.boxShadow=`0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22, inset 0 1px 0 rgba(255,255,255,0.2)`; }}
+              >
+                <style>{`
+                  @keyframes fabAppear { from { transform:scale(0) rotate(-180deg); opacity:0; } to { transform:scale(1) rotate(0deg); opacity:1; } }
+                  @keyframes fabRing { 0%,100% { box-shadow: 0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22; } 50% { box-shadow: 0 6px 28px ${C.acc}99, 0 0 0 8px ${C.acc}18; } }
+                `}</style>
+                <NexpRobot size={34} showFaceOnly />
+                {unreadChat > 0 && (
+                  <span style={{ position:"absolute", top:0, right:0, minWidth:20, height:20, borderRadius:10, background:"linear-gradient(135deg,#EF4444,#DC2626)", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}`, padding:"0 4px", animation:"pulse 1.5s infinite", boxShadow:"0 2px 8px #EF444466" }}>
+                    {unreadChat > 9 ? "9+" : unreadChat}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Chat flutuante — sempre montado quando open, usa minimized para pill */}
+            {chatOpen && chatAllowed && (
+              <FloatingChat
+                currentUser={currentUser}
+                users={users}
+                presence={presence}
+                minimized={chatMinimized}
+                pos={chatPos}
+                onPosChange={setChatPos}
+                onMinimize={() => setChatMinimized(true)}
+                onRestore={() => setChatMinimized(false)}
+                onClose={() => { setChatOpen(false); setChatMinimized(false); }}
+                unreadChat={unreadChat}
+                stories={chatStories}
+                onOpenStory={(uid) => {
+                  setChatOpen(false);
+                  setPage("stories");
+                  sessionStorage.setItem("nexp_page", "stories");
+                  sessionStorage.setItem("nexp_story_uid", uid);
+                }}
+              />
+            )}
+          </>
         );
       })()}
     </div>
