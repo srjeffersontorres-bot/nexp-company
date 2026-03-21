@@ -406,6 +406,94 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+function AvisoComissoes({ contact }) {
+  const [avisos, setAvisos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_avisos_comissao") || "[]"); } catch { return []; }
+  });
+  const [msg, setMsg] = useState("");
+  const [valor, setValor] = useState("");
+  const [venc, setVenc] = useState("");
+
+  const salvar = () => {
+    if (!msg.trim()) return;
+    const novo = { id: Date.now(), msg: msg.trim(), valor: valor.trim(), venc: venc.trim(), clienteId: contact?.id || "", clienteNome: contact?.name || "", data: new Date().toLocaleDateString("pt-BR") };
+    const upd = [novo, ...avisos];
+    setAvisos(upd);
+    localStorage.setItem("nexp_avisos_comissao", JSON.stringify(upd));
+    setMsg(""); setValor(""); setVenc("");
+  };
+
+  const remover = (id) => {
+    const upd = avisos.filter(a => a.id !== id);
+    setAvisos(upd);
+    localStorage.setItem("nexp_avisos_comissao", JSON.stringify(upd));
+  };
+
+  const doCliente = avisos.filter(a => a.clienteId === (contact?.id || ""));
+  const outros = avisos.filter(a => a.clienteId !== (contact?.id || ""));
+
+  return (
+    <div>
+      <div style={{ color: C.ts, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>🔔 Aviso de Comissões</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:12 }}>
+        <input value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Descrição do aviso (ex: Comissão pendente — proposta #123)"
+          style={{ ...S.input, fontSize:12 }} />
+        <div style={{ display:"flex", gap:8 }}>
+          <input value={valor} onChange={e=>setValor(e.target.value)} placeholder="Valor (R$)" style={{ ...S.input, fontSize:12, flex:1 }} />
+          <input value={venc} onChange={e=>setVenc(e.target.value)} placeholder="Vencimento" style={{ ...S.input, fontSize:12, flex:1 }} />
+        </div>
+        <button onClick={salvar} disabled={!msg.trim()}
+          style={{ background:msg.trim()?`linear-gradient(135deg,${C.lg1},${C.lg2})`:"transparent", color:msg.trim()?"#fff":C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 14px", fontSize:12, fontWeight:600, cursor:msg.trim()?"pointer":"not-allowed" }}>
+          ＋ Adicionar aviso
+        </button>
+      </div>
+      {doCliente.length > 0 && (
+        <>
+          <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6 }}>Avisos deste cliente</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:5, marginBottom:12 }}>
+            {doCliente.map(a=>(
+              <div key={a.id} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:8, padding:"8px 11px", display:"flex", alignItems:"flex-start", gap:10 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ color:C.tp, fontSize:12, fontWeight:600 }}>{a.msg}</div>
+                  <div style={{ display:"flex", gap:10, marginTop:3, flexWrap:"wrap" }}>
+                    {a.valor && <span style={{ color:"#34D399", fontSize:11 }}>💰 {a.valor}</span>}
+                    {a.venc && <span style={{ color:"#FBBF24", fontSize:11 }}>📅 {a.venc}</span>}
+                    <span style={{ color:C.td, fontSize:10 }}>{a.data}</span>
+                  </div>
+                </div>
+                <button onClick={()=>remover(a.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:15, padding:0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {outros.length > 0 && (
+        <>
+          <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6 }}>Outros avisos</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+            {outros.slice(0,5).map(a=>(
+              <div key={a.id} style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:8, padding:"7px 11px", display:"flex", alignItems:"flex-start", gap:10 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ color:C.ts, fontSize:11.5, fontWeight:600 }}>{a.msg}</div>
+                  <div style={{ display:"flex", gap:8, marginTop:2, flexWrap:"wrap" }}>
+                    {a.clienteNome && <span style={{ color:C.tm, fontSize:10 }}>👤 {a.clienteNome}</span>}
+                    {a.valor && <span style={{ color:"#34D399", fontSize:10 }}>💰 {a.valor}</span>}
+                    {a.venc && <span style={{ color:"#FBBF24", fontSize:10 }}>📅 {a.venc}</span>}
+                  </div>
+                </div>
+                <button onClick={()=>remover(a.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:14, padding:0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {avisos.length === 0 && (
+        <div style={{ color:C.td, fontSize:11.5, textAlign:"center", padding:"16px 0", opacity:0.6 }}>Nenhum aviso cadastrado ainda.</div>
+      )}
+    </div>
+  );
+}
+
 function CommSim({ compact = false }) {
   const [sv, setSv] = useState("");
   const [pct, setPct] = useState("");
@@ -944,12 +1032,12 @@ function LoginPage({ onLogin }) {
   const isCloudy = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
 
   const getBgGradient = () => {
-    if (isRain)    return "linear-gradient(180deg, #1a2535 0%, #263040 60%, #1a2535 100%)";
-    if (isNight)   return "linear-gradient(180deg, #020408 0%, #060B1A 40%, #0A0F22 100%)";
-    if (isMorning) return "linear-gradient(180deg, #1a3a6b 0%, #2563aa 50%, #f97316 100%)";
-    if (isAfternoon) return "linear-gradient(180deg, #1e3a8a 0%, #2563eb 40%, #38bdf8 100%)";
-    if (isEvening) return "linear-gradient(180deg, #4c1d95 0%, #7c3aed 40%, #f97316 100%)";
-    if (isCloudy)  return "linear-gradient(180deg, #374151 0%, #4b5563 50%, #6b7280 100%)";
+    if (isRain)    return "linear-gradient(180deg, #0d1b2e 0%, #1a2d42 40%, #2a3f54 80%, #3a4a5a 100%)";
+    if (isNight)   return "linear-gradient(180deg, #000308 0%, #020818 25%, #050d2a 55%, #0a1235 80%, #101a3e 100%)";
+    if (isMorning) return "linear-gradient(180deg, #0d1b4a 0%, #1a3a7c 25%, #2563aa 50%, #e07b30 80%, #f9a840 100%)";
+    if (isAfternoon) return "linear-gradient(180deg, #0a1c5c 0%, #1546a8 30%, #2575d0 55%, #5ab4e8 85%, #a8d8f0 100%)";
+    if (isEvening) return "linear-gradient(180deg, #1a0a3a 0%, #4c1d95 25%, #7c3aed 50%, #c2410c 80%, #f97316 100%)";
+    if (isCloudy)  return "linear-gradient(180deg, #1a2535 0%, #2d3a4a 35%, #4b5563 65%, #6b7280 100%)";
     return "linear-gradient(180deg, #060810 0%, #0A0F22 100%)";
   };
 
@@ -967,7 +1055,7 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 32px", position:"relative", overflow:"hidden", gap:32 }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 32px", position:"fixed", inset:0, overflow:"hidden", gap:32 }}>
 
       <style>{`
         @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
@@ -1031,94 +1119,63 @@ function LoginPage({ onLogin }) {
           </circle>
         ))}
 
-        {/* ── LUA crescente realista — mais baixa, mais bonita ── */}
+        {/* ── LUA crescente realista — centralizada no céu, sempre visível ── */}
         {isNight && (
           <g>
-            {/* Halo suave */}
-            <circle r="80" fill="#FEF9C3" opacity="0.05">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,200 C 280,110 860,95 1540,190"/>
+            {/* Halo externo brilhante */}
+            <circle cx="1100" cy="130" r="110" fill="#FEF9C3" opacity="0.06">
+              <animate attributeName="opacity" values="0.04;0.10;0.04" dur="4s" repeatCount="indefinite"/>
             </circle>
-            {/* Corpo da lua */}
-            <circle r="50" fill="#F0D060">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,200 C 280,110 860,95 1540,190"/>
+            <circle cx="1100" cy="130" r="85" fill="#FDE68A" opacity="0.10">
+              <animate attributeName="opacity" values="0.07;0.16;0.07" dur="3s" repeatCount="indefinite"/>
             </circle>
-            {/* Gradiente de textura fria */}
-            <circle r="50" fill="#C8B040" opacity="0.3">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,200 C 280,110 860,95 1540,190"/>
-            </circle>
-            {/* Sombra meia-lua crescente */}
-            <circle r="46" fill="#030810" opacity="0.92">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -78,192 C 302,102 882,87 1562,182"/>
-            </circle>
-            {/* Brilho borda direita */}
-            <circle r="50" fill="none" stroke="#FDE68A" strokeWidth="1.5" opacity="0.4">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,200 C 280,110 860,95 1540,190"/>
-            </circle>
-            {/* Cratera 1 */}
-            <circle r="7" fill="#B8960A" opacity="0.55">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -126,215 C 254,125 834,110 1514,205"/>
-            </circle>
-            <circle r="5" fill="#96780A" opacity="0.35">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -126,215 C 254,125 834,110 1514,205"/>
-            </circle>
-            {/* Cratera 2 */}
-            <circle r="4.5" fill="#B8960A" opacity="0.5">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -85,188 C 295,98 875,83 1555,178"/>
-            </circle>
-            {/* Cratera 3 pequena */}
-            <circle r="3" fill="#A07808" opacity="0.45">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -110,210 C 270,120 850,105 1530,200"/>
-            </circle>
+            {/* Corpo da lua — grande e visível */}
+            <circle cx="1100" cy="130" r="58" fill="#F5E070"/>
+            <circle cx="1100" cy="130" r="58" fill="#D4B840" opacity="0.25"/>
+            {/* Sombra crescente — dá forma de lua crescente */}
+            <circle cx="1128" cy="122" r="52" fill="#040C1E" opacity="0.95"/>
+            {/* Borda luminosa */}
+            <circle cx="1100" cy="130" r="58" fill="none" stroke="#FDE68A" strokeWidth="2" opacity="0.5"/>
+            {/* Crateras */}
+            <circle cx="1082" cy="118" r="8" fill="#B8960A" opacity="0.5"/>
+            <circle cx="1082" cy="118" r="5" fill="#96780A" opacity="0.3"/>
+            <circle cx="1095" cy="148" r="5" fill="#B8960A" opacity="0.45"/>
+            <circle cx="1075" cy="140" r="3.5" fill="#A07808" opacity="0.4"/>
             {/* Brilho especular topo */}
-            <circle r="10" fill="#FFFDE7" opacity="0.3">
-              <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -118,185 C 262,95 842,80 1522,175"/>
-            </circle>
+            <circle cx="1092" cy="110" r="11" fill="#FFFDE7" opacity="0.25"/>
           </g>
         )}
 
-        {/* ── SOL percorre o céu lentamente ── */}
+        {/* ── SOL fixo e visível no céu ── */}
         {!isNight && !isRain && (
           <g filter="url(#glow4)">
-            {/* Halo externo */}
-            <circle r="90" fill="url(#sunGlow)" opacity="0.4">
-              <animateMotion dur="240s" repeatCount="indefinite"
-                path="M -100,200 C 200,40 700,20 1540,180"/>
+            {/* Halo externo grande */}
+            <circle cx="780" cy="110" r="130" fill="url(#sunGlow)" opacity="0.35">
+              <animate attributeName="opacity" values="0.25;0.45;0.25" dur="5s" repeatCount="indefinite"/>
             </circle>
-            {/* Raios — giram em torno do centro */}
-            {Array.from({length:12}).map((_,ri)=>{
-              const a = ri*30;
+            <circle cx="780" cy="110" r="100" fill="url(#sunGlow)" opacity="0.5">
+              <animate attributeName="opacity" values="0.4;0.65;0.4" dur="4s" repeatCount="indefinite"/>
+            </circle>
+            {/* Raios girando */}
+            {Array.from({length:16}).map((_,ri)=>{
+              const a = ri*22.5;
               return (
                 <line key={ri}
-                  x1={Math.cos(a*Math.PI/180)*52} y1={Math.sin(a*Math.PI/180)*52}
-                  x2={Math.cos(a*Math.PI/180)*76} y2={Math.sin(a*Math.PI/180)*76}
-                  stroke="#FDE68A" strokeWidth="2.5" strokeLinecap="round" opacity="0.55">
-                  <animateMotion dur="240s" repeatCount="indefinite"
-                    path="M -100,200 C 200,40 700,20 1540,180"/>
+                  x1={780+Math.cos(a*Math.PI/180)*68} y1={110+Math.sin(a*Math.PI/180)*68}
+                  x2={780+Math.cos(a*Math.PI/180)*95} y2={110+Math.sin(a*Math.PI/180)*95}
+                  stroke="#FDE68A" strokeWidth="3" strokeLinecap="round" opacity="0.6">
                   <animateTransform attributeName="transform" type="rotate"
-                    from="0 0 0" to="360 0 0" dur="50s" repeatCount="indefinite"
-                    additive="sum"/>
+                    from="0 780 110" to="360 780 110" dur="60s" repeatCount="indefinite"/>
                 </line>
               );
             })}
-            {/* Núcleo */}
-            <circle r="44" fill="#FDE68A">
-              <animateMotion dur="240s" repeatCount="indefinite"
-                path="M -100,200 C 200,40 700,20 1540,180"/>
+            {/* Núcleo do sol */}
+            <circle cx="780" cy="110" r="56" fill="#FDE68A">
+              <animate attributeName="r" values="54;58;54" dur="4s" repeatCount="indefinite"/>
             </circle>
-            <circle r="36" fill="#FFFDE7">
-              <animateMotion dur="240s" repeatCount="indefinite"
-                path="M -100,200 C 200,40 700,20 1540,180"/>
-            </circle>
+            <circle cx="780" cy="110" r="44" fill="#FFFDE7"/>
+            {/* Brilho especular */}
+            <circle cx="762" cy="92" r="14" fill="#FFFFFF" opacity="0.35"/>
           </g>
         )}
 
@@ -1438,6 +1495,33 @@ function LoginPage({ onLogin }) {
             style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 20px rgba(59,110,245,0.4)" }}>
             {loading ? "Entrando..." : "Entrar →"}
           </button>
+
+          {/* Redefinir senha — integrado ao bloco de login */}
+          <div style={{ marginTop:10, borderTop:"1px solid rgba(79,142,247,0.15)", paddingTop:10 }}>
+            <button onClick={() => { setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
+              style={{ width:"100%", display:"flex", alignItems:"center", gap:8, background:"transparent", border:"none", cursor:"pointer", padding:"4px 0" }}>
+              <span style={{ fontSize:14 }}>🔑</span>
+              <span style={{ color:"rgba(255,255,255,0.45)", fontSize:11.5 }}>Esqueci minha senha</span>
+              <span style={{ color:"rgba(79,142,247,0.4)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
+            </button>
+            {showResetLogin && (
+              <div style={{ marginTop:8 }}>
+                <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
+                  onKeyDown={e=>e.key==="Enter"&&doLoginReset()}
+                  placeholder="seu@email.com"
+                  style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", marginBottom:7 }} />
+                <button onClick={doLoginReset} disabled={resetBusy}
+                  style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"8px", fontSize:12.5, opacity:resetBusy?0.7:1 }}>
+                  {resetBusy ? "Enviando..." : "📧 Enviar link de redefinição"}
+                </button>
+                {resetMsg && (
+                  <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:6, textAlign:"center" }}>
+                    {resetMsg}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Suporte */}
@@ -1450,40 +1534,6 @@ function LoginPage({ onLogin }) {
           </div>
           <span style={{ color:"#25D36666", fontSize:16 }}>→</span>
         </a>
-
-        {/* Redefinir senha */}
-        <div style={{ marginTop:8 }}>
-          <button onClick={() => { setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
-            style={{ width:"100%", display:"flex", alignItems:"center", gap:10, background:"rgba(59,110,245,0.1)", backdropFilter:"blur(10px)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:12, padding:"11px 14px", cursor:"pointer", textDecoration:"none" }}>
-            <span style={{ fontSize:17 }}>🔑</span>
-            <div style={{ flex:1, textAlign:"left" }}>
-              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:600 }}>Redefinir senha</div>
-              <div style={{ color:"rgba(79,142,247,0.5)", fontSize:10.5 }}>Enviar link de redefinição por e-mail</div>
-            </div>
-            <span style={{ color:"rgba(79,142,247,0.4)", fontSize:14 }}>{showResetLogin?"▲":"▼"}</span>
-          </button>
-
-          {showResetLogin && (
-            <div style={{ background:"rgba(8,10,16,0.7)", backdropFilter:"blur(10px)", border:"1px solid rgba(79,142,247,0.2)", borderRadius:12, padding:"14px", marginTop:4 }}>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8 }}>
-                Digite o e-mail cadastrado para receber o link de redefinição:
-              </div>
-              <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
-                onKeyDown={e=>e.key==="Enter"&&doLoginReset()}
-                placeholder="seu@email.com"
-                style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", marginBottom:8 }} />
-              <button onClick={doLoginReset} disabled={resetBusy}
-                style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"9px", fontSize:13, opacity:resetBusy?0.7:1 }}>
-                {resetBusy ? "Enviando..." : "📧 Enviar link"}
-              </button>
-              {resetMsg && (
-                <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11.5, marginTop:8, textAlign:"center" }}>
-                  {resetMsg}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
 
         {/* Solicitar usuário */}
         <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de saber como ter acesso ao Nexp Consultas. Preciso de um usuário.")}`}
@@ -1498,41 +1548,50 @@ function LoginPage({ onLogin }) {
         </a>
       </div>
 
-      {/* ── Lado direito: robô → previsão do tempo → frase do dia ── */}
+      {/* ── Lado direito: robô ao lado da previsão + frase do dia ── */}
       <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:32, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
-        {/* Robô */}
-        <div style={{ animation:"robotFloat 3s ease-in-out infinite" }}>
-          <NexpRobot size={130} showFaceOnly={false} />
-        </div>
-        {/* Previsão do tempo */}
+        {/* Robô + Previsão do tempo lado a lado */}
         {forecast?.days && (
-          <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"center", width:"100%", maxWidth:480 }}>
-            <div style={{ background:"rgba(8,10,18,0.65)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", gap:12, width:"100%" }}>
-              <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
-              <div>
-                {cityName && <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
-                <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{weather ? Math.round(weather.temperature)+"°C" : "—"}</div>
-              </div>
-              <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
-                {(forecast.days||[]).map((d,i) => {
-                  const wmo = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",80:"🌦",81:"🌧",82:"⛈"};
-                  const icon = wmo[d.wcode] || "🌡";
-                  const day = i===0?"Hoje":["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d.date).getDay()];
-                  return (
-                    <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, minWidth:36 }}>
-                      <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9, fontWeight:600 }}>{day}</div>
-                      <div style={{ fontSize:14 }}>{icon}</div>
-                      <div style={{ color:"#F87171", fontSize:9.5, fontWeight:700 }}>↑{Math.round(d.tmax)}°</div>
-                      <div style={{ color:"#93C5FD", fontSize:9.5 }}>↓{Math.round(d.tmin)}°</div>
-                    </div>
-                  );
-                })}
+          <div style={{ display:"flex", alignItems:"flex-end", gap:14, width:"100%", maxWidth:520 }}>
+            {/* Robô */}
+            <div style={{ animation:"robotFloat 3s ease-in-out infinite", flexShrink:0 }}>
+              <NexpRobot size={110} showFaceOnly={false} />
+            </div>
+            {/* Previsão */}
+            <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+              <div style={{ background:"rgba(8,10,18,0.65)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", gap:12, width:"100%" }}>
+                <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
+                <div>
+                  {cityName && <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
+                  <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{weather ? Math.round(weather.temperature)+"°C" : "—"}</div>
+                </div>
+                <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
+                  {(forecast.days||[]).map((d,i) => {
+                    const wmo = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",80:"🌦",81:"🌧",82:"⛈"};
+                    const icon = wmo[d.wcode] || "🌡";
+                    const day = i===0?"Hoje":["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d.date).getDay()];
+                    return (
+                      <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, minWidth:36 }}>
+                        <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9, fontWeight:600 }}>{day}</div>
+                        <div style={{ fontSize:14 }}>{icon}</div>
+                        <div style={{ color:"#F87171", fontSize:9.5, fontWeight:700 }}>↑{Math.round(d.tmax)}°</div>
+                        <div style={{ color:"#93C5FD", fontSize:9.5 }}>↓{Math.round(d.tmin)}°</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
         )}
+        {/* Sem previsão: apenas robô centralizado */}
+        {!forecast?.days && (
+          <div style={{ animation:"robotFloat 3s ease-in-out infinite" }}>
+            <NexpRobot size={130} showFaceOnly={false} />
+          </div>
+        )}
         {/* Frase do dia */}
-        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"18px 28px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", maxWidth:480, width:"100%" }}>
+        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"18px 28px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", maxWidth:520, width:"100%" }}>
           <div style={{ color:"rgba(79,142,247,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
           <div style={{ color:"rgba(255,255,255,0.92)", fontSize:15, lineHeight:1.7, fontStyle:"italic" }}>{frase}</div>
         </div>
@@ -1566,7 +1625,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
-    { id:"dashboard",  label:"Leads Gerais",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
+    { id:"dashboard",  label:"Relatório de Leads",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
     { id:"contacts",   label:"Contatos",       icon:"⬡", roles:["mestre","master","indicado","visitante"] },
     { id:"add",        label:"Adicionar",       icon:"⊕", roles:["mestre","master","indicado"] },
     { id:"import",     label:"Importar",        icon:"⤓", roles:["mestre","master","indicado"] },
@@ -1862,7 +1921,7 @@ function Dashboard({ contacts }) {
     <div style={{ padding: "30px 36px", maxWidth: 920 }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ color: C.tp, fontSize: 21, fontWeight: 700, margin: 0 }}>
-          Leads Gerais
+          Relatório de Leads
         </h1>
         <p style={{ color: C.tm, fontSize: 12.5, margin: "4px 0 0" }}>
           Visão geral dos leads cadastrados
@@ -2235,7 +2294,23 @@ function CCard({ contact, onUpdate, onDelete }) {
                       border: `1px solid ${C.b2}`,
                     }}
                   >
-                    <CommSim compact />
+                    {(() => {
+                      const [scTab2, setScTab2] = React.useState("comissao");
+                      return (
+                        <>
+                          <div style={{ display:"flex", gap:1, borderBottom:`1px solid ${C.b1}`, marginBottom:12 }}>
+                            {[{id:"comissao",label:"💰 Comissão"},{id:"avisos",label:"🔔 Aviso de Comissões"}].map(t=>(
+                              <button key={t.id} onClick={()=>setScTab2(t.id)}
+                                style={{ background:"transparent", border:"none", cursor:"pointer", padding:"6px 12px", fontSize:11.5, fontWeight:scTab2===t.id?700:400, color:scTab2===t.id?C.atxt:C.tm, borderBottom:scTab2===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                          {scTab2 === "comissao" && <CommSim compact />}
+                          {scTab2 === "avisos" && <AvisoComissoes contact={contact} />}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -3115,7 +3190,19 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
           {err && <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "11px 14px", marginBottom: 16, color: "#F87171", fontSize: 13 }}>⚠ {err}</div>}
           <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
             <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Modelo de Planilha</div>
-            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>Colunas: Nome*, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email, Matricula, TipoLead, Observacao</div>
+            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>Cada coluna abaixo corresponde a uma coluna da planilha CSV, na ordem exata:</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
+              {[
+                ["A","Nome *"],["B","CPF"],["C","Telefone 1"],["D","Telefone 2"],["E","Telefone 3"],
+                ["F","CNPJ"],["G","Email"],["H","Matrícula"],["I","Tipo de Lead"],["J","Observação"],
+                ["K","Rua"],["L","Número"],["M","Bairro"],["N","CEP"],["O","Cidade"],["P","UF"],
+              ].map(([col,label])=>(
+                <div key={col} style={{ display:"flex", alignItems:"stretch", borderRadius:8, overflow:"hidden", border:`1px solid ${C.b1}`, flexShrink:0 }}>
+                  <div style={{ background:C.abg, color:C.atxt, fontWeight:800, fontSize:11, padding:"5px 9px", display:"flex", alignItems:"center", borderRight:`1px solid ${C.b1}` }}>{col}</div>
+                  <div style={{ background:C.deep, color:C.ts, fontSize:11, padding:"5px 10px", display:"flex", alignItems:"center" }}>{label}</div>
+                </div>
+              ))}
+            </div>
             <div style={{ color: C.tm, fontSize: 11, marginBottom: 14, lineHeight: 1.8 }}>
               TipoLead: {[["FGTS","#4F8EF7"],["Empréstimo do Trabalhador","#A78BFA"],["Empréstimo do Bolsa Família","#F472B6"],["Saque Complementar","#FB923C"],["INSS","#34D399"],["Bolsa Família","#F59E0B"],["Outro","#9CA3AF"]].map(([l,c],i,a) => (
                 <span key={l}><span style={{ color: c }}>{l}</span>{i < a.length-1 ? ", " : ""}</span>
@@ -3333,7 +3420,6 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
             <div style={{ color: C.tm, fontSize: 12.5, marginTop: 2 }}>{cur.cpf}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               <LeadBadge c={{ ...cur, leadType }} />
-              <StatusBadge status={cur.status} />
               {cur.matricula && (
                 <span style={{ color: C.tm, fontSize: 11, padding: "3px 9px", borderRadius: 20, border: `1px solid ${C.b2}` }}>
                   #{cur.matricula}
@@ -3465,7 +3551,26 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
 
         {sc && (
           <div style={{ marginTop: 12, padding: "16px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b2}` }}>
-            <CommSim compact />
+            {/* Sub-abas de comissão */}
+            {(() => {
+              const [scTab, setScTab] = React.useState("comissao");
+              return (
+                <>
+                  <div style={{ display:"flex", gap:1, borderBottom:`1px solid ${C.b1}`, marginBottom:14 }}>
+                    {[{id:"comissao",label:"💰 Comissão"},{id:"avisos",label:"🔔 Aviso de Comissões"}].map(t=>(
+                      <button key={t.id} onClick={()=>setScTab(t.id)}
+                        style={{ background:"transparent", border:"none", cursor:"pointer", padding:"7px 14px", fontSize:12, fontWeight:scTab===t.id?700:400, color:scTab===t.id?C.atxt:C.tm, borderBottom:scTab===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  {scTab === "comissao" && <CommSim compact />}
+                  {scTab === "avisos" && (
+                    <AvisoComissoes contact={cur} />
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -5058,7 +5163,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             return u.createdBy === (currentUser.uid || currentUser.id);
           });
           const ALL_TABS = [
-            { id:"dashboard",    label:"Leads Gerais" },
+            { id:"dashboard",    label:"Relatório de Leads" },
             { id:"contacts",     label:"Contatos" },
             { id:"review",       label:"Ver Clientes" },
             { id:"cstatus",      label:"Status" },
@@ -5245,7 +5350,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase())
           );
           const ALL_TABS = [
-            { id:"dashboard",    label:"Leads Gerais" },
+            { id:"dashboard",    label:"Relatório de Leads" },
             { id:"contacts",     label:"Contatos" },
             { id:"review",       label:"Ver Clientes" },
             { id:"cstatus",      label:"Status" },
@@ -10921,7 +11026,6 @@ const toF = (s) => parseFloat(String(s).replace(/\./g,"").replace(",",".")) || 0
 // Balão de detalhe ao clicar numa célula
 function BalaoCelula({ info, onClose }) {
   if (!info) return null;
-  const parcela = info.val > 0 && info.nPrazo > 0 ? info.val / info.nPrazo : null;
   return (
     <div style={{ position:"fixed", inset:0, zIndex:900, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{ background:C.card, border:`1px solid ${C.atxt}44`, borderRadius:18, padding:"24px 28px", minWidth:280, boxShadow:"0 12px 48px rgba(0,0,0,0.7)", animation:"fadeIn 0.2s ease" }}>
@@ -10938,14 +11042,12 @@ function BalaoCelula({ info, onClose }) {
             <span style={{ color:C.tm, fontSize:12.5 }}>Prazo</span>
             <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{info.prazo}</span>
           </div>
-          {parcela !== null && (
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:C.deep, borderRadius:9 }}>
-              <span style={{ color:C.tm, fontSize:12.5 }}>Valor da parcela</span>
-              <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{fmtBRL(parcela)}</span>
-            </div>
-          )}
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:C.deep, borderRadius:9 }}>
+            <span style={{ color:C.tm, fontSize:12.5 }}>Valor da parcela (margem)</span>
+            <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{fmtBRL(info.margem)}</span>
+          </div>
           <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 12px", background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.2)", borderRadius:9 }}>
-            <span style={{ color:"#FBBF24", fontSize:12.5, fontWeight:600 }}>⚡ Liberação rápida — Cliente VIP</span>
+            <span style={{ color:"#FBBF24", fontSize:12.5, fontWeight:600 }}>(⚡ Liberação rápida)</span>
             <span style={{ color:"#FBBF24", fontSize:13, fontWeight:700 }}>{fmtBRL(info.val * 0.95)}</span>
           </div>
           <div style={{ color:C.td, fontSize:10, textAlign:"center", marginTop:4 }}>{info.banco} · coef {info.coef}</div>
@@ -10960,6 +11062,12 @@ function TabelaSimulacao({ margem, margemReaj, bancos, prazos, chaveCoef }) {
   const [balao, setBalao] = useState(null);
   const m = toF(margem);
   const mReaj = margemReaj || 0;
+  // Coeficientes editáveis por banco
+  const [coefs, setCoefs] = useState(() => {
+    const obj = {};
+    bancos.forEach(b => { obj[b.id] = String(toF(b[chaveCoef]) || toF(b.coef_emp) || 0.02718); });
+    return obj;
+  });
 
   return (
     <>
@@ -10980,18 +11088,20 @@ function TabelaSimulacao({ margem, margemReaj, bancos, prazos, chaveCoef }) {
           </thead>
           <tbody>
             {bancos.map((b, i) => {
-              const c = toF(b[chaveCoef]) || toF(b.coef_emp) || 0.02718;
+              const c = toF(coefs[b.id]) || 0.02718;
               return (
                 <tr key={b.id} style={{ background: i%2===0 ? C.card : C.deep }}>
                   <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{b.nome}</td>
-                  <td style={{ color:C.td, textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}`, fontSize:11 }}>{c}</td>
+                  <td style={{ padding:"5px 8px", borderBottom:`1px solid ${C.b1}` }}>
+                    <input value={coefs[b.id] ?? String(c)} onChange={e=>setCoefs(p=>({...p,[b.id]:e.target.value}))}
+                      style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:6, color:C.ts, fontSize:11, padding:"3px 6px", width:72, textAlign:"center" }} />
+                  </td>
                   {prazos.map(p => {
                     const val = m > 0 && c > 0 ? m / c : null;
-                    const nPrazo = parseInt(p.prazo) || 0;
                     return (
                       <td key={p.prazo} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
                         {val !== null
-                          ? <span onClick={()=>setBalao({ val, prazo:p.prazo, nPrazo, banco:b.nome, coef:c })}
+                          ? <span onClick={()=>setBalao({ val, prazo:p.prazo, banco:b.nome, coef:c, margem:m })}
                               style={{ color:C.tp, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block", transition:"background 0.15s" }}
                               onMouseEnter={e=>e.currentTarget.style.background=C.abg}
                               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -11003,11 +11113,10 @@ function TabelaSimulacao({ margem, margemReaj, bancos, prazos, chaveCoef }) {
                   })}
                   {mReaj > 0 && prazos.map(p => {
                     const val = (m + mReaj) > 0 && c > 0 ? (m + mReaj) / c : null;
-                    const nPrazo = parseInt(p.prazo) || 0;
                     return (
                       <td key={"r"+p.prazo} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
                         {val !== null
-                          ? <span onClick={()=>setBalao({ val, prazo:p.prazo, nPrazo, banco:b.nome, coef:c })}
+                          ? <span onClick={()=>setBalao({ val, prazo:p.prazo, banco:b.nome, coef:c, margem:(m+mReaj) })}
                               style={{ color:"#34D399", fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block", transition:"background 0.15s" }}
                               onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.1)"}
                               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -11082,11 +11191,10 @@ function CreditoTab({ bancos }) {
                   {bancos.filter(b=>toF(b.coef_cred)>0).map(b => {
                     const bc = toF(b.coef_cred);
                     const val = m > 0 && bc > 0 ? m / bc : null;
-                    const nPrazo = parseInt(l.prazo) || 0;
                     return (
                       <td key={b.id} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
                         {val !== null
-                          ? <span onClick={()=>setBalao({val,prazo:l.prazo,nPrazo,banco:b.nome,coef:bc})}
+                          ? <span onClick={()=>setBalao({val,prazo:l.prazo,banco:b.nome,coef:bc,margem:m})}
                               style={{ color:C.tp, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block" }}
                               onMouseEnter={e=>e.currentTarget.style.background=C.abg}
                               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -12925,7 +13033,7 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
   });
 
   const blankFGTS = () => ({ ...blankComum(),
-    bancoProposta:"", comSeguro:"NAO", tabela:"COMETA", anosAntecipacao:"",
+    bancoProposta:"", comSeguro:"NAO", tabela:"", anosAntecipacao:"",
     valorLiberado:"", valorPrometido:"", valorDesconto:"",
   });
 
