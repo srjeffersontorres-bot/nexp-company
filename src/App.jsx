@@ -4797,7 +4797,6 @@ function PerfisTab({ users, setUsers, currentUser }) {
 function RankTab({ users, currentUser }) {
   const myRole = currentUser.role || "operador";
   const myId   = currentUser.uid || currentUser.id;
-  const myLvl  = ROLE_HIERARCHY[myRole] ?? 99;
   const [search, setSearch] = useState("");
 
   // Todos os usuários não deletados visíveis para este usuário
