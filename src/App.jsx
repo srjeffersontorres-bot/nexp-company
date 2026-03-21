@@ -979,7 +979,6 @@ function LoginPage({ onLogin }) {
   const [err, setErr] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [weather, setWeather] = useState(null);
 
   const [showResetLogin, setShowResetLogin] = useState(false);
   const [resetEmail, setResetEmail]         = useState("");
@@ -1003,61 +1002,7 @@ function LoginPage({ onLogin }) {
     setResetBusy(false);
   };
 
-  // Determinar hora do dia e clima
-  const hour = new Date().getHours();
-  const isNight = hour >= 20 || hour < 6;
-  const isMorning = hour >= 6 && hour < 12;
-  const isAfternoon = hour >= 12 && hour < 18;
-  const isEvening = hour >= 18 && hour < 20;
 
-  // Frase motivacional do dia (muda todo dia)
-  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(),0,0)) / 86400000);
-  const frase = FRASES_DIA[dayOfYear % FRASES_DIA.length];
-
-  const [cityName, setCityName] = useState(null);
-  const [forecast, setForecast] = useState(null);
-
-  // Buscar clima + cidade
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(async pos => {
-        try {
-          const { latitude: lat, longitude: lon } = pos.coords;
-          // Clima atual + previsão do dia
-          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&timezone=auto&forecast_days=5`);
-          const d = await r.json();
-          setWeather(d.current_weather);
-          if (d.daily) setForecast({
-            tmax: d.daily.temperature_2m_max?.[0], tmin: d.daily.temperature_2m_min?.[0], rain: d.daily.precipitation_probability_max?.[0],
-            days: (d.daily.time||[]).map((t,i) => ({ date:t, tmax: d.daily.temperature_2m_max[i], tmin: d.daily.temperature_2m_min[i], wcode: d.daily.weathercode[i], rain: d.daily.precipitation_probability_max[i] }))
-          });
-          // Nome da cidade via reverse geocoding
-          try {
-            const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
-            const gd  = await geo.json();
-            const city = gd.address?.city || gd.address?.town || gd.address?.village || gd.address?.county || "";
-            const state = gd.address?.state_code || gd.address?.state || "";
-            setCityName(city && state ? `${city}, ${state}` : city || state || null);
-          } catch {}
-        } catch {}
-      }, () => {});
-    }
-  }, []);
-
-  // Determinar tema visual baseado em hora e clima
-  const wcode = weather?.weathercode ?? -1;
-  const isRain   = wcode >= 51 && wcode <= 82;
-  const isCloudy = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
-
-  const getBgGradient = () => {
-    if (isRain)    return "linear-gradient(180deg, #0d1b2e 0%, #1a2d42 40%, #2a3f54 80%, #3a4a5a 100%)";
-    if (isNight)   return "linear-gradient(180deg, #000308 0%, #020818 25%, #050d2a 55%, #0a1235 80%, #101a3e 100%)";
-    if (isMorning) return "linear-gradient(180deg, #0d1b4a 0%, #1a3a7c 25%, #2563aa 50%, #e07b30 80%, #f9a840 100%)";
-    if (isAfternoon) return "linear-gradient(180deg, #0a1c5c 0%, #1546a8 30%, #2575d0 55%, #5ab4e8 85%, #a8d8f0 100%)";
-    if (isEvening) return "linear-gradient(180deg, #1a0a3a 0%, #4c1d95 25%, #7c3aed 50%, #c2410c 80%, #f97316 100%)";
-    if (isCloudy)  return "linear-gradient(180deg, #1a2535 0%, #2d3a4a 35%, #4b5563 65%, #6b7280 100%)";
-    return "linear-gradient(180deg, #060810 0%, #0A0F22 100%)";
-  };
 
   const go = async () => {
     if (!un.trim() || !pw.trim()) { setErr("Preencha e-mail e senha."); return; }
@@ -10888,8 +10833,6 @@ function CreditoTab({ bancos }) {
             {linhas.map((l, i) => {
               const c = toF(l.coef);
               const valorLiberado = m > 0 && c > 0 ? m / c : null;
-              const parcela = m; // parcela = margem (valor fixo mensal)
-              const nP = l.nParcelas || parseInt(l.prazo) || 0;
               return (
                 <tr key={l.id} style={{ background: i%2===0 ? C.card : C.deep }}>
                   {/* Prazo */}
