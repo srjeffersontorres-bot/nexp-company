@@ -12176,31 +12176,78 @@ function ApisBancosPage({ currentUser }) {
   );
 }
 
-// ── App Root ───────────────────────────────────────────────────
-// ── Digitação Page ─────────────────────────────────────────────
 function DigitacaoPage({ contacts, currentUser }) {
-  const EMAILJS_SVC  = "nexp_service";
-  const EMAILJS_TPL  = "template_digitacao";
-  const EMAILJS_KEY  = "GaZRJdTXt0UMdEY3H";
-  const DEST_EMAIL   = "vendas.nexpcred@gmail.com";
+  const EMAILJS_SVC = "nexp_service";
+  const EMAILJS_KEY = "GaZRJdTXt0UMdEY3H";
+  const DEST_EMAIL  = "vendas.nexpcred@gmail.com";
 
-  const blank = () => ({
-    cpf:"", nome:"", telefone:"", email:"", dataNasc:"",
-    cep:"", rua:"", numero:"", bairro:"", cidade:"", uf:"", complemento:"",
-    banco:"", agencia:"", conta:"", tipoConta:"corrente", pixKey:"",
-    produto:"FGTS", valorSolicitado:"", observacao:"",
-    docTipo:"CNH", docFiles:[],
-  });
-
-  const [form, setForm] = useState(blank());
+  const [tipoProposta, setTipoProposta] = useState("FGTS");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
   const [clienteEncontrado, setClienteEncontrado] = useState(false);
   const fileRef = useRef();
 
+  // ── Campos comuns a todos os tipos ──
+  const blankComum = () => ({
+    // Documento
+    cpf:"", nome:"", rg:"", dataNasc:"", dataExpedicao:"", orgaoEmissor:"",
+    nomeMae:"", nomePai:"", ufDoc:"", naturalidade:"",
+    // Contato
+    contato1:"", contato2:"", email1:"", email2:"",
+    // Endereço
+    ufEnd:"", cep:"", rua:"", numero:"", bairro:"", cidade:"", complemento:"",
+    // Pagamento
+    bancoPagto:"", agencia:"", contaDigito:"", tipoConta:"corrente", pix1:"", pix2:"",
+    // Observação
+    observacao:"",
+    // Docs
+    docTipo:"CNH", docCategoria:"Documentação", docFiles:[],
+  });
+
+  const blankFGTS = () => ({ ...blankComum(),
+    bancoProposta:"", comSeguro:"NAO", tabela:"COMETA", anosAntecipacao:"3",
+    valorLiberado:"", valorPrometido:"", valorDesconto:"",
+  });
+
+  const blankCLT = () => ({ ...blankComum(),
+    bancoProposta:"V8 DIGITAL", averbador:"CELCOIN", protocolo:"",
+    comSeguro:"NAO", tabela:"CLT ACELERA",
+    valorLiberado:"", valorPrometido:"", parcelas:"", prazo:"",
+    matricula:"", empresa:"", cnpj:"",
+  });
+
+  const blankINSS = () => ({ ...blankComum(),
+    bancoProposta:"", comRepresentante:"NAO", analfabeto:"NAO",
+    comSeguro:"NAO", numBeneficio:"", numMatricula:"", tabela:"", margem:"",
+    valorLiberado:"", valorPrometido:"", prazo:"", extratoAnexado:"NAO",
+  });
+
+  const blankCartao = () => ({ ...blankComum(),
+    comSeguro:"NAO", extratoAnexado:"NAO",
+    numBeneficio:"", numMatricula:"", tabela:"NORMAL",
+    parcela:"", valorLimite:"", valorSaqueComp:"",
+    valorPrometido:"", prazo:"",
+    // Representante
+    nomeRep:"", cpfRep:"", rgRep:"", dataNascRep:"", dataExpRep:"",
+    orgaoRep:"", nomeMaeRep:"", nomePaiRep:"", ufDocRep:"", naturalidadeRep:"",
+    contato1Rep:"", contato2Rep:"", email1Rep:"", email2Rep:"",
+  });
+
+  const [form, setForm] = useState(blankFGTS());
   const setF = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  // Busca cliente pelo CPF
+  // Troca de tipo reseta o form
+  const changeTipo = (t) => {
+    setTipoProposta(t);
+    setClienteEncontrado(false);
+    setMsg("");
+    if (t==="FGTS") setForm(blankFGTS());
+    else if (t==="CLT") setForm(blankCLT());
+    else if (t==="INSS") setForm(blankINSS());
+    else setForm(blankCartao());
+  };
+
+  // Busca automática por CPF
   const buscarCPF = (cpf) => {
     setF("cpf", cpf);
     const clean = cpf.replace(/\D/g,"");
@@ -12209,15 +12256,12 @@ function DigitacaoPage({ contacts, currentUser }) {
     if (c) {
       setClienteEncontrado(true);
       setForm(f=>({...f,
-        cpf, nome:c.name||"", telefone:c.phone||"", email:c.email||"",
-        cep:c.cep||"", rua:c.rua||"", numero:c.numero||"",
-        bairro:c.bairro||"", cidade:c.cidade||"", uf:c.uf||"",
-        complemento:c.complemento||"",
-        produto:c.leadType||"FGTS",
+        cpf, nome:c.name||"", contato1:c.phone||"", contato2:c.phone2||"",
+        email1:c.email||"", cep:c.cep||"", rua:c.rua||"", numero:c.numero||"",
+        bairro:c.bairro||"", cidade:c.cidade||"", complemento:c.complemento||"",
+        ufEnd:c.uf||"", matricula:c.matricula||"",
       }));
-    } else {
-      setClienteEncontrado(false);
-    }
+    } else { setClienteEncontrado(false); }
   };
 
   const handleFiles = (e) => {
@@ -12229,226 +12273,412 @@ function DigitacaoPage({ contacts, currentUser }) {
     }));
     Promise.all(readers).then(arr => setF("docFiles", [...form.docFiles, ...arr]));
   };
-
   const removeFile = (i) => setF("docFiles", form.docFiles.filter((_,idx)=>idx!==i));
 
   const enviar = async () => {
-    if (!form.cpf || !form.nome) { setMsg("❌ CPF e Nome são obrigatórios."); return; }
-    if (form.docFiles.length === 0) { setMsg("❌ Anexe ao menos um documento obrigatório."); return; }
-    if (!form.banco || !form.agencia || !form.conta) { setMsg("❌ Dados bancários são obrigatórios."); return; }
+    if (!form.cpf||!form.nome) { setMsg("❌ CPF e Nome são obrigatórios."); return; }
+    if (form.docFiles.length===0) { setMsg("❌ Anexe ao menos um documento obrigatório."); return; }
+    if (!form.bancoPagto||!form.agencia||!form.contaDigito) { setMsg("❌ Dados bancários são obrigatórios."); return; }
     setSending(true); setMsg("");
     try {
-      // Salvar proposta no Firestore
       const propId = "prop_" + Date.now();
-      await setDoc(doc(db, "propostas", propId), {
-        id: propId,
-        ...form,
-        docFiles: form.docFiles.map(f=>({name:f.name, type:f.type})), // não salvar base64 no firestore
+      await setDoc(doc(db,"propostas",propId), {
+        id:propId, tipo:tipoProposta, ...form,
+        docFiles: form.docFiles.map(f=>({name:f.name,type:f.type})),
         criadoPor: currentUser.uid||currentUser.id,
         criadoPorNome: currentUser.name||currentUser.email,
-        status: "Pendente",
-        createdAt: Date.now(),
+        status:"Pendente", createdAt:Date.now(),
       });
-
-      // Enviar email via EmailJS
-      const params = {
-        to_email: DEST_EMAIL,
-        nome: form.nome, cpf: form.cpf, telefone: form.telefone,
-        email: form.email, produto: form.produto,
-        valor: form.valorSolicitado,
-        banco: form.banco, agencia: form.agencia, conta: form.conta,
-        tipoConta: form.tipoConta, pix: form.pixKey,
-        endereco: `${form.rua}, ${form.numero} - ${form.bairro}, ${form.cidade}/${form.uf} - CEP: ${form.cep}`,
-        observacao: form.observacao,
-        documentos: form.docFiles.map(f=>f.name).join(", "),
-        digitador: currentUser.name||currentUser.email,
-        proposta_id: propId,
-      };
-      await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      const tplId = tipoProposta==="FGTS"?"template_fgts":tipoProposta==="CLT"?"template_clt":tipoProposta==="INSS"?"template_inss":"template_cartao";
+      await fetch("https://api.emailjs.com/api/v1.0/email/send",{
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ service_id:EMAILJS_SVC, template_id:EMAILJS_TPL, user_id:EMAILJS_KEY, template_params:params }),
+        body:JSON.stringify({ service_id:EMAILJS_SVC, template_id:"template_digitacao", user_id:EMAILJS_KEY,
+          template_params:{ to_email:DEST_EMAIL, tipo:tipoProposta, nome:form.nome, cpf:form.cpf,
+            digitador:currentUser.name||currentUser.email, proposta_id:propId,
+            dados:JSON.stringify({...form, docFiles:form.docFiles.map(f=>f.name)}, null, 2) }
+        }),
       });
-
-      setMsg("✅ Proposta enviada com sucesso! Email enviado para " + DEST_EMAIL);
-      setForm(blank());
-      setClienteEncontrado(false);
-    } catch(e) {
-      setMsg("❌ Erro ao enviar: " + e.message);
-    }
+      setMsg("✅ Proposta enviada! Email enviado para " + DEST_EMAIL);
+      changeTipo(tipoProposta);
+    } catch(e) { setMsg("❌ Erro: " + e.message); }
     setSending(false);
   };
 
-  const inp = (label, key, type="text", ph="", required=false) => (
-    <div>
-      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{label}{required&&<span style={{color:"#EF4444"}}> *</span>}</label>
-      <input value={form[key]||""} onChange={e=>setF(key,e.target.value)} type={type} placeholder={ph}
-        style={{ ...S.input, borderColor: required&&!form[key] ? "#EF444444" : undefined }} />
+  // Componentes reutilizáveis
+  const Inp = ({label,k,type="text",ph="",req=false,half=false,small=false}) => (
+    <div style={half?{gridColumn:"span 1"}:{}}>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}{req&&<span style={{color:"#EF4444"}}> *</span>}</label>
+      <input value={form[k]||""} onChange={e=>setF(k,e.target.value)} type={type} placeholder={ph}
+        style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:req&&!form[k]?"#EF444455":undefined}}/>
     </div>
   );
 
+  const Sel = ({label,k,opts,req=false}) => (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}{req&&<span style={{color:"#EF4444"}}> *</span>}</label>
+      <select value={form[k]||""} onChange={e=>setF(k,e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px",cursor:"pointer"}}>
+        {opts.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+    </div>
+  );
+
+  const SimNao = ({label,k}) => (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:4}}>{label}</label>
+      <div style={{display:"flex",gap:6}}>
+        {["SIM","NAO"].map(v=>(
+          <button key={v} onClick={()=>setF(k,v)}
+            style={{flex:1,background:form[k]===v?(v==="SIM"?"#0D2B1A":"#2D1515"):C.deep,
+              color:form[k]===v?(v==="SIM"?"#34D399":"#F87171"):C.tm,
+              border:`1px solid ${form[k]===v?(v==="SIM"?"#34D39944":"#EF444444"):C.b2}`,
+              borderRadius:8,padding:"6px 0",fontSize:12,fontWeight:form[k]===v?700:400,cursor:"pointer"}}>
+            {v==="SIM"?"✓ Sim":"✗ Não"}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const SecTitle = ({icon,title,color}) => (
+    <div style={{color:color||C.ts,fontSize:12,fontWeight:700,marginBottom:12,paddingBottom:8,
+      borderBottom:`1px solid ${color?color+"33":C.b1}`,display:"flex",alignItems:"center",gap:7}}>
+      {icon} {title}
+    </div>
+  );
+
+  const Grid = ({cols=3,children,gap=10}) => (
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,marginBottom:12}}>{children}</div>
+  );
+
   return (
-    <div style={{ padding:"28px 36px", maxWidth:900 }}>
-      <div style={{ marginBottom:22 }}>
-        <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📝 Digitação</h1>
-        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Preencha os dados do cliente para enviar uma proposta</p>
+    <div style={{padding:"24px 32px",maxWidth:960}}>
+      {/* Header */}
+      <div style={{marginBottom:20}}>
+        <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:0}}>📝 Digitação de Proposta</h1>
+        <p style={{color:C.tm,fontSize:12.5,margin:"4px 0 0"}}>Preencha os dados conforme o tipo de produto</p>
+      </div>
+
+      {/* Seletor de tipo */}
+      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+        {[
+          {id:"FGTS",label:"🏦 FGTS",color:"#4F8EF7"},
+          {id:"CLT",label:"💼 CLT",color:"#34D399"},
+          {id:"INSS",label:"🏥 INSS",color:"#C084FC"},
+          {id:"CARTAO",label:"💳 Cartão Consignado",color:"#FB923C"},
+        ].map(t=>(
+          <button key={t.id} onClick={()=>changeTipo(t.id)}
+            style={{background:tipoProposta===t.id?t.color+"22":C.deep,
+              color:tipoProposta===t.id?t.color:C.tm,
+              border:`2px solid ${tipoProposta===t.id?t.color+"66":C.b2}`,
+              borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:tipoProposta===t.id?700:400,
+              cursor:"pointer",transition:"all 0.15s",
+              boxShadow:tipoProposta===t.id?`0 2px 12px ${t.color}33`:"none"}}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {msg && (
-        <div style={{ background: msg.startsWith("✅")?"#091E12":"#2D1515", border:`1px solid ${msg.startsWith("✅")?"#34D39933":"#EF444433"}`, borderRadius:9, padding:"11px 16px", marginBottom:18, color:msg.startsWith("✅")?"#34D399":"#F87171", fontSize:13 }}>
+        <div style={{background:msg.startsWith("✅")?"#091E12":"#2D1515",
+          border:`1px solid ${msg.startsWith("✅")?"#34D39933":"#EF444433"}`,
+          borderRadius:9,padding:"11px 16px",marginBottom:16,
+          color:msg.startsWith("✅")?"#34D399":"#F87171",fontSize:13}}>
           {msg}
         </div>
       )}
 
-      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16 }}>
-        {/* CPF — busca automática */}
-        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:14, paddingBottom:8, borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10 }}>
-          🔍 Dados do Cliente
-          {clienteEncontrado && <span style={{ background:"#091E12", color:"#34D399", fontSize:10, padding:"2px 10px", borderRadius:20, fontWeight:700, border:"1px solid #34D39933" }}>✓ Cliente encontrado no sistema</span>}
+      {/* ═══ FGTS ═══ */}
+      {tipoProposta==="FGTS" && (<>
+        <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+          <SecTitle icon="🏦" title="Informações da Proposta — FGTS" color="#4F8EF7"/>
+          <Grid cols={3}>
+            <Inp label="Banco da Proposta" k="bancoProposta" req/>
+            <Inp label="Tabela" k="tabela" ph="Ex: COMETA"/>
+            <Inp label="Anos de Antecipação" k="anosAntecipacao" ph="Ex: 3"/>
+          </Grid>
+          <Grid cols={3}>
+            <Inp label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
+            <Inp label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
+            <Inp label="Valor de Desconto (R$)" k="valorDesconto" ph="R$ 0,00"/>
+          </Grid>
+          <Grid cols={2}>
+            <SimNao label="Com Seguro?" k="comSeguro"/>
+          </Grid>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr 1fr", gap:12, marginBottom:12 }}>
+      </>)}
+
+      {/* ═══ CLT ═══ */}
+      {tipoProposta==="CLT" && (<>
+        <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+          <SecTitle icon="💼" title="Informações da Proposta — CLT" color="#34D399"/>
+          <Grid cols={3}>
+            <Inp label="Banco da Proposta" k="bancoProposta" ph="Ex: V8 DIGITAL" req/>
+            <Inp label="Averbador" k="averbador" ph="Ex: CELCOIN"/>
+            <Inp label="Protocolo" k="protocolo"/>
+          </Grid>
+          <Grid cols={3}>
+            <Inp label="Tabela" k="tabela" ph="Ex: CLT ACELERA"/>
+            <Inp label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
+            <Inp label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
+          </Grid>
+          <Grid cols={3}>
+            <Inp label="Parcelas (R$)" k="parcelas" ph="R$ 0,00"/>
+            <Inp label="Prazo" k="prazo" ph="Ex: 12x"/>
+            <SimNao label="Com Seguro?" k="comSeguro"/>
+          </Grid>
+          <SecTitle icon="🏢" title="Dados da Empresa"/>
+          <Grid cols={3}>
+            <Inp label="Empresa" k="empresa"/>
+            <Inp label="CNPJ" k="cnpj"/>
+            <Inp label="Matrícula" k="matricula"/>
+          </Grid>
+        </div>
+      </>)}
+
+      {/* ═══ INSS ═══ */}
+      {tipoProposta==="INSS" && (<>
+        <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+          <SecTitle icon="🏥" title="Informações da Proposta — INSS" color="#C084FC"/>
+          <Grid cols={3}>
+            <Inp label="Banco da Proposta" k="bancoProposta" req/>
+            <Inp label="Nº do Benefício" k="numBeneficio"/>
+            <Inp label="Nº da Matrícula" k="numMatricula"/>
+          </Grid>
+          <Grid cols={4}>
+            <Inp label="Tabela" k="tabela"/>
+            <Inp label="Margem (R$)" k="margem" ph="Ex: 424,00"/>
+            <Inp label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
+            <Inp label="Valor Prometido (R$)" k="valorPrometido" ph="R$ 0,00"/>
+          </Grid>
+          <Grid cols={3}>
+            <Inp label="Prazo das Parcelas" k="prazo" ph="Ex: 84x"/>
+            <SimNao label="Com Seguro?" k="comSeguro"/>
+            <SimNao label="Extrato Anexado?" k="extratoAnexado"/>
+          </Grid>
+          <Grid cols={2}>
+            <SimNao label="Com Representante Legal?" k="comRepresentante"/>
+            <SimNao label="Analfabeto?" k="analfabeto"/>
+          </Grid>
+        </div>
+      </>)}
+
+      {/* ═══ CARTÃO CONSIGNADO ═══ */}
+      {tipoProposta==="CARTAO" && (<>
+        <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+          <SecTitle icon="💳" title="Informações da Proposta — Cartão Consignado" color="#FB923C"/>
+          <Grid cols={3}>
+            <Inp label="Nº do Benefício" k="numBeneficio"/>
+            <Inp label="Nº da Matrícula" k="numMatricula"/>
+            <Inp label="Tabela" k="tabela" ph="Ex: NORMAL"/>
+          </Grid>
+          <Grid cols={4}>
+            <Inp label="Parcela (R$)" k="parcela" ph="R$ 0,00"/>
+            <Inp label="Valor do Limite (R$)" k="valorLimite" ph="R$ 0,00"/>
+            <Inp label="Valor Saque Complementar (R$)" k="valorSaqueComp" ph="R$ 0,00"/>
+            <Inp label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" req/>
+          </Grid>
+          <Grid cols={3}>
+            <Inp label="Prazo das Parcelas" k="prazo" ph="Ex: 96x"/>
+            <SimNao label="Com Seguro?" k="comSeguro"/>
+            <SimNao label="Extrato Anexado?" k="extratoAnexado"/>
+          </Grid>
+        </div>
+      </>)}
+
+      {/* ═══ DOCUMENTO DO CLIENTE (todos) ═══ */}
+      <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+        <SecTitle icon="🪪" title={tipoProposta==="CARTAO"?"Informações do Documento — Cliente":"Informações do Documento"}/>
+        <div style={{background:clienteEncontrado?"#091E12":C.deep,borderRadius:9,padding:"7px 12px",marginBottom:12,border:`1px solid ${clienteEncontrado?"#34D39933":C.b1}`,fontSize:11.5,color:clienteEncontrado?"#34D399":C.tm,display:"flex",alignItems:"center",gap:7}}>
+          {clienteEncontrado?"✓ Cliente encontrado no sistema — dados preenchidos automaticamente":"Digite o CPF para buscar dados automaticamente"}
+        </div>
+        <Grid cols={3}>
           <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF <span style={{color:"#EF4444"}}>*</span></label>
-            <input value={form.cpf} onChange={e=>buscarCPF(e.target.value)} placeholder="000.000.000-00"
-              style={{ ...S.input, borderColor: clienteEncontrado?"#34D39944":undefined }} />
+            <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>CPF <span style={{color:"#EF4444"}}>*</span></label>
+            <input value={form.cpf||""} onChange={e=>buscarCPF(e.target.value)} placeholder="000.000.000-00"
+              style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:clienteEncontrado?"#34D39944":undefined}}/>
           </div>
-          {inp("Nome completo","nome","text","","true")}
-          {inp("Data de nascimento","dataNasc","date")}
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:12 }}>
-          {inp("Telefone","telefone","tel","(84) 99999-0000")}
-          {inp("Email","email","email","cliente@email.com")}
-          <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Produto</label>
-            <select value={form.produto} onChange={e=>setF("produto",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
-              {["FGTS","Empréstimo do Trabalhador","Empréstimo do Bolsa Família","Saque Complementar","INSS","Bolsa Família","Outro"].map(p=><option key={p}>{p}</option>)}
-            </select>
-          </div>
-        </div>
-        {inp("Valor Solicitado (R$)","valorSolicitado","text","Ex: 5.000,00")}
+          <Inp label="Nome do Cliente" k="nome" req/>
+          <Inp label="RG" k="rg"/>
+        </Grid>
+        <Grid cols={4}>
+          <Inp label="Data de Nascimento" k="dataNasc" type="date"/>
+          <Inp label="Data de Expedição" k="dataExpedicao" type="date"/>
+          <Inp label="Órgão Emissor" k="orgaoEmissor" ph="Ex: DETRAN"/>
+          <Inp label="UF do Documento" k="ufDoc" ph="Ex: RJ"/>
+        </Grid>
+        <Grid cols={3}>
+          <Inp label="Nome da Mãe" k="nomeMae"/>
+          <Inp label="Nome do Pai" k="nomePai"/>
+          <Inp label="Naturalidade" k="naturalidade" ph="Ex: ITABORAI - RJ"/>
+        </Grid>
+        {tipoProposta==="CLT" && (
+          <Grid cols={2}>
+            <Inp label="Matrícula" k="matricula"/>
+            <Inp label="Empresa" k="empresa"/>
+          </Grid>
+        )}
       </div>
 
-      {/* Endereço */}
-      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16 }}>
-        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:14, paddingBottom:8, borderBottom:`1px solid ${C.b1}` }}>📍 Endereço</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr 1fr", gap:12, marginBottom:12 }}>
-          {inp("CEP","cep","text","00000-000")}
-          {inp("Rua / Logradouro","rua")}
-          {inp("Número","numero")}
+      {/* ═══ REPRESENTANTE (só Cartão Consignado) ═══ */}
+      {tipoProposta==="CARTAO" && (
+        <div style={{...S.card,padding:"20px 22px",marginBottom:12,border:`1px solid #FB923C33`}}>
+          <SecTitle icon="👤" title="Informações do Documento — Representante" color="#FB923C"/>
+          <Grid cols={3}>
+            <Inp label="Nome do Representante" k="nomeRep" req/>
+            <Inp label="CPF do Representante" k="cpfRep"/>
+            <Inp label="RG do Representante" k="rgRep"/>
+          </Grid>
+          <Grid cols={4}>
+            <Inp label="Data de Nascimento" k="dataNascRep" type="date"/>
+            <Inp label="Data de Expedição" k="dataExpRep" type="date"/>
+            <Inp label="Órgão Emissor" k="orgaoRep" ph="Ex: DETRAN"/>
+            <Inp label="UF do Documento" k="ufDocRep" ph="Ex: RJ"/>
+          </Grid>
+          <Grid cols={3}>
+            <Inp label="Nome da Mãe" k="nomeMaeRep"/>
+            <Inp label="Nome do Pai" k="nomePaiRep"/>
+            <Inp label="Naturalidade" k="naturalidadeRep"/>
+          </Grid>
+          <SecTitle icon="📞" title="Contato do Representante"/>
+          <Grid cols={4}>
+            <Inp label="Contato 1" k="contato1Rep" type="tel" ph="(00) 00000-0000"/>
+            <Inp label="Contato 2" k="contato2Rep" type="tel"/>
+            <Inp label="Email 1" k="email1Rep" type="email"/>
+            <Inp label="Email 2" k="email2Rep" type="email"/>
+          </Grid>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 0.5fr", gap:12 }}>
-          {inp("Bairro","bairro")}
-          {inp("Cidade","cidade")}
-          {inp("Complemento","complemento")}
-          {inp("UF","uf","text","RN")}
-        </div>
+      )}
+
+      {/* ═══ CONTATO ═══ */}
+      <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+        <SecTitle icon="📞" title={tipoProposta==="CARTAO"?"Informações de Contato — Cliente":"Informações de Contato"}/>
+        <Grid cols={4}>
+          <Inp label="Contato 1" k="contato1" type="tel" ph="(00) 00000-0000" req/>
+          <Inp label="Contato 2" k="contato2" type="tel"/>
+          <Inp label="Email 1" k="email1" type="email"/>
+          <Inp label="Email 2" k="email2" type="email"/>
+        </Grid>
       </div>
 
-      {/* Dados Bancários — manual obrigatório */}
-      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16, border:`1px solid #FBBF2422` }}>
-        <div style={{ color:"#FBBF24", fontSize:12, fontWeight:700, marginBottom:14, paddingBottom:8, borderBottom:`1px solid #FBBF2422` }}>🏦 Dados Bancários <span style={{ color:C.td, fontSize:10, fontWeight:400 }}>(preenchimento manual obrigatório)</span></div>
-        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 2fr 1fr", gap:12, marginBottom:12 }}>
-          <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco <span style={{color:"#EF4444"}}>*</span></label>
-            <input value={form.banco} onChange={e=>setF("banco",e.target.value)} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} />
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Agência <span style={{color:"#EF4444"}}>*</span></label>
-            <input value={form.agencia} onChange={e=>setF("agencia",e.target.value)} placeholder="0001" style={{ ...S.input }} />
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Conta <span style={{color:"#EF4444"}}>*</span></label>
-            <input value={form.conta} onChange={e=>setF("conta",e.target.value)} placeholder="00000-0" style={{ ...S.input }} />
-          </div>
-          <div>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo</label>
-            <select value={form.tipoConta} onChange={e=>setF("tipoConta",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
-              <option value="corrente">Corrente</option>
-              <option value="poupanca">Poupança</option>
-            </select>
-          </div>
-        </div>
-        {inp("Chave PIX (opcional)","pixKey","text","CPF, email, telefone ou chave aleatória")}
+      {/* ═══ ENDEREÇO ═══ */}
+      <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
+        <SecTitle icon="📍" title="Informações de Endereço"/>
+        <Grid cols={4}>
+          <Inp label="UF do Endereço" k="ufEnd" ph="Ex: RJ"/>
+          <Inp label="CEP" k="cep" ph="00000-000" req/>
+          <Inp label="Rua" k="rua" req/>
+          <Inp label="Número" k="numero"/>
+        </Grid>
+        <Grid cols={3}>
+          <Inp label="Bairro" k="bairro"/>
+          <Inp label="Cidade" k="cidade"/>
+          <Inp label="Complemento" k="complemento"/>
+        </Grid>
       </div>
 
-      {/* Documentação — obrigatório */}
-      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16, border:`1px solid ${form.docFiles.length>0?"#34D39933":"#EF444433"}` }}>
-        <div style={{ color:form.docFiles.length>0?"#34D399":"#F87171", fontSize:12, fontWeight:700, marginBottom:6, paddingBottom:8, borderBottom:`1px solid ${C.b1}` }}>
-          📎 Documentação <span style={{color:"#EF4444"}}>*</span> obrigatório
+      {/* ═══ PAGAMENTO ═══ */}
+      <div style={{...S.card,padding:"20px 22px",marginBottom:12,border:`1px solid #FBBF2422`}}>
+        <SecTitle icon="🏦" title="Informações de Pagamento ao Cliente" color="#FBBF24"/>
+        <div style={{background:"#2B1D0322",borderRadius:8,padding:"7px 12px",marginBottom:10,fontSize:11,color:"#FBBF24"}}>
+          ⚠ Preenchimento manual obrigatório — não é preenchido automaticamente
         </div>
-        <div style={{ marginBottom:12 }}>
-          <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Tipo de documento</label>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
-            {["CNH","RG","Carteira de Trabalho","RNE","Outro"].map(t=>(
-              <button key={t} onClick={()=>setF("docTipo",t)}
-                style={{ background:form.docTipo===t?C.abg:C.deep, color:form.docTipo===t?C.atxt:C.tm, border:`1px solid ${form.docTipo===t?C.atxt+"44":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:form.docTipo===t?700:400 }}>
-                {form.docTipo===t?"✓ ":""}{t}
-              </button>
-            ))}
+        <Grid cols={4}>
+          <Inp label="Banco" k="bancoPagto" ph="Ex: BRADESCO" req/>
+          <Inp label="Agência" k="agencia" ph="Ex: 6856" req/>
+          <Inp label="Conta com Dígito" k="contaDigito" ph="Ex: 19136-1" req/>
+          <Sel label="Tipo de Conta" k="tipoConta" opts={[{v:"corrente",l:"Corrente"},{v:"poupanca",l:"Poupança"}]}/>
+        </Grid>
+        <Grid cols={2}>
+          <Inp label="1ª Chave PIX" k="pix1" ph="CPF, email, telefone ou aleatória"/>
+          <Inp label="2ª Chave PIX" k="pix2" ph="Opcional"/>
+        </Grid>
+      </div>
+
+      {/* ═══ DOCUMENTAÇÃO ═══ */}
+      <div style={{...S.card,padding:"20px 22px",marginBottom:12,border:`1px solid ${form.docFiles.length>0?"#34D39933":"#EF444433"}`}}>
+        <SecTitle icon="📎" title={`Documentação Obrigatória ${form.docFiles.length>0?"✓":"— Nenhum arquivo"}`} color={form.docFiles.length>0?"#34D399":"#F87171"}/>
+        <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+          <div style={{flex:1}}>
+            <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Tipo de Documento</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {["CNH","RG","Carteira de Trabalho","RNE","Outro"].map(t=>(
+                <button key={t} onClick={()=>setF("docTipo",t)}
+                  style={{background:form.docTipo===t?C.abg:C.deep,color:form.docTipo===t?C.atxt:C.tm,
+                    border:`1px solid ${form.docTipo===t?C.atxt+"44":C.b2}`,
+                    borderRadius:20,padding:"4px 13px",fontSize:11.5,cursor:"pointer",fontWeight:form.docTipo===t?700:400}}>
+                  {form.docTipo===t?"✓ ":""}{t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{flex:1}}>
+            <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Categoria</label>
+            <div style={{display:"flex",gap:6}}>
+              {["Documentação","Evidências","Outros"].map(cat=>(
+                <button key={cat} onClick={()=>setF("docCategoria",cat)}
+                  style={{background:form.docCategoria===cat?C.abg:C.deep,color:form.docCategoria===cat?C.atxt:C.tm,
+                    border:`1px solid ${form.docCategoria===cat?C.atxt+"44":C.b2}`,
+                    borderRadius:20,padding:"4px 13px",fontSize:11.5,cursor:"pointer",fontWeight:form.docCategoria===cat?700:400}}>
+                  {form.docCategoria===cat?"✓ ":""}{cat}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div style={{ marginBottom:12 }}>
-          <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Categoria do anexo</label>
-          <div style={{ display:"flex", gap:7 }}>
-            {["Documentação","Evidências","Outros"].map(cat=>(
-              <button key={cat} onClick={()=>setF("docCategoria",cat)}
-                style={{ background:form.docCategoria===cat?C.abg:C.deep, color:form.docCategoria===cat?C.atxt:C.tm, border:`1px solid ${form.docCategoria===cat?C.atxt+"44":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:form.docCategoria===cat?700:400 }}>
-                {form.docCategoria===cat?"✓ ":""}{cat}
-              </button>
-            ))}
-          </div>
-        </div>
-        <input ref={fileRef} type="file" multiple accept="image/*,.pdf" onChange={handleFiles} style={{ display:"none" }} />
+        <input ref={fileRef} type="file" multiple accept="image/*,.pdf" onChange={handleFiles} style={{display:"none"}}/>
         <button onClick={()=>fileRef.current.click()}
-          style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:10 }}>
+          style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:9,padding:"8px 18px",fontSize:12.5,fontWeight:600,cursor:"pointer",marginBottom:8}}>
           📎 Adicionar arquivos
         </button>
-        {form.docFiles.length > 0 && (
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        {form.docFiles.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {form.docFiles.map((f,i)=>(
-              <div key={i} style={{ display:"flex", alignItems:"center", gap:10, background:C.deep, borderRadius:8, padding:"7px 12px", border:`1px solid ${C.b1}` }}>
-                <span style={{ fontSize:16 }}>{f.type?.startsWith("image/")?"🖼":"📄"}</span>
-                <span style={{ flex:1, color:C.ts, fontSize:12 }}>{f.name}</span>
-                <button onClick={()=>removeFile(i)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:13 }}>✕</button>
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:C.deep,borderRadius:8,padding:"6px 12px",border:`1px solid ${C.b1}`}}>
+                <span style={{fontSize:15}}>{f.type?.startsWith("image/")?"🖼":"📄"}</span>
+                <span style={{flex:1,color:C.ts,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                <button onClick={()=>removeFile(i)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:13,flexShrink:0}}>✕</button>
               </div>
             ))}
           </div>
         )}
-        {form.docFiles.length === 0 && (
-          <div style={{ color:"#F87171", fontSize:11.5, marginTop:4 }}>⚠ Nenhum arquivo anexado. Documentação é obrigatória.</div>
-        )}
+        {form.docFiles.length===0&&<div style={{color:"#F87171",fontSize:11.5,marginTop:4}}>⚠ Nenhum arquivo. Documentação é obrigatória.</div>}
       </div>
 
-      {/* Observação */}
-      <div style={{ ...S.card, padding:"20px 26px", marginBottom:20 }}>
-        <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Observações</label>
-        <textarea value={form.observacao} onChange={e=>setF("observacao",e.target.value)} rows={3}
+      {/* ═══ OBSERVAÇÕES ═══ */}
+      <div style={{...S.card,padding:"20px 22px",marginBottom:20}}>
+        <SecTitle icon="💬" title="Observações da Proposta"/>
+        <textarea value={form.observacao||""} onChange={e=>setF("observacao",e.target.value)} rows={3}
           placeholder="Informações adicionais sobre o cliente ou proposta..."
-          style={{ ...S.input, resize:"vertical" }} />
+          style={{...S.input,resize:"vertical",fontSize:12}}/>
       </div>
 
       <button onClick={enviar} disabled={sending}
-        style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:11, padding:"13px 36px", fontSize:15, fontWeight:800, cursor:sending?"not-allowed":"pointer", opacity:sending?0.7:1, boxShadow:`0 4px 20px ${C.acc}44`, display:"flex", alignItems:"center", gap:10 }}>
-        {sending ? "⏳ Enviando..." : "📤 Enviar Proposta"}
+        style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",
+          borderRadius:11,padding:"13px 36px",fontSize:15,fontWeight:800,
+          cursor:sending?"not-allowed":"pointer",opacity:sending?0.7:1,
+          boxShadow:`0 4px 20px ${C.acc}44`,display:"flex",alignItems:"center",gap:10}}>
+        {sending?"⏳ Enviando...":"📤 Enviar Proposta"}
       </button>
     </div>
   );
 }
 
-// ── Propostas Page ─────────────────────────────────────────────
+// ── PropostasPage ───────────────────────────────────────────────
 function PropostasPage({ currentUser }) {
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [tipoFilter, setTipoFilter] = useState("Todos");
+  const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "propostas"), snap => {
-      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
-      all.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
-      setPropostas(all);
-      setLoading(false);
+    const unsub = onSnapshot(collection(db,"propostas"), snap => {
+      const all = snap.docs.map(d=>({...d.data(),id:d.id}));
+      all.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      setPropostas(all); setLoading(false);
     });
-    return () => unsub();
+    return ()=>unsub();
   }, []);
 
   const canSeeAll = ["mestre","master"].includes(currentUser.role);
@@ -12456,81 +12686,140 @@ function PropostasPage({ currentUser }) {
 
   const visible = propostas.filter(p => {
     if (!canSeeAll && p.criadoPor !== myId) return false;
-    if (statusFilter !== "Todos" && p.status !== statusFilter) return false;
-    if (search && !((p.nome||"").toLowerCase().includes(search.toLowerCase()) || (p.cpf||"").includes(search))) return false;
+    if (statusFilter!=="Todos" && p.status!==statusFilter) return false;
+    if (tipoFilter!=="Todos" && p.tipo!==tipoFilter) return false;
+    if (search && !((p.nome||"").toLowerCase().includes(search.toLowerCase())||(p.cpf||"").includes(search))) return false;
     return true;
   });
 
-  const updateStatus = async (id, status) => {
-    await setDoc(doc(db,"propostas",id),{status},{merge:true});
-  };
+  const updateStatus = async (id,status) => { await setDoc(doc(db,"propostas",id),{status},{merge:true}); };
 
-  const STATUS_COLORS = { "Pendente":"#FBBF24", "Em análise":"#60A5FA", "Aprovada":"#34D399", "Reprovada":"#F87171", "Cancelada":"#9CA3AF" };
+  const STATUS_COLORS = {"Pendente":"#FBBF24","Em análise":"#60A5FA","Aprovada":"#34D399","Reprovada":"#F87171","Cancelada":"#9CA3AF"};
+  const TIPO_COLORS = {"FGTS":"#4F8EF7","CLT":"#34D399","INSS":"#C084FC","CARTAO":"#FB923C"};
+
+  const Field = ({label,val}) => val ? (
+    <div style={{marginBottom:4}}>
+      <span style={{color:C.td,fontSize:10.5}}>{label}: </span>
+      <span style={{color:C.ts,fontSize:11.5,fontWeight:500}}>{val}</span>
+    </div>
+  ) : null;
 
   return (
-    <div style={{ padding:"28px 36px", maxWidth:1000 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22, flexWrap:"wrap", gap:10 }}>
+    <div style={{padding:"24px 32px",maxWidth:1000}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
         <div>
-          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📋 Propostas</h1>
-          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>{visible.length} proposta{visible.length!==1?"s":""} encontrada{visible.length!==1?"s":""}</p>
+          <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:0}}>📋 Propostas</h1>
+          <p style={{color:C.tm,fontSize:12.5,margin:"4px 0 0"}}>{visible.length} proposta{visible.length!==1?"s":""}</p>
         </div>
       </div>
 
       {/* Filtros */}
-      <div style={{ display:"flex", gap:10, marginBottom:18, flexWrap:"wrap" }}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou CPF..."
-          style={{ ...S.input, flex:1, minWidth:200 }} />
-        <div style={{ display:"flex", gap:6 }}>
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
+          style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          {["Todos","FGTS","CLT","INSS","CARTAO"].map(t=>(
+            <button key={t} onClick={()=>setTipoFilter(t)}
+              style={{background:tipoFilter===t?(TIPO_COLORS[t]||C.acc)+"22":C.deep,
+                color:tipoFilter===t?(TIPO_COLORS[t]||C.atxt):C.tm,
+                border:`1px solid ${tipoFilter===t?(TIPO_COLORS[t]||C.atxt)+"44":C.b2}`,
+                borderRadius:20,padding:"5px 12px",fontSize:11.5,cursor:"pointer",fontWeight:tipoFilter===t?700:400}}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
           {["Todos","Pendente","Em análise","Aprovada","Reprovada"].map(s=>(
             <button key={s} onClick={()=>setStatusFilter(s)}
-              style={{ background: statusFilter===s?(STATUS_COLORS[s]||C.acc)+"22":C.deep, color:statusFilter===s?(STATUS_COLORS[s]||C.atxt):C.tm, border:`1px solid ${statusFilter===s?(STATUS_COLORS[s]||C.atxt)+"44":C.b2}`, borderRadius:20, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:statusFilter===s?700:400 }}>
+              style={{background:statusFilter===s?(STATUS_COLORS[s]||C.acc)+"22":C.deep,
+                color:statusFilter===s?(STATUS_COLORS[s]||C.atxt):C.tm,
+                border:`1px solid ${statusFilter===s?(STATUS_COLORS[s]||C.atxt)+"44":C.b2}`,
+                borderRadius:20,padding:"5px 12px",fontSize:11.5,cursor:"pointer",fontWeight:statusFilter===s?700:400}}>
               {s}
             </button>
           ))}
         </div>
       </div>
 
-      {loading && <div style={{ color:C.tm, textAlign:"center", padding:"40px 0" }}>Carregando...</div>}
+      {loading&&<div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>}
 
-      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-        {visible.map(p => {
-          const col = STATUS_COLORS[p.status]||C.td;
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {visible.map(p=>{
+          const sCol = STATUS_COLORS[p.status]||C.td;
+          const tCol = TIPO_COLORS[p.tipo]||C.atxt;
+          const isExp = expanded===p.id;
           return (
-            <div key={p.id} style={{ ...S.card, padding:"18px 22px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
-                <div style={{ flex:1, minWidth:200 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                    <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{p.nome||"—"}</span>
-                    <span style={{ background:col+"22", color:col, fontSize:10, padding:"2px 9px", borderRadius:20, fontWeight:700, border:`1px solid ${col}33` }}>{p.status}</span>
-                  </div>
-                  <div style={{ color:C.tm, fontSize:11.5 }}>CPF: {p.cpf} · {p.produto} · R$ {p.valorSolicitado||"—"}</div>
-                  <div style={{ color:C.td, fontSize:11, marginTop:2 }}>Por: {p.criadoPorNome} · {p.createdAt ? new Date(p.createdAt).toLocaleString("pt-BR") : "—"}</div>
+            <div key={p.id} style={{...S.card,overflow:"hidden"}}>
+              {/* Cabeçalho */}
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",cursor:"pointer",flexWrap:"wrap"}}
+                onClick={()=>setExpanded(isExp?null:p.id)}>
+                <div style={{width:38,height:38,borderRadius:10,background:tCol+"22",color:tCol,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,fontWeight:700}}>
+                  {p.tipo==="FGTS"?"🏦":p.tipo==="CLT"?"💼":p.tipo==="INSS"?"🏥":"💳"}
                 </div>
-                {/* Alterar status — só mestre/master */}
-                {canSeeAll && (
-                  <select value={p.status} onChange={e=>updateStatus(p.id,e.target.value)}
-                    style={{ ...S.input, width:"auto", padding:"6px 10px", fontSize:12, cursor:"pointer" }}>
+                <div style={{flex:1,minWidth:150}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
+                    <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
+                    <span style={{background:tCol+"22",color:tCol,fontSize:9,padding:"2px 8px",borderRadius:20,fontWeight:700}}>{p.tipo}</span>
+                    <span style={{background:sCol+"22",color:sCol,fontSize:9,padding:"2px 8px",borderRadius:20,fontWeight:700,border:`1px solid ${sCol}33`}}>{p.status}</span>
+                  </div>
+                  <div style={{color:C.tm,fontSize:11}}>CPF: {p.cpf} · Por: {p.criadoPorNome} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
+                </div>
+                {canSeeAll&&(
+                  <select value={p.status} onChange={e=>{e.stopPropagation();updateStatus(p.id,e.target.value);}}
+                    onClick={e=>e.stopPropagation()}
+                    style={{...S.input,width:"auto",padding:"5px 9px",fontSize:11.5,cursor:"pointer"}}>
                     {["Pendente","Em análise","Aprovada","Reprovada","Cancelada"].map(s=><option key={s}>{s}</option>)}
                   </select>
                 )}
+                <span style={{color:C.td,fontSize:12}}>{isExp?"▲":"▼"}</span>
               </div>
-              {/* Docs */}
-              {(p.docFiles||[]).length > 0 && (
-                <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.b1}`, display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {p.docFiles.map((f,i)=>(
-                    <span key={i} style={{ background:C.deep, color:C.ts, fontSize:11, padding:"3px 10px", borderRadius:7, border:`1px solid ${C.b1}` }}>
-                      {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
-                    </span>
-                  ))}
+
+              {/* Detalhes expandidos */}
+              {isExp&&(
+                <div style={{borderTop:`1px solid ${C.b1}`,padding:"16px 18px",background:C.deep}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px 24px"}}>
+                    <Field label="Banco Proposta" val={p.bancoProposta}/>
+                    <Field label="Valor Liberado" val={p.valorLiberado}/>
+                    <Field label="Valor Prometido" val={p.valorPrometido}/>
+                    <Field label="Com Seguro" val={p.comSeguro}/>
+                    <Field label="Tabela" val={p.tabela}/>
+                    <Field label="Prazo" val={p.prazo}/>
+                    <Field label="RG" val={p.rg}/>
+                    <Field label="Data Nasc." val={p.dataNasc}/>
+                    <Field label="Órgão Emissor" val={p.orgaoEmissor}/>
+                    <Field label="Nome da Mãe" val={p.nomeMae}/>
+                    <Field label="Nome do Pai" val={p.nomePai}/>
+                    <Field label="Naturalidade" val={p.naturalidade}/>
+                    <Field label="Contato 1" val={p.contato1}/>
+                    <Field label="Email" val={p.email1}/>
+                    <Field label="CEP" val={p.cep}/>
+                    <Field label="Endereço" val={p.rua?`${p.rua}, ${p.numero} - ${p.bairro}, ${p.cidade}/${p.ufEnd}`:""}/>
+                    <Field label="Banco Pagto" val={p.bancoPagto}/>
+                    <Field label="Agência" val={p.agencia}/>
+                    <Field label="Conta" val={p.contaDigito}/>
+                    <Field label="Tipo Conta" val={p.tipoConta}/>
+                    <Field label="PIX 1" val={p.pix1}/>
+                    <Field label="PIX 2" val={p.pix2}/>
+                  </div>
+                  {p.observacao&&<div style={{marginTop:10,color:C.ts,fontSize:11.5}}><span style={{color:C.td}}>Observação: </span>{p.observacao}</div>}
+                  {(p.docFiles||[]).length>0&&(
+                    <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.b1}`,display:"flex",gap:7,flexWrap:"wrap"}}>
+                      {p.docFiles.map((f,i)=>(
+                        <span key={i} style={{background:C.card,color:C.ts,fontSize:11,padding:"3px 10px",borderRadius:7,border:`1px solid ${C.b1}`}}>
+                          {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           );
         })}
-        {!loading && visible.length === 0 && (
-          <div style={{ textAlign:"center", padding:"50px 0", color:C.tm }}>
-            <div style={{ fontSize:36, opacity:0.3, marginBottom:10 }}>📋</div>
-            <div style={{ fontSize:14, fontWeight:600 }}>Nenhuma proposta encontrada</div>
+        {!loading&&visible.length===0&&(
+          <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
+            <div style={{fontSize:36,opacity:0.3,marginBottom:10}}>📋</div>
+            <div style={{fontSize:14,fontWeight:600}}>Nenhuma proposta encontrada</div>
           </div>
         )}
       </div>
