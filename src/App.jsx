@@ -12289,6 +12289,7 @@ function DigitacaoPage({ contacts, currentUser }) {
         criadoPorNome: currentUser.name||currentUser.email,
         status:"Pendente", createdAt:Date.now(),
       });
+      // eslint-disable-next-line no-unused-vars
       const tplId = tipoProposta==="FGTS"?"template_fgts":tipoProposta==="CLT"?"template_clt":tipoProposta==="INSS"?"template_inss":"template_cartao";
       await fetch("https://api.emailjs.com/api/v1.0/email/send",{
         method:"POST", headers:{"Content-Type":"application/json"},
