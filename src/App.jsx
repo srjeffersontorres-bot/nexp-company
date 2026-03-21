@@ -260,10 +260,10 @@ const INITIAL_USERS = [
 ];
 
 
-const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao
-João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,joao@email.com,,M001,FGTS,Saldo disponível
-Maria Santos,987.654.321-11,(21) 98888-0002,,,maria@email.com,,M002,INSS,Aposentada
-Pedro Costa,456.789.123-22,(31) 97777-0003,(31) 96666-0002,(31) 95555-0003,12.345.678/0001-90,pedro@empresa.com,M003,Empréstimo do Trabalhador,Documentação aguardando
+const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao,NomeMae,NomePai,CEP,Rua,Numero,Bairro,Cidade,UF
+João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,joao@email.com,,M001,FGTS,Saldo disponível,Maria Silva,José Silva,01310-100,Av. Paulista,1000,Bela Vista,São Paulo,SP
+Maria Santos,987.654.321-11,(21) 98888-0002,,,maria@email.com,,M002,INSS,Aposentada,Ana Santos,Pedro Santos,20040-020,Rua da Assembleia,200,Centro,Rio de Janeiro,RJ
+Pedro Costa,456.789.123-22,(31) 97777-0003,(31) 96666-0002,(31) 95555-0003,12.345.678/0001-90,pedro@empresa.com,M003,Empréstimo do Trabalhador,Documentação aguardando,Lucia Costa,Carlos Costa,30130-110,Av. Afonso Pena,500,Centro,Belo Horizonte,MG
 `;
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -295,6 +295,20 @@ function parseCSV(text) {
     lead: "leadType",
     observacao: "observacao",
     obs: "observacao",
+    nomemae: "nomeMae",
+    mae: "nomeMae",
+    nomepai: "nomePai",
+    pai: "nomePai",
+    cep: "cep",
+    rua: "rua",
+    logradouro: "rua",
+    numero: "numero",
+    num: "numero",
+    bairro: "bairro",
+    cidade: "cidade",
+    municipio: "cidade",
+    uf: "ufEnd",
+    estado: "ufEnd",
   };
   return lines
     .slice(1)
@@ -1564,7 +1578,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, presence, flashUserId, stories, sysConfig }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     { id:"dashboard",  label:"Leads Gerais",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
@@ -1579,7 +1593,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["mestre","master"] },
     { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["mestre","master","indicado","digitador"] },
     { id:"propostas",  label:"Propostas",       icon:"📋", roles:["mestre","master","digitador"], badge:"propostas" },
-    { id:"comissoes",  label:"Comissões",        icon:"💰", roles:["mestre","master","indicado","digitador"] },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
@@ -1675,6 +1688,12 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                     {it.id === "propostas" && unreadPropostas > 0 && (
                       <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
                         {unreadPropostas}
+                      </span>
+                    )}
+                    {/* Badge digitação */}
+                    {it.id === "digitacao" && unreadDigitacao > 0 && (
+                      <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
+                        {unreadDigitacao}
                       </span>
                     )}
                     <span style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.35)" : C.td, cursor: "grab" }} title="Arrastar">⠿</span>
@@ -2094,6 +2113,8 @@ function CCard({ contact, onUpdate, onDelete }) {
                   ["Tel 1", contact.phone || "—"],
                   ["Tel 2", contact.phone2 || "—"],
                   ["Tel 3", contact.phone3 || "—"],
+                  ...(contact.nomeMae ? [["Nome da Mãe", contact.nomeMae]] : []),
+                  ...(contact.nomePai ? [["Nome do Pai", contact.nomePai]] : []),
                 ].map(([l, v]) => (
                   <div key={l}>
                     <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 2 }}>{l}</div>
@@ -2295,6 +2316,14 @@ function CCard({ contact, onUpdate, onDelete }) {
                   ["CNPJ", "cnpj", "text"],
                   ["Email", "email", "email"],
                   ["Matrícula", "matricula", "text"],
+                  ["Nome da Mãe", "nomeMae", "text"],
+                  ["Nome do Pai", "nomePai", "text"],
+                  ["CEP", "cep", "text"],
+                  ["Rua", "rua", "text"],
+                  ["Número", "numero", "text"],
+                  ["Bairro", "bairro", "text"],
+                  ["Cidade", "cidade", "text"],
+                  ["UF", "ufEnd", "text"],
                 ].map(([l, k, t]) => (
                   <div key={k}>
                     <label
@@ -5020,7 +5049,6 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"config",       label:"Configurações" },
             { id:"digitacao",    label:"Digitação" },
             { id:"propostas",    label:"Propostas" },
-            { id:"comissoes",    label:"Comissões" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
           const filtered = visibleUsers.filter(u => !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase()));
@@ -5208,7 +5236,6 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             { id:"config",       label:"Configurações" },
             { id:"digitacao",    label:"Digitação" },
             { id:"propostas",    label:"Propostas" },
-            { id:"comissoes",    label:"Comissões" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
 
@@ -6987,7 +7014,12 @@ function NotificacoesPage({ currentUser, users }) {
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(n => n.toId === myId || n.broadcast === true)
+        .filter(n => {
+          // Notificações de proposta NÃO aparecem na aba de notificações
+          const tiposProposta = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
+          if (tiposProposta.includes(n.type)) return false;
+          return n.toId === myId || n.broadcast === true;
+        })
         .sort((a, b) => {
           // Broadcasts pinned at top, then by date
           if (a.broadcast && !b.broadcast) return -1;
@@ -12810,7 +12842,7 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
   );
 }
 
-function DigitacaoPage({ contacts, currentUser }) {
+function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
   const EMAILJS_SVC = "nexp_service";
   const EMAILJS_KEY = "GaZRJdTXt0UMdEY3H";
   const DEST_EMAIL  = "vendas.nexpcred@gmail.com";
@@ -13097,7 +13129,7 @@ function DigitacaoPage({ contacts, currentUser }) {
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
         {[
           {id:"nova",   label:"📝 Nova Digitação"},
-          {id:"minhas", label:"📋 Minhas Propostas", badge: unreadMinhas},
+          {id:"minhas", label:"📋 Minhas Propostas", badge: unreadExterno||unreadMinhas},
           {id:"relatorio", label:"📊 Relatório Mensal"},
         ].map(t=>(
           <button key={t.id}
@@ -13589,24 +13621,17 @@ function PagoBlock({ proposta }) {
       <div style={{color:"#34D399",fontWeight:700,fontSize:13,marginBottom:8}}>🏆 PARABÉNS PELA VENDA!</div>
       <div style={{color:C.ts,fontSize:12,lineHeight:1.8,marginBottom:10}}>
         Confirme com seu cliente se o mesmo recebeu o valor.<br/>
-        Anexe uma evidência (print, foto ou áudio do cliente) para finalizar sua proposta!
+        Tire um print de evidência e anexe para que possamos finalizar sua proposta!
       </div>
 
       {/* Evidências já enviadas */}
       {evidencias.length > 0 && (
         <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:10}}>
           {evidencias.map((ev,i) => (
-            ev.type?.startsWith("audio/") ? (
-              <div key={i} style={{background:"#0D2037",borderRadius:8,padding:"6px 10px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:8}}>
-                <span style={{color:"#34D399",fontSize:11,fontWeight:600}}>🎵 {ev.name}</span>
-                <audio src={ev.url} controls style={{height:28,maxWidth:160}}/>
-              </div>
-            ) : (
-              <a key={i} href={ev.url} target="_blank" rel="noopener noreferrer"
-                style={{background:"#0D2037",color:"#34D399",fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid #34D39933",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-                {ev.type?.startsWith("image/")?"🖼":"📄"} {ev.name} ↗
-              </a>
-            )
+            <a key={i} href={ev.url} target="_blank" rel="noopener noreferrer"
+              style={{background:"#0D2037",color:"#34D399",fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid #34D39933",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+              {ev.type?.startsWith("image/")?"🖼":"📄"} {ev.name} ↗
+            </a>
           ))}
         </div>
       )}
@@ -13615,14 +13640,14 @@ function PagoBlock({ proposta }) {
 
       {evidencias.length === 0 && (
         <div style={{background:"#1A1000",borderRadius:8,padding:"8px 12px",marginBottom:10,color:"#FBBF24",fontSize:11.5,fontWeight:600}}>
-          ⏳ PENDENTE DE EVIDÊNCIA — Anexe print, foto ou áudio do cliente abaixo
+          ⏳ PENDENTE DE EVIDÊNCIA DE PAGAMENTO — Anexe o print de confirmação abaixo
         </div>
       )}
 
-      <input ref={evFileRef} type="file" multiple accept="image/*,.pdf,audio/*" onChange={handleEvidencia} style={{display:"none"}}/>
+      <input ref={evFileRef} type="file" multiple accept="image/*,.pdf" onChange={handleEvidencia} style={{display:"none"}}/>
       <button onClick={()=>evFileRef.current?.click()} disabled={uploading}
         style={{background:uploading?"#333":"linear-gradient(135deg,#C084FC,#7C3AED)",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:uploading?"not-allowed":"pointer",opacity:uploading?0.7:1}}>
-        {uploading?"⏳ Enviando...":"📎 Anexar Evidência"}
+        {uploading?"⏳ Enviando...":"📎 Anexar Print de Confirmação"}
       </button>
     </div>
   );
@@ -14067,7 +14092,7 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
   );
 }
 
-function PropostasPage({ currentUser }) {
+function PropostasPage({ currentUser, unreadPropostas=0 }) {
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -14222,12 +14247,14 @@ function PropostasPage({ currentUser }) {
 
       {/* Abas */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[{id:"lista",label:"📋 Propostas"},{id:"relatorio",label:"📊 Relatório Mensal"}].map(t=>(
+        {[{id:"lista",label:"📋 Propostas",badge:unreadPropostas},{id:"relatorio",label:"📊 Relatório Mensal"}].map(t=>(
           <button key={t.id} onClick={()=>setAbaProp(t.id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
               fontWeight:abaProp===t.id?700:400,color:abaProp===t.id?C.atxt:C.tm,
-              borderBottom:abaProp===t.id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px"}}>
+              borderBottom:abaProp===t.id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px",
+              display:"flex",alignItems:"center",gap:7}}>
             {t.label}
+            {t.badge>0&&<span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800,animation:"pulse 1.5s infinite"}}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -14277,255 +14304,6 @@ function PropostasPage({ currentUser }) {
 
 
 
-// ── Tabela de Comissões ─────────────────────────────────────────
-const COMISSOES_INICIAIS = [
-  { id:"c1",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"COMETA",               produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.19",   obs:"X" },
-  { id:"c2",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"NORMAL",               produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.09",   obs:"X" },
-  { id:"c3",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"TURBO",                produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.12",   obs:"X" },
-  { id:"c4",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"ACELERA",              produto:"NOVO - BMS",          status:"ATIVA",    comissao:"0.25",   obs:"X" },
-  { id:"c5",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"PITSTOP",              produto:"NOVO - BMS",          status:"ATIVA",    comissao:"3,60%%", obs:"X" },
-  { id:"c6",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"COMETA",               produto:"NOVO - CARTOS",       status:"ATIVA",    comissao:"0.1766", obs:"X" },
-  { id:"c7",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"NORMAL",               produto:"NOVO - CARTOS",       status:"ATIVA",    comissao:"0.09",   obs:"X" },
-  { id:"c8",  banco:"V8 DIGITAL",         convenio:"FGTS",                    tabela:"TURBO",                produto:"NOVO - CARTOS",       status:"ATIVA",    comissao:"0.12",   obs:"X" },
-  { id:"c9",  banco:"V8 DIGITAL",         convenio:"PRIVADO - CLT",           tabela:"ACELERA - SEGURO",     produto:"3X",                  status:"ATIVA",    comissao:"0.0175", obs:"X" },
-  { id:"c10", banco:"V8 DIGITAL",         convenio:"PRIVADO - CLT",           tabela:"ACELERA - SEGURO",     produto:"6X A 18",             status:"ATIVA",    comissao:"0.034",  obs:"X" },
-  { id:"c11", banco:"V8 DIGITAL",         convenio:"PRIVADO - CLT",           tabela:"ACELERA - SEM SEGURO", produto:"24X",                 status:"ATIVA",    comissao:"0.035",  obs:"X" },
-  { id:"c12", banco:"V8 DIGITAL",         convenio:"ENERGIA",                 tabela:"FIT ENERGIA",          produto:"ACIMA DE R$150,00",   status:"ATIVA",    comissao:"0.075",  obs:"X" },
-  { id:"c13", banco:"SANTANDER",          convenio:"ENERGIA",                 tabela:"10 A 15% DE DESCONTO", produto:"FIT SANTANDER",       status:"ATIVA",    comissao:"0.085",  obs:"" },
-  { id:"c14", banco:"C6 BANK",            convenio:"PRIVADO - CLT",           tabela:"80015",                produto:"MARGEM NOVA 6X A 18X", status:"ATIVA",   comissao:"0.015",  obs:"CONTA C6 + 0,25%" },
-  { id:"c15", banco:"C6 BANK",            convenio:"PRIVADO - CLT",           tabela:"80015",                produto:"MARGEM NOVA 24x",     status:"ATIVA",    comissao:"0.02",   obs:"CONTA C6 + 0,25%" },
-  { id:"c16", banco:"C6 BANK",            convenio:"PRIVADO - CLT",           tabela:"80015",                produto:"MARGEM NOVA 36X A 48X",status:"ATIVA",   comissao:"0.025",  obs:"CONTA C6 + 0,25%" },
-  { id:"c17", banco:"MERCANTIL DO BRASIL", convenio:"PRIVADO - CLT",          tabela:"COM SEGURO",           produto:"MARGEM NOVA 1X A 48X", status:"ATIVA",   comissao:"0.03",   obs:"" },
-  { id:"c18", banco:"MERCANTIL DO BRASIL", convenio:"PRIVADO - CLT",          tabela:"SEM SEGURO",           produto:"MARGEM NOVA 1X A 48X", status:"ATIVA",   comissao:"0.02",   obs:"" },
-  { id:"c19", banco:"FACTA",              convenio:"PRIVADO - CLT",           tabela:"SMART",                produto:"12 a 36",             status:"ATIVA",    comissao:"0.015",  obs:"" },
-  { id:"c20", banco:"FACTA",              convenio:"PRIVADO - CLT",           tabela:"REFIN CARTEIRA",       produto:"36 A 48",             status:"ATIVA",    comissao:"0.015",  obs:"" },
-  { id:"c21", banco:"FACTA",              convenio:"PRIVADO - CLT",           tabela:"PORTABILIDADE",        produto:"1 A 48",              status:"ATIVA",    comissao:"0.005",  obs:"" },
-  { id:"c22", banco:"C6 CARRO",           convenio:"CRÉDITO COM GARANTIA DE MOVEL", tabela:"CARRO ACIMA DE 60 MIL", produto:"1 A 120X",    status:"ATIVA",    comissao:"0.011",  obs:"" },
-  { id:"c23", banco:"BV CARRO",           convenio:"CRÉDITO COM GARANTIA DE MOVEL", tabela:"CARRO ACIMA DE 60 MIL", produto:"2 A 120X",    status:"ATIVA",    comissao:"0.01",   obs:"" },
-  { id:"c24", banco:"CREFISA",            convenio:"BOLSA FAMILIA",           tabela:"BAIXA RENDA",          produto:"1 A 12",              status:"ATIVA",    comissao:"0.04",   obs:"" },
-  { id:"c25", banco:"PRATA DIGITAL",      convenio:"PRIVADO - CLT",           tabela:"CLT - QI",             produto:"6X",                  status:"ATIVA",    comissao:"0.025",  obs:"" },
-  { id:"c26", banco:"PRATA DIGITAL",      convenio:"PRIVADO - CLT",           tabela:"CLT - QI",             produto:"12X",                 status:"ATIVA",    comissao:"0.03",   obs:"" },
-  { id:"c27", banco:"PRATA DIGITAL",      convenio:"PRIVADO - CLT",           tabela:"CLT - QI",             produto:"24X",                 status:"ATIVA",    comissao:"0.043",  obs:"" },
-  { id:"c28", banco:"PRATA DIGITAL",      convenio:"FGTS",                    tabela:"MONEY - BMP HR ESTRELA", produto:"R$25,00 A R$250,00", status:"ATIVA",   comissao:"0.192",  obs:"" },
-  { id:"c29", banco:"PRATA DIGITAL",      convenio:"FGTS",                    tabela:"MONEY - BMP MAGNIFICOS", produto:"R$25,00 A R$10.000,00",status:"ATIVA", comissao:"0.22",   obs:"" },
-  { id:"c30", banco:"PRATA DIGITAL",      convenio:"FGTS",                    tabela:"QI S. QI D. - PENSA EM MIM", produto:"R$25,00 A R$250,00", status:"ATIVA", comissao:"0.12", obs:"" },
-  { id:"c31", banco:"NEON",               convenio:"PRIVADO - CLT",           tabela:"TABELA 1",             produto:"6 A 36X",             status:"EM BREVE", comissao:"0.02",   obs:"" },
-  { id:"c32", banco:"BANCO DO BRASIL",    convenio:"PRIVADO - CLT",           tabela:"TABELA 1",             produto:"6 A 36X",             status:"EM BREVE", comissao:"0",      obs:"" },
-  { id:"c33", banco:"BMG",                convenio:"PRIVADO - CLT",           tabela:"CLT",                  produto:"EM BREVE",            status:"ATIVA",    comissao:"0",      obs:"EM ATUALIZAÇÃO" },
-];
-
-function ComissoesPage({ currentUser, sysConfig, onSysConfig }) {
-  const isMestre = currentUser.role === "mestre";
-  const isMaster = currentUser.role === "master";
-  const canEdit = isMestre || isMaster;
-
-  const [comissoes, setComissoes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filterBanco, setFilterBanco] = useState("Todos");
-  const [filterStatus, setFilterStatus] = useState("Todos");
-  const [modalAdd, setModalAdd] = useState(false);
-  const [modalEdit, setModalEdit] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  const FORM_VAZIO = { banco:"", convenio:"", tabela:"", produto:"", status:"ATIVA", comissao:"", obs:"" };
-  const [form, setForm] = useState(FORM_VAZIO);
-  const sf = (k,v) => setForm(f=>({...f,[k]:v}));
-
-  // Carregar do Firestore (ou usar iniciais se vazio)
-  useEffect(()=>{
-    const unsub = onSnapshot(collection(db,"comissoes"), snap => {
-      if (snap.empty) {
-        // Primeira vez — salvar os dados iniciais
-        const batch = COMISSOES_INICIAIS.map(c => setDoc(doc(db,"comissoes",c.id), c));
-        Promise.all(batch).then(()=>{});
-        setComissoes(COMISSOES_INICIAIS);
-      } else {
-        const all = snap.docs.map(d=>({...d.data(),id:d.id}));
-        all.sort((a,b)=>(a.banco||"").localeCompare(b.banco||""));
-        setComissoes(all);
-      }
-      setLoading(false);
-    });
-    return ()=>unsub();
-  },[]);
-
-  const bancos = ["Todos", ...Array.from(new Set(comissoes.map(c=>c.banco).filter(Boolean))).sort()];
-  const statusOpts = ["Todos","ATIVA","INATIVA","EM BREVE"];
-
-  const visible = comissoes.filter(c => {
-    if (filterBanco!=="Todos" && c.banco!==filterBanco) return false;
-    if (filterStatus!=="Todos" && c.status!==filterStatus) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (c.banco+c.convenio+c.tabela+c.produto+c.comissao).toLowerCase().includes(q);
-    }
-    return true;
-  });
-
-  const salvar = async (isEdit) => {
-    if (!form.banco||!form.convenio||!form.tabela) { setMsg("❌ Banco, Convênio e Tabela são obrigatórios."); return; }
-    setSaving(true); setMsg("");
-    try {
-      const id = isEdit ? modalEdit.id : "c_"+Date.now();
-      await setDoc(doc(db,"comissoes",id), {...form, id}, {merge:true});
-      setMsg("✅ Salvo!");
-      setTimeout(()=>{ setModalAdd(false); setModalEdit(null); setMsg(""); setForm(FORM_VAZIO); }, 1000);
-    } catch(e) { setMsg("❌ Erro: "+e.message); }
-    setSaving(false);
-  };
-
-  const excluir = async (id) => {
-    if (!window.confirm("Excluir esta linha de comissão?")) return;
-    await deleteDoc(doc(db,"comissoes",id));
-  };
-
-  const statusColor = { "ATIVA":"#34D399", "INATIVA":"#EF4444", "EM BREVE":"#FBBF24" };
-
-  const ModalForm = ({ isEdit }) => (
-    <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center"}}
-      onClick={()=>{ setModalAdd(false); setModalEdit(null); setForm(FORM_VAZIO); setMsg(""); }}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:520,width:"94%",maxHeight:"90vh",overflowY:"auto",border:`1px solid ${C.atxt}33`,boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div style={{color:C.atxt,fontSize:15,fontWeight:800}}>{isEdit?"✏️ Editar Comissão":"➕ Nova Comissão"}</div>
-          <button onClick={()=>{ setModalAdd(false); setModalEdit(null); setForm(FORM_VAZIO); setMsg(""); }} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
-        </div>
-        {msg&&<div style={{color:msg.startsWith("✅")?"#34D399":"#F87171",fontSize:12,marginBottom:10,fontWeight:600}}>{msg}</div>}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-          {[["Banco","banco"],["Convênio","convenio"],["Tabela","tabela"],["Produto / Prazo","produto"],["Comissão","comissao"],["Observação","obs"]].map(([label,key])=>(
-            <div key={key} style={{gridColumn:key==="obs"?"span 2":undefined}}>
-              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}</label>
-              <input value={form[key]||""} onChange={e=>sf(key,e.target.value)}
-                style={{...S.input,fontSize:12,padding:"6px 10px"}}/>
-            </div>
-          ))}
-          <div>
-            <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>Status</label>
-            <select value={form.status} onChange={e=>sf("status",e.target.value)} style={{...S.input,fontSize:12,cursor:"pointer"}}>
-              <option>ATIVA</option><option>INATIVA</option><option>EM BREVE</option>
-            </select>
-          </div>
-        </div>
-        <button onClick={()=>salvar(isEdit)} disabled={saving}
-          style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"11px 0",fontSize:13,fontWeight:800,cursor:saving?"not-allowed":"pointer",width:"100%",opacity:saving?0.7:1}}>
-          {saving?"⏳ Salvando...":"💾 Salvar"}
-        </button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{padding:"24px 32px",maxWidth:1100}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:0}}>💰 Tabela de Comissões</h1>
-          <p style={{color:C.tm,fontSize:12.5,margin:"4px 0 0"}}>Gerencie bancos, tabelas e percentuais de comissão. Última atualização: 14/03/2026</p>
-        </div>
-        {canEdit && (
-          <button onClick={()=>{ setForm(FORM_VAZIO); setMsg(""); setModalAdd(true); }}
-            style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-            ➕ Adicionar Banco / Linha
-          </button>
-        )}
-      </div>
-
-      {/* Filtros */}
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar..."
-          style={{...S.input,flex:1,minWidth:160,fontSize:12,padding:"7px 12px"}}/>
-        <select value={filterBanco} onChange={e=>setFilterBanco(e.target.value)} style={{...S.input,fontSize:12,cursor:"pointer",minWidth:160}}>
-          {bancos.map(b=><option key={b}>{b}</option>)}
-        </select>
-        <div style={{display:"flex",gap:5}}>
-          {statusOpts.map(s=>(
-            <button key={s} onClick={()=>setFilterStatus(s)}
-              style={{background:filterStatus===s?(statusColor[s]||C.acc)+"22":C.deep,color:filterStatus===s?(statusColor[s]||C.atxt):C.tm,
-                border:`1px solid ${filterStatus===s?(statusColor[s]||C.atxt)+"44":C.b2}`,borderRadius:20,padding:"5px 12px",fontSize:11,cursor:"pointer",fontWeight:filterStatus===s?700:400}}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Resumo */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
-        {[
-          {label:"Ativas",val:comissoes.filter(c=>c.status==="ATIVA").length,color:"#34D399"},
-          {label:"Inativas",val:comissoes.filter(c=>c.status==="INATIVA").length,color:"#EF4444"},
-          {label:"Em Breve",val:comissoes.filter(c=>c.status==="EM BREVE").length,color:"#FBBF24"},
-        ].map(({label,val,color})=>(
-          <div key={label} style={{...S.card,padding:"12px 16px",border:`1px solid ${color}33`,display:"flex",alignItems:"center",gap:10}}>
-            <div style={{color,fontSize:22,fontWeight:800}}>{val}</div>
-            <div style={{color:C.td,fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px"}}>{label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Tabela */}
-      {loading ? (
-        <div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>
-      ) : (
-        <div style={{...S.card,overflow:"hidden"}}>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead>
-                <tr style={{background:C.deep}}>
-                  {["Banco","Convênio","Tabela","Produto / Prazo","Status","Comissão","Obs",canEdit?"Ações":""].filter(Boolean).map(h=>(
-                    <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((c,i)=>{
-                  const sc = statusColor[c.status]||C.td;
-                  return (
-                    <tr key={c.id} style={{background:i%2===0?"transparent":C.deep+"66",borderBottom:`1px solid ${C.b1}`}}>
-                      <td style={{padding:"8px 12px",color:C.tp,fontWeight:600,whiteSpace:"nowrap"}}>{c.banco}</td>
-                      <td style={{padding:"8px 12px",color:C.ts}}>{c.convenio}</td>
-                      <td style={{padding:"8px 12px",color:C.ts}}>{c.tabela}</td>
-                      <td style={{padding:"8px 12px",color:C.tm}}>{c.produto}</td>
-                      <td style={{padding:"8px 12px"}}>
-                        <span style={{background:sc+"22",color:sc,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:`1px solid ${sc}33`}}>{c.status}</span>
-                      </td>
-                      <td style={{padding:"8px 12px",color:c.status==="ATIVA"?"#34D399":C.td,fontWeight:700,whiteSpace:"nowrap"}}>{c.comissao||"—"}</td>
-                      <td style={{padding:"8px 12px",color:C.td,fontSize:11}}>{c.obs||"—"}</td>
-                      {canEdit&&(
-                        <td style={{padding:"8px 12px"}}>
-                          <div style={{display:"flex",gap:5}}>
-                            <button onClick={()=>{ setForm({...c}); setModalEdit(c); setMsg(""); }}
-                              style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2433",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                              ✏️
-                            </button>
-                            <button onClick={()=>excluir(c.id)}
-                              style={{background:"#1A0000",color:"#EF4444",border:"1px solid #EF444433",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                              🗑
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {visible.length===0&&(
-            <div style={{textAlign:"center",padding:"40px 0",color:C.tm}}>
-              <div style={{fontSize:30,opacity:0.3,marginBottom:8}}>💰</div>
-              <div style={{fontSize:13,fontWeight:600}}>Nenhuma comissão encontrada</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Modais */}
-      {modalAdd && <ModalForm isEdit={false}/>}
-      {modalEdit && <ModalForm isEdit={true}/>}
-    </div>
-  );
-}
-
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState(null);
@@ -14544,7 +14322,8 @@ export default function App() {
   const [unreadNotif, setUnreadNotif] = useState(0);
   const [unreadStories, setUnreadStories] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [unreadPropostas, setUnreadPropostas] = useState(0);
+  const [unreadPropostas, setUnreadPropostas] = useState(0); // para mestre/master: novas propostas
+  const [unreadDigitacao, setUnreadDigitacao] = useState(0); // para digitador: interações em minhas propostas
   const lastChatCount = useRef(0);
   // System config — mestre controls what others can access
   const [sysConfig, setSysConfig] = useState({
@@ -14619,13 +14398,21 @@ export default function App() {
     const isMestreOrMaster = ["mestre","master"].includes(currentUser.role);
     const unsub = onSnapshot(collection(db, "propostas"), (snap) => {
       const all = snap.docs.map(d=>({...d.data(), id:d.id}));
+      const isDigitador = currentUser.role === "digitador";
+      // Badge sidebar "Propostas" — mestre/master: não vistas; digitador: com nova interação
       const unread = all.filter(p => {
-        // Mestre/Master: todas pendentes não vistas
         if (isMestreOrMaster) return !p.viewedBy?.includes(myId);
-        // Digitador: propostas suas com nova interação
-        return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
+        if (isDigitador) return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
+        return false;
       }).length;
       setUnreadPropostas(unread);
+      // Badge aba "Minhas Propostas" dentro de Digitação — só para digitador
+      if (isDigitador) {
+        const unreadMeu = all.filter(p =>
+          p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)
+        ).length;
+        setUnreadDigitacao(unreadMeu);
+      }
     });
     return () => unsub();
   }, [currentUser]); // eslint-disable-line
@@ -14636,7 +14423,8 @@ export default function App() {
     const myId = currentUser.uid || currentUser.id;
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
       const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const mine = notifs.filter(n => n.toId === myId || n.broadcast === true);
+      const tiposProposta = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
+      const mine = notifs.filter(n => !tiposProposta.includes(n.type) && (n.toId === myId || n.broadcast === true));
       const unread = mine.filter(n => {
         if (n.broadcast) return !(n.readBy || []).includes(myId);
         return !n.readAt;
@@ -14877,6 +14665,7 @@ export default function App() {
         unreadNotif={unreadNotif}
         unreadStories={unreadStories}
         unreadPropostas={unreadPropostas}
+        unreadDigitacao={unreadDigitacao}
         presence={presence}
         flashUserId={flashUserId}
         stories={chatStories}
@@ -14919,13 +14708,10 @@ export default function App() {
           <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "digitacao" && (
-          <DigitacaoPage contacts={contacts} currentUser={currentUser} />
+          <DigitacaoPage contacts={contacts} currentUser={currentUser} unreadExterno={unreadDigitacao} />
         )}
         {page === "propostas" && (
-          <PropostasPage currentUser={currentUser} />
-        )}
-        {page === "comissoes" && (
-          <ComissoesPage currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+          <PropostasPage currentUser={currentUser} unreadPropostas={unreadPropostas} />
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
