@@ -12774,15 +12774,442 @@ function DigitacaoPage({ contacts, currentUser }) {
   );
 }
 
-// ── Propostas Page ─────────────────────────────────────────────
-const STATUS_PROPOSTA = ["Proposta Digitada","Aguardando Formalização","Pendente","Pago Aguardando Confirmação","Proposta Concluída"];
+// ── Status e cores de proposta ─────────────────────────────────
+const STATUS_PROPOSTA = [
+  "Proposta Digitada",
+  "Aguardando Formalização",
+  "Pendente",
+  "Pago Aguardando Confirmação",
+  "Proposta Concluída",
+  "Cancelada",
+];
 const STATUS_PROPOSTA_COLORS = {
-  "Proposta Digitada":"#60A5FA",
-  "Aguardando Formalização":"#FBBF24",
-  "Pendente":"#F87171",
-  "Pago Aguardando Confirmação":"#C084FC",
-  "Proposta Concluída":"#34D399",
+  "Proposta Digitada":           "#60A5FA",
+  "Aguardando Formalização":     "#FBBF24",
+  "Pendente":                    "#F87171",
+  "Pago Aguardando Confirmação": "#C084FC",
+  "Proposta Concluída":          "#34D399",
+  "Cancelada":                   "#EF4444",
 };
+
+// ── Mensagem que o digitador vê em Minhas Propostas ─────────────
+function MensagemProposta({ proposta }) {
+  const st = proposta.status || "Proposta Digitada";
+
+  if (st === "Proposta Digitada") return (
+    <div style={{background:"#0D2037",borderRadius:10,padding:"12px 16px",border:"1px solid #60A5FA33",marginTop:10}}>
+      <div style={{color:"#60A5FA",fontWeight:700,fontSize:12,marginBottom:4}}>📤 Equipe de Digitação</div>
+      <div style={{color:C.ts,fontSize:12.5,lineHeight:1.7}}>
+        Aguardando link de formalização — Digitador está enviando ao banco.
+      </div>
+    </div>
+  );
+
+  if (st === "Aguardando Formalização") return (
+    <div style={{background:"#1A1400",borderRadius:10,padding:"12px 16px",border:"1px solid #FBBF2444",marginTop:10}}>
+      <div style={{color:"#FBBF24",fontWeight:700,fontSize:12,marginBottom:6}}>📋 Equipe de Digitação — AGUARDANDO FORMALIZAÇÃO DIGITAL</div>
+      {proposta.linkFormalizacao && (
+        <div style={{marginBottom:8}}>
+          <span style={{color:C.ts,fontSize:12}}>SEGUE LINK → </span>
+          <a href={proposta.linkFormalizacao} target="_blank" rel="noopener noreferrer"
+            style={{color:"#60A5FA",fontSize:12,fontWeight:600,wordBreak:"break-all"}}>{proposta.linkFormalizacao}</a>
+        </div>
+      )}
+      <div style={{background:"#2B1D00",borderRadius:8,padding:"10px 12px",borderLeft:"3px solid #FBBF24",fontSize:11.5,color:C.ts,lineHeight:1.8}}>
+        <span style={{color:"#FBBF24",fontWeight:700}}>⚠️ Observação:</span><br/>
+        Caso o Cliente não consiga acessar o link, solicite que o mesmo feche todas as abas do celular e tente novamente, caso o erro persista, solicite que tente por outro navegador ou outro celular!
+      </div>
+    </div>
+  );
+
+  if (st === "Cancelada") return (
+    <div style={{background:"#1A0000",borderRadius:10,padding:"12px 16px",border:"1px solid #EF444444",marginTop:10}}>
+      <div style={{color:"#EF4444",fontWeight:800,fontSize:13,marginBottom:8}}>❌ Equipe de Digitação — PROPOSTA CANCELADA</div>
+      <div style={{color:C.ts,fontSize:12,lineHeight:1.8}}>
+        <b style={{color:C.tm}}>Motivo do cancelamento:</b> {proposta.motivoCancelamento||"—"}<br/>
+        <b style={{color:C.tm}}>Solução:</b> {proposta.solucaoCancelamento||"—"}<br/>
+        <b style={{color:C.tm}}>Observação:</b> {proposta.obsCancelamento||"—"}
+      </div>
+      <div style={{color:"#F87171",fontSize:11,marginTop:8,fontStyle:"italic"}}>
+        Em casos excepcionais pode haver uma demora de 7 dias para que a proposta apareça como cancelada no banco, nesses casos é só aguardar!<br/>
+        <b>@nexpcred / #teamnexpcred / com você somos mais 🏆</b>
+      </div>
+    </div>
+  );
+
+  if (st === "Pendente") return (
+    <div style={{background:"#1A0000",borderRadius:10,padding:"12px 16px",border:"1px solid #F8717144",marginTop:10}}>
+      <div style={{color:"#F87171",fontWeight:800,fontSize:13,marginBottom:8}}>🔴 PROPOSTA PENDENTE DE DADOS BANCÁRIOS</div>
+      <div style={{color:C.ts,fontSize:12,lineHeight:2.0}}>
+        <b style={{color:C.tm}}>( INFORMAÇÕES para REAPRESENTAÇÃO )</b><br/>
+        BANCO: {proposta.bancoPendente||"_______________"}<br/>
+        AGÊNCIA: {proposta.agenciaPendente||"_______________"}<br/>
+        CONTA COM DÍGITO: {proposta.contaPendente||"_______________"}<br/>
+        TIPO DE CONTA: {proposta.tipoContaPendente||"_______________"}<br/>
+        INFORME A 1ª CHAVE PIX: {proposta.pix1Pendente||"_______________"}<br/>
+        INFORME A 2ª CHAVE PIX: {proposta.pix2Pendente||"_______________"}<br/>
+        <b style={{color:C.tm}}>( OBSERVAÇÃO )</b><br/>
+        {proposta.obsPendente||"—"}<br/>
+        ANEXAR EXTRATO OU PRINT DA CONTA: {(proposta.extratoAnexado||[]).length>0?"✅ Anexado":"❌ Pendente"}
+      </div>
+    </div>
+  );
+
+  if (st === "Pago Aguardando Confirmação") return (
+    <div style={{background:"#0D0A1A",borderRadius:10,padding:"12px 16px",border:"1px solid #C084FC44",marginTop:10}}>
+      <div style={{color:"#C084FC",fontWeight:800,fontSize:14,marginBottom:6}}>✅ PROPOSTA PAGA COM SUCESSO</div>
+      <div style={{color:"#34D399",fontWeight:700,fontSize:13,marginBottom:8}}>🏆 PARABÉNS PELA VENDA!</div>
+      <div style={{color:C.ts,fontSize:12,lineHeight:1.8}}>
+        Confirme com seu cliente se o mesmo recebeu o valor.<br/>
+        Tire um print de evidência e anexe para que possamos finalizar sua proposta!
+      </div>
+      {!(proposta.evidenciaConfirmacao?.length>0) && (
+        <div style={{background:"#1A1000",borderRadius:8,padding:"8px 12px",marginTop:8,color:"#FBBF24",fontSize:11.5,fontWeight:600}}>
+          ⏳ PENDENTE DE EVIDÊNCIA DE PAGAMENTO — Anexe o print de confirmação
+        </div>
+      )}
+    </div>
+  );
+
+  if (st === "Proposta Concluída") return (
+    <div style={{background:"#071A0A",borderRadius:10,padding:"16px",border:"1px solid #34D39944",marginTop:10,textAlign:"center"}}>
+      <div style={{fontSize:36,marginBottom:6}}>🏆</div>
+      <div style={{color:"#34D399",fontWeight:800,fontSize:15}}>PROPOSTA CONCLUÍDA COM SUCESSO ✅</div>
+      <div style={{color:"#4ADE80",fontSize:13,marginTop:4}}>Parabéns pela venda!</div>
+    </div>
+  );
+
+  return null;
+}
+
+// ── Modal de ação do digitador ─────────────────────────────────
+function ModalAcaoProposta({ proposta, onClose, onSave }) {
+  const [novoStatus, setNovoStatus] = useState(proposta.status||"Proposta Digitada");
+  const [link, setLink] = useState(proposta.linkFormalizacao||"");
+  const [motivo, setMotivo] = useState(proposta.motivoCancelamento||"");
+  const [solucao, setSolucao] = useState(proposta.solucaoCancelamento||"");
+  const [obs, setObs] = useState(proposta.obsCancelamento||"");
+  const [banco, setBanco] = useState(proposta.bancoPendente||"");
+  const [agencia, setAgencia] = useState(proposta.agenciaPendente||"");
+  const [conta, setConta] = useState(proposta.contaPendente||"");
+  const [tipoConta, setTipoConta] = useState(proposta.tipoContaPendente||"corrente");
+  const [pix1, setPix1] = useState(proposta.pix1Pendente||"");
+  const [pix2, setPix2] = useState(proposta.pix2Pendente||"");
+  const [obsPend, setObsPend] = useState(proposta.obsPendente||"");
+  const [saving, setSaving] = useState(false);
+
+  const inp = (label, val, set, ph="") => (
+    <div style={{marginBottom:10}}>
+      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:3}}>{label}</label>
+      <input value={val} onChange={e=>set(e.target.value)} placeholder={ph} style={{...S.input}}/>
+    </div>
+  );
+  const ta = (label, val, set, ph="") => (
+    <div style={{marginBottom:10}}>
+      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:3}}>{label}</label>
+      <textarea value={val} onChange={e=>set(e.target.value)} placeholder={ph} rows={2} style={{...S.input,resize:"vertical"}}/>
+    </div>
+  );
+
+  const handleSave = async () => {
+    setSaving(true);
+    const data = { status: novoStatus, hasNewInteraction:true, viewedByDigitador:[] };
+    if (novoStatus==="Aguardando Formalização") data.linkFormalizacao = link;
+    if (novoStatus==="Cancelada") { data.motivoCancelamento=motivo; data.solucaoCancelamento=solucao; data.obsCancelamento=obs; }
+    if (novoStatus==="Pendente") { data.bancoPendente=banco; data.agenciaPendente=agencia; data.contaPendente=conta; data.tipoContaPendente=tipoConta; data.pix1Pendente=pix1; data.pix2Pendente=pix2; data.obsPendente=obsPend; }
+    await onSave(proposta.id, data);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn 0.2s ease"}}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.b1}`,borderRadius:18,padding:"24px 28px",maxWidth:500,width:"92%",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+          <div style={{color:C.tp,fontSize:15,fontWeight:700}}>Atualizar Proposta — {proposta.nome}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
+        </div>
+
+        {/* Seletor de status */}
+        <div style={{marginBottom:16}}>
+          <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:8}}>Novo status</label>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {STATUS_PROPOSTA.map(s=>{
+              const col = STATUS_PROPOSTA_COLORS[s]||C.atxt;
+              return (
+                <button key={s} onClick={()=>setNovoStatus(s)}
+                  style={{background:novoStatus===s?col+"22":C.deep,color:novoStatus===s?col:C.tm,
+                    border:`1px solid ${novoStatus===s?col+"55":C.b2}`,borderRadius:9,padding:"8px 14px",
+                    fontSize:12.5,cursor:"pointer",fontWeight:novoStatus===s?700:400,textAlign:"left"}}>
+                  {novoStatus===s?"● ":""}{s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Campos extras por status */}
+        {novoStatus==="Aguardando Formalização" && (
+          <div style={{background:C.deep,borderRadius:10,padding:"14px",marginBottom:12}}>
+            <div style={{color:"#FBBF24",fontSize:12,fontWeight:700,marginBottom:10}}>🔗 Link de Formalização</div>
+            {inp("Cole o link de formalização aqui",link,setLink,"https://...")}
+          </div>
+        )}
+
+        {novoStatus==="Cancelada" && (
+          <div style={{background:C.deep,borderRadius:10,padding:"14px",marginBottom:12}}>
+            <div style={{color:"#EF4444",fontSize:12,fontWeight:700,marginBottom:10}}>❌ Detalhes do Cancelamento</div>
+            {ta("Motivo do cancelamento",motivo,setMotivo,"Ex: Margem insuficiente")}
+            {ta("Solução",solucao,setSolucao,"Ex: Aguardar liberação de margem")}
+            {ta("Observação",obs,setObs,"Informações adicionais")}
+          </div>
+        )}
+
+        {novoStatus==="Pendente" && (
+          <div style={{background:C.deep,borderRadius:10,padding:"14px",marginBottom:12}}>
+            <div style={{color:"#F87171",fontSize:12,fontWeight:700,marginBottom:10}}>🔴 Dados para Reapresentação</div>
+            {inp("Banco",banco,setBanco,"Ex: Banco do Brasil")}
+            {inp("Agência",agencia,setAgencia,"Ex: 0001")}
+            {inp("Conta com dígito",conta,setConta,"Ex: 12345-6")}
+            <div style={{marginBottom:10}}>
+              <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:3}}>Tipo de conta</label>
+              <select value={tipoConta} onChange={e=>setTipoConta(e.target.value)} style={{...S.input,cursor:"pointer"}}>
+                <option value="corrente">Corrente</option>
+                <option value="poupanca">Poupança</option>
+              </select>
+            </div>
+            {inp("1ª Chave PIX",pix1,setPix1,"CPF, email ou telefone")}
+            {inp("2ª Chave PIX",pix2,setPix2,"Opcional")}
+            {ta("Observação",obsPend,setObsPend)}
+          </div>
+        )}
+
+        <button onClick={handleSave} disabled={saving}
+          style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,
+            padding:"11px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1,width:"100%"}}>
+          {saving?"⏳ Salvando...":"✅ Confirmar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PropostasPage ───────────────────────────────────────────────
+function PropostasPage({ currentUser }) {
+  const [propostas, setPropostas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [celebracao, setCelebracao] = useState(false);
+  const [modalProp, setModalProp] = useState(null);
+  const [abaProp, setAbaProp] = useState("lista"); // "lista" | "dashboard"
+  const prevCountRef = useRef(0);
+  const myId = currentUser.uid||currentUser.id;
+  const canSeeAll = ["mestre","master","digitador"].includes(currentUser.role);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "propostas"), snap => {
+      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
+      all.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      const relevant = canSeeAll ? all : all.filter(p=>p.criadoPor===myId);
+      const novas = relevant.filter(p=>!p.viewedBy?.includes(myId));
+      if (prevCountRef.current > 0 && novas.length > prevCountRef.current) {
+        setCelebracao(true);
+        setTimeout(()=>setCelebracao(false), 5000);
+      }
+      prevCountRef.current = novas.length;
+      novas.forEach(async p => {
+        await setDoc(doc(db,"propostas",p.id),{viewedBy:[...(p.viewedBy||[]),myId]},{merge:true});
+      });
+      setPropostas(all); setLoading(false);
+    });
+    return ()=>unsub();
+  }, []); // eslint-disable-line
+
+  // Timer para lembrar evidências após 10 min em "Pago"
+  useEffect(() => {
+    propostas.forEach(p => {
+      if (p.status==="Pago Aguardando Confirmação" && !p.evidenciaConfirmacao?.length && !p.lembreteEnviado) {
+        const diff = Date.now() - (p.pagoAt||p.createdAt||0);
+        if (diff > 10*60*1000) {
+          setDoc(doc(db,"propostas",p.id),{lembreteEnviado:true},{merge:true});
+          // Notificação via Firestore
+          setDoc(doc(db,"notifications","lembrete_"+p.id),{
+            toId:p.criadoPor, type:"lembrete_evidencia",
+            text:`⏰ Lembre-se de anexar o print de confirmação de pagamento da proposta de ${p.nome}!`,
+            createdAt:Date.now(), readAt:null,
+          });
+        }
+      }
+    });
+  }, [propostas]); // eslint-disable-line
+
+  const visible = propostas.filter(p => {
+    if (!canSeeAll && p.criadoPor !== myId) return false;
+    if (statusFilter!=="Todos" && (p.status||"Proposta Digitada")!==statusFilter) return false;
+    if (search && !((p.nome||"").toLowerCase().includes(search.toLowerCase())||(p.cpf||"").includes(search))) return false;
+    return true;
+  });
+
+  const updateStatus = async (id, data) => {
+    const extra = {};
+    if (data.status==="Pago Aguardando Confirmação") extra.pagoAt = Date.now();
+    await setDoc(doc(db,"propostas",id),{...data,...extra},{merge:true});
+  };
+
+  // Dashboard metrics
+  const total = propostas.filter(p=>canSeeAll||p.criadoPor===myId);
+  const concluidas = total.filter(p=>p.status==="Proposta Concluída");
+  const pendentes = total.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização"].includes(p.status));
+  const canceladas = total.filter(p=>p.status==="Cancelada");
+  const totalValor = concluidas.reduce((acc,p)=>{
+    const v = parseFloat((p.valorSolicitado||"0").replace(/\./g,"").replace(",","."));
+    return acc + (isNaN(v)?0:v);
+  },0);
+
+  const fmtBRL = (v) => "R$ " + v.toLocaleString("pt-BR",{minimumFractionDigits:2});
+
+  return (
+    <div style={{padding:"24px 32px",maxWidth:1060,position:"relative"}}>
+      {/* Modal ação digitador */}
+      {modalProp && (
+        <ModalAcaoProposta
+          proposta={modalProp}
+          onClose={()=>setModalProp(null)}
+          onSave={updateStatus}
+        />
+      )}
+
+      {/* 🎉 Comemoração */}
+      {celebracao && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",animation:"fadeIn 0.3s ease"}}>
+          <div style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:24,padding:"32px 48px",textAlign:"center",boxShadow:"0 12px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{fontSize:56,marginBottom:8}}>🎉</div>
+            <div style={{color:"#fff",fontSize:22,fontWeight:800,marginBottom:6}}>Nova Proposta Recebida!</div>
+            <div style={{color:"rgba(255,255,255,0.7)",fontSize:14,marginBottom:16}}>Uma nova proposta foi enviada para análise.</div>
+            <button onClick={()=>setCelebracao(false)} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 20px",cursor:"pointer",fontSize:13}}>OK 👍</button>
+          </div>
+        </div>
+      )}
+
+      {/* Abas */}
+      <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
+        {[{id:"lista",label:"📋 Propostas"},{id:"dashboard",label:"📊 Dashboard"}].map(t=>(
+          <button key={t.id} onClick={()=>setAbaProp(t.id)}
+            style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
+              fontWeight:abaProp===t.id?700:400,color:abaProp===t.id?C.atxt:C.tm,
+              borderBottom:abaProp===t.id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Dashboard */}
+      {abaProp==="dashboard" && (
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
+            {[
+              {label:"Concluídas",val:concluidas.length,color:"#34D399",icon:"✅"},
+              {label:"Pendentes",val:pendentes.length,color:"#FBBF24",icon:"⏳"},
+              {label:"Canceladas",val:canceladas.length,color:"#EF4444",icon:"❌"},
+              {label:"Total Liberado",val:fmtBRL(totalValor),color:C.atxt,icon:"💰",big:true},
+            ].map((m,i)=>(
+              <div key={i} style={{...S.card,padding:"20px",textAlign:"center",border:`1px solid ${m.color}33`}}>
+                <div style={{fontSize:28,marginBottom:8}}>{m.icon}</div>
+                <div style={{color:m.color,fontSize:m.big?16:28,fontWeight:800,letterSpacing:m.big?"-0.5px":"-1px",marginBottom:4}}>{m.val}</div>
+                <div style={{color:C.td,fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px"}}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          {/* Lista concluídas */}
+          <div style={{...S.card,padding:"20px"}}>
+            <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>✅ Propostas Concluídas</div>
+            {concluidas.length===0&&<div style={{color:C.td,fontSize:12}}>Nenhuma proposta concluída ainda.</div>}
+            {concluidas.map(p=>(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.b1}`}}>
+                <div>
+                  <div style={{color:C.tp,fontSize:13,fontWeight:600}}>{p.nome}</div>
+                  <div style={{color:C.td,fontSize:11}}>CPF: {p.cpf} · {p.tipo||p.produto}</div>
+                </div>
+                <div style={{color:"#34D399",fontWeight:700,fontSize:14}}>{fmtBRL(parseFloat((p.valorSolicitado||"0").replace(/\./g,"").replace(",","."))||0)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lista de Propostas */}
+      {abaProp==="lista" && (
+        <>
+          <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
+              style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {["Todos",...STATUS_PROPOSTA].map(s=>{
+                const col = STATUS_PROPOSTA_COLORS[s];
+                return (
+                  <button key={s} onClick={()=>setStatusFilter(s)}
+                    style={{background:statusFilter===s?(col||C.acc)+"22":C.deep,color:statusFilter===s?(col||C.atxt):C.tm,
+                      border:`1px solid ${statusFilter===s?(col||C.atxt)+"44":C.b2}`,borderRadius:20,padding:"5px 11px",fontSize:11,cursor:"pointer",fontWeight:statusFilter===s?700:400}}>
+                    {s}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {loading&&<div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {visible.map(p=>{
+              const st = p.status||"Proposta Digitada";
+              const col = STATUS_PROPOSTA_COLORS[st]||C.td;
+              const isNew = !p.viewedBy?.includes(myId);
+              return (
+                <div key={p.id} style={{...S.card,padding:"16px 20px",border:`1px solid ${isNew?"#EF444466":col+"33"}`,boxShadow:isNew?`0 0 14px #EF444422`:"none"}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:14,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:200}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                        {isNew&&<span style={{width:8,height:8,borderRadius:"50%",background:"#EF4444",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
+                        <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
+                        <span style={{background:col+"22",color:col,fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:700,border:`1px solid ${col}33`}}>{st}</span>
+                      </div>
+                      <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf} · {p.tipo||p.produto} · R$ {p.valorSolicitado||"—"}</div>
+                      <div style={{color:C.td,fontSize:11,marginTop:2}}>Por: {p.criadoPorNome} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
+                    </div>
+                    {canSeeAll&&(
+                      <button onClick={()=>setModalProp(p)}
+                        style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:9,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                        ✏ Atualizar
+                      </button>
+                    )}
+                  </div>
+                  {/* Mensagem para o digitador (quem criou a proposta) */}
+                  <MensagemProposta proposta={p} />
+                  {(p.docFiles||[]).length>0&&(
+                    <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.b1}`,display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {p.docFiles.map((f,i)=>(
+                        <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
+                          {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!loading&&visible.length===0&&(
+              <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
+                <div style={{fontSize:36,opacity:0.3,marginBottom:10}}>📋</div>
+                <div style={{fontSize:14,fontWeight:600}}>Nenhuma proposta encontrada</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function PropostasPage({ currentUser }) {
   const [propostas, setPropostas] = useState([]);
