@@ -12182,14 +12182,31 @@ function ApisBancosPage({ currentUser }) {
   );
 }
 
+// ── UFs do Brasil ──────────────────────────────────────────────
+const UF_BRASIL = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+// ── Formatadores ───────────────────────────────────────────────
+const fmtCPFd  = v => { const d=v.replace(/\D/g,"").slice(0,11); if(d.length<=3)return d; if(d.length<=6)return d.replace(/(\d{3})(\d+)/,"$1.$2"); if(d.length<=9)return d.replace(/(\d{3})(\d{3})(\d+)/,"$1.$2.$3"); return d.replace(/(\d{3})(\d{3})(\d{3})(\d+)/,"$1.$2.$3-$4"); };
+const fmtFoned = v => { const d=v.replace(/\D/g,"").slice(0,11); if(!d) return ""; if(d.length<=2)return `+55 (${d}`; if(d.length<=6)return `+55 (${d.slice(0,2)}) ${d.slice(2)}`; if(d.length<=10)return `+55 (${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`; return `+55 (${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`; };
+const fmtMoedad = v => { const d=v.replace(/\D/g,""); if(!d)return ""; const n=parseInt(d,10)/100; return "R$ "+n.toLocaleString("pt-BR",{minimumFractionDigits:2}); };
+const fmtCEPd  = v => { const d=v.replace(/\D/g,"").slice(0,8); return d.length>5?d.replace(/(\d{5})(\d+)/,"$1-$2"):d; };
+
 // ── Sub-componentes de Digitação fora do pai (evita perda de foco) ──
-function DField({ label, req, val, onChange, type="text", ph="" }) {
+function DField({ label, req, val, onChange, type="text", ph="", mask="" }) {
+  const handle = e => {
+    let v = e.target.value;
+    if(mask==="cpf")   v=fmtCPFd(v);
+    if(mask==="fone")  v=fmtFoned(v);
+    if(mask==="moeda") v=fmtMoedad(v);
+    if(mask==="cep")   v=fmtCEPd(v);
+    onChange(v);
+  };
   return (
     <div>
       <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>
         {label}{req&&<span style={{color:"#EF4444"}}> *</span>}
       </label>
-      <input value={val} onChange={e=>onChange(e.target.value)} type={type} placeholder={ph}
+      <input value={val} onChange={handle} type={type} placeholder={ph}
         style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:req&&!val?"#EF444455":undefined}}/>
     </div>
   );
@@ -12201,7 +12218,19 @@ function DSelect({ label, req, val, onChange, opts }) {
         {label}{req&&<span style={{color:"#EF4444"}}> *</span>}
       </label>
       <select value={val} onChange={e=>onChange(e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px",cursor:"pointer"}}>
+        <option value="">Selecione...</option>
         {opts.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+    </div>
+  );
+}
+function DUF({ val, onChange, label="UF" }) {
+  return (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}</label>
+      <select value={val||""} onChange={e=>onChange(e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px",cursor:"pointer"}}>
+        <option value="">UF</option>
+        {UF_BRASIL.map(uf=><option key={uf} value={uf}>{uf}</option>)}
       </select>
     </div>
   );
@@ -12237,15 +12266,41 @@ function DGrid({ cols=3, children, gap=10 }) {
     <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,marginBottom:12}}>{children}</div>
   );
 }
-// Inp, Sel, SimNao com form+setF injetados — usados no JSX via renderização direta
-function DInp({ form, setF, label, k, type="text", ph="", req=false }) {
-  return <DField label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} type={type} ph={ph} />;
+function DInp({ form, setF, label, k, type="text", ph="", req=false, mask="" }) {
+  return <DField label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} type={type} ph={ph} mask={mask} />;
 }
 function DSel({ form, setF, label, k, opts, req=false }) {
   return <DSelect label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} opts={opts} />;
 }
 function DSN({ form, setF, label, k }) {
   return <DSimNao label={label} val={form[k]} onChange={v=>setF(k,v)} />;
+}
+function DCep({ form, setF }) {
+  const [buscando, setBuscando] = useState(false);
+  const handle = async e => {
+    const v = fmtCEPd(e.target.value);
+    setF("cep", v);
+    const clean = v.replace(/\D/g,"");
+    if(clean.length===8) {
+      setBuscando(true);
+      try {
+        const r = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+        const d = await r.json();
+        if(!d.erro){ setF("rua",d.logradouro||""); setF("bairro",d.bairro||""); setF("cidade",d.localidade||""); setF("ufEnd",d.uf||""); }
+      } catch{}
+      setBuscando(false);
+    }
+  };
+  return (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>CEP</label>
+      <div style={{position:"relative"}}>
+        <input value={form.cep||""} onChange={handle} placeholder="00000-000" maxLength={9}
+          style={{...S.input,fontSize:12,padding:"7px 10px"}}/>
+        {buscando&&<span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",color:C.atxt,fontSize:10}}>🔍 buscando...</span>}
+      </div>
+    </div>
+  );
 }
 
 // ── Relatório Mensal e Anual de Digitação ──────────────────────
@@ -12419,29 +12474,23 @@ function DigitacaoPage({ contacts, currentUser }) {
 
   // ── Campos comuns a todos os tipos ──
   const blankComum = () => ({
-    // Documento
     cpf:"", nome:"", rg:"", dataNasc:"", dataExpedicao:"", orgaoEmissor:"",
     nomeMae:"", nomePai:"", ufDoc:"", naturalidade:"",
-    // Contato
     contato1:"", contato2:"", email1:"", email2:"",
-    // Endereço
     ufEnd:"", cep:"", rua:"", numero:"", bairro:"", cidade:"", complemento:"",
-    // Pagamento
     bancoPagto:"", agencia:"", contaDigito:"", tipoConta:"corrente", pix1:"", pix2:"",
-    // Observação
     observacao:"",
-    // Docs
     docTipo:"CNH", docCategoria:"Documentação", docFiles:[],
   });
 
   const blankFGTS = () => ({ ...blankComum(),
-    bancoProposta:"", comSeguro:"NAO", tabela:"COMETA", anosAntecipacao:"3",
+    bancoProposta:"", comSeguro:"NAO", tabela:"COMETA", anosAntecipacao:"",
     valorLiberado:"", valorPrometido:"", valorDesconto:"",
   });
 
   const blankCLT = () => ({ ...blankComum(),
-    bancoProposta:"V8 DIGITAL", averbador:"CELCOIN", protocolo:"",
-    comSeguro:"NAO", tabela:"CLT ACELERA",
+    bancoProposta:"", averbador:"", protocolo:"",
+    comSeguro:"NAO", tabela:"",
     valorLiberado:"", valorPrometido:"", parcelas:"", prazo:"",
     matricula:"", empresa:"", cnpj:"",
   });
@@ -12454,10 +12503,9 @@ function DigitacaoPage({ contacts, currentUser }) {
 
   const blankCartao = () => ({ ...blankComum(),
     comSeguro:"NAO", extratoAnexado:"NAO",
-    numBeneficio:"", numMatricula:"", tabela:"NORMAL",
+    numBeneficio:"", numMatricula:"", tabela:"",
     parcela:"", valorLimite:"", valorSaqueComp:"",
     valorPrometido:"", prazo:"",
-    // Representante
     nomeRep:"", cpfRep:"", rgRep:"", dataNascRep:"", dataExpRep:"",
     orgaoRep:"", nomeMaeRep:"", nomePaiRep:"", ufDocRep:"", naturalidadeRep:"",
     contato1Rep:"", contato2Rep:"", email1Rep:"", email2Rep:"",
@@ -12506,30 +12554,144 @@ function DigitacaoPage({ contacts, currentUser }) {
   const removeFile = (i) => setF("docFiles", form.docFiles.filter((_,idx)=>idx!==i));
 
   const enviar = async () => {
-    if (!form.cpf||!form.nome) { setMsg("❌ CPF e Nome são obrigatórios."); return; }
-    if (form.docFiles.length===0) { setMsg("❌ Anexe ao menos um documento obrigatório."); return; }
-    if (!form.bancoPagto||!form.agencia||!form.contaDigito) { setMsg("❌ Dados bancários são obrigatórios."); return; }
+    // Validações
+    const erros = [];
+    if (!form.cpf) erros.push("CPF é obrigatório");
+    if (!form.nome) erros.push("Nome é obrigatório");
+    if (form.email1 && !form.email1.includes("@")) erros.push("Email 1 inválido — falta o @");
+    if (form.email2 && !form.email2.includes("@")) erros.push("Email 2 inválido — falta o @");
+    if (form.docFiles.length===0) erros.push("Documentação obrigatória — anexe ao menos um arquivo");
+    if (!form.bancoPagto||!form.agencia||!form.contaDigito) erros.push("Dados bancários são obrigatórios");
+    if (erros.length>0) { setMsg("❌ " + erros.join(" · ")); return; }
+
     setSending(true); setMsg("");
     try {
       const propId = "prop_" + Date.now();
+
+      // Montar corpo do email legível
+      const linhas = [
+        `━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `📝 NOVA PROPOSTA — ${tipoProposta}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        ``,
+        `👤 DADOS DO CLIENTE`,
+        `Nome: ${form.nome||"—"}`,
+        `CPF: ${form.cpf||"—"}`,
+        `RG: ${form.rg||"—"}`,
+        `Data Nasc.: ${form.dataNasc||"—"}`,
+        `Data Expedição: ${form.dataExpedicao||"—"}`,
+        `Órgão Emissor: ${form.orgaoEmissor||"—"}`,
+        `UF Doc.: ${form.ufDoc||"—"}`,
+        `Nome da Mãe: ${form.nomeMae||"—"}`,
+        `Nome do Pai: ${form.nomePai||"—"}`,
+        `Naturalidade: ${form.naturalidade||"—"}`,
+        ``,
+        `📞 CONTATO`,
+        `Telefone 1: ${form.contato1||"—"}`,
+        `Telefone 2: ${form.contato2||"—"}`,
+        `Email 1: ${form.email1||"—"}`,
+        `Email 2: ${form.email2||"—"}`,
+        ``,
+        `📍 ENDEREÇO`,
+        `CEP: ${form.cep||"—"}`,
+        `Rua: ${form.rua||"—"}, Nº ${form.numero||"—"}`,
+        `Bairro: ${form.bairro||"—"}`,
+        `Cidade: ${form.cidade||"—"} / UF: ${form.ufEnd||"—"}`,
+        `Complemento: ${form.complemento||"—"}`,
+        ``,
+        `💰 DADOS DA PROPOSTA`,
+        tipoProposta==="FGTS"?[
+          `Banco Proposta: ${form.bancoProposta||"—"}`,
+          `Tabela: ${form.tabela||"—"}`,
+          `Anos Antecipação: ${form.anosAntecipacao||"—"}`,
+          `Com Seguro: ${form.comSeguro||"—"}`,
+          `Valor Liberado: ${form.valorLiberado||"—"}`,
+          `Valor Prometido: ${form.valorPrometido||"—"}`,
+          `Valor Desconto: ${form.valorDesconto||"—"}`,
+        ].join("\n"):"",
+        tipoProposta==="CLT"?[
+          `Banco Proposta: ${form.bancoProposta||"—"}`,
+          `Averbador: ${form.averbador||"—"}`,
+          `Protocolo: ${form.protocolo||"—"}`,
+          `Tabela: ${form.tabela||"—"}`,
+          `Com Seguro: ${form.comSeguro||"—"}`,
+          `Valor Liberado: ${form.valorLiberado||"—"}`,
+          `Valor Prometido: ${form.valorPrometido||"—"}`,
+          `Parcelas: ${form.parcelas||"—"}`,
+          `Prazo: ${form.prazo||"—"}`,
+          `Matrícula: ${form.matricula||"—"}`,
+          `Empresa: ${form.empresa||"—"}`,
+          `CNPJ: ${form.cnpj||"—"}`,
+        ].join("\n"):"",
+        tipoProposta==="INSS"?[
+          `Banco Proposta: ${form.bancoProposta||"—"}`,
+          `Nº Benefício: ${form.numBeneficio||"—"}`,
+          `Nº Matrícula: ${form.numMatricula||"—"}`,
+          `Tabela: ${form.tabela||"—"}`,
+          `Margem: ${form.margem||"—"}`,
+          `Com Seguro: ${form.comSeguro||"—"}`,
+          `Com Representante: ${form.comRepresentante||"—"}`,
+          `Analfabeto: ${form.analfabeto||"—"}`,
+          `Valor Liberado: ${form.valorLiberado||"—"}`,
+          `Valor Prometido: ${form.valorPrometido||"—"}`,
+          `Prazo: ${form.prazo||"—"}`,
+        ].join("\n"):"",
+        tipoProposta==="CARTAO"?[
+          `Nº Benefício: ${form.numBeneficio||"—"}`,
+          `Nº Matrícula: ${form.numMatricula||"—"}`,
+          `Tabela: ${form.tabela||"—"}`,
+          `Com Seguro: ${form.comSeguro||"—"}`,
+          `Parcela: ${form.parcela||"—"}`,
+          `Valor Limite: ${form.valorLimite||"—"}`,
+          `Valor Saque Comp.: ${form.valorSaqueComp||"—"}`,
+          `Valor Prometido: ${form.valorPrometido||"—"}`,
+          `Prazo: ${form.prazo||"—"}`,
+        ].join("\n"):"",
+        ``,
+        `🏦 DADOS BANCÁRIOS`,
+        `Banco: ${form.bancoPagto||"—"}`,
+        `Agência: ${form.agencia||"—"}`,
+        `Conta c/ Dígito: ${form.contaDigito||"—"}`,
+        `Tipo de Conta: ${form.tipoConta||"—"}`,
+        `PIX 1: ${form.pix1||"—"}`,
+        `PIX 2: ${form.pix2||"—"}`,
+        ``,
+        `📎 DOCUMENTOS`,
+        `Tipo: ${form.docTipo||"—"}`,
+        `Categoria: ${form.docCategoria||"—"}`,
+        `Arquivos: ${form.docFiles.map(f=>f.name).join(", ")||"Nenhum"}`,
+        form.observacao?`\n📝 OBSERVAÇÃO\n${form.observacao}`:"",
+        ``,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `Digitador: ${currentUser.name||currentUser.email}`,
+        `ID: ${propId}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      ].filter(Boolean).join("\n");
+
       await setDoc(doc(db,"propostas",propId), {
         id:propId, tipo:tipoProposta, ...form,
         docFiles: form.docFiles.map(f=>({name:f.name,type:f.type})),
         criadoPor: currentUser.uid||currentUser.id,
         criadoPorNome: currentUser.name||currentUser.email,
-        status:"Pendente", createdAt:Date.now(),
+        status:"Proposta Digitada", createdAt:Date.now(),
       });
-      // eslint-disable-next-line no-unused-vars
-      const tplId = tipoProposta==="FGTS"?"template_fgts":tipoProposta==="CLT"?"template_clt":tipoProposta==="INSS"?"template_inss":"template_cartao";
+
       await fetch("https://api.emailjs.com/api/v1.0/email/send",{
         method:"POST", headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ service_id:EMAILJS_SVC, template_id:"template_digitacao", user_id:EMAILJS_KEY,
-          template_params:{ to_email:DEST_EMAIL, tipo:tipoProposta, nome:form.nome, cpf:form.cpf,
-            digitador:currentUser.name||currentUser.email, proposta_id:propId,
-            dados:JSON.stringify({...form, docFiles:form.docFiles.map(f=>f.name)}, null, 2) }
+          template_params:{
+            to_email: DEST_EMAIL,
+            subject: `Nova Proposta ${tipoProposta} — ${form.nome} (${form.cpf})`,
+            message: linhas,
+            nome: form.nome,
+            cpf: form.cpf,
+            tipo: tipoProposta,
+            digitador: currentUser.name||currentUser.email,
+            proposta_id: propId,
+          }
         }),
       });
-      setMsg("✅ Proposta enviada! Email enviado para " + DEST_EMAIL);
+      setMsg("✅ Proposta enviada com sucesso! Email enviado para " + DEST_EMAIL);
       changeTipo(tipoProposta);
     } catch(e) { setMsg("❌ Erro: " + e.message); }
     setSending(false);
@@ -12653,9 +12815,9 @@ function DigitacaoPage({ contacts, currentUser }) {
             <DInp form={form} setF={setF} label="Anos de Antecipação" k="anosAntecipacao" ph="Ex: 3"/>
           </DGrid>
           <DGrid cols={3}>
-            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
-            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
-            <DInp form={form} setF={setF} label="Valor de Desconto (R$)" k="valorDesconto" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor de Desconto (R$)" k="valorDesconto" ph="R$ 0,00" mask="moeda"/>
           </DGrid>
           <DGrid cols={2}>
             <DSN form={form} setF={setF} label="Com Seguro?" k="comSeguro"/>
@@ -12674,8 +12836,8 @@ function DigitacaoPage({ contacts, currentUser }) {
           </DGrid>
           <DGrid cols={3}>
             <DInp form={form} setF={setF} label="Tabela" k="tabela" ph="Ex: CLT ACELERA"/>
-            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
-            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" mask="moeda"/>
           </DGrid>
           <DGrid cols={3}>
             <DInp form={form} setF={setF} label="Parcelas (R$)" k="parcelas" ph="R$ 0,00"/>
@@ -12702,9 +12864,9 @@ function DigitacaoPage({ contacts, currentUser }) {
           </DGrid>
           <DGrid cols={4}>
             <DInp form={form} setF={setF} label="Tabela" k="tabela"/>
-            <DInp form={form} setF={setF} label="Margem (R$)" k="margem" ph="Ex: 424,00"/>
-            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
-            <DInp form={form} setF={setF} label="Valor Prometido (R$)" k="valorPrometido" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Margem (R$)" k="margem" ph="Ex: 424,00" mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor Prometido (R$)" k="valorPrometido" ph="R$ 0,00" mask="moeda"/>
           </DGrid>
           <DGrid cols={3}>
             <DInp form={form} setF={setF} label="Prazo das Parcelas" k="prazo" ph="Ex: 84x"/>
@@ -12728,10 +12890,10 @@ function DigitacaoPage({ contacts, currentUser }) {
             <DInp form={form} setF={setF} label="Tabela" k="tabela" ph="Ex: NORMAL"/>
           </DGrid>
           <DGrid cols={4}>
-            <DInp form={form} setF={setF} label="Parcela (R$)" k="parcela" ph="R$ 0,00"/>
-            <DInp form={form} setF={setF} label="Valor do Limite (R$)" k="valorLimite" ph="R$ 0,00"/>
-            <DInp form={form} setF={setF} label="Valor Saque Complementar (R$)" k="valorSaqueComp" ph="R$ 0,00"/>
-            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" req/>
+            <DInp form={form} setF={setF} label="Parcela (R$)" k="parcela" ph="R$ 0,00" mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor do Limite (R$)" k="valorLimite" ph="R$ 0,00" mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor Saque Complementar (R$)" k="valorSaqueComp" ph="R$ 0,00" mask="moeda"/>
+            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" req mask="moeda"/>
           </DGrid>
           <DGrid cols={3}>
             <DInp form={form} setF={setF} label="Prazo das Parcelas" k="prazo" ph="Ex: 96x"/>
@@ -12760,7 +12922,7 @@ function DigitacaoPage({ contacts, currentUser }) {
           <DInp form={form} setF={setF} label="Data de Nascimento" k="dataNasc" type="date"/>
           <DInp form={form} setF={setF} label="Data de Expedição" k="dataExpedicao" type="date"/>
           <DInp form={form} setF={setF} label="Órgão Emissor" k="orgaoEmissor" ph="Ex: DETRAN"/>
-          <DInp form={form} setF={setF} label="UF do Documento" k="ufDoc" ph="Ex: RJ"/>
+          <DUF val={form.ufDoc||""} onChange={v=>setF("ufDoc",v)} label="UF do Documento"/>
         </DGrid>
         <DGrid cols={3}>
           <DInp form={form} setF={setF} label="Nome da Mãe" k="nomeMae"/>
@@ -12781,7 +12943,7 @@ function DigitacaoPage({ contacts, currentUser }) {
           <DSecTitle icon="👤" title="Informações do Documento — Representante" color="#FB923C"/>
           <DGrid cols={3}>
             <DInp form={form} setF={setF} label="Nome do Representante" k="nomeRep" req/>
-            <DInp form={form} setF={setF} label="CPF do Representante" k="cpfRep"/>
+            <DInp form={form} setF={setF} label="CPF do Representante" k="cpfRep" mask="cpf"/>
             <DInp form={form} setF={setF} label="RG do Representante" k="rgRep"/>
           </DGrid>
           <DGrid cols={4}>
@@ -12797,8 +12959,8 @@ function DigitacaoPage({ contacts, currentUser }) {
           </DGrid>
           <DSecTitle icon="📞" title="Contato do Representante"/>
           <DGrid cols={4}>
-            <DInp form={form} setF={setF} label="Contato 1" k="contato1Rep" type="tel" ph="(00) 00000-0000"/>
-            <DInp form={form} setF={setF} label="Contato 2" k="contato2Rep" type="tel"/>
+            <DInp form={form} setF={setF} label="Contato 1" k="contato1Rep" type="tel" ph="(00) 00000-0000" mask="fone"/>
+            <DInp form={form} setF={setF} label="Contato 2" k="contato2Rep" type="tel" mask="fone"/>
             <DInp form={form} setF={setF} label="Email 1" k="email1Rep" type="email"/>
             <DInp form={form} setF={setF} label="Email 2" k="email2Rep" type="email"/>
           </DGrid>
@@ -12809,8 +12971,8 @@ function DigitacaoPage({ contacts, currentUser }) {
       <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
         <DSecTitle icon="📞" title={tipoProposta==="CARTAO"?"Informações de Contato — Cliente":"Informações de Contato"}/>
         <DGrid cols={4}>
-          <DInp form={form} setF={setF} label="Contato 1" k="contato1" type="tel" ph="(00) 00000-0000" req/>
-          <DInp form={form} setF={setF} label="Contato 2" k="contato2" type="tel"/>
+          <DInp form={form} setF={setF} label="Contato 1" k="contato1" type="tel" ph="(00) 00000-0000" req mask="fone"/>
+          <DInp form={form} setF={setF} label="Contato 2" k="contato2" type="tel" mask="fone"/>
           <DInp form={form} setF={setF} label="Email 1" k="email1" type="email"/>
           <DInp form={form} setF={setF} label="Email 2" k="email2" type="email"/>
         </DGrid>
@@ -12820,8 +12982,8 @@ function DigitacaoPage({ contacts, currentUser }) {
       <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
         <DSecTitle icon="📍" title="Informações de Endereço"/>
         <DGrid cols={4}>
-          <DInp form={form} setF={setF} label="UF do Endereço" k="ufEnd" ph="Ex: RJ"/>
-          <DInp form={form} setF={setF} label="CEP" k="cep" ph="00000-000" req/>
+          <DUF val={form.ufEnd||""} onChange={v=>setF("ufEnd",v)} label="UF do Endereço"/>
+          <DCep form={form} setF={setF}/>
           <DInp form={form} setF={setF} label="Rua" k="rua" req/>
           <DInp form={form} setF={setF} label="Número" k="numero"/>
         </DGrid>
