@@ -12549,14 +12549,17 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
         ...editForm,
         docFiles: editForm.docFiles?.map(f=>({name:f.name,type:f.type,url:f.url||"",source:f.source||"",path:f.path||""})),
         editadoAt: Date.now(),
+        status: "Análise Manual → Dados Editados",
+        editPermitido: false, // remove permissão após salvar
         hasNewInteraction: true,
-        viewedBy: [], // força mestre/master a ver como não lido
+        viewedBy: [], // força mestre/master a ver como não lido (badge na aba)
+        viewedByDigitador: [myId],
       }, {merge:true});
-      // Notificação para propostas
+      // Notificação visível na aba Propostas (badge) e no sino
       await setDoc(doc(db,"notifications","edit_"+editForm.id+"_"+Date.now()), {
-        toRole: ["mestre","master","digitador"],
+        toRole: ["mestre","master"],
         type: "proposta_editada",
-        text: `✏️ Proposta editada — ${editForm.nome} (${editForm.cpf})`,
+        text: `✏️ Dados editados pelo digitador — ${editForm.nome} (${editForm.cpf})`,
         propostaId: editForm.id,
         createdAt: Date.now(),
         broadcast: false,
@@ -12639,16 +12642,18 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                 <div style={{color:C.atxt,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>📎 Documentos</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                   {modalVer.docFiles.map((f,i)=>(
-                    f.url && !f.url.startsWith("data:") ? (
-                      <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
-                        style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:8,border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-                        {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
-                      </a>
-                    ) : f.url ? (
-                      <a key={i} href={f.url} download={f.name}
-                        style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:8,border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-                        {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ⬇
-                      </a>
+                    f.url ? (
+                      <div key={i} style={{display:"flex",gap:0}}>
+                        <a href={f.url} target="_blank" rel="noopener noreferrer"
+                          style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:"8px 0 0 8px",border:`1px solid ${C.atxt}33`,borderRight:"none",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                          {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
+                        </a>
+                        <a href={f.url} download={f.name}
+                          title="Baixar arquivo"
+                          style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"6px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",cursor:"pointer",fontWeight:800}}>
+                          ⬇
+                        </a>
+                      </div>
                     ) : (
                       <span key={i} style={{background:C.deep,color:C.td,fontSize:11,padding:"5px 10px",borderRadius:7,border:`1px solid ${C.b1}`}}>
                         📄 {f.name}
@@ -12748,17 +12753,20 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
           const temNova = p.hasNewInteraction && !(p.viewedByDigitador||[]).includes(myId);
           const isPendente = st==="Pendente";
           const isAguardForm = st==="Aguardando Formalização";
+          const editLiberado = !!p.editPermitido;
 
           return (
             <div key={p.id} onClick={()=>marcarVisto(p)}
-              style={{...S.card,padding:"16px 20px",border:`1px solid ${temNova?"#34D39966":col+"33"}`,boxShadow:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
+              style={{...S.card,padding:"16px 20px",border:`1px solid ${editLiberado?"#FBBF2466":temNova?"#34D39966":col+"33"}`,boxShadow:editLiberado?`0 0 16px #FBBF2422`:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
 
               {/* Cabeçalho */}
               <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
                 {temNova&&<span style={{width:9,height:9,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
+                {editLiberado&&<span style={{width:9,height:9,borderRadius:"50%",background:"#FBBF24",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
                 <span style={{color:C.tp,fontSize:14,fontWeight:700,flex:1}}>{p.nome||"—"}</span>
-                <span style={{background:col+"22",color:col,fontSize:10.5,padding:"3px 10px",borderRadius:20,fontWeight:700,border:`1px solid ${col}44`}}>{st}</span>
+                <span style={{background:col+"22",color:col,fontSize:10.5,padding:"3px 10px",borderRadius:20,fontWeight:700,border:`1px solid ${col}44`}}>{st}{p.subStatus?" · "+p.subStatus:""}</span>
                 {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #34D39933"}}>🔔 Atualizado</span>}
+                {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #FBBF2444"}}>🔓 Edição liberada</span>}
               </div>
 
               <div style={{color:C.tm,fontSize:11.5,marginBottom:10}}>CPF: {p.cpf||"—"} · {p.tipo||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
@@ -12769,10 +12777,12 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                   style={{background:C.deep,color:C.ts,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                   👁 Visualizar
                 </button>
-                <button onClick={e=>{e.stopPropagation();abrirEdit(p);}}
-                  style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                  ✏️ Editar
-                </button>
+                {p.editavel && (
+                  <button onClick={e=>{e.stopPropagation();abrirEdit(p);}}
+                    style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    ✏️ Editar Proposta
+                  </button>
+                )}
                 {isPendente&&(
                   <button onClick={e=>{e.stopPropagation();abrirDev(p);}}
                     style={{background:"#1A0000",color:"#F87171",border:"1px solid #F8717144",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
@@ -13437,6 +13447,7 @@ const STATUS_PROPOSTA = [
   "Aguardando Checagem de Formalização",
   "Pendente",
   "Análise Manual",
+  "Análise Manual → Dados Editados",
   "Pago Aguardando Confirmação",
   "Proposta Concluída",
   "Cancelada",
@@ -13449,6 +13460,7 @@ const STATUS_PROPOSTA_COLORS = {
   "Aguardando Checagem de Formalização":"#A78BFA",
   "Pendente":                          "#F87171",
   "Análise Manual":                    "#FB923C",
+  "Análise Manual → Dados Editados":   "#F97316",
   "Pago Aguardando Confirmação":       "#C084FC",
   "Proposta Concluída":                "#34D399",
   "Cancelada":                         "#EF4444",
@@ -13719,6 +13731,31 @@ function ModalAcaoProposta({ proposta, onClose, onSave }) {
             padding:"11px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",opacity:saving?0.7:1,width:"100%"}}>
           {saving?"⏳ Salvando...":"✅ Confirmar"}
         </button>
+
+        {/* Botão Permitir Edição — libera o digitador a editar a proposta */}
+        <button onClick={async()=>{
+          setSaving(true);
+          await setDoc(doc(db,"propostas",proposta.id),{
+            editPermitido:true,
+            hasNewInteraction:true,
+            viewedByDigitador:[],
+          },{merge:true});
+          // Notificar digitador
+          await setDoc(doc(db,"notifications","editperm_"+proposta.id+"_"+Date.now()),{
+            toId: proposta.criadoPor,
+            type: "edicao_liberada",
+            text: `🔓 Edição liberada — você pode editar a proposta de ${proposta.nome} (${proposta.cpf})`,
+            propostaId: proposta.id,
+            createdAt: Date.now(),
+            readAt: null,
+          });
+          setSaving(false);
+          onClose();
+        }} disabled={saving}
+          style={{background:"#1A1400",color:"#FBBF24",border:"2px solid #FBBF2444",borderRadius:10,
+            padding:"10px 28px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",width:"100%",marginTop:8,opacity:saving?0.7:1}}>
+          🔓 Permitir Edição de Proposta
+        </button>
       </div>
     </div>
   );
@@ -13882,6 +13919,24 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
               ✅ Cliente Formalizado
             </button>
           )}
+          {/* Botão Permitir Edição — permite que o digitador edite a proposta */}
+          {canSeeAll && (
+            p.editavel ? (
+              <button onClick={async e=>{
+                e.stopPropagation();
+                await setDoc(doc(db,"propostas",p.id),{editavel:false},{merge:true});
+              }} style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2466",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                🔓 Edição Ativa
+              </button>
+            ) : (
+              <button onClick={async e=>{
+                e.stopPropagation();
+                await setDoc(doc(db,"propostas",p.id),{editavel:true},{merge:true});
+              }} style={{background:"#0D0D0D",color:"#94A3B8",border:"1px solid #334155",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+                🔒 Permitir Edição
+              </button>
+            )
+          )}
           <button onClick={()=>setOpen(o=>!o)}
             style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>
             {open?"▲ Fechar":"▼ Ver dados"}
@@ -13964,10 +14019,18 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 {p.docFiles.map((f,i)=>(
                   f.url ? (
-                    <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
-                      style={{background:C.abg,color:C.atxt,fontSize:11,padding:"5px 12px",borderRadius:8,border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
-                      {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
-                    </a>
+                    <div key={i} style={{display:"flex",gap:0}}>
+                      <a href={f.url} target="_blank" rel="noopener noreferrer"
+                        style={{background:C.abg,color:C.atxt,fontSize:11,padding:"5px 12px",borderRadius:"8px 0 0 8px",border:`1px solid ${C.atxt}33`,borderRight:"none",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                        {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
+                      </a>
+                      <a href={f.url} download={f.name}
+                        onClick={e=>e.stopPropagation()}
+                        title="Baixar arquivo"
+                        style={{background:C.atxt+"33",color:C.atxt,fontSize:13,padding:"5px 10px",borderRadius:"0 8px 8px 0",border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",cursor:"pointer",fontWeight:800}}>
+                        ⬇
+                      </a>
+                    </div>
                   ) : (
                     <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
                       {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
