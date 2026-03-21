@@ -26,8 +26,8 @@ import {
 } from "./firebase";
 import { uploadArquivo } from "./firebase";
 
-// ── Compressão de imagem via Canvas (máx 1200px, qualidade 80%) ─
-async function comprimirImagem(base64, maxW=1200, quality=0.8) {
+// ── Compressão de imagem via Canvas (máx 1200px, qualidade 82%) ──
+async function comprimirImagem(base64, maxW=1200, quality=0.82) {
   return new Promise((res) => {
     const img = new Image();
     img.onload = () => {
@@ -39,16 +39,17 @@ async function comprimirImagem(base64, maxW=1200, quality=0.8) {
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
       res(canvas.toDataURL("image/jpeg", quality));
     };
-    img.onerror = () => res(base64); // fallback sem compressão
+    img.onerror = () => res(base64);
     img.src = base64;
   });
 }
 
-// ── Upload para Cloudinary (gratuito, 25 GB) ──────────────────────
-const CLOUDINARY_CLOUD = "nexpcompany"; // ← troque pelo seu cloud name
-const CLOUDINARY_PRESET = "nexp_docs";  // ← troque pelo seu upload preset
+// ── Upload para Cloudinary (opcional — configure se quiser 25 GB grátis) ──
+const CLOUDINARY_CLOUD = ""; // deixe vazio para usar só Firebase
+const CLOUDINARY_PRESET = "nexp_docs";
 
 async function uploadCloudinary(base64, fileName) {
+  if (!CLOUDINARY_CLOUD) throw new Error("Cloudinary não configurado");
   const formData = new FormData();
   formData.append("file", base64);
   formData.append("upload_preset", CLOUDINARY_PRESET);
@@ -62,25 +63,26 @@ async function uploadCloudinary(base64, fileName) {
   return d.secure_url;
 }
 
-// ── Upload inteligente: Cloudinary primeiro, Firebase como fallback ─
+// ── Upload inteligente: comprime imagem → Firebase Storage (Cloudinary se configurado) ──
 async function uploadArquivoOtimizado(base64, fileName, tipo, propId) {
-  // 1. Comprimir se for imagem
   let dadoFinal = base64;
+  // 1. Comprimir imagem
   if (tipo?.startsWith("image/")) {
-    dadoFinal = await comprimirImagem(base64);
+    try { dadoFinal = await comprimirImagem(base64); } catch {}
   }
-  // 2. Tentar Cloudinary primeiro
-  try {
-    const url = await uploadCloudinary(dadoFinal, fileName);
-    return { url, source: "cloudinary" };
-  } catch {}
-  // 3. Fallback: Firebase Storage
+  // 2. Cloudinary (se configurado)
+  if (CLOUDINARY_CLOUD) {
+    try { return { url: await uploadCloudinary(dadoFinal, fileName), source: "cloudinary" }; } catch {}
+  }
+  // 3. Firebase Storage (principal)
   try {
     const path = `propostas/${propId}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
     const url = await uploadArquivo(dadoFinal, path);
     return { url, source: "firebase", path };
-  } catch {}
-  // 4. Último fallback: base64 em memória (sem storage externo)
+  } catch (err) {
+    console.error("Upload Firebase falhou:", err);
+  }
+  // 4. Fallback: base64 direto (sem storage externo — funciona mas usa espaço no Firestore)
   return { url: dadoFinal, source: "local" };
 }
 
@@ -12508,17 +12510,22 @@ function RelatorioDigitacao({ myId }) {
 }
 
 // ── Minhas Digitações — aba do digitador ───────────────────────
-function MinhasDigitacoes({ minhasPropostas, myId }) {
-  const [modalDev, setModalDev] = useState(null); // proposta para devolução de pgto
+function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
+  const [modalDev, setModalDev] = useState(null);
+  const [modalVer, setModalVer] = useState(null);    // visualizar proposta
+  const [modalEdit, setModalEdit] = useState(null);  // editar proposta
   const [saving, setSaving] = useState(false);
-  // Campos de devolução
-  const [devBanco,  setDevBanco]  = useState("");
-  const [devAg,     setDevAg]     = useState("");
-  const [devConta,  setDevConta]  = useState("");
-  const [devTipo,   setDevTipo]   = useState("corrente");
-  const [devPix1,   setDevPix1]   = useState("");
-  const [devPix2,   setDevPix2]   = useState("");
-  const [devObs,    setDevObs]    = useState("");
+  const [editForm, setEditForm] = useState({});
+  const [editMsg, setEditMsg] = useState("");
+
+  // Devolução
+  const [devBanco, setDevBanco] = useState("");
+  const [devAg,    setDevAg]    = useState("");
+  const [devConta, setDevConta] = useState("");
+  const [devTipo,  setDevTipo]  = useState("corrente");
+  const [devPix1,  setDevPix1]  = useState("");
+  const [devPix2,  setDevPix2]  = useState("");
+  const [devObs,   setDevObs]   = useState("");
 
   const abrirDev = (p) => {
     setModalDev(p);
@@ -12528,15 +12535,47 @@ function MinhasDigitacoes({ minhasPropostas, myId }) {
     setDevObs(p.obsPendente||"");
   };
 
+  const abrirEdit = (p) => {
+    setEditForm({...p});
+    setEditMsg("");
+    setModalEdit(p);
+  };
+
+  const salvarEdicao = async () => {
+    if (!editForm.nome||!editForm.cpf) { setEditMsg("❌ Nome e CPF são obrigatórios."); return; }
+    setSaving(true);
+    try {
+      await setDoc(doc(db,"propostas",editForm.id), {
+        ...editForm,
+        docFiles: editForm.docFiles?.map(f=>({name:f.name,type:f.type,url:f.url||"",source:f.source||"",path:f.path||""})),
+        editadoAt: Date.now(),
+        hasNewInteraction: true,
+        viewedBy: [], // força mestre/master a ver como não lido
+      }, {merge:true});
+      // Notificação para propostas
+      await setDoc(doc(db,"notifications","edit_"+editForm.id+"_"+Date.now()), {
+        toRole: ["mestre","master","digitador"],
+        type: "proposta_editada",
+        text: `✏️ Proposta editada — ${editForm.nome} (${editForm.cpf})`,
+        propostaId: editForm.id,
+        createdAt: Date.now(),
+        broadcast: false,
+        viewedBy: [],
+      });
+      setEditMsg("✅ Proposta atualizada!");
+      setTimeout(()=>setModalEdit(null), 1200);
+    } catch(e) { setEditMsg("❌ Erro: "+e.message); }
+    setSaving(false);
+  };
+
   const enviarDevolucao = async () => {
     if (!devBanco||!devAg||!devConta) { alert("Preencha banco, agência e conta."); return; }
     setSaving(true);
     await setDoc(doc(db,"propostas",modalDev.id),{
       status:"Análise Manual",
       bancoPendente:devBanco, agenciaPendente:devAg, contaPendente:devConta,
-      tipoContaPendente:devTipo, pix1Pendente:devPix1, pix2Pendente:devPix2,
-      obsPendente:devObs,
-      hasNewInteraction:true, viewedByDigitador:[myId],
+      tipoContaPendente:devTipo, pix1Pendente:devPix1, pix2Pendente:devPix2, obsPendente:devObs,
+      hasNewInteraction:true, viewedBy:[], viewedByDigitador:[myId],
       respostaDevAt:Date.now(),
     },{merge:true});
     setSaving(false);
@@ -12546,7 +12585,7 @@ function MinhasDigitacoes({ minhasPropostas, myId }) {
   const confirmarFormalizacao = async (propId) => {
     await setDoc(doc(db,"propostas",propId),{
       status:"Aguardando Checagem de Formalização",
-      hasNewInteraction:true, viewedByDigitador:[myId],
+      hasNewInteraction:true, viewedBy:[], viewedByDigitador:[myId],
       formalizadoAt:Date.now(),
     },{merge:true});
   };
@@ -12557,6 +12596,8 @@ function MinhasDigitacoes({ minhasPropostas, myId }) {
     }
   };
 
+  const ef = (k,v) => setEditForm(f=>({...f,[k]:v}));
+
   const inp = (label,val,set,ph="") => (
     <div style={{marginBottom:8}}>
       <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:3}}>{label}</label>
@@ -12564,20 +12605,112 @@ function MinhasDigitacoes({ minhasPropostas, myId }) {
     </div>
   );
 
+  const RowVer = ({label,val}) => val?(
+    <div style={{display:"flex",gap:8,marginBottom:4}}>
+      <span style={{color:C.td,fontSize:11,minWidth:130,flexShrink:0}}>{label}:</span>
+      <span style={{color:C.ts,fontSize:11.5,wordBreak:"break-all"}}>{val}</span>
+    </div>
+  ):null;
+
   return (
     <div>
-      {/* Modal devolução de pagamento */}
+      {/* Modal Visualizar */}
+      {modalVer && (
+        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setModalVer(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:600,width:"94%",maxHeight:"88vh",overflowY:"auto",border:`1px solid ${C.b1}`,boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{color:C.tp,fontSize:15,fontWeight:800}}>👁 Visualizar Proposta — {modalVer.nome}</div>
+              <button onClick={()=>setModalVer(null)} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
+            </div>
+            {[
+              ["👤 Cliente",""],["Nome",modalVer.nome],["CPF",modalVer.cpf],["RG",modalVer.rg],["Data Nasc.",modalVer.dataNasc],
+              ["Nome da Mãe",modalVer.nomeMae],["Nome do Pai",modalVer.nomePai],
+              ["📞 Contato",""],["Tel 1",modalVer.contato1],["Tel 2",modalVer.contato2],["Email",modalVer.email1],
+              ["📍 Endereço",""],["CEP",modalVer.cep],["Rua",modalVer.rua],["Número",modalVer.numero],["Bairro",modalVer.bairro],["Cidade",modalVer.cidade],["UF",modalVer.ufEnd],
+              ["🏦 Bancário",""],["Banco",modalVer.bancoPagto],["Agência",modalVer.agencia],["Conta",modalVer.contaDigito],["Tipo",modalVer.tipoConta],["PIX 1",modalVer.pix1],["PIX 2",modalVer.pix2],
+              ["💰 Proposta",""],["Tipo",modalVer.tipo],["Banco Prop.",modalVer.bancoProposta],["Valor Liberado",modalVer.valorLiberado],["Valor Prometido",modalVer.valorPrometido],
+            ].map(([l,v],i)=> !v ? (
+              <div key={i} style={{color:C.atxt,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginTop:12,marginBottom:6,paddingBottom:4,borderBottom:`1px solid ${C.b1}`}}>{l}</div>
+            ) : <RowVer key={i} label={l} val={v}/>)}
+            {/* Documentos */}
+            {(modalVer.docFiles||[]).length>0&&(
+              <div style={{marginTop:14,paddingTop:10,borderTop:`1px solid ${C.b1}`}}>
+                <div style={{color:C.atxt,fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>📎 Documentos</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {modalVer.docFiles.map((f,i)=>(
+                    f.url && !f.url.startsWith("data:") ? (
+                      <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                        style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:8,border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                        {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ↗
+                      </a>
+                    ) : f.url ? (
+                      <a key={i} href={f.url} download={f.name}
+                        style={{background:C.abg,color:C.atxt,fontSize:11,padding:"6px 12px",borderRadius:8,border:`1px solid ${C.atxt}33`,textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                        {f.type?.startsWith("image/")?"🖼":"📄"} {f.name} ⬇
+                      </a>
+                    ) : (
+                      <span key={i} style={{background:C.deep,color:C.td,fontSize:11,padding:"5px 10px",borderRadius:7,border:`1px solid ${C.b1}`}}>
+                        📄 {f.name}
+                      </span>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar */}
+      {modalEdit && (
+        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
+          onClick={()=>setModalEdit(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:580,width:"94%",maxHeight:"90vh",overflowY:"auto",border:`1px solid #FBBF24`,boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{color:"#FBBF24",fontSize:15,fontWeight:800}}>✏️ Editar Proposta — {modalEdit.nome}</div>
+              <button onClick={()=>setModalEdit(null)} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
+            </div>
+            {editMsg&&<div style={{color:editMsg.startsWith("✅")?"#34D399":"#F87171",fontSize:12,marginBottom:10,fontWeight:600}}>{editMsg}</div>}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              {[["Nome",    "nome"],["CPF",     "cpf"],["RG",      "rg"],
+                ["Tel 1",  "contato1"],["Tel 2","contato2"],["Email","email1"],
+                ["CEP",    "cep"],["Rua",    "rua"],["Número", "numero"],
+                ["Bairro", "bairro"],["Cidade","cidade"],
+                ["Banco",  "bancoPagto"],["Agência","agencia"],["Conta c/ Dígito","contaDigito"],
+                ["PIX 1",  "pix1"],["PIX 2", "pix2"],
+                ["Banco Prop.","bancoProposta"],["Valor Liberado","valorLiberado"],["Valor Prometido","valorPrometido"],
+              ].map(([label,key])=>(
+                <div key={key}>
+                  <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}</label>
+                  <input value={editForm[key]||""} onChange={e=>ef(key,e.target.value)}
+                    style={{...S.input,fontSize:12,padding:"6px 9px"}}/>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>Observação</label>
+              <textarea value={editForm.observacao||""} onChange={e=>ef("observacao",e.target.value)}
+                rows={2} style={{...S.input,resize:"vertical",fontSize:12}}/>
+            </div>
+            <button onClick={salvarEdicao} disabled={saving}
+              style={{background:"linear-gradient(135deg,#FBBF24,#F59E0B)",color:"#000",border:"none",borderRadius:10,padding:"11px 0",fontSize:13,fontWeight:800,cursor:saving?"not-allowed":"pointer",width:"100%",opacity:saving?0.7:1}}>
+              {saving?"⏳ Salvando...":"💾 Salvar Alterações"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Devolução */}
       {modalDev && (
-        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn 0.2s ease"}}
+        <div style={{position:"fixed",inset:0,zIndex:9900,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center"}}
           onClick={()=>setModalDev(null)}>
           <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:18,padding:"22px 26px",maxWidth:460,width:"92%",maxHeight:"88vh",overflowY:"auto",border:`1px solid #F87171`,boxShadow:"0 12px 48px rgba(0,0,0,0.8)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
               <div style={{color:"#F87171",fontSize:14,fontWeight:800}}>🔴 Responder Devolução — {modalDev.nome}</div>
               <button onClick={()=>setModalDev(null)} style={{background:"none",border:"none",color:C.tm,cursor:"pointer",fontSize:18}}>✕</button>
             </div>
-            <div style={{color:C.td,fontSize:11.5,marginBottom:14,lineHeight:1.7}}>
-              Preencha os dados bancários corretos para reapresentação da proposta.
-            </div>
+            <div style={{color:C.td,fontSize:11.5,marginBottom:14,lineHeight:1.7}}>Preencha os dados bancários corretos para reapresentação da proposta.</div>
             {inp("Banco",devBanco,setDevBanco,"Ex: Banco do Brasil")}
             {inp("Agência",devAg,setDevAg,"Ex: 0001")}
             {inp("Conta com dígito",devConta,setDevConta,"Ex: 12345-6")}
@@ -12599,7 +12732,7 @@ function MinhasDigitacoes({ minhasPropostas, myId }) {
         </div>
       )}
 
-      <p style={{color:C.tm,fontSize:12.5,marginBottom:16}}>Acompanhe todas as suas propostas. Novidades são destacadas automaticamente.</p>
+      <p style={{color:C.tm,fontSize:12.5,marginBottom:16}}>Acompanhe suas propostas. Novidades são destacadas automaticamente.</p>
 
       {minhasPropostas.length===0&&(
         <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
@@ -12613,43 +12746,49 @@ function MinhasDigitacoes({ minhasPropostas, myId }) {
           const st = p.status||"Aguardando Digitação";
           const col = STATUS_PROPOSTA_COLORS[st]||C.td;
           const temNova = p.hasNewInteraction && !(p.viewedByDigitador||[]).includes(myId);
-          const isPendente = st === "Pendente"; // devolução de pgto
-          const isAguardForm = st === "Aguardando Formalização"; // mostrar botão "Cliente Formalizado"
+          const isPendente = st==="Pendente";
+          const isAguardForm = st==="Aguardando Formalização";
 
           return (
-            <div key={p.id}
-              onClick={()=>marcarVisto(p)}
-              style={{...S.card,padding:"16px 20px",border:`1px solid ${temNova?"#34D39966":col+"33"}`,boxShadow:temNova?`0 0 16px #34D39922`:"none",cursor:temNova?"pointer":"default",transition:"border 0.2s"}}>
+            <div key={p.id} onClick={()=>marcarVisto(p)}
+              style={{...S.card,padding:"16px 20px",border:`1px solid ${temNova?"#34D39966":col+"33"}`,boxShadow:temNova?`0 0 16px #34D39922`:"none",transition:"border 0.2s"}}>
 
               {/* Cabeçalho */}
-              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:8}}>
                 {temNova&&<span style={{width:9,height:9,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
-                <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
+                <span style={{color:C.tp,fontSize:14,fontWeight:700,flex:1}}>{p.nome||"—"}</span>
                 <span style={{background:col+"22",color:col,fontSize:10.5,padding:"3px 10px",borderRadius:20,fontWeight:700,border:`1px solid ${col}44`}}>{st}</span>
                 {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #34D39933"}}>🔔 Atualizado</span>}
-                <span style={{color:C.td,fontSize:11,marginLeft:"auto"}}>{p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</span>
               </div>
 
-              <div style={{color:C.tm,fontSize:11.5,marginBottom:10}}>CPF: {p.cpf||"—"} · {p.tipo||p.produto||"—"} · Por: {p.criadoPorNome||"—"}</div>
+              <div style={{color:C.tm,fontSize:11.5,marginBottom:10}}>CPF: {p.cpf||"—"} · {p.tipo||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
+
+              {/* Botões de ação */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                <button onClick={e=>{e.stopPropagation();setModalVer(p);}}
+                  style={{background:C.deep,color:C.ts,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                  👁 Visualizar
+                </button>
+                <button onClick={e=>{e.stopPropagation();abrirEdit(p);}}
+                  style={{background:"#1A1400",color:"#FBBF24",border:"1px solid #FBBF2444",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                  ✏️ Editar
+                </button>
+                {isPendente&&(
+                  <button onClick={e=>{e.stopPropagation();abrirDev(p);}}
+                    style={{background:"#1A0000",color:"#F87171",border:"1px solid #F8717144",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    🔴 Responder Devolução
+                  </button>
+                )}
+                {isAguardForm&&p.linkFormalizacao&&(
+                  <button onClick={e=>{e.stopPropagation();confirmarFormalizacao(p.id);}}
+                    style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    ✅ Cliente Formalizado
+                  </button>
+                )}
+              </div>
 
               {/* Mensagem de status */}
               <MensagemProposta proposta={p}/>
-
-              {/* Botão: Responder devolução de pagamento */}
-              {isPendente && (
-                <button onClick={()=>abrirDev(p)}
-                  style={{background:"linear-gradient(135deg,#F87171,#EF4444)",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",fontSize:12.5,fontWeight:700,cursor:"pointer",marginTop:12,display:"flex",alignItems:"center",gap:8}}>
-                  🔴 Responder Devolução de Pagamento
-                </button>
-              )}
-
-              {/* Botão: Cliente Formalizado (só aparece quando status = Aguardando Formalização e tem link) */}
-              {isAguardForm && p.linkFormalizacao && (
-                <button onClick={()=>confirmarFormalizacao(p.id)}
-                  style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",fontSize:12.5,fontWeight:700,cursor:"pointer",marginTop:12,display:"flex",alignItems:"center",gap:8}}>
-                  ✅ Cliente Formalizado — Confirmar
-                </button>
-              )}
             </div>
           );
         })}
@@ -13914,7 +14053,75 @@ function PropostasPage({ currentUser }) {
   const updateStatus = async (id, data) => {
     const extra = {};
     if (data.status==="Pago Aguardando Confirmação") extra.pagoAt = Date.now();
+    const propAtual = propostas.find(p=>p.id===id);
     await setDoc(doc(db,"propostas",id),{...data,...extra},{merge:true});
+    // Notificar o digitador sobre a atualização
+    if (propAtual) {
+      const notifId = "notif_prop_"+id+"_"+Date.now();
+      const textoNotif = data.editadoBy
+        ? `✏️ Proposta editada — ${propAtual.nome} · ${data.status||propAtual.status}`
+        : `🔔 Proposta atualizada — ${propAtual.nome} · Status: ${data.status||propAtual.status}`;
+      await setDoc(doc(db,"notifications",notifId),{
+        toId: propAtual.criadoPor,
+        type: "proposta_atualizada",
+        text: textoNotif,
+        propostaId: id,
+        createdAt: Date.now(),
+        readAt: null,
+      });
+      // Sincronizar com Leads: atualizar dados bancários do contato correspondente
+      if (propAtual.cpf) {
+        const cpfLimpo = (propAtual.cpf||"").replace(/\D/g,"");
+        // importar saveContact do firebase
+        const { saveContact: sc } = await import("./firebase");
+        // Buscar contato pelo CPF
+        const snap = await import("firebase/firestore").then(({collection,query,where,getDocs})=>
+          getDocs(query(collection(db,"contacts"),where("cpf","==",propAtual.cpf)))
+        ).catch(()=>null);
+        if (snap && !snap.empty) {
+          const contDoc = snap.docs[0];
+          const updates = {
+            id: contDoc.id,
+            ...contDoc.data(),
+          };
+          // Atualizar dados bancários se vieram com a proposta
+          if (propAtual.bancoPagto) updates.bancoPagto = propAtual.bancoPagto;
+          if (propAtual.agencia)    updates.agencia    = propAtual.agencia;
+          if (propAtual.contaDigito) updates.contaDigito = propAtual.contaDigito;
+          if (propAtual.tipoConta)  updates.tipoConta  = propAtual.tipoConta;
+          if (propAtual.pix1)       updates.pix1       = propAtual.pix1;
+          if (propAtual.pix2)       updates.pix2       = propAtual.pix2;
+          // Atualizar status do lead baseado na proposta
+          if (data.status==="Proposta Concluída") updates.status = "Simulado";
+          if (data.status==="Cancelada")          updates.status = "Não simulado";
+          await sc(updates);
+        } else if (cpfLimpo) {
+          // Criar lead se não existir
+          await sc({
+            id: "lead_"+cpfLimpo,
+            name: propAtual.nome||"",
+            cpf: propAtual.cpf||"",
+            phone: propAtual.contato1||"",
+            phone2: propAtual.contato2||"",
+            email: propAtual.email1||"",
+            cep: propAtual.cep||"",
+            rua: propAtual.rua||"",
+            numero: propAtual.numero||"",
+            bairro: propAtual.bairro||"",
+            cidade: propAtual.cidade||"",
+            ufEnd: propAtual.ufEnd||"",
+            bancoPagto: propAtual.bancoPagto||"",
+            agencia: propAtual.agencia||"",
+            contaDigito: propAtual.contaDigito||"",
+            tipoConta: propAtual.tipoConta||"",
+            pix1: propAtual.pix1||"",
+            leadType: propAtual.tipo||"FGTS",
+            status: "Não simulado",
+            reactions: [],
+          });
+        }
+      }
+    }
   };
 
   return (
