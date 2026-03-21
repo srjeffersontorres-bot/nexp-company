@@ -998,57 +998,57 @@ function LoginPage({ onLogin }) {
           </circle>
         ))}
 
-        {/* ── LUA — mais real, mais rápida, percorre o céu ── */}
+        {/* ── LUA crescente realista — mais baixa, mais bonita ── */}
         {isNight && (
-          <g filter="url(#glow4)">
-            {/* Halo difuso externo */}
-            <circle r="72" fill="#FEF3C7" opacity="0.07">
+          <g>
+            {/* Halo suave */}
+            <circle r="80" fill="#FEF9C3" opacity="0.05">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,130 C 280,20 860,10 1540,120"/>
+                path="M -100,200 C 280,110 860,95 1540,190"/>
             </circle>
-            {/* Corpo principal da lua */}
-            <circle r="46" fill="#F5E6A0">
+            {/* Corpo da lua */}
+            <circle r="50" fill="#F0D060">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,130 C 280,20 860,10 1540,120"/>
+                path="M -100,200 C 280,110 860,95 1540,190"/>
             </circle>
-            {/* Camada de textura — tons mais frios */}
-            <circle r="46" fill="url(#moonGlow2)" opacity="0.4">
+            {/* Gradiente de textura fria */}
+            <circle r="50" fill="#C8B040" opacity="0.3">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -100,130 C 280,20 860,10 1540,120"/>
+                path="M -100,200 C 280,110 860,95 1540,190"/>
             </circle>
-            {/* Sombra crescente realista */}
-            <circle r="40" fill="#04080F" opacity="0.88">
+            {/* Sombra meia-lua crescente */}
+            <circle r="46" fill="#030810" opacity="0.92">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -80,118 C 300,8 880,-2 1560,108"/>
+                path="M -78,192 C 302,102 882,87 1562,182"/>
             </circle>
-            {/* Cratera grande */}
-            <circle r="8" fill="#D4B44A" opacity="0.5">
+            {/* Brilho borda direita */}
+            <circle r="50" fill="none" stroke="#FDE68A" strokeWidth="1.5" opacity="0.4">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -112,143 C 268,33 848,23 1528,133"/>
+                path="M -100,200 C 280,110 860,95 1540,190"/>
             </circle>
-            <circle r="6" fill="#C8A830" opacity="0.35">
+            {/* Cratera 1 */}
+            <circle r="7" fill="#B8960A" opacity="0.55">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -112,143 C 268,33 848,23 1528,133"/>
+                path="M -126,215 C 254,125 834,110 1514,205"/>
             </circle>
-            {/* Cratera média 1 */}
-            <circle r="5" fill="#D4B44A" opacity="0.45">
+            <circle r="5" fill="#96780A" opacity="0.35">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -88,118 C 292,8 872,-2 1552,108"/>
+                path="M -126,215 C 254,125 834,110 1514,205"/>
             </circle>
-            {/* Cratera média 2 */}
-            <circle r="4" fill="#C8A830" opacity="0.4">
+            {/* Cratera 2 */}
+            <circle r="4.5" fill="#B8960A" opacity="0.5">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -120,152 C 260,42 840,32 1520,142"/>
+                path="M -85,188 C 295,98 875,83 1555,178"/>
             </circle>
-            {/* Cratera pequena */}
-            <circle r="2.5" fill="#BFA040" opacity="0.5">
+            {/* Cratera 3 pequena */}
+            <circle r="3" fill="#A07808" opacity="0.45">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -95,138 C 285,28 865,18 1545,128"/>
+                path="M -110,210 C 270,120 850,105 1530,200"/>
             </circle>
-            {/* Brilho especular */}
-            <circle r="12" fill="#FFFDE7" opacity="0.25">
+            {/* Brilho especular topo */}
+            <circle r="10" fill="#FFFDE7" opacity="0.3">
               <animateMotion dur="90s" repeatCount="indefinite"
-                path="M -116,124 C 264,14 844,4 1524,114"/>
+                path="M -118,185 C 262,95 842,80 1522,175"/>
             </circle>
           </g>
         )}
@@ -1372,7 +1372,7 @@ function LoginPage({ onLogin }) {
       {/* ── Lado esquerdo: formulário com transparência ── */}
       <div style={{ flex:"0 0 auto", width:"min(320px,88vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease" }}>
         {/* Card com transparência */}
-        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:16, border:"1px solid rgba(79,142,247,0.2)", padding:"20px 20px", marginBottom:10, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
+        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:14, border:"1px solid rgba(79,142,247,0.2)", padding:"16px 18px", marginBottom:8, boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
           {/* Logo + robô */}
           <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:26 }}>
             <NexpRobot size={46} showFaceOnly />
@@ -1503,7 +1503,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, presence, flashUserId, stories, sysConfig }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     { id:"dashboard",  label:"Leads Gerais",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
@@ -1517,7 +1517,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"leds",       label:"Leds",            icon:"⬦", roles:["mestre","master"] },
     { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["mestre","master"] },
     { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["mestre","master","indicado","digitador"] },
-    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["mestre","master","digitador"] },
+    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["mestre","master","digitador"], badge:"propostas" },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
@@ -1609,6 +1609,12 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                     <span style={{ fontSize: 14, width: 18, textAlign: "center", flexShrink: 0 }}>{it.icon}</span>
                     <span style={{ flex: 1 }}>{it.label}</span>
                     {it.id === "premium" && <span style={{ background: active ? "rgba(255,255,255,0.2)" : C.abg, color: active ? "#fff" : C.atxt, fontSize: 9, padding: "1px 5px", borderRadius: 9 }}>★</span>}
+                    {/* Badge propostas */}
+                    {it.id === "propostas" && unreadPropostas > 0 && (
+                      <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
+                        {unreadPropostas}
+                      </span>
+                    )}
                     <span style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.35)" : C.td, cursor: "grab" }} title="Arrastar">⠿</span>
                   </button>
                 );
@@ -12176,16 +12182,82 @@ function ApisBancosPage({ currentUser }) {
   );
 }
 
+// ── Subcomponentes de digitação (fora do componente pai para evitar perda de foco) ──
+function DField({ label, req, val, onChange, type="text", ph="" }) {
+  return (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>
+        {label}{req&&<span style={{color:"#EF4444"}}> *</span>}
+      </label>
+      <input value={val} onChange={e=>onChange(e.target.value)} type={type} placeholder={ph}
+        style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:req&&!val?"#EF444455":undefined}}/>
+    </div>
+  );
+}
+function DSelect({ label, req, val, onChange, opts }) {
+  return (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>
+        {label}{req&&<span style={{color:"#EF4444"}}> *</span>}
+      </label>
+      <select value={val} onChange={e=>onChange(e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px",cursor:"pointer"}}>
+        {opts.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.v} value={o.v}>{o.l}</option>)}
+      </select>
+    </div>
+  );
+}
+function DSimNao({ label, val, onChange }) {
+  return (
+    <div>
+      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:4}}>{label}</label>
+      <div style={{display:"flex",gap:6}}>
+        {["SIM","NAO"].map(v=>(
+          <button key={v} onClick={()=>onChange(v)}
+            style={{flex:1,background:val===v?(v==="SIM"?"#0D2B1A":"#2D1515"):C.deep,
+              color:val===v?(v==="SIM"?"#34D399":"#F87171"):C.tm,
+              border:`1px solid ${val===v?(v==="SIM"?"#34D39944":"#EF444444"):C.b2}`,
+              borderRadius:8,padding:"6px 0",fontSize:12,fontWeight:val===v?700:400,cursor:"pointer"}}>
+            {v==="SIM"?"✓ Sim":"✗ Não"}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DigitacaoPage({ contacts, currentUser }) {
   const EMAILJS_SVC = "nexp_service";
   const EMAILJS_KEY = "GaZRJdTXt0UMdEY3H";
   const DEST_EMAIL  = "vendas.nexpcred@gmail.com";
 
+  const [abaDigitacao, setAbaDigitacao] = useState("nova"); // "nova" | "minhas"
   const [tipoProposta, setTipoProposta] = useState("FGTS");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
   const [clienteEncontrado, setClienteEncontrado] = useState(false);
+  const [minhasPropostas, setMinhasPropostas] = useState([]);
+  const [unreadMinhas, setUnreadMinhas] = useState(0);
   const fileRef = useRef();
+  const myId = currentUser.uid||currentUser.id;
+
+  // Ouvir minhas propostas em tempo real
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db,"propostas"), snap => {
+      const all = snap.docs.map(d=>({...d.data(),id:d.id}))
+        .filter(p=>p.criadoPor===myId)
+        .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      setMinhasPropostas(all);
+      const comInteracao = all.filter(p=>p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)).length;
+      setUnreadMinhas(comInteracao);
+    });
+    return ()=>unsub();
+  }, []); // eslint-disable-line
+
+  const marcarVistaDigitador = async (propId, viewedList) => {
+    if (!(viewedList||[]).includes(myId)) {
+      await setDoc(doc(db,"propostas",propId),{viewedByDigitador:[...(viewedList||[]),myId]},{merge:true});
+    }
+  };
 
   // ── Campos comuns a todos os tipos ──
   const blankComum = () => ({
@@ -12305,56 +12377,93 @@ function DigitacaoPage({ contacts, currentUser }) {
     setSending(false);
   };
 
-  // Componentes reutilizáveis
-  const Inp = ({label,k,type="text",ph="",req=false,half=false,small=false}) => (
-    <div style={half?{gridColumn:"span 1"}:{}}>
-      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}{req&&<span style={{color:"#EF4444"}}> *</span>}</label>
-      <input value={form[k]||""} onChange={e=>setF(k,e.target.value)} type={type} placeholder={ph}
-        style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:req&&!form[k]?"#EF444455":undefined}}/>
-    </div>
+  // Subcomponentes passam form e setF como props para evitar re-render com perda de foco
+  const Inp = ({label,k,type="text",ph="",req=false}) => (
+    <DField label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} type={type} ph={ph} />
   );
-
   const Sel = ({label,k,opts,req=false}) => (
-    <div>
-      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>{label}{req&&<span style={{color:"#EF4444"}}> *</span>}</label>
-      <select value={form[k]||""} onChange={e=>setF(k,e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px",cursor:"pointer"}}>
-        {opts.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.v} value={o.v}>{o.l}</option>)}
-      </select>
-    </div>
+    <DSelect label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} opts={opts} />
   );
-
   const SimNao = ({label,k}) => (
-    <div>
-      <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:4}}>{label}</label>
-      <div style={{display:"flex",gap:6}}>
-        {["SIM","NAO"].map(v=>(
-          <button key={v} onClick={()=>setF(k,v)}
-            style={{flex:1,background:form[k]===v?(v==="SIM"?"#0D2B1A":"#2D1515"):C.deep,
-              color:form[k]===v?(v==="SIM"?"#34D399":"#F87171"):C.tm,
-              border:`1px solid ${form[k]===v?(v==="SIM"?"#34D39944":"#EF444444"):C.b2}`,
-              borderRadius:8,padding:"6px 0",fontSize:12,fontWeight:form[k]===v?700:400,cursor:"pointer"}}>
-            {v==="SIM"?"✓ Sim":"✗ Não"}
-          </button>
-        ))}
-      </div>
-    </div>
+    <DSimNao label={label} val={form[k]} onChange={v=>setF(k,v)} />
   );
-
   const SecTitle = ({icon,title,color}) => (
     <div style={{color:color||C.ts,fontSize:12,fontWeight:700,marginBottom:12,paddingBottom:8,
       borderBottom:`1px solid ${color?color+"33":C.b1}`,display:"flex",alignItems:"center",gap:7}}>
       {icon} {title}
     </div>
   );
-
   const Grid = ({cols=3,children,gap=10}) => (
     <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,marginBottom:12}}>{children}</div>
   );
 
   return (
     <div style={{padding:"24px 32px",maxWidth:960}}>
+      {/* Abas Nova / Minhas Propostas */}
+      <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
+        {[
+          {id:"nova",label:"📝 Nova Digitação"},
+          {id:"minhas",label:"📋 Minhas Propostas", badge: unreadMinhas},
+        ].map(t=>(
+          <button key={t.id} onClick={()=>{ setAbaDigitacao(t.id); if(t.id==="minhas") minhasPropostas.forEach(p=>marcarVistaDigitador(p.id,p.viewedByDigitador)); }}
+            style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
+              fontWeight:abaDigitacao===t.id?700:400,color:abaDigitacao===t.id?C.atxt:C.tm,
+              borderBottom:abaDigitacao===t.id?`2px solid ${C.atxt}`:"2px solid transparent",
+              marginBottom:"-1px",display:"flex",alignItems:"center",gap:7}}>
+            {t.label}
+            {t.badge>0&&<span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800,animation:"pulse 1.5s infinite"}}>{t.badge}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Aba Minhas Propostas */}
+      {abaDigitacao==="minhas" && (
+        <div>
+          <p style={{color:C.tm,fontSize:12.5,marginBottom:16}}>Acompanhe todas as suas propostas enviadas</p>
+          {minhasPropostas.length===0&&(
+            <div style={{textAlign:"center",padding:"50px 0",color:C.tm}}>
+              <div style={{fontSize:36,opacity:0.3,marginBottom:10}}>📋</div>
+              <div style={{fontSize:14,fontWeight:600}}>Nenhuma proposta enviada ainda</div>
+            </div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {minhasPropostas.map(p=>{
+              const st = p.status||"Proposta Digitada";
+              const col = STATUS_PROPOSTA_COLORS[st]||C.td;
+              const temNova = p.hasNewInteraction && !(p.viewedByDigitador||[]).includes(myId);
+              return (
+                <div key={p.id} style={{...S.card,padding:"16px 20px",border:`1px solid ${temNova?"#34D39966":col+"33"}`,boxShadow:temNova?`0 0 14px #34D39922`:"none"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:180}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                        {temNova&&<span style={{width:8,height:8,borderRadius:"50%",background:"#34D399",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
+                        <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
+                        <span style={{background:col+"22",color:col,fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:700,border:`1px solid ${col}33`}}>{st}</span>
+                        {temNova&&<span style={{background:"#34D39922",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700}}>✓ Atualizado</span>}
+                      </div>
+                      <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf} · {p.tipo||p.produto}</div>
+                      <div style={{color:C.td,fontSize:11,marginTop:2}}>{p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:3,minWidth:160}}>
+                      {STATUS_PROPOSTA.map(s=>(
+                        <div key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 8px",borderRadius:7,background:st===s?(STATUS_PROPOSTA_COLORS[s]||C.acc)+"18":C.deep,border:`1px solid ${st===s?(STATUS_PROPOSTA_COLORS[s]||C.atxt)+"33":C.b1}`}}>
+                          <span style={{width:6,height:6,borderRadius:"50%",background:st===s?(STATUS_PROPOSTA_COLORS[s]||C.atxt):C.td,flexShrink:0}}/>
+                          <span style={{color:st===s?(STATUS_PROPOSTA_COLORS[s]||C.atxt):C.td,fontSize:10.5,fontWeight:st===s?700:400}}>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Aba Nova Digitação */}
+      {abaDigitacao==="nova" && <>
       {/* Header */}
-      <div style={{marginBottom:20}}>
+      <div style={{marginBottom:16}}>
         <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:0}}>📝 Digitação de Proposta</h1>
         <p style={{color:C.tm,fontSize:12.5,margin:"4px 0 0"}}>Preencha os dados conforme o tipo de produto</p>
       </div>
@@ -12660,158 +12769,133 @@ function DigitacaoPage({ contacts, currentUser }) {
           boxShadow:`0 4px 20px ${C.acc}44`,display:"flex",alignItems:"center",gap:10}}>
         {sending?"⏳ Enviando...":"📤 Enviar Proposta"}
       </button>
+      </>}
     </div>
   );
 }
 
-// ── PropostasPage ───────────────────────────────────────────────
+// ── Propostas Page ─────────────────────────────────────────────
+const STATUS_PROPOSTA = ["Proposta Digitada","Aguardando Formalização","Pendente","Pago Aguardando Confirmação","Proposta Concluída"];
+const STATUS_PROPOSTA_COLORS = {
+  "Proposta Digitada":"#60A5FA",
+  "Aguardando Formalização":"#FBBF24",
+  "Pendente":"#F87171",
+  "Pago Aguardando Confirmação":"#C084FC",
+  "Proposta Concluída":"#34D399",
+};
+
 function PropostasPage({ currentUser }) {
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
-  const [tipoFilter, setTipoFilter] = useState("Todos");
-  const [expanded, setExpanded] = useState(null);
+  const [celebracao, setCelebracao] = useState(false);
+  const prevCountRef = useRef(0);
+  const myId = currentUser.uid||currentUser.id;
+  const canSeeAll = ["mestre","master"].includes(currentUser.role);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db,"propostas"), snap => {
-      const all = snap.docs.map(d=>({...d.data(),id:d.id}));
+    const unsub = onSnapshot(collection(db, "propostas"), snap => {
+      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
       all.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+      const relevant = canSeeAll ? all : all.filter(p=>p.criadoPor===myId);
+      const novas = relevant.filter(p=>!p.viewedBy?.includes(myId));
+      if (prevCountRef.current > 0 && novas.length > prevCountRef.current) {
+        setCelebracao(true);
+        setTimeout(()=>setCelebracao(false), 4000);
+      }
+      prevCountRef.current = novas.length;
+      novas.forEach(async p => {
+        await setDoc(doc(db,"propostas",p.id),{viewedBy:[...(p.viewedBy||[]),myId]},{merge:true});
+      });
       setPropostas(all); setLoading(false);
     });
     return ()=>unsub();
-  }, []);
-
-  const canSeeAll = ["mestre","master"].includes(currentUser.role);
-  const myId = currentUser.uid||currentUser.id;
+  }, []); // eslint-disable-line
 
   const visible = propostas.filter(p => {
     if (!canSeeAll && p.criadoPor !== myId) return false;
-    if (statusFilter!=="Todos" && p.status!==statusFilter) return false;
-    if (tipoFilter!=="Todos" && p.tipo!==tipoFilter) return false;
+    if (statusFilter!=="Todos" && (p.status||"Proposta Digitada")!==statusFilter) return false;
     if (search && !((p.nome||"").toLowerCase().includes(search.toLowerCase())||(p.cpf||"").includes(search))) return false;
     return true;
   });
 
-  const updateStatus = async (id,status) => { await setDoc(doc(db,"propostas",id),{status},{merge:true}); };
-
-  const STATUS_COLORS = {"Pendente":"#FBBF24","Em análise":"#60A5FA","Aprovada":"#34D399","Reprovada":"#F87171","Cancelada":"#9CA3AF"};
-  const TIPO_COLORS = {"FGTS":"#4F8EF7","CLT":"#34D399","INSS":"#C084FC","CARTAO":"#FB923C"};
-
-  const Field = ({label,val}) => val ? (
-    <div style={{marginBottom:4}}>
-      <span style={{color:C.td,fontSize:10.5}}>{label}: </span>
-      <span style={{color:C.ts,fontSize:11.5,fontWeight:500}}>{val}</span>
-    </div>
-  ) : null;
+  const updateStatus = async (id, status) => {
+    await setDoc(doc(db,"propostas",id),{status, hasNewInteraction:true, viewedByDigitador:[]},{merge:true});
+  };
 
   return (
-    <div style={{padding:"24px 32px",maxWidth:1000}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-        <div>
-          <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:0}}>📋 Propostas</h1>
-          <p style={{color:C.tm,fontSize:12.5,margin:"4px 0 0"}}>{visible.length} proposta{visible.length!==1?"s":""}</p>
+    <div style={{padding:"24px 32px",maxWidth:1000,position:"relative"}}>
+      {/* 🎉 Comemoração */}
+      {celebracao && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.4)",animation:"fadeIn 0.3s ease"}}>
+          <div style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:24,padding:"32px 48px",textAlign:"center",boxShadow:"0 12px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{fontSize:56,marginBottom:8}}>🎉</div>
+            <div style={{color:"#fff",fontSize:22,fontWeight:800,marginBottom:6}}>Nova Proposta Recebida!</div>
+            <div style={{color:"rgba(255,255,255,0.7)",fontSize:14}}>Uma nova proposta foi enviada para análise.</div>
+            <button onClick={()=>setCelebracao(false)} style={{marginTop:16,background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",borderRadius:8,padding:"8px 20px",cursor:"pointer",fontSize:13}}>OK</button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Filtros */}
-      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+      <h1 style={{color:C.tp,fontSize:21,fontWeight:700,margin:"0 0 4px"}}>📋 Propostas</h1>
+      <p style={{color:C.tm,fontSize:12.5,margin:"0 0 18px"}}>{visible.length} proposta{visible.length!==1?"s":""}</p>
+
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
           style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-          {["Todos","FGTS","CLT","INSS","CARTAO"].map(t=>(
-            <button key={t} onClick={()=>setTipoFilter(t)}
-              style={{background:tipoFilter===t?(TIPO_COLORS[t]||C.acc)+"22":C.deep,
-                color:tipoFilter===t?(TIPO_COLORS[t]||C.atxt):C.tm,
-                border:`1px solid ${tipoFilter===t?(TIPO_COLORS[t]||C.atxt)+"44":C.b2}`,
-                borderRadius:20,padding:"5px 12px",fontSize:11.5,cursor:"pointer",fontWeight:tipoFilter===t?700:400}}>
-              {t}
-            </button>
-          ))}
-        </div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-          {["Todos","Pendente","Em análise","Aprovada","Reprovada"].map(s=>(
-            <button key={s} onClick={()=>setStatusFilter(s)}
-              style={{background:statusFilter===s?(STATUS_COLORS[s]||C.acc)+"22":C.deep,
-                color:statusFilter===s?(STATUS_COLORS[s]||C.atxt):C.tm,
-                border:`1px solid ${statusFilter===s?(STATUS_COLORS[s]||C.atxt)+"44":C.b2}`,
-                borderRadius:20,padding:"5px 12px",fontSize:11.5,cursor:"pointer",fontWeight:statusFilter===s?700:400}}>
-              {s}
-            </button>
-          ))}
+          {["Todos",...STATUS_PROPOSTA].map(s=>{
+            const col = STATUS_PROPOSTA_COLORS[s];
+            return (
+              <button key={s} onClick={()=>setStatusFilter(s)}
+                style={{background:statusFilter===s?(col||C.acc)+"22":C.deep,color:statusFilter===s?(col||C.atxt):C.tm,
+                  border:`1px solid ${statusFilter===s?(col||C.atxt)+"44":C.b2}`,borderRadius:20,padding:"5px 11px",fontSize:11,cursor:"pointer",fontWeight:statusFilter===s?700:400}}>
+                {s}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {loading&&<div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>}
-
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {visible.map(p=>{
-          const sCol = STATUS_COLORS[p.status]||C.td;
-          const tCol = TIPO_COLORS[p.tipo]||C.atxt;
-          const isExp = expanded===p.id;
+          const st = p.status||"Proposta Digitada";
+          const col = STATUS_PROPOSTA_COLORS[st]||C.td;
+          const isNew = !p.viewedBy?.includes(myId);
           return (
-            <div key={p.id} style={{...S.card,overflow:"hidden"}}>
-              {/* Cabeçalho */}
-              <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",cursor:"pointer",flexWrap:"wrap"}}
-                onClick={()=>setExpanded(isExp?null:p.id)}>
-                <div style={{width:38,height:38,borderRadius:10,background:tCol+"22",color:tCol,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,fontWeight:700}}>
-                  {p.tipo==="FGTS"?"🏦":p.tipo==="CLT"?"💼":p.tipo==="INSS"?"🏥":"💳"}
-                </div>
-                <div style={{flex:1,minWidth:150}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
+            <div key={p.id} style={{...S.card,padding:"16px 20px",border:`1px solid ${isNew?"#EF444466":col+"33"}`,boxShadow:isNew?`0 0 14px #EF444422`:"none"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:14,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                    {isNew&&<span style={{width:8,height:8,borderRadius:"50%",background:"#EF4444",animation:"pulse 1.5s infinite",flexShrink:0}}/>}
                     <span style={{color:C.tp,fontSize:14,fontWeight:700}}>{p.nome||"—"}</span>
-                    <span style={{background:tCol+"22",color:tCol,fontSize:9,padding:"2px 8px",borderRadius:20,fontWeight:700}}>{p.tipo}</span>
-                    <span style={{background:sCol+"22",color:sCol,fontSize:9,padding:"2px 8px",borderRadius:20,fontWeight:700,border:`1px solid ${sCol}33`}}>{p.status}</span>
+                    <span style={{background:col+"22",color:col,fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:700,border:`1px solid ${col}33`}}>{st}</span>
                   </div>
-                  <div style={{color:C.tm,fontSize:11}}>CPF: {p.cpf} · Por: {p.criadoPorNome} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
+                  <div style={{color:C.tm,fontSize:11.5}}>CPF: {p.cpf} · {p.tipo||p.produto} · R$ {p.valorSolicitado||"—"}</div>
+                  <div style={{color:C.td,fontSize:11,marginTop:2}}>Por: {p.criadoPorNome} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
                 </div>
                 {canSeeAll&&(
-                  <select value={p.status} onChange={e=>{e.stopPropagation();updateStatus(p.id,e.target.value);}}
-                    onClick={e=>e.stopPropagation()}
-                    style={{...S.input,width:"auto",padding:"5px 9px",fontSize:11.5,cursor:"pointer"}}>
-                    {["Pendente","Em análise","Aprovada","Reprovada","Cancelada"].map(s=><option key={s}>{s}</option>)}
-                  </select>
-                )}
-                <span style={{color:C.td,fontSize:12}}>{isExp?"▲":"▼"}</span>
-              </div>
-
-              {/* Detalhes expandidos */}
-              {isExp&&(
-                <div style={{borderTop:`1px solid ${C.b1}`,padding:"16px 18px",background:C.deep}}>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px 24px"}}>
-                    <Field label="Banco Proposta" val={p.bancoProposta}/>
-                    <Field label="Valor Liberado" val={p.valorLiberado}/>
-                    <Field label="Valor Prometido" val={p.valorPrometido}/>
-                    <Field label="Com Seguro" val={p.comSeguro}/>
-                    <Field label="Tabela" val={p.tabela}/>
-                    <Field label="Prazo" val={p.prazo}/>
-                    <Field label="RG" val={p.rg}/>
-                    <Field label="Data Nasc." val={p.dataNasc}/>
-                    <Field label="Órgão Emissor" val={p.orgaoEmissor}/>
-                    <Field label="Nome da Mãe" val={p.nomeMae}/>
-                    <Field label="Nome do Pai" val={p.nomePai}/>
-                    <Field label="Naturalidade" val={p.naturalidade}/>
-                    <Field label="Contato 1" val={p.contato1}/>
-                    <Field label="Email" val={p.email1}/>
-                    <Field label="CEP" val={p.cep}/>
-                    <Field label="Endereço" val={p.rua?`${p.rua}, ${p.numero} - ${p.bairro}, ${p.cidade}/${p.ufEnd}`:""}/>
-                    <Field label="Banco Pagto" val={p.bancoPagto}/>
-                    <Field label="Agência" val={p.agencia}/>
-                    <Field label="Conta" val={p.contaDigito}/>
-                    <Field label="Tipo Conta" val={p.tipoConta}/>
-                    <Field label="PIX 1" val={p.pix1}/>
-                    <Field label="PIX 2" val={p.pix2}/>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,minWidth:200}}>
+                    {STATUS_PROPOSTA.map(s=>(
+                      <button key={s} onClick={()=>updateStatus(p.id,s)}
+                        style={{background:st===s?(STATUS_PROPOSTA_COLORS[s])+"22":C.deep,color:st===s?(STATUS_PROPOSTA_COLORS[s]):C.tm,
+                          border:`1px solid ${st===s?(STATUS_PROPOSTA_COLORS[s])+"55":C.b2}`,borderRadius:8,padding:"5px 12px",fontSize:11,cursor:"pointer",
+                          fontWeight:st===s?700:400,textAlign:"left",whiteSpace:"nowrap"}}>
+                        {st===s?"● ":""}{s}
+                      </button>
+                    ))}
                   </div>
-                  {p.observacao&&<div style={{marginTop:10,color:C.ts,fontSize:11.5}}><span style={{color:C.td}}>Observação: </span>{p.observacao}</div>}
-                  {(p.docFiles||[]).length>0&&(
-                    <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.b1}`,display:"flex",gap:7,flexWrap:"wrap"}}>
-                      {p.docFiles.map((f,i)=>(
-                        <span key={i} style={{background:C.card,color:C.ts,fontSize:11,padding:"3px 10px",borderRadius:7,border:`1px solid ${C.b1}`}}>
-                          {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                )}
+              </div>
+              {(p.docFiles||[]).length>0&&(
+                <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.b1}`,display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {p.docFiles.map((f,i)=>(
+                    <span key={i} style={{background:C.deep,color:C.ts,fontSize:11,padding:"3px 9px",borderRadius:7,border:`1px solid ${C.b1}`}}>
+                      {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -12847,6 +12931,7 @@ export default function App() {
   const [unreadNotif, setUnreadNotif] = useState(0);
   const [unreadStories, setUnreadStories] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [unreadPropostas, setUnreadPropostas] = useState(0);
   const lastChatCount = useRef(0);
   // System config — mestre controls what others can access
   const [sysConfig, setSysConfig] = useState({
@@ -12910,6 +12995,24 @@ export default function App() {
           .map(s => s.authorId)
       ).size;
       setUnreadStories(othersWithUnseen);
+    });
+    return () => unsub();
+  }, [currentUser]); // eslint-disable-line
+
+  // ── Ouvir propostas não lidas ────────────────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    const isMestreOrMaster = ["mestre","master"].includes(currentUser.role);
+    const unsub = onSnapshot(collection(db, "propostas"), (snap) => {
+      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
+      const unread = all.filter(p => {
+        // Mestre/Master: todas pendentes não vistas
+        if (isMestreOrMaster) return !p.viewedBy?.includes(myId);
+        // Digitador: propostas suas com nova interação
+        return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
+      }).length;
+      setUnreadPropostas(unread);
     });
     return () => unsub();
   }, [currentUser]); // eslint-disable-line
@@ -13132,6 +13235,7 @@ export default function App() {
         }
         ::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
         * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+        html, body, #root { overflow: hidden !important; }
       `}</style>
       <div
         key={theme}
@@ -13159,6 +13263,7 @@ export default function App() {
         unreadChat={unreadChat}
         unreadNotif={unreadNotif}
         unreadStories={unreadStories}
+        unreadPropostas={unreadPropostas}
         presence={presence}
         flashUserId={flashUserId}
         stories={chatStories}
