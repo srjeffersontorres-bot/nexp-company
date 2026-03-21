@@ -1346,6 +1346,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"pagamentos", label:"Pagamentos",       icon:"💳", roles:["administrador","mestre"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["administrador","mestre"] },
     { id:"config",     label:"Configurações",   icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
   ];
@@ -4793,6 +4794,146 @@ function PerfisTab({ users, setUsers, currentUser }) {
 
 
 // ── Página de Usuários (nova aba no menu) ──────────────────────
+function RankTab({ users, currentUser }) {
+  const myRole = currentUser.role || "operador";
+  const myId   = currentUser.uid || currentUser.id;
+  const myLvl  = ROLE_HIERARCHY[myRole] ?? 99;
+  const [search, setSearch] = useState("");
+
+  // Todos os usuários não deletados visíveis para este usuário
+  const allUsers = users.filter(u => !u.deleted);
+
+  // Para cada usuário, calcula quantos ele criou
+  const stats = allUsers.map(u => {
+    const uid = u.uid || u.id;
+    const criados = allUsers.filter(x => x.createdBy === uid);
+    const ativos   = criados.filter(x => x.active !== false).length;
+    const inativos = criados.filter(x => x.active === false).length;
+    // distribuição por nível
+    const dist = {};
+    criados.forEach(x => {
+      const lbl = ROLE_LABEL[x.role] || x.role || "Operador";
+      dist[lbl] = (dist[lbl] || 0) + 1;
+    });
+    return { ...u, criados: criados.length, ativos, inativos, dist };
+  });
+
+  // Ordenar por total de criados desc
+  const sorted = [...stats]
+    .filter(u => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (u.name||"").toLowerCase().includes(q) || (ROLE_LABEL[u.role]||"").toLowerCase().includes(q);
+    })
+    .sort((a, b) => b.criados - a.criados);
+
+  // Estatísticas globais por nível
+  const niveis = ["administrador","gerente","supervisor","operador"];
+  const nivelStats = niveis.map(r => {
+    const aliases = { administrador:["administrador","mestre"], gerente:["gerente","master"], supervisor:["supervisor"], operador:["operador","indicado","visitante","digitador"] };
+    const grupo = allUsers.filter(u => (aliases[r]||[r]).includes(u.role));
+    const ativos = grupo.filter(u => u.active !== false).length;
+    return { role: r, total: grupo.length, ativos, inativos: grupo.length - ativos };
+  });
+
+  const roleIcons = { administrador:"👑", gerente:"🏆", supervisor:"🎯", operador:"👤" };
+
+  return (
+    <div>
+      {/* Cards de distribuição por nível */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:12 }}>📊 Distribuição por Nível</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:12 }}>
+          {nivelStats.map(n => (
+            <div key={n.role} style={{ background:C.card, border:`1px solid ${ROLE_COLOR[n.role]}33`, borderRadius:14, padding:"16px 18px", position:"relative", overflow:"hidden" }}>
+              <div style={{ position:"absolute", top:-8, right:-8, fontSize:44, opacity:0.06 }}>{roleIcons[n.role]}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                <span style={{ fontSize:20 }}>{roleIcons[n.role]}</span>
+                <span style={{ color:ROLE_COLOR[n.role], fontSize:12, fontWeight:700 }}>{ROLE_LABEL[n.role]}</span>
+              </div>
+              <div style={{ color:C.tp, fontSize:28, fontWeight:800, lineHeight:1 }}>{n.total}</div>
+              <div style={{ display:"flex", gap:10, marginTop:8 }}>
+                <span style={{ color:"#34D399", fontSize:11 }}>✔ {n.ativos} ativos</span>
+                {n.inativos > 0 && <span style={{ color:"#F87171", fontSize:11 }}>✘ {n.inativos}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Ranking de criadores */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, flexWrap:"wrap", gap:8 }}>
+        <div style={{ color:C.ts, fontSize:13, fontWeight:700 }}>🥇 Ranking de Cadastros</div>
+        <div style={{ position:"relative" }}>
+          <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:12, pointerEvents:"none" }}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar usuário..."
+            style={{ ...S.input, paddingLeft:28, fontSize:12, padding:"6px 10px 6px 26px", width:200 }} />
+        </div>
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {sorted.map((u, idx) => {
+          const col = ROLE_COLOR[u.role] || C.atxt;
+          const isMe = (u.uid||u.id) === myId;
+          const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx+1}`;
+          return (
+            <div key={u.id} style={{ background:C.card, border:`1px solid ${isMe ? C.atxt+"44" : C.b1}`, borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+              {/* Posição */}
+              <div style={{ fontSize:idx < 3 ? 22 : 13, fontWeight:700, color:C.td, minWidth:32, textAlign:"center", flexShrink:0 }}>{medal}</div>
+              {/* Avatar */}
+              {u.photo
+                ? <img src={u.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", border:`2px solid ${col}33`, flexShrink:0 }} />
+                : <div style={{ width:40, height:40, borderRadius:"50%", background:col+"18", color:col, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border:`2px solid ${col}33`, flexShrink:0 }}>{(u.name||"?")[0].toUpperCase()}</div>
+              }
+              {/* Info */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
+                  <span style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{u.name||u.email}</span>
+                  {isMe && <span style={{ color:C.atxt, fontSize:10, background:C.abg, borderRadius:8, padding:"1px 7px", border:`1px solid ${C.atxt}33` }}>você</span>}
+                  <span style={{ background:col+"18", color:col, fontSize:10, padding:"2px 7px", borderRadius:12, fontWeight:600, border:`1px solid ${col}33` }}>
+                    {roleIcons[u.role]||"👤"} {ROLE_LABEL[u.role]||u.role}
+                  </span>
+                  {u.active === false && <span style={{ color:"#F87171", fontSize:10 }}>Inativo</span>}
+                </div>
+                {/* Distribuição dos criados */}
+                {u.criados > 0 && (
+                  <div style={{ display:"flex", gap:6, marginTop:5, flexWrap:"wrap" }}>
+                    {Object.entries(u.dist).map(([lbl, cnt]) => (
+                      <span key={lbl} style={{ color:C.td, fontSize:10.5, background:C.deep, borderRadius:8, padding:"2px 8px", border:`1px solid ${C.b2}` }}>
+                        {lbl}: {cnt}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Contadores */}
+              <div style={{ display:"flex", gap:16, flexShrink:0, textAlign:"center" }}>
+                <div>
+                  <div style={{ color:C.atxt, fontSize:22, fontWeight:800, lineHeight:1 }}>{u.criados}</div>
+                  <div style={{ color:C.td, fontSize:10 }}>cadastrados</div>
+                </div>
+                <div>
+                  <div style={{ color:"#34D399", fontSize:18, fontWeight:700, lineHeight:1 }}>{u.ativos}</div>
+                  <div style={{ color:C.td, fontSize:10 }}>ativos</div>
+                </div>
+                {u.inativos > 0 && (
+                  <div>
+                    <div style={{ color:"#F87171", fontSize:18, fontWeight:700, lineHeight:1 }}>{u.inativos}</div>
+                    <div style={{ color:C.td, fontSize:10 }}>inativos</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length === 0 && (
+          <div style={{ color:C.td, fontSize:13, textAlign:"center", padding:"32px 0" }}>Nenhum usuário encontrado.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("usuarios");
   const [permSearch, setPermSearch] = useState("");
@@ -4801,9 +4942,10 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
   const isMaster = currentUser.role === "master";
 
   const tabs = [
-    { id:"usuarios",   label:"Criação de Usuários", icon:"➕", roles:["mestre","master"] },
-    { id:"perfis",     label:"Perfis",               icon:"📋", roles:["mestre"] },
-    { id:"permissoes", label:"Permissões",           icon:"🔐", roles:["mestre","master"] },
+    { id:"usuarios",   label:"Criação de Usuários", icon:"➕", roles:["administrador","gerente","supervisor","mestre","master"] },
+    { id:"rank",       label:"Rank",                 icon:"🏆", roles:["administrador","gerente","mestre","master"] },
+    { id:"perfis",     label:"Perfis",               icon:"📋", roles:["administrador","mestre"] },
+    { id:"permissoes", label:"Permissões",           icon:"🔐", roles:["administrador","gerente","mestre","master"] },
   ].filter(t => t.roles.includes(currentUser.role));
 
   return (
@@ -4825,7 +4967,8 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
       </div>
       <div style={{ padding:"26px 36px", maxWidth:860 }}>
         {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
-        {tab === "perfis" && isMestre && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
+        {tab === "rank" && <RankTab users={users} currentUser={currentUser} />}
+        {tab === "perfis" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "permissoes" && (isMestre || isMaster) && sysConfig && onSysConfig && (() => {
           const visibleUsers = users.filter(u => {
             if (u.role === "mestre") return false;
@@ -13258,6 +13401,143 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
 
 
 
+// ── Pagamentos ────────────────────────────────────────────────────
+function PagamentosPage({ currentUser }) {
+  const [aba, setAba] = useState("produtos");
+
+  const ABAS = [
+    { id:"produtos",  label:"Produtos",  icon:"📦" },
+    { id:"servicos",  label:"Serviços",  icon:"🔧" },
+    { id:"chat",      label:"Chat",      icon:"💬" },
+    { id:"adicional", label:"Adicional", icon:"➕" },
+    { id:"digitacao", label:"Digitação", icon:"📝" },
+  ];
+
+  // Plano genérico reutilizável para cada aba
+  function PlanoCard({ nome, preco, descricao, cor, recursos }) {
+    return (
+      <div style={{ background:C.card, border:`1px solid ${cor}33`, borderRadius:16, padding:"22px 20px", position:"relative", overflow:"hidden" }}>
+        <div style={{ position:"absolute", top:-12, right:-12, fontSize:60, opacity:0.05 }}>💳</div>
+        <div style={{ color:cor, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:6 }}>{nome}</div>
+        <div style={{ color:C.tp, fontSize:28, fontWeight:800, lineHeight:1, marginBottom:4 }}>
+          {preco === 0 ? <span style={{ color:"#34D399" }}>Grátis</span> : `R$ ${preco.toFixed(2).replace(".",",")}`}
+          {preco > 0 && <span style={{ color:C.td, fontSize:12, fontWeight:400 }}>/mês</span>}
+        </div>
+        <div style={{ color:C.tm, fontSize:12, marginBottom:16, lineHeight:1.5 }}>{descricao}</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {recursos.map((r, i) => (
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:8, color:C.ts, fontSize:12 }}>
+              <span style={{ color:cor, fontSize:13 }}>✓</span>{r}
+            </div>
+          ))}
+        </div>
+        <button style={{ marginTop:18, width:"100%", background:`linear-gradient(135deg,${cor},${cor}bb)`, color:"#fff", border:"none", borderRadius:10, padding:"11px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          Contratar
+        </button>
+      </div>
+    );
+  }
+
+  const conteudo = {
+    produtos: {
+      titulo: "📦 Produtos",
+      sub: "Planos de produtos disponíveis para contratação",
+      planos: [
+        { nome:"Básico",      preco:0,      cor:"#6B7280", descricao:"Para começar sem custos", recursos:["Até 100 contatos","Importação CSV","Dashboard básico"] },
+        { nome:"Profissional",preco:97,     cor:"#4F8EF7", descricao:"Para equipes em crescimento", recursos:["Contatos ilimitados","Importação avançada","Relatórios completos","Suporte prioritário"] },
+        { nome:"Enterprise",  preco:297,    cor:"#C084FC", descricao:"Para grandes operações", recursos:["Tudo do Profissional","API de integração","Gestor de conta dedicado","Treinamento incluso","SLA garantido"] },
+      ],
+    },
+    servicos: {
+      titulo: "🔧 Serviços",
+      sub: "Serviços adicionais de suporte e configuração",
+      planos: [
+        { nome:"Configuração Inicial", preco:150, cor:"#34D399", descricao:"Setup completo do sistema", recursos:["Criação de usuários","Configuração de permissões","Treinamento básico (1h)"] },
+        { nome:"Suporte Mensal",       preco:89,  cor:"#FBBF24", descricao:"Atendimento técnico mensal", recursos:["Suporte via WhatsApp","Tempo de resposta < 2h","Relatório mensal de uso"] },
+        { nome:"Consultoria",          preco:490, cor:"#F472B6", descricao:"Consultoria estratégica", recursos:["4h de consultoria","Análise de desempenho","Plano de melhoria personalizado","Acompanhamento 30 dias"] },
+      ],
+    },
+    chat: {
+      titulo: "💬 Chat",
+      sub: "Planos do módulo de chat e comunicação interna",
+      planos: [
+        { nome:"Chat Básico",    preco:0,   cor:"#6B7280", descricao:"Comunicação interna simples", recursos:["Mensagens entre usuários","Histórico 7 dias","Envio de emojis"] },
+        { nome:"Chat Pro",       preco:49,  cor:"#4F8EF7", descricao:"Chat avançado com stories", recursos:["Histórico ilimitado","Stories de equipe","Mensagens diretas","Notificações push"] },
+        { nome:"Chat Business",  preco:129, cor:"#C084FC", descricao:"Comunicação empresarial completa", recursos:["Tudo do Pro","Grupos de trabalho","Integração WhatsApp","Gravação de áudio","Relatório de atividade"] },
+      ],
+    },
+    adicional: {
+      titulo: "➕ Adicional",
+      sub: "Recursos extras para potencializar o sistema",
+      planos: [
+        { nome:"Storage Extra",     preco:29,  cor:"#34D399", descricao:"Espaço extra para arquivos", recursos:["50 GB adicionais","Backup automático diário","Acesso a arquivos antigos"] },
+        { nome:"Relatórios Premium", preco:59, cor:"#FBBF24", descricao:"Analytics e relatórios avançados", recursos:["Dashboard personalizado","Exportação Excel/PDF","Gráficos interativos","Comparativo mensal"] },
+        { nome:"Integrações",        preco:99, cor:"#F97316", descricao:"Conecte com outras ferramentas", recursos:["API REST completa","Webhooks","Integração CRM","Zapier / Make"] },
+      ],
+    },
+    digitacao: {
+      titulo: "📝 Digitação",
+      sub: "Planos para o módulo de digitação de propostas",
+      planos: [
+        { nome:"Digitação Básica",   preco:0,   cor:"#6B7280", descricao:"Para baixo volume de propostas", recursos:["Até 20 propostas/mês","Modelos básicos","Acompanhamento simples"] },
+        { nome:"Digitação Pro",      preco:79,  cor:"#4F8EF7", descricao:"Para operações em escala", recursos:["Propostas ilimitadas","Todos os bancos","Envio automático","Histórico completo"] },
+        { nome:"Digitação Enterprise",preco:199,cor:"#C084FC", descricao:"Para grandes digitadores", recursos:["Tudo do Pro","Integração V8 Digital","Relatório por banco","Suporte dedicado","API de proposta"] },
+      ],
+    },
+  };
+
+  const atual = conteudo[aba];
+
+  return (
+    <div style={{ padding:"28px 36px", maxWidth:1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom:22 }}>
+        <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 4px" }}>💳 Pagamentos</h1>
+        <p style={{ color:C.tm, fontSize:12.5, margin:0 }}>Gerencie planos e serviços contratados</p>
+      </div>
+
+      {/* Sub-abas */}
+      <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:28, overflowX:"auto" }}>
+        {ABAS.map(t => (
+          <button key={t.id} onClick={()=>setAba(t.id)}
+            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, whiteSpace:"nowrap",
+              fontWeight:aba===t.id?700:400, color:aba===t.id?C.atxt:C.tm,
+              borderBottom:aba===t.id?`2px solid ${C.atxt}`:"2px solid transparent",
+              marginBottom:"-1px", transition:"all 0.12s", display:"flex", alignItems:"center", gap:6 }}>
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Conteúdo da aba */}
+      <div>
+        <div style={{ marginBottom:20 }}>
+          <div style={{ color:C.ts, fontSize:16, fontWeight:700 }}>{atual.titulo}</div>
+          <div style={{ color:C.tm, fontSize:12.5, marginTop:3 }}>{atual.sub}</div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:18 }}>
+          {atual.planos.map((p, i) => (
+            <PlanoCard key={i} {...p} />
+          ))}
+        </div>
+
+        {/* Aviso de contato */}
+        <div style={{ marginTop:28, background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 22px", display:"flex", alignItems:"center", gap:16 }}>
+          <span style={{ fontSize:28 }}>💬</span>
+          <div>
+            <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:3 }}>Precisa de um plano personalizado?</div>
+            <div style={{ color:C.tm, fontSize:12 }}>Entre em contato com nosso time comercial para montar um pacote sob medida para sua operação.</div>
+          </div>
+          <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+            style={{ marginLeft:"auto", background:"#25D366", color:"#fff", border:"none", borderRadius:10, padding:"9px 18px", fontSize:12.5, fontWeight:700, cursor:"pointer", textDecoration:"none", whiteSpace:"nowrap", flexShrink:0 }}>
+            📲 Falar com suporte
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState(null);
@@ -13693,6 +13973,7 @@ export default function App() {
         )}
         {page === "simulador" && <SimuladorPage />}
         {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
+        {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
       </div>
 
       {/* ── Chat Flutuante + FAB ── */}
