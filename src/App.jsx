@@ -125,6 +125,64 @@ const LEAD_COLOR = {
   "Bolsa Família": "#F59E0B",
   Outro: "#9CA3AF",
 };
+// ── Nova Hierarquia de Usuários ──────────────────────────────────
+// Níveis: 0=administrador(dono) > 1=gerente > 2=supervisor > 3=operador
+const ROLE_HIERARCHY = {
+  administrador: 0,
+  gerente:        1,
+  supervisor:     2,
+  operador:       3,
+  // aliases legados — mapeados internamente
+  mestre:         0,
+  master:         1,
+  indicado:       3,
+  visitante:      3,
+  digitador:      3,
+};
+const ROLE_LABEL = {
+  administrador: "Administrador",
+  gerente:       "Gerente Comercial",
+  supervisor:    "Supervisor",
+  operador:      "Operador",
+  // legados
+  mestre:        "Administrador",
+  master:        "Gerente Comercial",
+  indicado:      "Operador",
+  visitante:     "Operador",
+  digitador:     "Operador",
+};
+const ROLE_COLOR = {
+  administrador: "#C084FC",
+  gerente:       "#4F8EF7",
+  supervisor:    "#FBBF24",
+  operador:      "#34D399",
+  // legados
+  mestre:        "#C084FC",
+  master:        "#4F8EF7",
+  indicado:      "#34D399",
+  visitante:     "#34D399",
+  digitador:     "#34D399",
+};
+// Quais roles um usuário pode criar (apenas abaixo do seu nível)
+function getRolesCanCreate(myRole) {
+  const lvl = ROLE_HIERARCHY[myRole] ?? 99;
+  if (lvl === 0) return ["gerente","supervisor","operador"];   // administrador
+  if (lvl === 1) return ["supervisor","operador"];             // gerente
+  if (lvl === 2) return ["operador"];                          // supervisor
+  return [];                                                   // operador não cria
+}
+// Pode ver senha de usuários abaixo
+function canSeePassword(myRole, targetRole) {
+  return (ROLE_HIERARCHY[myRole] ?? 99) < (ROLE_HIERARCHY[targetRole] ?? 99);
+}
+// Pode editar um usuário
+function canEditUser(myRole, targetRole, targetCreatedBy, myId) {
+  const myLvl = ROLE_HIERARCHY[myRole] ?? 99;
+  const tgLvl = ROLE_HIERARCHY[targetRole] ?? 99;
+  if (myLvl === 0) return true; // administrador vê todos
+  return myLvl < tgLvl && targetCreatedBy === myId;
+}
+
 const EMOJIS = [
   "👍",
   "🔥",
@@ -1281,22 +1339,22 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
-    { id:"dashboard",  label:"Relatório de Leads",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
-    { id:"contacts",   label:"Contatos",       icon:"⬡", roles:["mestre","master","indicado","visitante"] },
-    { id:"add",        label:"Adicionar",       icon:"⊕", roles:["mestre","master","indicado"] },
-    { id:"import",     label:"Importar",        icon:"⤓", roles:["mestre","master","indicado"] },
-    { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["mestre","master","indicado","visitante"] },
-    { id:"cstatus",    label:"Status",          icon:"◐", roles:["mestre","master","indicado","visitante"] },
-    { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["mestre","master","indicado"] },
-    { id:"apis",       label:"APIs Bancos",     icon:"⬧", roles:["mestre","master"] },
-    { id:"leds",       label:"Leds",            icon:"⬦", roles:["mestre","master"] },
-    { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["mestre","master"] },
-    { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["mestre","master","indicado","digitador"] },
-    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["mestre","master","digitador"], badge:"propostas" },
-    { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
-    { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
-    { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
-    { id:"config",     label:"Configurações",   icon:"⊞", roles:["mestre","master","indicado"] },
+    { id:"dashboard",  label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"contacts",   label:"Contatos",       icon:"⬡", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"add",        label:"Adicionar",       icon:"⊕", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"import",     label:"Importar",        icon:"⤓", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"cstatus",    label:"Status",          icon:"◐", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"apis",       label:"APIs Bancos",     icon:"⬧", roles:["administrador","gerente","mestre","master"] },
+    { id:"leds",       label:"Leds",            icon:"⬦", roles:["administrador","gerente","mestre","master"] },
+    { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
+    { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"] },
+    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
+    { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"calendario", label:"Agenda",          icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["administrador","mestre"] },
+    { id:"config",     label:"Configurações",   icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
   ];
   // For visitante: filter by mestre-controlled tab config
   const cfg = sysConfig?.visitanteTabs || {};
@@ -1305,7 +1363,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     if (user.role === "visitante") return cfg[it.id] !== false;
     return true;
   });
-  const roleLabel = { mestre:"Mestre", master:"Master", indicado:"Operador", visitante:"Visitante", digitador:"Digitador" };
+  const roleLabel = ROLE_LABEL;
   const isConfig = page === "config";
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [navOpen] = useState(true);
@@ -5515,1224 +5573,396 @@ function EditPasswordPanel({ savedPw, userEmail, userId }) {
 }
 
 function UsuariosTab({ users, setUsers, currentUser }) {
+  const myRole = currentUser.role || "operador";
+  const myId   = currentUser.uid || currentUser.id;
+  const myLvl  = ROLE_HIERARCHY[myRole] ?? 99;
+  const rolesCanCreate = getRolesCanCreate(myRole);
+  const canCreateUsers = rolesCanCreate.length > 0;
+
   const [mode, setMode] = useState("list");
   const [form, setForm] = useState({
-    name: "",
-    cpf: "",
-    email: "",
-    password: "",
-    role: "indicado",
+    name: "", cpf: "", email: "", password: "",
+    role: rolesCanCreate[0] || "operador",
     photo: null,
   });
-  const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
-  const [expandId, setExpandId] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-  const [resetPw, setResetPw] = useState(""); // eslint-disable-line no-unused-vars
-  const [viewProfileId, setViewProfileId] = useState(null);
+  const [err, setErr]   = useState("");
+  const [ok,  setOk]    = useState("");
+  const [expandId, setExpandId]     = useState(null);
+  const [editForm, setEditForm]     = useState(null);
+  const [resetPw, setResetPw]       = useState(""); // eslint-disable-line no-unused-vars
   const [searchUser, setSearchUser] = useState("");
-  const pRef = useRef();
+  const pRef     = useRef();
   const pEditRef = useRef();
 
-  const canSeeAll = currentUser.role === "mestre";
-  const allVisible = users.filter(
-    (u) =>
-      !u.deleted &&
-      (canSeeAll || u.createdBy === currentUser.id || u.id === currentUser.id),
-  );
+  // Quem este usuário pode ver: administrador vê todos; outros veem só os que criaram + si próprio
+  const allVisible = users.filter(u => {
+    if (u.deleted) return false;
+    if (myLvl === 0) return true;
+    return u.createdBy === myId || (u.uid || u.id) === myId;
+  });
   const visible = searchUser.trim()
     ? allVisible.filter(u => {
         const q = searchUser.toLowerCase();
-        return (
-          (u.name || "").toLowerCase().includes(q) ||
-          (u.email || "").toLowerCase().includes(q) ||
-          (u.cpf || "").includes(q) ||
-          (u.role || "").toLowerCase().includes(q)
-        );
+        return (u.name||"").toLowerCase().includes(q) ||
+               (u.email||"").toLowerCase().includes(q) ||
+               (u.cpf||"").includes(q) ||
+               (ROLE_LABEL[u.role]||"").toLowerCase().includes(q);
       })
     : allVisible;
 
-  const roleLabel = {
-    mestre: "Mestre",
-    master: "Master",
-    indicado: "Operador",
-    visitante: "Visitante",
-  };
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
+  const setF  = (k, v) => setForm(f  => ({ ...f,  [k]: v }));
+  const setEF = (k, v) => setEditForm(f => ({ ...f, [k]: v }));
 
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const setEF = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
+  const flash = (msg) => { setOk(msg); setTimeout(() => setOk(""), 3000); };
 
-  const flash = (msg) => {
-    setOk(msg);
-    setTimeout(() => setOk(""), 3000);
-  };
-
-  // ── Create new user
+  // ── Create user ──────────────────────────────────────────────
   const create = async () => {
     if (!form.name.trim() || !form.email.trim() || !form.password.trim() || !form.cpf.trim()) {
-      setErr("Nome, CPF, email e senha são obrigatórios.");
-      return;
+      setErr("Nome, CPF, e-mail e senha são obrigatórios."); return;
     }
-    setErr("");
-    setOk("Criando usuário...");
+    if (!rolesCanCreate.includes(form.role)) {
+      setErr("Você não tem permissão para criar usuários com esse nível."); return;
+    }
+    setErr(""); setOk("Criando usuário...");
     try {
-      const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
-      let uid;
-      let reativado = false;
-
+      let uid; let reativado = false;
       try {
         uid = await createOperator(form.email, form.password);
       } catch (e) {
         if (e.code === "auth/email-already-in-use") {
-          // Email existe no Auth — tenta logar com a senha antiga (salva no Firestore) e trocar para a nova
           const found = users.find(u => u.email === form.email);
-          const snapOld = await getDocs(query(collection(db, "users"), where("email", "==", form.email)));
-          const oldPass = snapOld.empty ? null : (snapOld.docs[0].data().password || null);
-          if (found) {
-            uid = found.uid || found.id;
-            reativado = true;
-          } else if (!snapOld.empty) {
-            uid = snapOld.docs[0].id;
-            reativado = true;
-          } else {
-            throw new Error("Email já existe mas o perfil não foi encontrado.");
+          const snapOld = await getDocs(query(collection(db,"users"), where("email","==",form.email)));
+          if (found) { uid = found.uid || found.id; reativado = true; }
+          else if (!snapOld.empty) { uid = snapOld.docs[0].id; reativado = true; }
+          else throw new Error("Email já existe mas o perfil não foi encontrado.");
+          if (!snapOld.empty) {
+            const oldPass = snapOld.docs[0].data().password || null;
+            if (oldPass) {
+              try {
+                const rApp  = initFirebaseApp(FB_CFG_DEL, "reativacao_"+Date.now());
+                const rAuth = getAuth(rApp);
+                const rCred = await signInSecondary(rAuth, form.email, oldPass);
+                await updatePassword(rCred.user, form.password);
+                await rAuth.signOut();
+              } catch {}
+            }
           }
-          // Atualiza senha no Firebase Auth via instância secundária
-          if (oldPass) {
-            try {
-              const rApp = initFirebaseApp(FB_CFG_DEL, "reativacao_" + Date.now());
-              const rAuth = getAuth(rApp);
-              const rCred = await signInSecondary(rAuth, form.email, oldPass);
-              await updatePassword(rCred.user, form.password);
-              await rAuth.signOut();
-            } catch {/* se a senha antiga não bater, ignora — o Firestore vai salvar a nova de qualquer forma */}
-          }
-        } else {
-          throw e;
-        }
+        } else { throw e; }
       }
-
       const newU = {
         id: uid, uid,
-        username: form.email,
-        email: form.email,
-        password: form.password, // salva para consulta pelo mestre
-        role: currentUser.role === "mestre" ? form.role : "indicado",
-        name: form.name,
-        cpf: form.cpf,
+        username: form.email, email: form.email,
+        password: form.password,
+        role: form.role,
+        name: form.name, cpf: form.cpf,
         photo: form.photo || null,
-        createdBy: currentUser.uid || currentUser.id,
-        active: true,
-        deleted: false,
+        createdBy: myId,
+        active: true, deleted: false,
       };
       await saveUserProfile(uid, newU);
-
-      // Enviar email de boas-vindas
       try {
         await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({
-            service_id: "nexp_service",
-            template_id: "template_hubbahe",
-            user_id: "GaZRJdTXt0UMdEY3H",
-            template_params: {
-              to_name: form.name,
-              to_email: form.email,
-              user_email: form.email,
-              user_password: form.password,
-              user_role: roleLabel[newU.role] || newU.role,
-              access_link: "https://nexp-company.vercel.app",
-            },
+            service_id:"nexp_service", template_id:"template_hubbahe", user_id:"GaZRJdTXt0UMdEY3H",
+            template_params:{ to_name:form.name, to_email:form.email, user_email:form.email,
+              user_password:form.password, user_role:ROLE_LABEL[newU.role]||newU.role,
+              access_link:"https://nexp-company.vercel.app" },
           }),
         });
-        flash(reativado ? "Usuário reativado e email enviado! ✉" : "Usuário criado e email enviado! ✉");
-      } catch {
-        flash(reativado ? "Usuário reativado!" : "Usuário criado!");
-      }
-
-      setForm({ name: "", cpf: "", email: "", password: "", role: "indicado", photo: null });
+        flash(reativado ? "Usuário reativado e e-mail enviado! ✉" : "Usuário criado e e-mail enviado! ✉");
+      } catch { flash(reativado ? "Usuário reativado!" : "Usuário criado!"); }
+      setForm({ name:"", cpf:"", email:"", password:"", role:rolesCanCreate[0]||"operador", photo:null });
       setMode("list");
-    } catch (e) {
-      setErr("Erro: " + e.message);
-      setOk("");
-    }
+    } catch (e) { setErr("Erro: "+e.message); setOk(""); }
   };
 
-  // ── Delete user
+  // ── Delete user ──────────────────────────────────────────────
   const deleteUser = async (u) => {
-    if (!window.confirm(`Excluir DEFINITIVAMENTE "${u.name}"?\nO e-mail ficará liberado para novo cadastro.\nEsta ação não pode ser desfeita.`)) return;
+    if (!window.confirm(`Excluir DEFINITIVAMENTE "${u.name}"?\nEsta ação não pode ser desfeita.`)) return;
     try {
       const uid2 = u.uid || u.id;
-      // 1. Tenta apagar do Firebase Auth via instância secundária
       if (u.email && u.password) {
-        const secApp = initFirebaseApp(FB_CFG_DEL, "del_" + Date.now());
+        const secApp = initFirebaseApp(FB_CFG_DEL, "del_"+Date.now());
         const secAuth = getAuth(secApp);
-        try {
-          const c = await signInSecondary(secAuth, u.email, u.password);
-          await c.user.delete();
-        } catch {} finally { try { await secAuth.signOut(); } catch {} }
+        try { const c = await signInSecondary(secAuth, u.email, u.password); await c.user.delete(); }
+        catch {} finally { try { await secAuth.signOut(); } catch {} }
       }
-      // 2. Remove do Firestore definitivamente
-      await deleteDoc(doc(db, "users", uid2));
-      flash(`Usuário "${u.name}" excluído definitivamente!`);
-    } catch (e) { setErr("Erro ao excluir: " + e.message); }
+      await deleteDoc(doc(db,"users",uid2));
+      flash(`Usuário "${u.name}" excluído!`);
+    } catch (e) { setErr("Erro ao excluir: "+e.message); }
   };
+
   const openEdit = (u) => {
-    if (expandId === u.id) {
-      setExpandId(null); setEditForm(null); setResetPw(""); return;
-    }
+    if (expandId === u.id) { setExpandId(null); setEditForm(null); setResetPw(""); return; }
     setExpandId(u.id); setEditForm({ ...u }); setResetPw("");
   };
 
-  // ── Save edits
   const saveEdit = async () => {
     if (!editForm.name.trim() || !editForm.email.trim() || !editForm.cpf.trim()) {
-      setErr("Nome, CPF e email são obrigatórios."); return;
+      setErr("Nome, CPF e e-mail são obrigatórios."); return;
     }
-    const emailConflict = users.find((u) => u.email === editForm.email && u.id !== editForm.id);
-    if (emailConflict) { setErr("Esse email já está em uso por outro usuário."); return; }
+    const conflict = users.find(u => u.email === editForm.email && u.id !== editForm.id);
+    if (conflict) { setErr("Esse e-mail já está em uso."); return; }
+    // Verifica que não está tentando elevar acima do seu próprio nível
+    if ((ROLE_HIERARCHY[editForm.role]??99) < myLvl) {
+      setErr("Você não pode conceder um nível acima do seu."); return;
+    }
     try {
-      await saveUserProfile(editForm.uid || editForm.id, editForm);
+      await saveUserProfile(editForm.uid||editForm.id, editForm);
       setExpandId(null); setEditForm(null); setResetPw("");
       flash("Usuário atualizado!");
-    } catch (e) { setErr("Erro ao salvar: " + e.message); }
+    } catch (e) { setErr("Erro ao salvar: "+e.message); }
   };
 
-  // ── Helpers: muda senha via instância secundária ─────────────
-  // Config para deleção de usuário via instância secundária
   const FB_CFG_DEL = {
-    apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-    authDomain: "nexpcompany-9a7ba.firebaseapp.com",
-    projectId: "nexpcompany-9a7ba",
-    storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
-    messagingSenderId: "1043432853586",
-    appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
+    apiKey:"AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
+    authDomain:"nexpcompany-9a7ba.firebaseapp.com",
+    projectId:"nexpcompany-9a7ba",
+    storageBucket:"nexpcompany-9a7ba.firebasestorage.app",
+    messagingSenderId:"1043432853586",
+    appId:"1:1043432853586:web:10d443d6757420fe01cf8b",
   };
-
 
   const doReset = async (newPassword) => { // eslint-disable-line no-unused-vars
     const pw = (newPassword || resetPw || "").trim();
-    if (!pw || pw.length < 6) {
-      throw new Error("A senha deve ter pelo menos 6 caracteres.");
-    }
+    if (!pw || pw.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
     const email    = editForm.email;
     const uid2     = editForm.uid || editForm.id;
-    // Usa a senha já presente no editForm (já está no estado), sem precisar de query extra
     const savedPass = editForm.password || null;
-
-    // Altera no Firebase Auth via API REST
-    const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
     let authOk = false;
-    if (email && savedPass) {
+    if (savedPass) {
       try {
-        const signInRes = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
-          { method:"POST", headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ email, password: savedPass, returnSecureToken: true }) }
-        );
-        const signInData = await signInRes.json();
-        if (signInData.idToken) {
-          const updateRes = await fetch(
-            `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
-            { method:"POST", headers:{"Content-Type":"application/json"},
-              body: JSON.stringify({ idToken: signInData.idToken, password: pw, returnSecureToken: true }) }
-          );
-          const updateData = await updateRes.json();
-          authOk = !!updateData.idToken;
-          if (!authOk && updateData.error) {
-            throw new Error("Auth: " + updateData.error.message);
-          }
-        } else {
-          throw new Error("Login falhou: " + (signInData.error?.message || "senha atual incorreta no sistema"));
-        }
-      } catch(e) {
-        // Repassa o erro para o componente mostrar
-        throw e;
-      }
-    } else {
-      throw new Error(!email ? "Email do usuário não encontrado." : "Senha atual não encontrada no sistema. Salve uma senha primeiro.");
+        const sApp  = initFirebaseApp(FB_CFG_DEL, "reset_"+Date.now());
+        const sAuth = getAuth(sApp);
+        const cred  = await signInSecondary(sAuth, email, savedPass);
+        await updatePassword(cred.user, pw);
+        await sAuth.signOut();
+        authOk = true;
+      } catch {}
     }
-
-    // Salva nova senha no Firestore
-    await saveUserProfile(uid2, { password: pw });
-    // Atualiza o editForm local para refletir a nova senha
+    await saveUserProfile(uid2, { ...editForm, password: pw });
     setEditForm(f => f ? { ...f, password: pw } : f);
-    setResetPw("");
-    return authOk;
+    setResetPw(""); return authOk;
   };
-  // ── Toggle active/inactive
+
   const toggleActive = async (u) => {
     const updated = { ...u, active: u.active === false ? true : false };
-    try {
-      await saveUserProfile(u.uid || u.id, updated);
-      flash(`Usuário ${updated.active ? "ativado" : "desativado"}!`);
-    } catch (e) { setErr("Erro: " + e.message); }
+    try { await saveUserProfile(u.uid||u.id, updated); flash(`Usuário ${updated.active?"ativado":"desativado"}!`); }
+    catch (e) { setErr("Erro: "+e.message); }
   };
 
-  const handlePhoto = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = (ev) => setF("photo", ev.target.result);
-    r.readAsDataURL(f);
-  };
-  const handleEditPhoto = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = (ev) => setEF("photo", ev.target.result);
-    r.readAsDataURL(f);
-  };
+  const handlePhoto     = (e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setF("photo",ev.target.result); r.readAsDataURL(f); };
+  const handleEditPhoto = (e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setEF("photo",ev.target.result); r.readAsDataURL(f); };
+
+  // Roles que o editor pode atribuir ao editar (só abaixo do seu nível)
+  const rolesCanAssign = myLvl === 0
+    ? ["gerente","supervisor","operador"]
+    : myLvl === 1 ? ["supervisor","operador"]
+    : myLvl === 2 ? ["operador"] : [];
 
   return (
     <div>
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 18,
-        }}
-      >
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8, flex:1 }}>
-          <div style={{ color: C.ts, fontSize: 13, flexShrink:0 }}>
-            {visible.length} usuário{visible.length !== 1 ? "s" : ""}
-            {searchUser && allVisible.length !== visible.length && <span style={{ color:C.td, fontSize:11 }}> de {allVisible.length}</span>}
+          <div style={{ color:C.ts, fontSize:13, flexShrink:0 }}>
+            {visible.length} usuário{visible.length!==1?"s":""}
+            {searchUser && allVisible.length!==visible.length && <span style={{ color:C.td, fontSize:11 }}> de {allVisible.length}</span>}
           </div>
           <div style={{ position:"relative", flex:1, maxWidth:220 }}>
             <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:13, pointerEvents:"none" }}>🔍</span>
-            <input value={searchUser} onChange={e=>setSearchUser(e.target.value)}
-              placeholder="Buscar usuário..."
+            <input value={searchUser} onChange={e=>setSearchUser(e.target.value)} placeholder="Buscar usuário..."
               style={{ ...S.input, paddingLeft:30, fontSize:12, padding:"6px 10px 6px 28px" }} />
-            {searchUser && <button onClick={()=>setSearchUser("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:13, lineHeight:1 }}>✕</button>}
+            {searchUser && <button onClick={()=>setSearchUser("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:13 }}>✕</button>}
           </div>
         </div>
-        <button
-          onClick={() => {
-            setMode((m) => (m === "list" ? "create" : "list"));
-            setErr("");
-          }}
-          style={{
-            ...S.btn(
-              mode === "create" ? C.abg : C.acc,
-              mode === "create" ? C.atxt : "#fff",
-            ),
-            border: mode === "create" ? `1px solid ${C.atxt}33` : "none",
-            padding: "8px 16px",
-            fontSize: 12.5,
-          }}
-        >
-          {mode === "create" ? "← Lista" : "+ Novo usuário"}
-        </button>
+        {canCreateUsers && (
+          <button onClick={() => { setMode(m=>m==="list"?"create":"list"); setErr(""); }}
+            style={{ ...S.btn(mode==="create"?C.abg:C.acc, mode==="create"?C.atxt:"#fff"), border:mode==="create"?`1px solid ${C.atxt}33`:"none", padding:"8px 16px", fontSize:12.5 }}>
+            {mode==="create"?"← Lista":"+ Novo usuário"}
+          </button>
+        )}
       </div>
 
-      {ok && (
-        <div
-          style={{
-            background: "#091E12",
-            border: "1px solid #34D39933",
-            borderRadius: 8,
-            padding: "10px 14px",
-            marginBottom: 14,
-            color: "#34D399",
-            fontSize: 13,
-          }}
-        >
-          ✓ {ok}
-        </div>
-      )}
-      {err && (
-        <div
-          style={{
-            background: "#2D1515",
-            border: "1px solid #EF444433",
-            borderRadius: 8,
-            padding: "10px 14px",
-            marginBottom: 14,
-            color: "#F87171",
-            fontSize: 13,
-          }}
-        >
-          ⚠ {err}
-        </div>
-      )}
+      {ok  && <div style={{ background:"#091E12", border:"1px solid #34D39933", borderRadius:8, padding:"10px 14px", marginBottom:14, color:"#34D399", fontSize:13 }}>✓ {ok}</div>}
+      {err && <div style={{ background:"#2D1515", border:"1px solid #EF444433", borderRadius:8, padding:"10px 14px", marginBottom:14, color:"#F87171", fontSize:13 }}>⚠ {err}</div>}
 
-      {/* ── Create form ── */}
-      {mode === "create" && (
-        <div style={{ ...S.card, padding: "24px" }}>
-          <div
-            style={{
-              color: C.ts,
-              fontSize: 13,
-              fontWeight: 600,
-              marginBottom: 16,
-            }}
-          >
-            Criar Novo Usuário
+      {/* ── Hierarquia visual ── */}
+      <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
+        {[
+          { role:"administrador", icon:"👑", desc:"Acesso total" },
+          { role:"gerente",       icon:"🏆", desc:"Cria supervisores e operadores" },
+          { role:"supervisor",    icon:"🎯", desc:"Cria operadores" },
+          { role:"operador",      icon:"👤", desc:"Sem criação de usuários" },
+        ].map(h => {
+          const isMy = myRole === h.role || (myRole==="mestre"&&h.role==="administrador") || (myRole==="master"&&h.role==="gerente") || (["indicado","visitante","digitador"].includes(myRole)&&h.role==="operador");
+          return (
+            <div key={h.role} style={{ background:isMy?ROLE_COLOR[h.role]+"22":C.deep, border:`1px solid ${isMy?ROLE_COLOR[h.role]+"55":C.b1}`, borderRadius:10, padding:"7px 13px", display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
+              <span style={{ fontSize:14 }}>{h.icon}</span>
+              <div>
+                <div style={{ color:isMy?ROLE_COLOR[h.role]:C.ts, fontSize:11.5, fontWeight:isMy?700:400 }}>{ROLE_LABEL[h.role]}</div>
+                <div style={{ color:C.td, fontSize:10 }}>{h.desc}</div>
+              </div>
+              {isMy && <span style={{ color:ROLE_COLOR[h.role], fontSize:10, fontWeight:700, marginLeft:2 }}>← você</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Formulário de criação ── */}
+      {mode==="create" && canCreateUsers && (
+        <div style={{ ...S.card, padding:"24px" }}>
+          <div style={{ color:C.ts, fontSize:13, fontWeight:600, marginBottom:16 }}>Criar Novo Usuário</div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Foto</label>
+            <input ref={pRef} type="file" accept="image/*" onChange={handlePhoto} style={{ color:C.ts, fontSize:13, display:"block" }} />
+            {form.photo && <img src={form.photo} alt="" style={{ width:52, height:52, borderRadius:"50%", objectFit:"cover", marginTop:8, border:`2px solid ${C.atxt}33` }} />}
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <label
-              style={{
-                color: C.tm,
-                fontSize: 11.5,
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Foto do Operador
-            </label>
-            <input
-              ref={pRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhoto}
-              style={{ color: C.ts, fontSize: 13, display: "block" }}
-            />
-            {form.photo && (
-              <img
-                src={form.photo}
-                alt=""
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  marginTop: 8,
-                  border: `2px solid ${C.atxt}33`,
-                }}
-              />
-            )}
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-              marginBottom: 12,
-            }}
-          >
-            {[
-              ["Nome do operador *", "name", "text"],
-              ["CPF *", "cpf", "text"],
-              ["Email (usuário) *", "email", "email"],
-              ["Senha inicial *", "password", "password"],
-            ].map(([l, k, t]) => (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+            {[["Nome *","name","text"],["CPF *","cpf","text"],["E-mail *","email","email"],["Senha inicial *","password","password"]].map(([l,k,t])=>(
               <div key={k}>
-                <label
-                  style={{
-                    color: C.tm,
-                    fontSize: 11.5,
-                    display: "block",
-                    marginBottom: 4,
-                  }}
-                >
-                  {l}
-                </label>
-                <input
-                  value={form[k]}
-                  onChange={(e) => setF(k, e.target.value)}
-                  type={t}
-                  style={{ ...S.input }}
-                />
+                <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:4 }}>{l}</label>
+                <input value={form[k]} onChange={e=>setF(k,e.target.value)} type={t} style={{ ...S.input }} />
               </div>
             ))}
           </div>
-          {currentUser.role === "mestre" && (
-            <div style={{ marginBottom: 16 }}>
-              <label
-                style={{
-                  color: C.tm,
-                  fontSize: 11.5,
-                  display: "block",
-                  marginBottom: 7,
-                }}
-              >
-                Nível de acesso
-              </label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {["master", "indicado", "visitante"].map((r) => {
-                  const sel = form.role === r;
-                  const col = (roleColor[r] || "#94a3b8");
-                  return (
-                    <button
-                      key={r}
-                      onClick={() => setF("role", r)}
-                      style={{
-                        background: sel ? col + "18" : C.deep,
-                        color: sel ? col : C.tm,
-                        border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`,
-                        borderRadius: 20,
-                        padding: "7px 16px",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        fontWeight: sel ? 600 : 400,
-                      }}
-                    >
-                      {sel ? "✓ " : ""}
-                      {roleLabel[r]}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Nível de acesso — só mostra roles que pode criar */}
+          <div style={{ marginBottom:16 }}>
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:7 }}>Nível de acesso</label>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {rolesCanCreate.map(r => {
+                const sel = form.role===r;
+                const col = ROLE_COLOR[r]||"#94a3b8";
+                const icons = {gerente:"🏆",supervisor:"🎯",operador:"👤"};
+                return (
+                  <button key={r} onClick={()=>setF("role",r)}
+                    style={{ background:sel?col+"18":C.deep, color:sel?col:C.tm, border:sel?`1px solid ${col}55`:`1px solid ${C.b2}`, borderRadius:20, padding:"7px 16px", fontSize:12, cursor:"pointer", fontWeight:sel?600:400 }}>
+                    {icons[r]||"👤"} {sel?"✓ ":""}{ROLE_LABEL[r]}
+                  </button>
+                );
+              })}
             </div>
-          )}
-          <button
-            onClick={create}
-            style={{
-              ...S.btn(C.acc, "#fff"),
-              padding: "11px 22px",
-              fontSize: 13.5,
-            }}
-          >
-            Criar usuário
-          </button>
+          </div>
+          <button onClick={create} style={{ ...S.btn(C.acc,"#fff"), padding:"11px 22px", fontSize:13.5 }}>Criar usuário</button>
         </div>
       )}
 
-      {/* ── User list ── */}
-      {mode === "list" && (
+      {/* ── Lista de usuários ── */}
+      {mode==="list" && (
         <div>
-          {visible.map((u) => {
-            const col = roleColor[u.role] || C.atxt;
+          {visible.length===0 && (
+            <div style={{ color:C.td, fontSize:13, textAlign:"center", padding:"32px 0" }}>Nenhum usuário encontrado.</div>
+          )}
+          {visible.map(u => {
+            const col      = ROLE_COLOR[u.role] || C.atxt;
             const isActive = u.active !== false;
-            const isExpanded = expandId === u.id;
-            const canEdit =
-              currentUser.role === "mestre" ||
-              (currentUser.role === "master" &&
-                u.createdBy === currentUser.id &&
-                u.role === "indicado") ||
-              u.id === currentUser.id;
-            const canToggle =
-              currentUser.role === "mestre" ||
-              (currentUser.role === "master" &&
-                u.role === "indicado" &&
-                u.createdBy === currentUser.id);
-            const isSelf = u.id === currentUser.id;
+            const isExpand = expandId === u.id;
+            const tgLvl    = ROLE_HIERARCHY[u.role] ?? 99;
+            const canEdit  = myLvl===0 || (myLvl < tgLvl && u.createdBy===myId) || (u.uid||u.id)===myId;
+            const canToggle= myLvl===0 || (myLvl < tgLvl && u.createdBy===myId);
+            const canDel   = myLvl < tgLvl && (myLvl===0 || u.createdBy===myId);
+            const showPw   = canSeePassword(myRole, u.role) && u.password;
+            const isSelf   = (u.uid||u.id) === myId;
 
             return (
-              <div
-                key={u.id}
-                style={{
-                  ...S.card,
-                  marginBottom: 10,
-                  overflow: "hidden",
-                  opacity: isActive ? 1 : 0.55,
-                  transition: "opacity 0.2s",
-                }}
-              >
-                {/* Row */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "14px 16px",
-                    flexWrap: "wrap",
-                  }}
-                >
+              <div key={u.id} style={{ ...S.card, marginBottom:10, overflow:"hidden", opacity:isActive?1:0.55 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px", flexWrap:"wrap" }}>
                   {/* Avatar */}
-                  <div style={{ position: "relative", flexShrink: 0 }}>
-                    {u.photo ? (
-                      <img
-                        src={u.photo}
-                        alt=""
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: "50%",
-                          objectFit: "cover",
-                          border: `1.5px solid ${col}44`,
-                        }}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: "50%",
-                          background: col + "18",
-                          color: col,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 14,
-                          fontWeight: 700,
-                          border: `1.5px solid ${col}33`,
-                        }}
-                      >
-                        {ini(u.name || u.username)}
-                      </div>
-                    )}
-                    {!isActive && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: 0,
-                          right: 0,
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          background: "#EF4444",
-                          border: `2px solid ${C.card}`,
-                        }}
-                      />
-                    )}
+                  <div style={{ position:"relative", flexShrink:0 }}>
+                    {u.photo
+                      ? <img src={u.photo} alt="" style={{ width:42, height:42, borderRadius:"50%", objectFit:"cover", border:`1.5px solid ${col}44` }} />
+                      : <div style={{ width:42, height:42, borderRadius:"50%", background:col+"18", color:col, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border:`1.5px solid ${col}33` }}>{ini(u.name||u.username)}</div>}
+                    {!isActive && <div style={{ position:"absolute", bottom:0, right:0, width:12, height:12, borderRadius:"50%", background:"#EF4444", border:`2px solid ${C.card}` }}/>}
                   </div>
-
                   {/* Info */}
-                  <div style={{ flex: 1, minWidth: 120 }}>
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 7 }}
-                    >
-                      <div
-                        style={{ color: C.tp, fontSize: 13.5, fontWeight: 600 }}
-                      >
-                        {u.name || u.username}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
+                      <span style={{ color:C.tp, fontSize:13.5, fontWeight:700 }}>{u.name||u.username}</span>
+                      {isSelf && <span style={{ color:C.atxt, fontSize:10, background:C.abg, borderRadius:9, padding:"1px 7px", border:`1px solid ${C.atxt}33` }}>você</span>}
+                      <span style={{ background:col+"18", color:col, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:700, border:`1px solid ${col}33` }}>
+                        {{administrador:"👑",gerente:"🏆",supervisor:"🎯",operador:"👤",mestre:"👑",master:"🏆",indicado:"👤",visitante:"👤",digitador:"👤"}[u.role]||"👤"} {ROLE_LABEL[u.role]||u.role}
+                      </span>
+                      {!isActive && <span style={{ color:"#F87171", fontSize:10, background:"#2D151522", borderRadius:9, padding:"1px 7px" }}>Inativo</span>}
+                    </div>
+                    <div style={{ color:C.tm, fontSize:11.5, marginTop:2 }}>{u.email}</div>
+                    {u.cpf && <div style={{ color:C.td, fontSize:10.5 }}>CPF: {u.cpf}</div>}
+                    {/* Senha visível só para quem pode ver */}
+                    {showPw && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                        <span style={{ color:C.td, fontSize:10 }}>🔑</span>
+                        <span style={{ color:C.td, fontSize:10.5, fontFamily:"monospace", background:C.deep, borderRadius:5, padding:"1px 6px" }}>{u.password}</span>
                       </div>
-                      {!isActive && (
-                        <span
-                          style={{
-                            background: "#2D1515",
-                            color: "#F87171",
-                            fontSize: 9,
-                            padding: "2px 7px",
-                            borderRadius: 20,
-                            fontWeight: 700,
-                          }}
-                        >
-                          Inativo
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ color: C.tm, fontSize: 11.5, marginTop: 1 }}>
-                      {u.email}
-                      {u.cpf ? " · " + u.cpf : ""}
-                    </div>
+                    )}
                   </div>
-
-                  {/* Role badge */}
-                  <span
-                    style={{
-                      background: col + "18",
-                      color: col,
-                      fontSize: 10.5,
-                      padding: "3px 10px",
-                      borderRadius: 20,
-                      fontWeight: 700,
-                      border: `1px solid ${col}33`,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {roleLabel[u.role]}
-                  </span>
-
-                  {/* Activate / Deactivate */}
-                  {canToggle && !isSelf && (
-                    <button
-                      onClick={() => toggleActive(u)}
-                      style={{
-                        background: isActive ? "#2D1515" : "#091E12",
-                        color: isActive ? "#F87171" : "#34D399",
-                        border: isActive
-                          ? "1px solid #EF444433"
-                          : "1px solid #34D39933",
-                        borderRadius: 8,
-                        padding: "5px 12px",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        flexShrink: 0,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {isActive ? "Desativar" : "Ativar"}
-                    </button>
-                  )}
-
-                  {/* Edit button */}
-                  {canEdit && (
-                    <button
-                      onClick={() => {
-                        openEdit(u);
-                        setErr("");
-                      }}
-                      style={{
-                        background: isExpanded ? C.abg : C.deep,
-                        color: isExpanded ? C.atxt : C.tm,
-                        border: isExpanded
-                          ? `1px solid ${C.atxt}44`
-                          : `1px solid ${C.b2}`,
-                        borderRadius: 8,
-                        padding: "5px 14px",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        flexShrink: 0,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      {isExpanded ? "✕ Fechar" : "✏ Editar"}
-                    </button>
-                  )}
-
-                  {/* Ver Perfil completo — mestre e master */}
-                  {(currentUser.role === "mestre" || currentUser.role === "master") && (
-                    <button
-                      onClick={() => setViewProfileId(viewProfileId === (u.uid||u.id) ? null : (u.uid||u.id))}
-                      style={{
-                        background: viewProfileId === (u.uid||u.id) ? C.abg : C.deep,
-                        color: viewProfileId === (u.uid||u.id) ? C.atxt : C.tm,
-                        border: viewProfileId === (u.uid||u.id) ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
-                        borderRadius: 8, padding: "5px 12px", fontSize: 11,
-                        cursor: "pointer", fontWeight: 600, flexShrink: 0,
-                      }}>
-                      {viewProfileId === (u.uid||u.id) ? "✕ Fechar" : "👁 Perfil"}
-                    </button>
-                  )}
-                  {/* Delete button — apenas mestre pode excluir, nunca a si mesmo, nunca outro mestre */}
-                  {currentUser.role === "mestre" && !isSelf && u.role !== "mestre" && (
-                    <button
-                      onClick={() => deleteUser(u)}
-                      style={{
-                        background: "transparent",
-                        color: "#EF4444",
-                        border: "1px solid #EF444433",
-                        borderRadius: 8,
-                        padding: "5px 12px",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        flexShrink: 0,
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      🗑 Excluir
-                    </button>
-                  )}
+                  {/* Ações */}
+                  <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                    {canToggle && !isSelf && (
+                      <button onClick={()=>toggleActive(u)}
+                        style={{ ...S.btn(isActive?"#2D1515":"#091E12", isActive?"#F87171":"#34D399"), border:`1px solid ${isActive?"#F8717133":"#34D39933"}`, padding:"5px 11px", fontSize:11.5 }}>
+                        {isActive?"Desativar":"Ativar"}
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button onClick={()=>openEdit(u)}
+                        style={{ ...S.btn(isExpand?C.acc:C.abg, isExpand?"#fff":C.atxt), border:`1px solid ${C.atxt}33`, padding:"5px 11px", fontSize:11.5 }}>
+                        {isExpand?"▲ Fechar":"✏ Editar"}
+                      </button>
+                    )}
+                    {canDel && !isSelf && (
+                      <button onClick={()=>deleteUser(u)}
+                        style={{ ...S.btn("transparent","#F87171"), border:"1px solid #F8717133", padding:"5px 11px", fontSize:11.5 }}>
+                        🗑
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-
-                {/* ── Full profile view panel (mestre/master) ── */}
-                {viewProfileId === (u.uid||u.id) && (
-                  <div style={{ borderTop: `1px solid ${C.b1}`, padding: "20px 22px", background: C.deep }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-                      <div style={{ color: C.atxt, fontSize: 12.5, fontWeight: 700 }}>👁 Perfil de {u.name || u.email}</div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        {/* Lock/Unlock */}
-                        <button onClick={async () => {
-                          const updated = { ...u, profileLocked: !u.profileLocked };
-                          await saveUserProfile(u.uid||u.id, updated);
-                        }}
-                          style={{ background: u.profileLocked ? "#2D1515" : C.card, color: u.profileLocked ? "#F87171" : C.tm, border: u.profileLocked ? "1px solid #EF444433" : `1px solid ${C.b2}`, borderRadius: 8, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
-                          {u.profileLocked ? "🔒 Bloqueado" : "🔓 Bloquear edição"}
-                        </button>
+                {/* Painel de edição */}
+                {isExpand && editForm && (
+                  <div style={{ padding:"16px 18px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                      {[["Nome","name","text"],["CPF","cpf","text"],["E-mail","email","email"]].map(([l,k,t])=>(
+                        <div key={k}>
+                          <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>{l}</label>
+                          <input value={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
+                        </div>
+                      ))}
+                      {/* Senha */}
+                      <div>
+                        <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Nova senha</label>
+                        <input value={editForm.password||""} onChange={e=>setEF("password",e.target.value)} type="password" placeholder="••••••" style={{ ...S.input, fontSize:12 }} />
                       </div>
                     </div>
-                    {(() => {
-                      const CopyField = ({ label, val }) => {
-                        const [copied, setCopied] = useState(false);
-                        const copy = () => { if (!val) return; navigator.clipboard.writeText(val).then(() => { setCopied(true); setTimeout(()=>setCopied(false),1800); }); };
-                        return (
-                          <div>
-                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: 3 }}>
-                              <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px" }}>{label}</div>
-                              {val && <button onClick={copy} style={{ background:"none", border:"none", color: copied?"#34D399":C.td, cursor:"pointer", fontSize:10, padding:"0 4px" }}>{copied?"✓":"⎘"}</button>}
-                            </div>
-                            <div style={{ color: val ? C.tp : C.tm, fontSize: 12.5, fontWeight: val ? 500 : 400 }}>{val || "—"}</div>
-                          </div>
-                        );
-                      };
-
-                      // Componente para ver senha com confirmação
-                      const PasswordField = ({ uid: pUid }) => {
-                        const [passVisible, setPassVisible] = useState(false);
-                        const [confirmPass, setConfirmPass] = useState("");
-                        const [askConfirm, setAskConfirm] = useState(false);
-                        const [passErr, setPassErr] = useState("");
-                        const [storedPass, setStoredPass] = useState(null);
-                        const [copied, setCopied] = useState(false);
-
-                        const loadPass = async () => {
-                          try {
-                            const snap = await getDocs(query(collection(db, "users"), where("uid", "==", pUid)));
-                            if (!snap.empty) setStoredPass(snap.docs[0].data().password || null);
-                            else setStoredPass(null);
-                          } catch { setStoredPass(null); }
-                        };
-
-                        const handleReveal = () => { setAskConfirm(true); setPassErr(""); };
-                        const handleConfirm = async () => {
-                          // Verifica senha do mestre via Firebase Auth
-                          try {
-                            const mestreEmail = currentUser.email;
-                            const cred = EmailAuthProvider.credential(mestreEmail, confirmPass);
-                            await reauthenticateWithCredential(auth.currentUser, cred);
-                            await loadPass();
-                            setPassVisible(true); setAskConfirm(false); setConfirmPass("");
-                          } catch { setPassErr("Senha do mestre incorreta. Tente novamente."); }
-                        };
-                        const copy = () => { if (!storedPass) return; navigator.clipboard.writeText(storedPass).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1800);}); };
-
-                        const [newPassInput, setNewPassInput] = useState("");
-                        const [resetting, setResetting] = useState(false);
-                        const [showReset, setShowReset] = useState(false);
-                        const [resetMsg, setResetMsg] = useState("");
-                        const [resetStep, setResetStep] = useState("typing"); // "typing" | "confirm"
-                        const [resetConfirm, setResetConfirm] = useState("");
-                        const [showNewReset, setShowNewReset] = useState(false);
-                        const [showConfReset, setShowConfReset] = useState(false);
-
-                        const handleReset = async () => {
-                          if (!newPassInput.trim() || newPassInput.length < 6) { setResetMsg("Mínimo 6 caracteres."); return; }
-                          // Avança para confirmação
-                          setResetStep("confirm");
-                          setResetConfirm("");
-                          setResetMsg("");
-                        };
-
-                        const handleFinalConfirm = async () => {
-                          if (newPassInput !== resetConfirm) { setResetMsg("As senhas não coincidem. Verifique e tente novamente."); return; }
-                          setResetting(true); setResetMsg("");
-                          try {
-                            // Busca dados do usuário diretamente pelo uid (mais confiável que query por email)
-                            const userDoc = await getDoc(doc(db, "users", pUid));
-                            const uData = userDoc.exists() ? userDoc.data() : null;
-                            const targetEmail = uData?.email;
-                            const currentPass2 = uData?.password;
-
-                            if (!targetEmail) throw new Error("Email do usuário não encontrado.");
-                            if (!currentPass2) throw new Error("Senha atual não cadastrada no sistema.");
-
-                            // Atualiza no Firebase Auth via REST API
-                            const APIKEY = "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw";
-                            const signInRes = await fetch(
-                              `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${APIKEY}`,
-                              { method:"POST", headers:{"Content-Type":"application/json"},
-                                body: JSON.stringify({ email: targetEmail, password: currentPass2, returnSecureToken: true }) }
+                    {/* Foto */}
+                    <div style={{ marginBottom:12 }}>
+                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Foto</label>
+                      <input ref={pEditRef} type="file" accept="image/*" onChange={handleEditPhoto} style={{ color:C.ts, fontSize:12, display:"block" }} />
+                      {editForm.photo && <img src={editForm.photo} alt="" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", marginTop:6, border:`2px solid ${C.atxt}33` }} />}
+                    </div>
+                    {/* Alterar nível — só se tiver permissão e não for si mesmo */}
+                    {!isSelf && rolesCanAssign.length > 0 && (
+                      <div style={{ marginBottom:14 }}>
+                        <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Nível de acesso</label>
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                          {rolesCanAssign.map(r => {
+                            const sel = editForm.role===r;
+                            const col2 = ROLE_COLOR[r]||"#94a3b8";
+                            const icons = {gerente:"🏆",supervisor:"🎯",operador:"👤"};
+                            return (
+                              <button key={r} onClick={()=>setEF("role",r)}
+                                style={{ background:sel?col2+"18":C.card, color:sel?col2:C.tm, border:sel?`1px solid ${col2}55`:`1px solid ${C.b2}`, borderRadius:20, padding:"5px 13px", fontSize:11.5, cursor:"pointer", fontWeight:sel?600:400 }}>
+                                {icons[r]||"👤"} {sel?"✓ ":""}{ROLE_LABEL[r]}
+                              </button>
                             );
-                            const signInData = await signInRes.json();
-                            if (!signInData.idToken) throw new Error("Login falhou: " + (signInData.error?.message || "senha atual incorreta"));
-
-                            const updateRes = await fetch(
-                              `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${APIKEY}`,
-                              { method:"POST", headers:{"Content-Type":"application/json"},
-                                body: JSON.stringify({ idToken: signInData.idToken, password: newPassInput, returnSecureToken: true }) }
-                            );
-                            const updateData = await updateRes.json();
-                            if (!updateData.idToken) throw new Error("Falha ao atualizar: " + (updateData.error?.message || "erro desconhecido"));
-
-                            // Salva nova senha no Firestore
-                            await setDoc(doc(db, "users", pUid), { password: newPassInput }, { merge: true });
-                            setStoredPass(newPassInput);
-                            setNewPassInput(""); setResetConfirm(""); setShowReset(false); setResetStep("typing");
-                            setResetMsg("✅ Senha redefinida com sucesso!");
-                            setTimeout(() => setResetMsg(""), 4000);
-                          } catch(e2) { setResetMsg("❌ " + e2.message); }
-                          setResetting(false);
-                        };
-
-                        return (
-                          <div style={{ gridColumn:"1/-1", background:C.deep, borderRadius:10, padding:"10px 12px", border:`1px solid ${C.b1}` }}>
-                            {/* Cabeçalho */}
-                            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-                              <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.4px" }}>🔑 Senha</div>
-                              <div style={{ display:"flex", gap:6 }}>
-                                {passVisible && storedPass && (
-                                  <button onClick={copy} style={{ background:"none", border:"none", color:copied?"#34D399":C.td, cursor:"pointer", fontSize:10 }}>
-                                    {copied?"✓ Copiado":"⎘ Copiar"}
-                                  </button>
-                                )}
-                                <button onClick={()=>{ if(passVisible){setPassVisible(false);setStoredPass(null);} else handleReveal(); }}
-                                  style={{ background:"none", border:"none", color:C.atxt, cursor:"pointer", fontSize:10 }}>
-                                  {passVisible?"🙈 Ocultar":"👁 Ver senha"}
-                                </button>
-                                <button onClick={()=>setShowReset(p=>!p)}
-                                  style={{ background:showReset?C.abg:"none", border:showReset?`1px solid ${C.atxt}44`:"none", color:"#FBBF24", cursor:"pointer", fontSize:10, borderRadius:5, padding:"1px 6px" }}>
-                                  ✏ Redefinir
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Senha visível / oculta */}
-                            {passVisible ? (
-                              <div style={{ color:"#34D399", fontSize:13, fontWeight:700, letterSpacing:2, marginBottom:4, fontFamily:"monospace" }}>
-                                {storedPass || "Não disponível no sistema"}
-                              </div>
-                            ) : (
-                              <div style={{ color:C.tm, fontSize:12.5, marginBottom:4 }}>••••••••</div>
-                            )}
-
-                            {/* Confirmar com senha do mestre */}
-                            {askConfirm && !passVisible && (
-                              <div style={{ display:"flex", flexDirection:"column", gap:5, marginBottom:6 }}>
-                                <div style={{ color:C.tm, fontSize:11 }}>🔐 Digite a senha do Mestre para revelar:</div>
-                                <div style={{ display:"flex", gap:5 }}>
-                                  <input type="password" value={confirmPass} onChange={e=>{setConfirmPass(e.target.value);setPassErr("");}}
-                                    onKeyDown={e=>e.key==="Enter"&&handleConfirm()}
-                                    placeholder="Senha do mestre..." style={{ ...S.input, flex:1, padding:"5px 10px", fontSize:12 }} autoFocus />
-                                  <button onClick={handleConfirm} style={{ ...S.btn(C.acc,"#fff"), padding:"5px 12px", fontSize:12 }}>OK</button>
-                                  <button onClick={()=>{setAskConfirm(false);setConfirmPass("");setPassErr("");}}
-                                    style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"5px 10px", fontSize:12 }}>✕</button>
-                                </div>
-                                {passErr && <div style={{ color:"#F87171", fontSize:11 }}>{passErr}</div>}
-                              </div>
-                            )}
-
-                            {/* Painel de redefinição */}
-                            {showReset && (
-                              <div style={{ marginTop:8, padding:"10px 12px", background:C.card, borderRadius:8, border:`1px solid #FBBF2433` }}>
-                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                                  <div style={{ color:"#FBBF24", fontSize:11, fontWeight:700 }}>
-                                    {resetStep === "typing" ? "✏ Nova senha para este usuário" : "🔐 Confirme a nova senha"}
-                                  </div>
-                                  <button onClick={()=>{setShowReset(false);setNewPassInput("");setResetConfirm("");setResetMsg("");setResetStep("typing");}}
-                                    style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:11 }}>✕</button>
-                                </div>
-
-                                {/* Passo 1 — digitar nova senha */}
-                                {resetStep === "typing" && (
-                                  <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                    <div style={{ position:"relative", flex:1 }}>
-                                      <input
-                                        autoFocus
-                                        type={showNewReset ? "text" : "password"}
-                                        value={newPassInput}
-                                        onChange={e=>{ setNewPassInput(e.target.value); setResetMsg(""); }}
-                                        onKeyDown={e=>e.key==="Enter"&&handleReset()}
-                                        placeholder="Nova senha (mín. 6 caracteres)"
-                                        style={{ ...S.input, flex:1, padding:"7px 38px 7px 10px", fontSize:12.5, fontFamily:"monospace" }}
-                                      />
-                                      <button onClick={()=>setShowNewReset(p=>!p)}
-                                        style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:13 }}>
-                                        {showNewReset ? "🙈" : "👁"}
-                                      </button>
-                                    </div>
-                                    <button onClick={handleReset} style={{ ...S.btn("#F59E0B","#000"), padding:"7px 14px", fontSize:12.5, fontWeight:700, flexShrink:0 }}>
-                                      Continuar →
-                                    </button>
-                                  </div>
-                                )}
-
-                                {/* Passo 2 — confirmar senha */}
-                                {resetStep === "confirm" && (
-                                  <div>
-                                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                      <div style={{ position:"relative", flex:1 }}>
-                                        <input
-                                          autoFocus
-                                          type={showConfReset ? "text" : "password"}
-                                          value={resetConfirm}
-                                          onChange={e=>{ setResetConfirm(e.target.value); setResetMsg(""); }}
-                                          onKeyDown={e=>e.key==="Enter"&&handleFinalConfirm()}
-                                          placeholder="Repita a nova senha"
-                                          style={{ ...S.input, flex:1, padding:"7px 38px 7px 10px", fontSize:12.5, fontFamily:"monospace",
-                                            border: resetMsg ? "1px solid #EF4444" : `1px solid ${C.b2}` }}
-                                        />
-                                        <button onClick={()=>setShowConfReset(p=>!p)}
-                                          style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:13 }}>
-                                          {showConfReset ? "🙈" : "👁"}
-                                        </button>
-                                      </div>
-                                      <button onClick={handleFinalConfirm} disabled={resetting}
-                                        style={{ ...S.btn("#16A34A","#fff"), padding:"7px 14px", fontSize:12.5, fontWeight:700, flexShrink:0, opacity:resetting?0.6:1 }}>
-                                        {resetting ? "⏳..." : "✅ Confirmar"}
-                                      </button>
-                                      <button onClick={()=>{ setResetStep("typing"); setResetConfirm(""); setResetMsg(""); }}
-                                        style={{ ...S.btn("transparent",C.tm), border:`1px solid ${C.b2}`, padding:"7px 10px", fontSize:11, flexShrink:0 }}>← Voltar</button>
-                                    </div>
-                                    <div style={{ color:C.td, fontSize:10.5, marginTop:5 }}>Digite a senha novamente para confirmar a alteração.</div>
-                                  </div>
-                                )}
-
-                                {resetMsg && (
-                                  <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11.5, marginTop:6 }}>{resetMsg}</div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      };
-
-                      return (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                          <CopyField label="Nome completo" val={u.name} />
-                          <CopyField label="CPF" val={u.cpf} />
-                          <CopyField label="Email (login)" val={u.email} />
-                          <PasswordField uid={u.uid||u.id} />
-                          <CopyField label="CEP" val={u.cep} />
-                          <CopyField label="Rua / Nº" val={[u.rua, u.numero].filter(Boolean).join(", ")} />
-                          <CopyField label="Cidade / UF" val={[u.cidade, u.uf].filter(Boolean).join(" - ")} />
-                          <CopyField label="Complemento" val={u.complemento} />
-                          <CopyField label="Banco" val={u.banco} />
-                          <CopyField label="Agência" val={u.agencia} />
-                          <CopyField label="Conta" val={u.conta} />
-                          <CopyField label="Chave PIX" val={u.pixKey} />
-                          <CopyField label="Banco da PIX" val={u.pixBanco} />
-                          <CopyField label="Certificações" val={u.certificacoes} />
-                          <CopyField label="Vencimento cert." val={u.certVencimento} />
-                        </div>
-                      );
-                    })()}
-                    {u.docFile && (
-                      <div style={{ marginTop: 16, borderTop: `1px solid ${C.b1}`, paddingTop: 14 }}>
-                        <div style={{ color: C.td, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 8 }}>Documento ({u.docTipo || "—"})</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, borderRadius: 8, padding: "9px 13px", border: `1px solid ${C.b1}` }}>
-                          {u.docFile.type?.startsWith("image/")
-                            ? <img src={u.docFile.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.b1}` }} />
-                            : <span style={{ fontSize: 24 }}>📄</span>
-                          }
-                          <div style={{ flex: 1 }}>
-                            <div style={{ color: C.tp, fontSize: 12.5, fontWeight: 600 }}>{u.docFile.name}</div>
-                            <div style={{ color: C.td, fontSize: 11 }}>{u.docTipo}</div>
-                          </div>
-                          {u.docFile.type?.startsWith("image/") && (
-                            <a href={u.docFile.url} target="_blank" rel="noopener noreferrer"
-                              style={{ background: C.abg, color: C.atxt, border: `1px solid ${C.atxt}33`, borderRadius: 7, padding: "5px 12px", fontSize: 11, textDecoration: "none" }}>Ver documento</a>
-                          )}
+                          })}
                         </div>
                       </div>
                     )}
-                  </div>
-                )}
-                {/* ── Inline edit panel ── */}
-                {isExpanded && editForm && (
-                  <div
-                    style={{
-                      borderTop: `1px solid ${C.b1}`,
-                      padding: "20px 18px",
-                      background: C.deep,
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: C.atxt,
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        marginBottom: 18,
-                      }}
-                    >
-                      ✏ Editando — {editForm.name || editForm.email}
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={saveEdit} style={{ ...S.btn(C.acc,"#fff"), padding:"8px 18px", fontSize:12.5 }}>💾 Salvar</button>
+                      <button onClick={()=>{ setExpandId(null); setEditForm(null); }} style={{ ...S.btn(C.deep,C.tm), border:`1px solid ${C.b2}`, padding:"8px 14px", fontSize:12.5 }}>Cancelar</button>
                     </div>
-
-                    {/* Photo */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 14,
-                        marginBottom: 18,
-                      }}
-                    >
-                      <div style={{ position: "relative", flexShrink: 0 }}>
-                        {editForm.photo ? (
-                          <img
-                            src={editForm.photo}
-                            alt=""
-                            style={{
-                              width: 56,
-                              height: 56,
-                              borderRadius: "50%",
-                              objectFit: "cover",
-                              border: `2px solid ${col}44`,
-                            }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: 56,
-                              height: 56,
-                              borderRadius: "50%",
-                              background: col + "18",
-                              color: col,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: 18,
-                              fontWeight: 700,
-                              border: `2px solid ${col}33`,
-                            }}
-                          >
-                            {ini(editForm.name || "U")}
-                          </div>
-                        )}
-                        <button
-                          onClick={() =>
-                            pEditRef.current && pEditRef.current.click()
-                          }
-                          style={{
-                            position: "absolute",
-                            bottom: 0,
-                            right: 0,
-                            width: 20,
-                            height: 20,
-                            borderRadius: "50%",
-                            background: C.acc,
-                            color: "#fff",
-                            border: `2px solid ${C.deep}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <input
-                        ref={pEditRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleEditPhoto}
-                        style={{ display: "none" }}
-                      />
-                      <div style={{ color: C.tm, fontSize: 11.5 }}>
-                        Clique no + para alterar a foto de perfil
-                      </div>
-                    </div>
-
-                    {/* Fields */}
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 12,
-                        marginBottom: 14,
-                      }}
-                    >
-                      {[
-                        ["Nome completo", "name", "text"],
-                        ["CPF", "cpf", "text"],
-                        ["Email (usuário)", "email", "email"],
-                      ].map(([l, k, t]) => (
-                        <div
-                          key={k}
-                          style={k === "email" ? { gridColumn: "1/-1" } : {}}
-                        >
-                          <label
-                            style={{
-                              color: C.tm,
-                              fontSize: 11,
-                              display: "block",
-                              marginBottom: 4,
-                            }}
-                          >
-                            {l}
-                          </label>
-                          <input
-                            value={editForm[k] || ""}
-                            onChange={(e) => setEF(k, e.target.value)}
-                            type={t}
-                            style={{
-                              ...S.input,
-                              background: C.card,
-                              padding: "8px 11px",
-                              fontSize: 12.5,
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Role selector — mestre can change anyone except themselves */}
-                    {currentUser.role === "mestre" &&
-                      !isSelf &&
-                      editForm.role !== "mestre" && (
-                        <div style={{ marginBottom: 14 }}>
-                          <label
-                            style={{
-                              color: C.tm,
-                              fontSize: 11,
-                              display: "block",
-                              marginBottom: 7,
-                            }}
-                          >
-                            Nível de acesso
-                          </label>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            {["master", "indicado", "digitador"].map((r) => {
-                              const sel = editForm.role === r;
-                              const rcol = roleColor[r];
-                              return (
-                                <button
-                                  key={r}
-                                  onClick={() => setEF("role", r)}
-                                  style={{
-                                    background: sel ? rcol + "18" : C.card,
-                                    color: sel ? rcol : C.tm,
-                                    border: sel
-                                      ? `1px solid ${rcol}55`
-                                      : `1px solid ${C.b2}`,
-                                    borderRadius: 20,
-                                    padding: "6px 15px",
-                                    fontSize: 12,
-                                    cursor: "pointer",
-                                    fontWeight: sel ? 600 : 400,
-                                  }}
-                                >
-                                  {sel ? "✓ " : ""}
-                                  {roleLabel[r]}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Save row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        marginBottom: 16,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <button
-                        onClick={saveEdit}
-                        style={{
-                          ...S.btn(C.acc, "#fff"),
-                          padding: "9px 22px",
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        Salvar alterações
-                      </button>
-                      <button
-                        onClick={() => {
-                          setExpandId(null);
-                          setEditForm(null);
-                          setResetPw("");
-                          setErr("");
-                        }}
-                        style={{
-                          ...S.btn("transparent", C.tm),
-                          border: `1px solid ${C.b2}`,
-                          padding: "9px 16px",
-                          fontSize: 13,
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-
-                    {/* Senha atual + redefinir */}
-                    {(currentUser.role === "mestre" ||
-                      (currentUser.role === "master" &&
-                        u.role === "indicado" &&
-                        u.createdBy === currentUser.id)) &&
-                      !isSelf && (
-                        <EditPasswordPanel
-                          savedPw={editForm.password || u.password || null}
-                          userEmail={editForm.email || u.email || null}
-                          userId={editForm.uid || editForm.id || u.uid || u.id || null}
-                        />
-                      )}
                   </div>
                 )}
               </div>
@@ -6743,6 +5973,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     </div>
   );
 }
+
 
 // ── Chat Page ──────────────────────────────────────────────────
 
