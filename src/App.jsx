@@ -1073,422 +1073,198 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 32px", position:"fixed", inset:0, overflow:"hidden", gap:32 }}>
+    <div style={{ width:"100vw", height:"100vh", background:"linear-gradient(180deg,#060c14 0%,#0d1520 40%,#111a28 100%)", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
 
       <style>{`
-        @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
-        @keyframes moonMove { 0%{right:10%} 100%{right:80%} }
-        @keyframes cloudFloat { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
-        @keyframes cloudFloat2 { 0%{transform:translateX(0)} 100%{transform:translateX(-40px)} }
-        @keyframes rainDrop { 0%{top:-5%;opacity:0.7} 100%{top:110%;opacity:0.2} }
-        @keyframes starTwinkle { 0%,100%{opacity:0.3} 50%{opacity:1} }
         @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+        @keyframes catFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+        @keyframes catTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(18deg)} }
+        @keyframes lightning1 { 0%,92%,100%{opacity:0} 93%,95%{opacity:1} 94%,96%{opacity:0} 97%{opacity:0.7} 98%{opacity:0} }
+        @keyframes lightning2 { 0%,70%,100%{opacity:0} 71%,73%{opacity:0.9} 72%,74%{opacity:0} 78%{opacity:0.5} 79%{opacity:0} }
+        @keyframes skyFlash  { 0%,91%,100%{opacity:0} 92%,94%{opacity:0.08} 93%,95%{opacity:0} 97%{opacity:0.05} 98%{opacity:0} }
+        @keyframes rainFall  { 0%{transform:translateY(-20px)} 100%{transform:translateY(920px)} }
+        @keyframes thunderSound { 0%,100%{opacity:0.5} 50%{opacity:1} }
       `}</style>
 
-      {/* previsão movida para o lado direito */}
-
-      {/* ══ CENA COMPLETA ══ */}
-      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
-        viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {/* ══ FUNDO SVG — CHUVA + RELÂMPAGOS ══ */}
+      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }} viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FFF9C4" stopOpacity="1"/>
-            <stop offset="50%" stopColor="#FDE68A" stopOpacity="0.7"/>
-            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/>
-          </radialGradient>
-          <radialGradient id="moonGlow2" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#FEF9C3"/>
-            <stop offset="60%" stopColor="#FDE68A"/>
-            <stop offset="100%" stopColor="#E9A827" stopOpacity="0"/>
-          </radialGradient>
-          <filter id="glow4"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <filter id="glow2"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <linearGradient id="grassGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22c55e"/>
-            <stop offset="100%" stopColor="#14532d"/>
+          <filter id="lglow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="rainGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#060c14"/>
+            <stop offset="100%" stopColor="#0a1220"/>
           </linearGradient>
-          <linearGradient id="roadGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4b5563"/>
-            <stop offset="100%" stopColor="#1f2937"/>
-          </linearGradient>
-          <linearGradient id="sidewalkGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#9ca3af"/>
-            <stop offset="100%" stopColor="#6b7280"/>
+          <linearGradient id="roadGrad2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1f2937"/>
+            <stop offset="100%" stopColor="#111827"/>
           </linearGradient>
         </defs>
 
-        {/* ── ESTRELAS (noite) — posições aleatórias espalhadas ── */}
-        {isNight && [
-          [120,45],[380,22],[670,68],[920,15],[1180,52],[1380,38],
-          [55,110],[290,88],[510,130],[740,75],[990,105],[1240,90],[1420,125],
-          [180,180],[430,155],[700,195],[950,165],[1100,185],[1330,170],
-          [80,240],[320,220],[580,255],[830,230],[1070,248],[1280,235],
-          [210,310],[470,290],[720,325],[970,305],[1150,315],[1350,295],
-          [40,370],[260,350],[500,385],[760,362],[1010,378],[1200,390],
-          [150,30],[600,50],[1050,28],[1300,55],[450,200],[850,140],
-          [160,420],[550,440],[900,410],[1250,435],[350,460],[750,475],
-        ].map(([cx,cy],i)=>(
-          <circle key={i} cx={cx} cy={cy} r={i%7===0?2.4:i%4===0?1.6:i%2===0?1.1:0.7}
-            fill={i%5===0?"#FEF9C3":i%3===0?"#BAE6FD":"#fff"} opacity={0.4+(i%4)*0.15}>
-            <animate attributeName="opacity"
-              values={`${0.2+(i%3)*0.18};${0.85+(i%2)*0.12};${0.2+(i%3)*0.18}`}
-              dur={`${1.4+(i%6)*0.5}s`} begin={`${i*0.11}s`} repeatCount="indefinite"/>
-          </circle>
-        ))}
+        {/* Céu escuro tempestuoso */}
+        <rect width="1440" height="900" fill="url(#rainGrad)"/>
 
-        {/* ── LUA crescente realista — centralizada no céu, sempre visível ── */}
-        {isNight && (
-          <g>
-            {/* Halo externo brilhante */}
-            <circle cx="1100" cy="130" r="110" fill="#FEF9C3" opacity="0.06">
-              <animate attributeName="opacity" values="0.04;0.10;0.04" dur="4s" repeatCount="indefinite"/>
-            </circle>
-            <circle cx="1100" cy="130" r="85" fill="#FDE68A" opacity="0.10">
-              <animate attributeName="opacity" values="0.07;0.16;0.07" dur="3s" repeatCount="indefinite"/>
-            </circle>
-            {/* Corpo da lua — grande e visível */}
-            <circle cx="1100" cy="130" r="58" fill="#F5E070"/>
-            <circle cx="1100" cy="130" r="58" fill="#D4B840" opacity="0.25"/>
-            {/* Sombra crescente — dá forma de lua crescente */}
-            <circle cx="1128" cy="122" r="52" fill="#040C1E" opacity="0.95"/>
-            {/* Borda luminosa */}
-            <circle cx="1100" cy="130" r="58" fill="none" stroke="#FDE68A" strokeWidth="2" opacity="0.5"/>
-            {/* Crateras */}
-            <circle cx="1082" cy="118" r="8" fill="#B8960A" opacity="0.5"/>
-            <circle cx="1082" cy="118" r="5" fill="#96780A" opacity="0.3"/>
-            <circle cx="1095" cy="148" r="5" fill="#B8960A" opacity="0.45"/>
-            <circle cx="1075" cy="140" r="3.5" fill="#A07808" opacity="0.4"/>
-            {/* Brilho especular topo */}
-            <circle cx="1092" cy="110" r="11" fill="#FFFDE7" opacity="0.25"/>
-          </g>
-        )}
+        {/* Flash do céu durante relâmpago */}
+        <rect width="1440" height="900" fill="#6EA8FF" style={{ animation:"skyFlash 7s ease-in-out infinite" }}/>
+        <rect width="1440" height="900" fill="#A0C4FF" style={{ animation:"skyFlash 11s ease-in-out infinite 3s" }}/>
 
-        {/* ── SOL fixo e visível no céu ── */}
-        {!isNight && !isRain && (
-          <g filter="url(#glow4)">
-            {/* Halo externo grande */}
-            <circle cx="780" cy="110" r="130" fill="url(#sunGlow)" opacity="0.35">
-              <animate attributeName="opacity" values="0.25;0.45;0.25" dur="5s" repeatCount="indefinite"/>
-            </circle>
-            <circle cx="780" cy="110" r="100" fill="url(#sunGlow)" opacity="0.5">
-              <animate attributeName="opacity" values="0.4;0.65;0.4" dur="4s" repeatCount="indefinite"/>
-            </circle>
-            {/* Raios girando */}
-            {Array.from({length:16}).map((_,ri)=>{
-              const a = ri*22.5;
-              return (
-                <line key={ri}
-                  x1={780+Math.cos(a*Math.PI/180)*68} y1={110+Math.sin(a*Math.PI/180)*68}
-                  x2={780+Math.cos(a*Math.PI/180)*95} y2={110+Math.sin(a*Math.PI/180)*95}
-                  stroke="#FDE68A" strokeWidth="3" strokeLinecap="round" opacity="0.6">
-                  <animateTransform attributeName="transform" type="rotate"
-                    from="0 780 110" to="360 780 110" dur="60s" repeatCount="indefinite"/>
-                </line>
-              );
-            })}
-            {/* Núcleo do sol */}
-            <circle cx="780" cy="110" r="56" fill="#FDE68A">
-              <animate attributeName="r" values="54;58;54" dur="4s" repeatCount="indefinite"/>
-            </circle>
-            <circle cx="780" cy="110" r="44" fill="#FFFDE7"/>
-            {/* Brilho especular */}
-            <circle cx="762" cy="92" r="14" fill="#FFFFFF" opacity="0.35"/>
-          </g>
-        )}
-
-        {/* ── NUVENS ── */}
-        {!isNight && (
-          <>
-            <g opacity={isCloudy||isRain?0.92:0.6}>
-              <ellipse cx="320" cy="170" rx="100" ry="46" fill="white" opacity="0.9">
-                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="22s" repeatCount="indefinite"/>
-              </ellipse>
-              <ellipse cx="255" cy="185" rx="68" ry="36" fill="white" opacity="0.85">
-                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="22s" repeatCount="indefinite"/>
-              </ellipse>
-              <ellipse cx="385" cy="188" rx="58" ry="32" fill="white" opacity="0.78">
-                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="22s" repeatCount="indefinite"/>
-              </ellipse>
-            </g>
-            <g opacity={isCloudy||isRain?0.85:0.48}>
-              <ellipse cx="900" cy="130" rx="88" ry="40" fill="white" opacity="0.85">
-                <animateTransform attributeName="transform" type="translate" values="0 0;-28 0;0 0" dur="30s" repeatCount="indefinite"/>
-              </ellipse>
-              <ellipse cx="848" cy="144" rx="58" ry="30" fill="white" opacity="0.78">
-                <animateTransform attributeName="transform" type="translate" values="0 0;-28 0;0 0" dur="30s" repeatCount="indefinite"/>
-              </ellipse>
-              <ellipse cx="958" cy="147" rx="52" ry="28" fill="white" opacity="0.72">
-                <animateTransform attributeName="transform" type="translate" values="0 0;-28 0;0 0" dur="30s" repeatCount="indefinite"/>
-              </ellipse>
-            </g>
-            {(isCloudy||isRain) && (
-              <>
-                <g opacity="0.82">
-                  <ellipse cx="620" cy="100" rx="120" ry="54" fill={isRain?"#94a3b8":"white"} opacity="0.7">
-                    <animateTransform attributeName="transform" type="translate" values="0 0;22 0;0 0" dur="36s" repeatCount="indefinite"/>
-                  </ellipse>
-                  <ellipse cx="548" cy="118" rx="80" ry="42" fill={isRain?"#94a3b8":"white"} opacity="0.68">
-                    <animateTransform attributeName="transform" type="translate" values="0 0;22 0;0 0" dur="36s" repeatCount="indefinite"/>
-                  </ellipse>
-                  <ellipse cx="698" cy="115" rx="75" ry="38" fill={isRain?"#94a3b8":"white"} opacity="0.65">
-                    <animateTransform attributeName="transform" type="translate" values="0 0;22 0;0 0" dur="36s" repeatCount="indefinite"/>
-                  </ellipse>
-                </g>
-                <g opacity="0.75">
-                  <ellipse cx="1200" cy="158" rx="96" ry="44" fill={isRain?"#6b7280":"white"} opacity="0.68">
-                    <animateTransform attributeName="transform" type="translate" values="0 0;-16 0;0 0" dur="26s" repeatCount="indefinite"/>
-                  </ellipse>
-                  <ellipse cx="1148" cy="172" rx="66" ry="34" fill={isRain?"#6b7280":"white"} opacity="0.62">
-                    <animateTransform attributeName="transform" type="translate" values="0 0;-16 0;0 0" dur="26s" repeatCount="indefinite"/>
-                  </ellipse>
-                </g>
-              </>
-            )}
-          </>
-        )}
-        {/* Nuvens noturnas escuras */}
-        {isNight && (
-          <g opacity="0.35">
-            <ellipse cx="500" cy="150" rx="90" ry="38" fill="#1e293b">
-              <animateTransform attributeName="transform" type="translate" values="0 0;20 0;0 0" dur="40s" repeatCount="indefinite"/>
-            </ellipse>
-            <ellipse cx="1100" cy="120" rx="110" ry="44" fill="#1e293b">
-              <animateTransform attributeName="transform" type="translate" values="0 0;-18 0;0 0" dur="50s" repeatCount="indefinite"/>
-            </ellipse>
-          </g>
-        )}
-
-        {/* ── CHUVA ── */}
-        {isRain && Array.from({length:70}).map((_,i)=>(
-          <line key={i} x1={(i*21)%1440} y1="-10" x2={(i*21+6)%1440} y2="28"
-            stroke="rgba(147,197,253,0.45)" strokeWidth="1.4" strokeLinecap="round">
-            <animateTransform attributeName="transform" type="translate"
-              values={`0 0;0 ${930}`}
-              dur={`${0.55+(i%5)*0.11}s`} begin={`${(i*0.04)%1.1}s`} repeatCount="indefinite"/>
-          </line>
-        ))}
-
-        {/* ── PRÉDIOS FUNDO — menores, bem atrás ── */}
+        {/* Nuvens escuras de tempestade */}
         {[
-          {x:30,  w:44,h:130},{x:84, w:34,h:105},{x:128,w:40,h:150},
-          {x:178,w:30,h:115},{x:218,w:52,h:170},{x:280,w:36,h:130},
-          {x:326,w:48,h:160},{x:384,w:30,h:120},{x:424,w:58,h:195},
-          {x:492,w:34,h:135},{x:536,w:44,h:165},{x:590,w:42,h:190},
-          {x:642,w:34,h:145},{x:686,w:52,h:175},{x:748,w:40,h:155},
-          {x:798,w:32,h:120},{x:840,w:50,h:170},{x:900,w:36,h:140},
-          {x:946,w:46,h:168},{x:1002,w:32,h:125},{x:1044,w:48,h:158},
-          {x:1102,w:30,h:118},{x:1142,w:58,h:200},{x:1210,w:34,h:138},
-          {x:1254,w:44,h:162},{x:1308,w:36,h:128},{x:1354,w:52,h:172},
-          {x:1416,w:34,h:135},
+          {cx:180,cy:80,rx:160,ry:60},{cx:350,cy:60,rx:120,ry:50},{cx:500,cy:90,rx:180,ry:65},
+          {cx:750,cy:55,rx:200,ry:70},{cx:980,cy:75,rx:170,ry:60},{cx:1150,cy:50,rx:150,ry:58},
+          {cx:1320,cy:85,rx:130,ry:52},{cx:100,cy:130,rx:100,ry:40},{cx:650,cy:120,rx:140,ry:48},
+          {cx:1050,cy:130,rx:120,ry:45},{cx:1380,cy:110,rx:90,ry:38},
+        ].map((cl,i)=>(
+          <ellipse key={i} cx={cl.cx} cy={cl.cy} rx={cl.rx} ry={cl.ry}
+            fill={i%3===0?"#1c2535":i%3===1?"#1a2030":"#151e2d"} opacity={0.85+(i%3)*0.05}/>
+        ))}
+
+        {/* Relâmpago 1 — esquerda */}
+        <g filter="url(#lglow)" style={{ animation:"lightning1 7s ease-in-out infinite" }}>
+          <polyline points="320,100 295,220 315,220 282,380 305,380 268,520" fill="none" stroke="#E8F4FF" strokeWidth="3" strokeLinejoin="round"/>
+          <polyline points="320,100 295,220 315,220 282,380 305,380 268,520" fill="none" stroke="#FFFFFF" strokeWidth="1.2" strokeLinejoin="round" opacity="0.9"/>
+        </g>
+
+        {/* Relâmpago 2 — direita */}
+        <g filter="url(#lglow)" style={{ animation:"lightning2 11s ease-in-out infinite 2s" }}>
+          <polyline points="1100,80 1075,200 1095,200 1055,350 1080,350 1040,490" fill="none" stroke="#CCE8FF" strokeWidth="2.5" strokeLinejoin="round"/>
+          <polyline points="1100,80 1075,200 1095,200 1055,350 1080,350 1040,490" fill="none" stroke="#FFFFFF" strokeWidth="1" strokeLinejoin="round" opacity="0.85"/>
+        </g>
+
+        {/* Prédios escuros ao fundo */}
+        {[
+          {x:0,w:55,h:160},{x:65,w:40,h:120},{x:115,w:60,h:200},{x:185,w:35,h:140},
+          {x:230,w:55,h:175},{x:295,w:42,h:130},{x:348,w:65,h:220},{x:424,w:38,h:155},
+          {x:475,w:58,h:185},{x:544,w:44,h:145},{x:600,w:70,h:240},{x:682,w:36,h:160},
+          {x:730,w:55,h:195},{x:797,w:42,h:150},{x:851,w:62,h:210},{x:925,w:38,h:165},
+          {x:975,w:55,h:180},{x:1042,w:40,h:140},{x:1094,w:68,h:230},{x:1174,w:36,h:155},
+          {x:1222,w:52,h:185},{x:1286,w:44,h:145},{x:1342,w:60,h:200},{x:1414,w:38,h:160},
         ].map((b,i)=>(
-          <rect key={i} x={b.x} y={680-b.h} width={b.w} height={b.h} rx="2"
-            fill={isNight?"#0d1526":"#1e293b"} opacity="0.65"/>
-        ))}
-
-        {/* ── PRÉDIOS FRENTE — menores, com janelas e antenas ── */}
-        {[
-          {x:0,   w:60, h:185, fill:"#0f172a", wins:[[8,18],[8,50],[8,82],[34,18],[34,50],[34,82]]},
-          {x:120, w:78, h:240, fill:"#0f172a", wins:[[10,18],[10,55],[10,92],[10,129],[44,18],[44,55],[44,92],[44,129]]},
-          {x:310, w:68, h:200, fill:"#1a2535", wins:[[10,18],[10,55],[10,92],[38,18],[38,55],[38,92]]},
-          {x:480, w:82, h:278, fill:"#0f172a", wins:[[11,18],[11,60],[11,102],[11,144],[46,18],[46,60],[46,102],[46,144]]},
-          {x:660, w:72, h:220, fill:"#1a2535", wins:[[10,18],[10,56],[10,94],[40,18],[40,56],[40,94]]},
-          {x:840, w:78, h:258, fill:"#0f172a", wins:[[10,18],[10,58],[10,98],[10,138],[44,18],[44,58],[44,98],[44,138]]},
-          {x:1020,w:68, h:210, fill:"#1a2535", wins:[[10,18],[10,56],[10,94],[38,18],[38,56],[38,94]]},
-          {x:1190,w:80, h:260, fill:"#0f172a", wins:[[10,18],[10,58],[10,98],[10,138],[45,18],[45,58],[45,98],[45,138]]},
-          {x:1370,w:70, h:195, fill:"#1a2535", wins:[[10,18],[10,56],[10,94],[38,18],[38,56],[38,94]]},
-        ].map((b,bi)=>(
-          <g key={bi}>
-            <rect x={b.x} y={680-b.h} width={b.w} height={b.h} fill={b.fill}/>
-            <line x1={b.x+b.w/2} y1={680-b.h} x2={b.x+b.w/2} y2={680-b.h-16}
-              stroke="#475569" strokeWidth="2"/>
-            <circle cx={b.x+b.w/2} cy={680-b.h-18} r="2.5" fill="#EF4444" opacity="0.9">
-              <animate attributeName="opacity" values="0.9;0.15;0.9" dur="1.8s" repeatCount="indefinite"/>
-            </circle>
-            {b.wins.map(([wx,wy],wi)=>(
-              <rect key={wi} x={b.x+wx} y={680-b.h+wy} width={14} height={10} rx={1}
-                fill={isNight?(wi%3===0?"#FDE68A":wi%5===0?"#93C5FD":"#1e3a5f"):"#7dd3fc"}
-                opacity={isNight?0.92:(wi%4===0?0.6:0.25)}/>
-            ))}
+          <g key={i}>
+            <rect x={b.x} y={700-b.h} width={b.w} height={b.h} fill={i%2===0?"#0c1420":"#0e1828"}/>
+            {/* Janelas apagadas/acesas */}
+            {Array.from({length:Math.floor(b.h/28)}).map((_,row)=>
+              Array.from({length:Math.floor(b.w/18)}).map((_,col)=>{
+                const on = (i*7+row*3+col*5)%11 < 3;
+                return <rect key={`${row}-${col}`} x={b.x+4+col*18} y={700-b.h+8+row*28} width={10} height={7} rx={1}
+                  fill={on?"#FDE68A":"#0a1320"} opacity={on?0.7:0.5}/>;
+              })
+            )}
           </g>
         ))}
 
-        {/* ── POSTES DE LUZ (noite) ── */}
-        {isNight && [100,300,500,700,900,1100,1300].map((x,i)=>(
-          <g key={i} transform={`translate(${x},680)`}>
-            <rect x="-3" y="-70" width="6" height="70" rx="2" fill="#475569"/>
-            <rect x="-16" y="-73" width="32" height="6" rx="3" fill="#64748b"/>
-            {/* Lâmpada */}
-            <ellipse cx="0" cy="-76" rx="7" ry="5" fill="#FDE68A" opacity="0.9" filter="url(#glow2)"/>
-            {/* Cone de luz */}
-            <path d={`M -7,-73 L -28,-10 L 28,-10 L 7,-73 Z`} fill="#FDE68A" opacity="0.08"/>
-          </g>
-        ))}
-
-        {/* ── CALÇADA + ESTRADA + MAIS CALÇADA ── */}
-        {/* Calçada superior */}
-        <rect x="0" y="678" width="1440" height="14" fill="url(#sidewalkGrad)" opacity="0.85"/>
         {/* Estrada */}
-        <rect x="0" y="692" width="1440" height="38" fill="url(#roadGrad)"/>
-        {/* Linha central da estrada */}
-        <rect x="0" y="709" width="1440" height="3" fill="#374151" opacity="0.7"/>
-        {/* Faixas amarelas animadas */}
-        {Array.from({length:12}).map((_,i)=>(
-          <rect key={i} x={i*130} y="710" width="60" height="3" rx="1" fill="#FCD34D" opacity="0.75">
-            <animateTransform attributeName="transform" type="translate"
-              values="0 0;-130 0" dur="3.5s" begin={`${i*0.29}s`} repeatCount="indefinite"/>
+        <rect x="0" y="700" width="1440" height="40" fill="url(#roadGrad2)"/>
+        <rect x="0" y="718" width="1440" height="2" fill="#1f2937" opacity="0.8"/>
+        {Array.from({length:14}).map((_,i)=>(
+          <rect key={i} x={i*110} y="718" width="55" height="2" rx="1" fill="#374151" opacity="0.5">
+            <animateTransform attributeName="transform" type="translate" values="0 0;-110 0" dur="4s" begin={`${i*0.28}s`} repeatCount="indefinite"/>
           </rect>
         ))}
-        {/* Calçada inferior */}
-        <rect x="0" y="730" width="1440" height="14" fill="url(#sidewalkGrad)" opacity="0.75"/>
 
-        {/* ── GRAMA (abaixo da calçada) ── */}
-        <rect x="0" y="742" width="1440" height="158" fill="url(#grassGrad)"/>
-        {/* Tufos de grama */}
-        {Array.from({length:36}).map((_,i)=>(
-          <g key={i} transform={`translate(${i*40+4},742)`} opacity="0.55">
-            <line x1="0" y1="0" x2="-5" y2="-10" stroke="#22c55e" strokeWidth="1.5"/>
-            <line x1="0" y1="0" x2="0" y2="-13" stroke="#16a34a" strokeWidth="1.5"/>
-            <line x1="0" y1="0" x2="5" y2="-10" stroke="#22c55e" strokeWidth="1.5"/>
-          </g>
+        {/* Reflexo úmido na estrada */}
+        <rect x="0" y="700" width="1440" height="40" fill="#3B6EF5" opacity="0.06"/>
+
+        {/* Grama molhada */}
+        <rect x="0" y="740" width="1440" height="160" fill="#061208"/>
+
+        {/* Poças de água brilhando */}
+        {[200,480,750,1020,1280].map((x,i)=>(
+          <ellipse key={i} cx={x} cy={755} rx={60+i*8} ry={6} fill="#3B6EF5" opacity="0.18"/>
         ))}
 
-        {/* ── ÁRVORES DA CALÇADA ── */}
-        {[60,220,420,640,860,1060,1260,1420].map((x,i)=>(
-          <g key={i} transform={`translate(${x},676)`}>
-            <rect x="-4" y="-30" width="8" height="30" rx="2" fill="#7c4f2a"/>
-            <ellipse cx="0" cy="-36" rx="20" ry="28" fill="#166534" opacity="0.9"/>
-            <ellipse cx="-8" cy="-28" rx="15" ry="20" fill="#16a34a" opacity="0.7"/>
-            <ellipse cx="8" cy="-32" rx="14" ry="18" fill="#22c55e" opacity="0.6"/>
-          </g>
-        ))}
-
-        {/* ── BANCOS DE PRAÇA (noite) ── */}
-        {isNight && [170,570,970,1350].map((x,i)=>(
-          <g key={i} transform={`translate(${x},740)`}>
-            {/* Banco */}
-            <rect x="-18" y="-10" width="36" height="4" rx="2" fill="#78350f"/>
-            <rect x="-16" y="-6"  width="32" height="3" rx="1" fill="#92400e"/>
-            <rect x="-14" y="-16" width="28" height="6" rx="2" fill="#78350f"/>
-            <rect x="-15" y="-6"  width="4"  height="8" rx="1" fill="#57250a"/>
-            <rect x="11"  y="-6"  width="4"  height="8" rx="1" fill="#57250a"/>
-            {/* Pessoa sentada — simples stickman */}
-            <circle cx={i%2===0?-4:4} cy="-24" r="5" fill={isNight?"#cbd5e1":"#94a3b8"}/>
-            <line x1={i%2===0?-4:4} y1="-19" x2={i%2===0?-4:4} y2="-10" stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2.5"/>
-            <line x1={i%2===0?-4:4} y1="-16" x2={i%2===0?-12:12} y2="-13" stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2"/>
-            <line x1={i%2===0?-4:4} y1="-10" x2={i%2===0?-2:2}  y2="-4"  stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2"/>
-            <line x1={i%2===0?-4:4} y1="-10" x2={i%2===0?-8:8}  y2="-4"  stroke={isNight?"#cbd5e1":"#94a3b8"} strokeWidth="2"/>
-          </g>
-        ))}
-
-        {/* ── CARROS (dia) ── */}
-        {!isNight && (
-          <>
-            {/* Carro 1 — vai para direita */}
-            <g>
-              <rect rx="5" width="68" height="26" fill="#2563eb" y="-13">
-                <animateMotion dur="8s" repeatCount="indefinite"
-                  path="M -80,700 L 1520,700"/>
-              </rect>
-              <rect rx="3" width="42" height="16" fill="#93c5fd" y="-25" x="10">
-                <animateMotion dur="8s" repeatCount="indefinite"
-                  path="M -80,700 L 1520,700"/>
-              </rect>
-              <circle r="6" fill="#1e293b" cx="12">
-                <animateMotion dur="8s" repeatCount="indefinite"
-                  path="M -80,713 L 1520,713"/>
-              </circle>
-              <circle r="6" fill="#1e293b" cx="56">
-                <animateMotion dur="8s" repeatCount="indefinite"
-                  path="M -80,713 L 1520,713"/>
-              </circle>
-            </g>
-            {/* Carro 2 — vai para esquerda mais devagar */}
-            <g>
-              <rect rx="5" width="72" height="28" fill="#dc2626" y="-14">
-                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
-                  path="M 1520,705 L -80,705"/>
-              </rect>
-              <rect rx="3" width="44" height="17" fill="#fca5a5" y="-27" x="12">
-                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
-                  path="M 1520,705 L -80,705"/>
-              </rect>
-              <circle r="6" fill="#1e293b" cx="14">
-                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
-                  path="M 1520,719 L -80,719"/>
-              </circle>
-              <circle r="6" fill="#1e293b" cx="58">
-                <animateMotion dur="11s" begin="3s" repeatCount="indefinite"
-                  path="M 1520,719 L -80,719"/>
-              </circle>
-            </g>
-            {/* Carro 3 — amarelo, rápido */}
-            <g>
-              <rect rx="5" width="60" height="24" fill="#d97706" y="-12">
-                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
-                  path="M -80,698 L 1520,698"/>
-              </rect>
-              <rect rx="3" width="36" height="14" fill="#fcd34d" y="-22" x="10">
-                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
-                  path="M -80,698 L 1520,698"/>
-              </rect>
-              <circle r="6" fill="#1e293b" cx="10">
-                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
-                  path="M -80,710 L 1520,710"/>
-              </circle>
-              <circle r="6" fill="#1e293b" cx="50">
-                <animateMotion dur="6s" begin="1.5s" repeatCount="indefinite"
-                  path="M -80,710 L 1520,710"/>
-              </circle>
-            </g>
-          </>
-        )}
-
-        {/* ── PESSOAS CAMINHANDO (dia) ── */}
-        {!isNight && [
-          {x:-20, dur:"12s", begin:"0s",  dir:1,  skin:"#fbbf24", shirt:"#3b82f6"},
-          {x:-20, dur:"18s", begin:"4s",  dir:1,  skin:"#d97706", shirt:"#ef4444"},
-          {x:1480,dur:"14s", begin:"2s",  dir:-1, skin:"#fbbf24", shirt:"#8b5cf6"},
-          {x:1480,dur:"20s", begin:"7s",  dir:-1, skin:"#92400e", shirt:"#10b981"},
-        ].map((p,i)=>(
-          <g key={i}>
-            {/* Cabeça */}
-            <circle r="5" fill={p.skin}>
-              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
-                path={p.dir===1?`M ${p.x},736 L 1500,736`:`M ${p.x},736 L -100,736`}/>
-            </circle>
-            {/* Corpo */}
-            <rect rx="2" width="8" height="14" fill={p.shirt} x="-4" y="-2">
-              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
-                path={p.dir===1?`M ${p.x},741 L 1500,741`:`M ${p.x},741 L -100,741`}/>
-            </rect>
-            {/* Pernas */}
-            <line x1="0" y1="0" x2={p.dir*-4} y2="10" stroke="#1e293b" strokeWidth="2">
-              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
-                path={p.dir===1?`M ${p.x},755 L 1500,755`:`M ${p.x},755 L -100,755`}/>
-              <animate attributeName="x2" values={`${p.dir*-4};${p.dir*4};${p.dir*-4}`} dur="0.5s" repeatCount="indefinite"/>
+        {/* CHUVA — gotas animadas */}
+        {Array.from({length:120}).map((_,i)=>{
+          const x = (i*12+7)%1440;
+          const dur = 0.45+(i%7)*0.06;
+          const delay = (i*0.038)%1.2;
+          return (
+            <line key={i} x1={x} y1={-10} x2={x+4} y2={26}
+              stroke={i%5===0?"rgba(147,197,253,0.55)":"rgba(147,197,253,0.38)"} strokeWidth={i%4===0?1.6:1.1} strokeLinecap="round">
+              <animateTransform attributeName="transform" type="translate"
+                values={`0 0;3 930`} dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite"/>
             </line>
-            <line x1="0" y1="0" x2={p.dir*4} y2="10" stroke="#1e293b" strokeWidth="2">
-              <animateMotion dur={p.dur} begin={p.begin} repeatCount="indefinite"
-                path={p.dir===1?`M ${p.x},755 L 1500,755`:`M ${p.x},755 L -100,755`}/>
-              <animate attributeName="x2" values={`${p.dir*4};${p.dir*-4};${p.dir*4}`} dur="0.5s" repeatCount="indefinite"/>
-            </line>
-          </g>
+          );
+        })}
+
+        {/* Respingos no chão */}
+        {Array.from({length:30}).map((_,i)=>(
+          <circle key={i} cx={(i*48+20)%1440} cy={742} r={2+(i%3)} fill="none" stroke="rgba(147,197,253,0.3)" strokeWidth="0.8">
+            <animate attributeName="r" values={`${1+(i%3)};${4+(i%3)};0`} dur={`${0.6+(i%4)*0.1}s`} begin={`${(i*0.07)%0.9}s`} repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.4;0;0" dur={`${0.6+(i%4)*0.1}s`} begin={`${(i*0.07)%0.9}s`} repeatCount="indefinite"/>
+          </circle>
         ))}
       </svg>
 
-      {/* ── Lado esquerdo: formulário com transparência ── */}
-      <div style={{ flex:"0 0 auto", width:"min(320px,88vw)", position:"relative", zIndex:1, animation:"fadeIn 0.6s ease", display:"flex", flexDirection:"column", gap:8 }}>
-        {/* Card com transparência */}
-        <div style={{ background:"rgba(15,19,32,0.72)", backdropFilter:"blur(18px)", WebkitBackdropFilter:"blur(18px)", borderRadius:14, border:"1px solid rgba(79,142,247,0.2)", padding:"16px 18px", boxShadow:"0 8px 40px rgba(0,0,0,0.5)" }}>
-          {/* Logo + robô */}
-          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:26 }}>
-            <NexpRobot size={46} showFaceOnly />
+      {/* ══ CARTÃO DE LOGIN CENTRALIZADO ══ */}
+      <div style={{ position:"relative", zIndex:1, display:"flex", gap:32, alignItems:"center", animation:"fadeIn 0.6s ease" }}>
+
+        {/* Gatinho SVG animado */}
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, flexShrink:0 }}>
+          <div style={{ animation:"catFloat 3s ease-in-out infinite" }}>
+            <svg width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+              {/* Corpo */}
+              <ellipse cx="80" cy="110" rx="42" ry="36" fill="#b0b8c8"/>
+              {/* Barriga branca */}
+              <ellipse cx="80" cy="118" rx="22" ry="22" fill="#e8eaf0"/>
+              {/* Cabeça */}
+              <circle cx="80" cy="72" r="34" fill="#b0b8c8"/>
+              {/* Orelhas */}
+              <polygon points="52,46 44,20 66,38" fill="#b0b8c8"/>
+              <polygon points="108,46 116,20 94,38" fill="#b0b8c8"/>
+              {/* Interior orelhas */}
+              <polygon points="54,42 49,28 63,38" fill="#e8a0b0"/>
+              <polygon points="106,42 111,28 97,38" fill="#e8a0b0"/>
+              {/* Olhos — piscando suavemente */}
+              <ellipse cx="67" cy="70" rx="7" ry="8" fill="#2d3a4a"/>
+              <ellipse cx="93" cy="70" rx="7" ry="8" fill="#2d3a4a"/>
+              {/* Brilho dos olhos */}
+              <circle cx="70" cy="67" r="2.5" fill="white"/>
+              <circle cx="96" cy="67" r="2.5" fill="white"/>
+              {/* Pupila */}
+              <ellipse cx="67" cy="71" rx="3" ry="5" fill="#1a2535"/>
+              <ellipse cx="93" cy="71" rx="3" ry="5" fill="#1a2535"/>
+              {/* Nariz */}
+              <polygon points="80,80 76,85 84,85" fill="#e8a0b0"/>
+              {/* Boca */}
+              <path d="M76,85 Q80,90 84,85" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/>
+              <path d="M76,85 Q73,89 70,87" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/>
+              <path d="M84,85 Q87,89 90,87" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/>
+              {/* Bigodes esquerda */}
+              <line x1="44" y1="82" x2="72" y2="84" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
+              <line x1="44" y1="88" x2="72" y2="87" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
+              <line x1="46" y1="94" x2="72" y2="90" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
+              {/* Bigodes direita */}
+              <line x1="88" y1="84" x2="116" y2="82" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
+              <line x1="88" y1="87" x2="116" y2="88" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
+              <line x1="88" y1="90" x2="114" y2="94" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
+              {/* Patas da frente */}
+              <ellipse cx="60" cy="142" rx="14" ry="10" fill="#b0b8c8"/>
+              <ellipse cx="100" cy="142" rx="14" ry="10" fill="#b0b8c8"/>
+              {/* Patinhas brancas */}
+              <ellipse cx="60" cy="144" rx="10" ry="6" fill="#d8dce8"/>
+              <ellipse cx="100" cy="144" rx="10" ry="6" fill="#d8dce8"/>
+              {/* Rabo — animado */}
+              <path d="M122,128 Q148,110 145,88 Q142,70 130,72" fill="none" stroke="#b0b8c8" strokeWidth="9" strokeLinecap="round">
+                <animateTransform attributeName="transform" type="rotate" values="-10 122 128;18 122 128;-10 122 128" dur="2.5s" repeatCount="indefinite"/>
+              </path>
+              {/* Listras no corpo */}
+              <path d="M58,98 Q65,92 72,98" fill="none" stroke="#9aa0b0" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+              <path d="M88,98 Q95,92 102,98" fill="none" stroke="#9aa0b0" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+              {/* Listras na cabeça */}
+              <path d="M75,48 Q80,42 85,48" fill="none" stroke="#9aa0b0" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+            </svg>
+          </div>
+          <div style={{ color:"rgba(180,190,210,0.5)", fontSize:11, fontStyle:"italic", textAlign:"center" }}>Nexp Consultas</div>
+        </div>
+
+        {/* Card de login */}
+        <div style={{ background:"rgba(10,14,22,0.85)", backdropFilter:"blur(20px)", border:"1px solid rgba(79,142,247,0.2)", borderRadius:20, padding:"32px 28px", width:340, boxShadow:"0 20px 60px rgba(0,0,0,0.7)" }}>
+          {/* Logo */}
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:24 }}>
+            <NexpRobot size={32} showFaceOnly />
             <div>
-              <div style={{ fontWeight:900, fontSize:20, letterSpacing:"-0.8px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1.1 }}>
-                Nexp Consultas
-              </div>
-              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>Sistema de Leads</div>
+              <div style={{ fontWeight:900, fontSize:18, letterSpacing:"-0.6px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Nexp Consultas</div>
+              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10.5 }}>Sistema de Leads</div>
             </div>
           </div>
 
@@ -1514,7 +1290,7 @@ function LoginPage({ onLogin }) {
             {loading ? "Entrando..." : "Entrar →"}
           </button>
 
-          {/* Redefinir senha — integrado ao bloco de login */}
+          {/* Redefinir senha */}
           <div style={{ marginTop:10, borderTop:"1px solid rgba(79,142,247,0.15)", paddingTop:10 }}>
             <button onClick={() => { setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
               style={{ width:"100%", display:"flex", alignItems:"center", gap:8, background:"transparent", border:"none", cursor:"pointer", padding:"4px 0" }}>
@@ -1540,83 +1316,21 @@ function LoginPage({ onLogin }) {
               </div>
             )}
           </div>
-        </div>
 
-        {/* Suporte */}
-        <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
-          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,41,24,0.7)", backdropFilter:"blur(10px)", border:"1px solid #25D36633", borderRadius:12, padding:"12px 14px", textDecoration:"none" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
-          <div style={{ flex:1 }}>
-            <div style={{ color:err?"#25D366":"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600 }}>{err?"Problemas? Fale com o suporte":"Suporte WhatsApp"}</div>
-            <div style={{ color:"#2D6B47", fontSize:10.5 }}>(84) 98132-3542</div>
-          </div>
-          <span style={{ color:"#25D36666", fontSize:16 }}>→</span>
-        </a>
-
-        {/* Solicitar usuário */}
-        <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de saber como ter acesso ao Nexp Consultas. Preciso de um usuário.")}`}
-          target="_blank" rel="noopener noreferrer"
-          style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(10,24,41,0.7)", backdropFilter:"blur(10px)", border:"1px solid rgba(37,211,102,0.2)", borderRadius:12, padding:"11px 14px", textDecoration:"none", marginTop:8 }}>
-          <span style={{ fontSize:17 }}>👤</span>
-          <div style={{ flex:1 }}>
-            <div style={{ color:"rgba(255,255,255,0.55)", fontSize:12, fontWeight:600 }}>Solicite agora seu usuário</div>
-            <div style={{ color:"rgba(37,211,102,0.5)", fontSize:10.5 }}>Fale com o suporte pelo WhatsApp</div>
-          </div>
-          <span style={{ color:"rgba(37,211,102,0.4)", fontSize:16 }}>→</span>
-        </a>
-      </div>
-
-      {/* ── Lado direito: robô ao lado da previsão + frase do dia ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:32, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
-        {/* Robô + Previsão do tempo lado a lado */}
-        {forecast?.days && (
-          <div style={{ display:"flex", alignItems:"flex-end", gap:14, width:"100%", maxWidth:520 }}>
-            {/* Robô */}
-            <div style={{ animation:"robotFloat 3s ease-in-out infinite", flexShrink:0 }}>
-              <NexpRobot size={110} showFaceOnly={false} />
-            </div>
-            {/* Previsão */}
-            <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
-              <div style={{ background:"rgba(8,10,18,0.65)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 16px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", gap:12, width:"100%" }}>
-                <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
-                <div>
-                  {cityName && <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
-                  <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{weather ? Math.round(weather.temperature)+"°C" : "—"}</div>
-                </div>
-                <div style={{ display:"flex", gap:8, marginLeft:"auto" }}>
-                  {(forecast.days||[]).map((d,i) => {
-                    const wmo = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",80:"🌦",81:"🌧",82:"⛈"};
-                    const icon = wmo[d.wcode] || "🌡";
-                    const day = i===0?"Hoje":["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d.date).getDay()];
-                    return (
-                      <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, minWidth:36 }}>
-                        <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9, fontWeight:600 }}>{day}</div>
-                        <div style={{ fontSize:14 }}>{icon}</div>
-                        <div style={{ color:"#F87171", fontSize:9.5, fontWeight:700 }}>↑{Math.round(d.tmax)}°</div>
-                        <div style={{ color:"#93C5FD", fontSize:9.5 }}>↓{Math.round(d.tmin)}°</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Sem previsão: apenas robô centralizado */}
-        {!forecast?.days && (
-          <div style={{ animation:"robotFloat 3s ease-in-out infinite" }}>
-            <NexpRobot size={130} showFaceOnly={false} />
-          </div>
-        )}
-        {/* Frase do dia */}
-        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"18px 28px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", maxWidth:520, width:"100%" }}>
-          <div style={{ color:"rgba(79,142,247,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
-          <div style={{ color:"rgba(255,255,255,0.92)", fontSize:15, lineHeight:1.7, fontStyle:"italic" }}>{frase}</div>
+          {/* Solicitar usuário */}
+          <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de saber como ter acesso ao Nexp Consultas. Preciso de um usuário.")}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, textDecoration:"none", opacity:0.6 }}>
+            <span style={{ fontSize:13 }}>👤</span>
+            <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>Solicitar acesso via WhatsApp</span>
+            <span style={{ color:"rgba(37,211,102,0.5)", fontSize:11, marginLeft:"auto" }}>→</span>
+          </a>
         </div>
       </div>
     </div>
   );
 }
+
 
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   return (
@@ -3194,25 +2908,13 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
           {err && <div style={{ background: "#2D1515", border: "1px solid #EF444433", borderRadius: 8, padding: "11px 14px", marginBottom: 16, color: "#F87171", fontSize: 13 }}>⚠ {err}</div>}
           <div style={{ ...S.card, padding: "22px", marginBottom: 16 }}>
             <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Modelo de Planilha</div>
-            <div style={{ color: C.tm, fontSize: 11, marginBottom: 12 }}>Cada coluna abaixo corresponde a uma coluna da planilha CSV, na ordem exata:</div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
-              {[
-                ["A","Nome *"],["B","CPF"],["C","Telefone 1"],["D","Telefone 2"],["E","Telefone 3"],
-                ["F","CNPJ"],["G","Email"],["H","Matrícula"],["I","Tipo de Lead"],["J","Observação"],
-                ["K","Rua"],["L","Número"],["M","Bairro"],["N","CEP"],["O","Cidade"],["P","UF"],
-              ].map(([col,label])=>(
-                <div key={col} style={{ display:"flex", alignItems:"stretch", borderRadius:8, overflow:"hidden", border:`1px solid ${C.b1}`, flexShrink:0 }}>
-                  <div style={{ background:C.abg, color:C.atxt, fontWeight:800, fontSize:11, padding:"5px 9px", display:"flex", alignItems:"center", borderRight:`1px solid ${C.b1}` }}>{col}</div>
-                  <div style={{ background:C.deep, color:C.ts, fontSize:11, padding:"5px 10px", display:"flex", alignItems:"center" }}>{label}</div>
-                </div>
-              ))}
+            <div style={{ color: C.tm, fontSize: 12, marginBottom: 14, lineHeight: 1.9 }}>
+              Importe qualquer planilha CSV — o sistema reconhece automaticamente as colunas pelo cabeçalho. Campos aceitos: <span style={{ color:C.atxt }}>Nome, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email, Matricula, TipoLead, Observacao, Rua, Numero, Bairro, CEP, Cidade, UF</span>.
             </div>
-            <div style={{ color: C.tm, fontSize: 11, marginBottom: 14, lineHeight: 1.8 }}>
-              TipoLead: {[["FGTS","#4F8EF7"],["Empréstimo do Trabalhador","#A78BFA"],["Empréstimo do Bolsa Família","#F472B6"],["Saque Complementar","#FB923C"],["INSS","#34D399"],["Bolsa Família","#F59E0B"],["Outro","#9CA3AF"]].map(([l,c],i,a) => (
-                <span key={l}><span style={{ color: c }}>{l}</span>{i < a.length-1 ? ", " : ""}</span>
-              ))}
+            <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+              <button onClick={dlModelo} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>⬇ Baixar modelo CSV</button>
+              <span style={{ color:C.td, fontSize:11, fontStyle:"italic" }}>Dica: baixe o modelo para ver o formato exato das colunas.</span>
             </div>
-            <button onClick={dlModelo} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>⬇ Baixar modelo CSV</button>
           </div>
           <div style={{ ...S.card, padding: "22px" }}>
             <div style={{ color: C.ts, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Selecionar arquivo</div>
@@ -3351,7 +3053,15 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
   const selectLead = (t) => {
     if (t === leadType) return;
     const isExtra = extraLeads.includes(t);
-    const newExtra = isExtra ? extraLeads.filter(x => x !== t) : [...extraLeads, t];
+    // Se não é extra ainda, define como principal imediatamente
+    if (!isExtra) {
+      const newExtra = [leadType, ...extraLeads.filter(x => x !== t)];
+      setLeadType(t);
+      setExtraLeads(newExtra);
+      upd({ ...cur, leadType: t, extraLeads: newExtra, reactions, extraStatus });
+      return;
+    }
+    const newExtra = extraLeads.filter(x => x !== t);
     setExtraLeads(newExtra);
     upd({ ...cur, leadType, extraLeads: newExtra, reactions, extraStatus });
   };
@@ -3456,9 +3166,9 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               const sel = isPrimary || isExtra;
               return (
                 <button key={t}
-                  onClick={() => isPrimary ? null : (isExtra ? selectLead(t) : (extraLeads.length === 0 ? selectLeadPrimary(t) : selectLead(t)))}
+                  onClick={() => isPrimary ? null : selectLead(t)}
                   onContextMenu={e => { e.preventDefault(); if (!isPrimary) selectLeadPrimary(t); }}
-                  title={isPrimary ? "Lead principal" : "Clique para adicionar/remover · Clique direito para definir como principal"}
+                  title={isPrimary ? "Lead principal (clique direito para trocar)" : "Clique para definir como principal"}
                   style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
                   {isPrimary ? "★ " : isExtra ? "✓ " : ""}{t}
                 </button>
@@ -11125,24 +10835,34 @@ function TabelaSimulacao({ margem, margemReaj, bancos, prazos, chaveCoef }) {
 function CreditoTab({ bancos }) {
   const [margem, setMargem] = useState("");
   const [linhas, setLinhas] = useState([
-    { id:1, prazo:"6x",  coef:"0.19612" }, { id:2, prazo:"8x",  coef:"0.14857" },
-    { id:3, prazo:"12x", coef:"0.10378" }, { id:4, prazo:"14x", coef:"0.09180" },
-    { id:5, prazo:"16x", coef:"0.08178" }, { id:6, prazo:"18x", coef:"0.07393" },
-    { id:7, prazo:"24x", coef:"0.05860" }, { id:8, prazo:"36x", coef:"0.04263" },
-    { id:9, prazo:"48x", coef:"0.03429" },
+    { id:1, prazo:"6x",  nParcelas:6,  coef:"0.19612" },
+    { id:2, prazo:"8x",  nParcelas:8,  coef:"0.14857" },
+    { id:3, prazo:"12x", nParcelas:12, coef:"0.10378" },
+    { id:4, prazo:"14x", nParcelas:14, coef:"0.09180" },
+    { id:5, prazo:"16x", nParcelas:16, coef:"0.08178" },
+    { id:6, prazo:"18x", nParcelas:18, coef:"0.07393" },
+    { id:7, prazo:"24x", nParcelas:24, coef:"0.05860" },
+    { id:8, prazo:"36x", nParcelas:36, coef:"0.04263" },
+    { id:9, prazo:"48x", nParcelas:48, coef:"0.03429" },
   ]);
-  const [novaLinha, setNovaLinha] = useState({ prazo:"", coef:"" });
+  const [novaLinha, setNovaLinha] = useState({ prazo:"", nParcelas:"", coef:"" });
   const [showAdd, setShowAdd] = useState(false);
+  const [balao, setBalao] = useState(null);
   const m = toF(margem);
 
-  const addLinha = () => { if (!novaLinha.prazo || !novaLinha.coef) return; setLinhas(p=>[...p,{...novaLinha,id:Date.now()}]); setNovaLinha({prazo:"",coef:""}); setShowAdd(false); };
-  const [balao, setBalao] = useState(null);
+  const addLinha = () => {
+    if (!novaLinha.prazo || !novaLinha.coef) return;
+    const np = parseInt(novaLinha.nParcelas) || parseInt(novaLinha.prazo) || 0;
+    setLinhas(p=>[...p,{...novaLinha, id:Date.now(), nParcelas:np}]);
+    setNovaLinha({prazo:"",nParcelas:"",coef:""});
+    setShowAdd(false);
+  };
 
   return (
     <div>
       <BalaoCelula info={balao} onClose={()=>setBalao(null)} />
       <div style={{ color:C.td, fontSize:11.5, marginBottom:14, padding:"9px 13px", background:C.abg, borderRadius:9, border:`1px solid ${C.atxt}22` }}>
-        <b style={{ color:C.atxt }}>Regra:</b> Valor Liberado = Margem ÷ Coeficiente
+        <b style={{ color:C.atxt }}>Regra CLT:</b> Valor Liberado = Margem ÷ Coeficiente · Parcela = Margem (valor fixo por mês)
       </div>
       <div style={{ display:"flex", gap:14, alignItems:"flex-end", marginBottom:18, flexWrap:"wrap" }}>
         <div style={{ flex:"0 0 220px" }}>
@@ -11150,45 +10870,59 @@ function CreditoTab({ bancos }) {
           <input value={margem} onChange={e=>setMargem(e.target.value)} placeholder="Ex: 424,00"
             style={{ ...S.input, fontSize:15, fontWeight:600 }} />
         </div>
-        {m > 0 && <div style={{ color:C.atxt, fontSize:13, fontWeight:700, paddingBottom:8 }}>{fmtBRL(m)}</div>}
+        {m > 0 && <div style={{ color:C.atxt, fontSize:13, fontWeight:700, paddingBottom:8 }}>Margem: {fmtBRL(m)}</div>}
       </div>
       <div style={{ overflowX:"auto", marginBottom:12 }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, minWidth:420 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5, minWidth:560 }}>
           <thead>
             <tr style={{ background:C.deep }}>
               <th style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>Prazo</th>
-              <th style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, width:120 }}>Coeficiente</th>
-              {bancos.filter(b=>toF(b.coef_cred)>0).map(b=>(
-                <th key={b.id} style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{b.nome}</th>
-              ))}
+              <th style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}`, width:110 }}>Coeficiente</th>
+              <th style={{ color:"#34D399", fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>Parcela (R$)</th>
+              <th style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>Qtd Parcelas</th>
+              <th style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", textAlign:"center", borderBottom:`1px solid ${C.b1}` }}>Valor Liberado</th>
               <th style={{ width:28, borderBottom:`1px solid ${C.b1}` }} />
             </tr>
           </thead>
           <tbody>
             {linhas.map((l, i) => {
+              const c = toF(l.coef);
+              const valorLiberado = m > 0 && c > 0 ? m / c : null;
+              const parcela = m; // parcela = margem (valor fixo mensal)
+              const nP = l.nParcelas || parseInt(l.prazo) || 0;
               return (
                 <tr key={l.id} style={{ background: i%2===0 ? C.card : C.deep }}>
-                  <td style={{ color:C.tp, fontWeight:700, padding:"9px 12px", borderBottom:`1px solid ${C.b1}` }}>{l.prazo}</td>
+                  {/* Prazo */}
+                  <td style={{ color:C.tp, fontWeight:700, padding:"8px 12px", borderBottom:`1px solid ${C.b1}` }}>{l.prazo}</td>
+                  {/* Coef editável */}
                   <td style={{ padding:"5px 8px", borderBottom:`1px solid ${C.b1}` }}>
                     <input value={l.coef} onChange={e=>setLinhas(p=>p.map(x=>x.id===l.id?{...x,coef:e.target.value}:x))}
                       style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:6, color:C.ts, fontSize:12, padding:"4px 7px", width:"100%", textAlign:"center" }} />
                   </td>
-                  {bancos.filter(b=>toF(b.coef_cred)>0).map(b => {
-                    const bc = toF(b.coef_cred);
-                    const val = m > 0 && bc > 0 ? m / bc : null;
-                    return (
-                      <td key={b.id} style={{ textAlign:"center", padding:"9px 10px", borderBottom:`1px solid ${C.b1}` }}>
-                        {val !== null
-                          ? <span onClick={()=>setBalao({val,prazo:l.prazo,banco:b.nome,coef:bc,margem:m})}
-                              style={{ color:C.tp, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block" }}
-                              onMouseEnter={e=>e.currentTarget.style.background=C.abg}
-                              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                              {fmtBRL(val)}
-                            </span>
-                          : <span style={{ color:C.td }}>—</span>}
-                      </td>
-                    );
-                  })}
+                  {/* Parcela = margem, editável */}
+                  <td style={{ padding:"5px 8px", borderBottom:`1px solid ${C.b1}` }}>
+                    <input
+                      value={l.parcelaEdit !== undefined ? l.parcelaEdit : (m > 0 ? String(m) : "")}
+                      onChange={e=>setLinhas(p=>p.map(x=>x.id===l.id?{...x,parcelaEdit:e.target.value}:x))}
+                      placeholder={m > 0 ? fmtBRL(m) : "= margem"}
+                      style={{ background:"transparent", border:`1px solid rgba(52,211,153,0.4)`, borderRadius:6, color:"#34D399", fontSize:12, padding:"4px 7px", width:"100%", textAlign:"center", fontWeight:600 }} />
+                  </td>
+                  {/* Qtd Parcelas editável */}
+                  <td style={{ padding:"5px 8px", borderBottom:`1px solid ${C.b1}` }}>
+                    <input value={l.nParcelas} onChange={e=>setLinhas(p=>p.map(x=>x.id===l.id?{...x,nParcelas:e.target.value}:x))}
+                      style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:6, color:C.ts, fontSize:12, padding:"4px 7px", width:60, textAlign:"center" }} />
+                  </td>
+                  {/* Valor Liberado clicável */}
+                  <td style={{ textAlign:"center", padding:"8px 10px", borderBottom:`1px solid ${C.b1}` }}>
+                    {valorLiberado !== null
+                      ? <span onClick={()=>setBalao({val:valorLiberado, prazo:l.prazo, banco:"CLT", coef:c, margem:m})}
+                          style={{ color:C.atxt, fontWeight:800, cursor:"pointer", padding:"4px 10px", borderRadius:8, display:"inline-block", fontSize:13, background:C.abg, border:`1px solid ${C.atxt}22` }}
+                          onMouseEnter={e=>e.currentTarget.style.background=C.acc+"22"}
+                          onMouseLeave={e=>e.currentTarget.style.background=C.abg}>
+                          {fmtBRL(valorLiberado)}
+                        </span>
+                      : <span style={{ color:C.td }}>—</span>}
+                  </td>
                   <td style={{ borderBottom:`1px solid ${C.b1}`, textAlign:"center" }}>
                     <button onClick={()=>setLinhas(p=>p.filter(x=>x.id!==l.id))} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:15 }}>×</button>
                   </td>
@@ -11202,6 +10936,7 @@ function CreditoTab({ bancos }) {
         {showAdd ? (
           <>
             <input value={novaLinha.prazo} onChange={e=>setNovaLinha(p=>({...p,prazo:e.target.value}))} placeholder="Prazo (ex: 6x)" style={{ ...S.input, width:110 }} />
+            <input value={novaLinha.nParcelas} onChange={e=>setNovaLinha(p=>({...p,nParcelas:e.target.value}))} placeholder="Nº parcelas" style={{ ...S.input, width:110 }} />
             <input value={novaLinha.coef} onChange={e=>setNovaLinha(p=>({...p,coef:e.target.value}))} placeholder="Coeficiente" style={{ ...S.input, width:130 }} />
             <button onClick={addLinha} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"8px 14px", cursor:"pointer", fontSize:12, fontWeight:600 }}>＋ Adicionar</button>
             <button onClick={()=>setShowAdd(false)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"8px 12px", cursor:"pointer", fontSize:12 }}>Cancelar</button>
