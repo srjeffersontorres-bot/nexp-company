@@ -12840,8 +12840,6 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
                 {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:9,padding:"1px 5px",borderRadius:20,fontWeight:700}}>🔓</span>}
                 {p.pendenteDocumentacao&&<span style={{background:"#818CF822",color:"#818CF8",fontSize:9,padding:"1px 5px",borderRadius:20,fontWeight:700}}>📎</span>}
               </div>
-                {editLiberado&&<span style={{background:"#FBBF2422",color:"#FBBF24",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,border:"1px solid #FBBF2444"}}>🔓 Edição liberada</span>}
-              </div>
 
               <div style={{color:C.tm,fontSize:10.5,marginBottom:6}}>CPF: {p.cpf||"—"} · {p.tipo||"—"} · {p.createdAt?new Date(p.createdAt).toLocaleString("pt-BR"):"—"}</div>
 
