@@ -857,10 +857,13 @@ function LoginPage({ onLogin }) {
         try {
           const { latitude: lat, longitude: lon } = pos.coords;
           // Clima atual + previsão do dia
-          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto`);
+          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&timezone=auto&forecast_days=5`);
           const d = await r.json();
           setWeather(d.current_weather);
-          if (d.daily) setForecast({ tmax: d.daily.temperature_2m_max?.[0], tmin: d.daily.temperature_2m_min?.[0], rain: d.daily.precipitation_probability_max?.[0] });
+          if (d.daily) setForecast({
+            tmax: d.daily.temperature_2m_max?.[0], tmin: d.daily.temperature_2m_min?.[0], rain: d.daily.precipitation_probability_max?.[0],
+            days: (d.daily.time||[]).map((t,i) => ({ date:t, tmax: d.daily.temperature_2m_max[i], tmin: d.daily.temperature_2m_min[i], wcode: d.daily.weathercode[i], rain: d.daily.precipitation_probability_max[i] }))
+          });
           // Nome da cidade via reverse geocoding
           try {
             const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
@@ -903,7 +906,7 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 28px", position:"relative", overflow:"hidden", gap:32 }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBgGradient(), display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"0 5% 32px", position:"relative", overflow:"hidden", gap:32 }}>
 
       <style>{`
         @keyframes sunMove { 0%{left:10%} 100%{left:80%} }
@@ -915,6 +918,36 @@ function LoginPage({ onLogin }) {
         @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes robotFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
       `}</style>
+
+      {/* ── PREVISÃO 5 DIAS — canto superior direito ── */}
+      {forecast?.days && (
+        <div style={{ position:"absolute", top:16, right:20, zIndex:10, display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
+          {/* Cidade + temp atual */}
+          <div style={{ background:"rgba(8,10,18,0.65)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 14px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
+            <div>
+              {cityName && <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
+              <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{weather ? Math.round(weather.temperature)+"°C" : "—"}</div>
+            </div>
+          </div>
+          {/* 5 dias */}
+          <div style={{ background:"rgba(8,10,18,0.65)", backdropFilter:"blur(14px)", borderRadius:12, padding:"8px 12px", border:"1px solid rgba(255,255,255,0.08)", display:"flex", gap:8 }}>
+            {(forecast.days||[]).map((d,i) => {
+              const wmo = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈"};
+              const icon = wmo[d.wcode] || "🌡";
+              const day = i===0?"Hoje":["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d.date).getDay()];
+              return (
+                <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, minWidth:36 }}>
+                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9, fontWeight:600 }}>{day}</div>
+                  <div style={{ fontSize:14 }}>{icon}</div>
+                  <div style={{ color:"#F87171", fontSize:9.5, fontWeight:700 }}>↑{Math.round(d.tmax)}°</div>
+                  <div style={{ color:"#93C5FD", fontSize:9.5 }}>↓{Math.round(d.tmin)}°</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ══ CENA COMPLETA ══ */}
       <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
@@ -1432,29 +1465,16 @@ function LoginPage({ onLogin }) {
         </a>
       </div>
 
-      {/* ── Lado direito: robô + frase motivacional + clima ── */}
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:28, gap:14, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:24, maxWidth:680, width:"100%" }}>
-          <div style={{ flexShrink:0, animation:"robotFloat 3s ease-in-out infinite" }}>
-            <NexpRobot size={130} showFaceOnly={false} />
-          </div>
-          <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"22px 28px", textAlign:"left", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", flex:1 }}>
-            <div style={{ color:"rgba(79,142,247,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:10 }}>✦ Frase do dia</div>
-            <div style={{ color:"rgba(255,255,255,0.92)", fontSize:15.5, lineHeight:1.7, fontStyle:"italic" }}>{frase}</div>
-          </div>
-          {weather && (
-            <div style={{ flexShrink:0, background:"rgba(8,10,18,0.6)", backdropFilter:"blur(16px)", borderRadius:14, padding:"10px 14px", border:"1px solid rgba(255,255,255,0.1)", display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:80 }}>
-              <span style={{ fontSize:22 }}>{isRain?"🌧":isCloudy?"⛅":isNight?"🌙":isMorning?"🌤":isAfternoon?"☀️":"🌆"}</span>
-              <div style={{ color:"#fff", fontSize:20, fontWeight:800, lineHeight:1 }}>{Math.round(weather.temperature)}°C</div>
-              {cityName && <div style={{ color:"rgba(255,255,255,0.45)", fontSize:9.5, textAlign:"center" }}>📍 {cityName}</div>}
-              {forecast && (
-                <div style={{ display:"flex", gap:5, marginTop:2 }}>
-                  <span style={{ color:"#F87171", fontSize:9.5 }}>↑{forecast.tmax}°</span>
-                  <span style={{ color:"#60A5FA", fontSize:9.5 }}>↓{forecast.tmin}°</span>
-                </div>
-              )}
-            </div>
-          )}
+      {/* ── Lado direito: robô em cima, frase embaixo ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", paddingBottom:32, gap:10, zIndex:1, minWidth:0, animation:"fadeIn 0.8s ease", overflow:"hidden" }}>
+        {/* Robô */}
+        <div style={{ animation:"robotFloat 3s ease-in-out infinite" }}>
+          <NexpRobot size={130} showFaceOnly={false} />
+        </div>
+        {/* Frase do dia centralizada */}
+        <div style={{ background:"rgba(15,19,32,0.65)", backdropFilter:"blur(14px)", WebkitBackdropFilter:"blur(14px)", border:"1px solid rgba(79,142,247,0.18)", borderRadius:18, padding:"18px 28px", textAlign:"center", boxShadow:"0 4px 24px rgba(0,0,0,0.4)", maxWidth:480, width:"100%" }}>
+          <div style={{ color:"rgba(79,142,247,0.6)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"1px", marginBottom:8 }}>✦ Frase do dia</div>
+          <div style={{ color:"rgba(255,255,255,0.92)", fontSize:15, lineHeight:1.7, fontStyle:"italic" }}>{frase}</div>
         </div>
       </div>
     </div>
@@ -1496,6 +1516,8 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"apis",       label:"APIs Bancos",     icon:"⬧", roles:["mestre","master"] },
     { id:"leds",       label:"Leds",            icon:"⬦", roles:["mestre","master"] },
     { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["mestre","master"] },
+    { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["mestre","master","indicado","digitador"] },
+    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["mestre","master","digitador"] },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["mestre","master","indicado","visitante"] },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["mestre"] },
@@ -1508,7 +1530,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     if (user.role === "visitante") return cfg[it.id] !== false;
     return true;
   });
-  const roleLabel = { mestre:"Mestre", master:"Master", indicado:"Operador", visitante:"Visitante" };
+  const roleLabel = { mestre:"Mestre", master:"Master", indicado:"Operador", visitante:"Visitante", digitador:"Digitador" };
   const isConfig = page === "config";
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [navOpen] = useState(true);
@@ -4928,6 +4950,8 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"chat",         label:"Nexp Chat" },
             { id:"premium",      label:"Premium Nexp" },
             { id:"config",       label:"Configurações" },
+            { id:"digitacao",    label:"Digitação" },
+            { id:"propostas",    label:"Propostas" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
           const filtered = visibleUsers.filter(u => !permSearch || (u.name||u.email||"").toLowerCase().includes(permSearch.toLowerCase()));
@@ -5113,6 +5137,8 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             { id:"chat",         label:"Nexp Chat" },
             { id:"premium",      label:"Premium Nexp" },
             { id:"config",       label:"Configurações" },
+            { id:"digitacao",    label:"Digitação" },
+            { id:"propostas",    label:"Propostas" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
 
@@ -6780,7 +6806,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                             Nível de acesso
                           </label>
                           <div style={{ display: "flex", gap: 8 }}>
-                            {["master", "indicado"].map((r) => {
+                            {["master", "indicado", "digitador"].map((r) => {
                               const sel = editForm.role === r;
                               const rcol = roleColor[r];
                               return (
@@ -12151,6 +12177,368 @@ function ApisBancosPage({ currentUser }) {
 }
 
 // ── App Root ───────────────────────────────────────────────────
+// ── Digitação Page ─────────────────────────────────────────────
+function DigitacaoPage({ contacts, currentUser }) {
+  const EMAILJS_SVC  = "nexp_service";
+  const EMAILJS_TPL  = "template_digitacao";
+  const EMAILJS_KEY  = "GaZRJdTXt0UMdEY3H";
+  const DEST_EMAIL   = "vendas.nexpcred@gmail.com";
+
+  const blank = () => ({
+    cpf:"", nome:"", telefone:"", email:"", dataNasc:"",
+    cep:"", rua:"", numero:"", bairro:"", cidade:"", uf:"", complemento:"",
+    banco:"", agencia:"", conta:"", tipoConta:"corrente", pixKey:"",
+    produto:"FGTS", valorSolicitado:"", observacao:"",
+    docTipo:"CNH", docFiles:[],
+  });
+
+  const [form, setForm] = useState(blank());
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [clienteEncontrado, setClienteEncontrado] = useState(false);
+  const fileRef = useRef();
+
+  const setF = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Busca cliente pelo CPF
+  const buscarCPF = (cpf) => {
+    setF("cpf", cpf);
+    const clean = cpf.replace(/\D/g,"");
+    if (clean.length !== 11) { setClienteEncontrado(false); return; }
+    const c = contacts.find(x => (x.cpf||"").replace(/\D/g,"") === clean);
+    if (c) {
+      setClienteEncontrado(true);
+      setForm(f=>({...f,
+        cpf, nome:c.name||"", telefone:c.phone||"", email:c.email||"",
+        cep:c.cep||"", rua:c.rua||"", numero:c.numero||"",
+        bairro:c.bairro||"", cidade:c.cidade||"", uf:c.uf||"",
+        complemento:c.complemento||"",
+        produto:c.leadType||"FGTS",
+      }));
+    } else {
+      setClienteEncontrado(false);
+    }
+  };
+
+  const handleFiles = (e) => {
+    const files = Array.from(e.target.files);
+    const readers = files.map(f => new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res({ name:f.name, type:f.type, data:r.result });
+      r.readAsDataURL(f);
+    }));
+    Promise.all(readers).then(arr => setF("docFiles", [...form.docFiles, ...arr]));
+  };
+
+  const removeFile = (i) => setF("docFiles", form.docFiles.filter((_,idx)=>idx!==i));
+
+  const enviar = async () => {
+    if (!form.cpf || !form.nome) { setMsg("❌ CPF e Nome são obrigatórios."); return; }
+    if (form.docFiles.length === 0) { setMsg("❌ Anexe ao menos um documento obrigatório."); return; }
+    if (!form.banco || !form.agencia || !form.conta) { setMsg("❌ Dados bancários são obrigatórios."); return; }
+    setSending(true); setMsg("");
+    try {
+      // Salvar proposta no Firestore
+      const propId = "prop_" + Date.now();
+      await setDoc(doc(db, "propostas", propId), {
+        id: propId,
+        ...form,
+        docFiles: form.docFiles.map(f=>({name:f.name, type:f.type})), // não salvar base64 no firestore
+        criadoPor: currentUser.uid||currentUser.id,
+        criadoPorNome: currentUser.name||currentUser.email,
+        status: "Pendente",
+        createdAt: Date.now(),
+      });
+
+      // Enviar email via EmailJS
+      const params = {
+        to_email: DEST_EMAIL,
+        nome: form.nome, cpf: form.cpf, telefone: form.telefone,
+        email: form.email, produto: form.produto,
+        valor: form.valorSolicitado,
+        banco: form.banco, agencia: form.agencia, conta: form.conta,
+        tipoConta: form.tipoConta, pix: form.pixKey,
+        endereco: `${form.rua}, ${form.numero} - ${form.bairro}, ${form.cidade}/${form.uf} - CEP: ${form.cep}`,
+        observacao: form.observacao,
+        documentos: form.docFiles.map(f=>f.name).join(", "),
+        digitador: currentUser.name||currentUser.email,
+        proposta_id: propId,
+      };
+      await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ service_id:EMAILJS_SVC, template_id:EMAILJS_TPL, user_id:EMAILJS_KEY, template_params:params }),
+      });
+
+      setMsg("✅ Proposta enviada com sucesso! Email enviado para " + DEST_EMAIL);
+      setForm(blank());
+      setClienteEncontrado(false);
+    } catch(e) {
+      setMsg("❌ Erro ao enviar: " + e.message);
+    }
+    setSending(false);
+  };
+
+  const inp = (label, key, type="text", ph="", required=false) => (
+    <div>
+      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{label}{required&&<span style={{color:"#EF4444"}}> *</span>}</label>
+      <input value={form[key]||""} onChange={e=>setF(key,e.target.value)} type={type} placeholder={ph}
+        style={{ ...S.input, borderColor: required&&!form[key] ? "#EF444444" : undefined }} />
+    </div>
+  );
+
+  return (
+    <div style={{ padding:"28px 36px", maxWidth:900 }}>
+      <div style={{ marginBottom:22 }}>
+        <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📝 Digitação</h1>
+        <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Preencha os dados do cliente para enviar uma proposta</p>
+      </div>
+
+      {msg && (
+        <div style={{ background: msg.startsWith("✅")?"#091E12":"#2D1515", border:`1px solid ${msg.startsWith("✅")?"#34D39933":"#EF444433"}`, borderRadius:9, padding:"11px 16px", marginBottom:18, color:msg.startsWith("✅")?"#34D399":"#F87171", fontSize:13 }}>
+          {msg}
+        </div>
+      )}
+
+      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16 }}>
+        {/* CPF — busca automática */}
+        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:14, paddingBottom:8, borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10 }}>
+          🔍 Dados do Cliente
+          {clienteEncontrado && <span style={{ background:"#091E12", color:"#34D399", fontSize:10, padding:"2px 10px", borderRadius:20, fontWeight:700, border:"1px solid #34D39933" }}>✓ Cliente encontrado no sistema</span>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr 1fr", gap:12, marginBottom:12 }}>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF <span style={{color:"#EF4444"}}>*</span></label>
+            <input value={form.cpf} onChange={e=>buscarCPF(e.target.value)} placeholder="000.000.000-00"
+              style={{ ...S.input, borderColor: clienteEncontrado?"#34D39944":undefined }} />
+          </div>
+          {inp("Nome completo","nome","text","","true")}
+          {inp("Data de nascimento","dataNasc","date")}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:12 }}>
+          {inp("Telefone","telefone","tel","(84) 99999-0000")}
+          {inp("Email","email","email","cliente@email.com")}
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Produto</label>
+            <select value={form.produto} onChange={e=>setF("produto",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+              {["FGTS","Empréstimo do Trabalhador","Empréstimo do Bolsa Família","Saque Complementar","INSS","Bolsa Família","Outro"].map(p=><option key={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+        {inp("Valor Solicitado (R$)","valorSolicitado","text","Ex: 5.000,00")}
+      </div>
+
+      {/* Endereço */}
+      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16 }}>
+        <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:14, paddingBottom:8, borderBottom:`1px solid ${C.b1}` }}>📍 Endereço</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr 1fr", gap:12, marginBottom:12 }}>
+          {inp("CEP","cep","text","00000-000")}
+          {inp("Rua / Logradouro","rua")}
+          {inp("Número","numero")}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 0.5fr", gap:12 }}>
+          {inp("Bairro","bairro")}
+          {inp("Cidade","cidade")}
+          {inp("Complemento","complemento")}
+          {inp("UF","uf","text","RN")}
+        </div>
+      </div>
+
+      {/* Dados Bancários — manual obrigatório */}
+      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16, border:`1px solid #FBBF2422` }}>
+        <div style={{ color:"#FBBF24", fontSize:12, fontWeight:700, marginBottom:14, paddingBottom:8, borderBottom:`1px solid #FBBF2422` }}>🏦 Dados Bancários <span style={{ color:C.td, fontSize:10, fontWeight:400 }}>(preenchimento manual obrigatório)</span></div>
+        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 2fr 1fr", gap:12, marginBottom:12 }}>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco <span style={{color:"#EF4444"}}>*</span></label>
+            <input value={form.banco} onChange={e=>setF("banco",e.target.value)} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} />
+          </div>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Agência <span style={{color:"#EF4444"}}>*</span></label>
+            <input value={form.agencia} onChange={e=>setF("agencia",e.target.value)} placeholder="0001" style={{ ...S.input }} />
+          </div>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Conta <span style={{color:"#EF4444"}}>*</span></label>
+            <input value={form.conta} onChange={e=>setF("conta",e.target.value)} placeholder="00000-0" style={{ ...S.input }} />
+          </div>
+          <div>
+            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo</label>
+            <select value={form.tipoConta} onChange={e=>setF("tipoConta",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+              <option value="corrente">Corrente</option>
+              <option value="poupanca">Poupança</option>
+            </select>
+          </div>
+        </div>
+        {inp("Chave PIX (opcional)","pixKey","text","CPF, email, telefone ou chave aleatória")}
+      </div>
+
+      {/* Documentação — obrigatório */}
+      <div style={{ ...S.card, padding:"24px 26px", marginBottom:16, border:`1px solid ${form.docFiles.length>0?"#34D39933":"#EF444433"}` }}>
+        <div style={{ color:form.docFiles.length>0?"#34D399":"#F87171", fontSize:12, fontWeight:700, marginBottom:6, paddingBottom:8, borderBottom:`1px solid ${C.b1}` }}>
+          📎 Documentação <span style={{color:"#EF4444"}}>*</span> obrigatório
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Tipo de documento</label>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+            {["CNH","RG","Carteira de Trabalho","RNE","Outro"].map(t=>(
+              <button key={t} onClick={()=>setF("docTipo",t)}
+                style={{ background:form.docTipo===t?C.abg:C.deep, color:form.docTipo===t?C.atxt:C.tm, border:`1px solid ${form.docTipo===t?C.atxt+"44":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:form.docTipo===t?700:400 }}>
+                {form.docTipo===t?"✓ ":""}{t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Categoria do anexo</label>
+          <div style={{ display:"flex", gap:7 }}>
+            {["Documentação","Evidências","Outros"].map(cat=>(
+              <button key={cat} onClick={()=>setF("docCategoria",cat)}
+                style={{ background:form.docCategoria===cat?C.abg:C.deep, color:form.docCategoria===cat?C.atxt:C.tm, border:`1px solid ${form.docCategoria===cat?C.atxt+"44":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:form.docCategoria===cat?700:400 }}>
+                {form.docCategoria===cat?"✓ ":""}{cat}
+              </button>
+            ))}
+          </div>
+        </div>
+        <input ref={fileRef} type="file" multiple accept="image/*,.pdf" onChange={handleFiles} style={{ display:"none" }} />
+        <button onClick={()=>fileRef.current.click()}
+          style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:10 }}>
+          📎 Adicionar arquivos
+        </button>
+        {form.docFiles.length > 0 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {form.docFiles.map((f,i)=>(
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:10, background:C.deep, borderRadius:8, padding:"7px 12px", border:`1px solid ${C.b1}` }}>
+                <span style={{ fontSize:16 }}>{f.type?.startsWith("image/")?"🖼":"📄"}</span>
+                <span style={{ flex:1, color:C.ts, fontSize:12 }}>{f.name}</span>
+                <button onClick={()=>removeFile(i)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:13 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {form.docFiles.length === 0 && (
+          <div style={{ color:"#F87171", fontSize:11.5, marginTop:4 }}>⚠ Nenhum arquivo anexado. Documentação é obrigatória.</div>
+        )}
+      </div>
+
+      {/* Observação */}
+      <div style={{ ...S.card, padding:"20px 26px", marginBottom:20 }}>
+        <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Observações</label>
+        <textarea value={form.observacao} onChange={e=>setF("observacao",e.target.value)} rows={3}
+          placeholder="Informações adicionais sobre o cliente ou proposta..."
+          style={{ ...S.input, resize:"vertical" }} />
+      </div>
+
+      <button onClick={enviar} disabled={sending}
+        style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:11, padding:"13px 36px", fontSize:15, fontWeight:800, cursor:sending?"not-allowed":"pointer", opacity:sending?0.7:1, boxShadow:`0 4px 20px ${C.acc}44`, display:"flex", alignItems:"center", gap:10 }}>
+        {sending ? "⏳ Enviando..." : "📤 Enviar Proposta"}
+      </button>
+    </div>
+  );
+}
+
+// ── Propostas Page ─────────────────────────────────────────────
+function PropostasPage({ currentUser }) {
+  const [propostas, setPropostas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("Todos");
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "propostas"), snap => {
+      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
+      all.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+      setPropostas(all);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const canSeeAll = ["mestre","master"].includes(currentUser.role);
+  const myId = currentUser.uid||currentUser.id;
+
+  const visible = propostas.filter(p => {
+    if (!canSeeAll && p.criadoPor !== myId) return false;
+    if (statusFilter !== "Todos" && p.status !== statusFilter) return false;
+    if (search && !((p.nome||"").toLowerCase().includes(search.toLowerCase()) || (p.cpf||"").includes(search))) return false;
+    return true;
+  });
+
+  const updateStatus = async (id, status) => {
+    await setDoc(doc(db,"propostas",id),{status},{merge:true});
+  };
+
+  const STATUS_COLORS = { "Pendente":"#FBBF24", "Em análise":"#60A5FA", "Aprovada":"#34D399", "Reprovada":"#F87171", "Cancelada":"#9CA3AF" };
+
+  return (
+    <div style={{ padding:"28px 36px", maxWidth:1000 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22, flexWrap:"wrap", gap:10 }}>
+        <div>
+          <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>📋 Propostas</h1>
+          <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>{visible.length} proposta{visible.length!==1?"s":""} encontrada{visible.length!==1?"s":""}</p>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div style={{ display:"flex", gap:10, marginBottom:18, flexWrap:"wrap" }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou CPF..."
+          style={{ ...S.input, flex:1, minWidth:200 }} />
+        <div style={{ display:"flex", gap:6 }}>
+          {["Todos","Pendente","Em análise","Aprovada","Reprovada"].map(s=>(
+            <button key={s} onClick={()=>setStatusFilter(s)}
+              style={{ background: statusFilter===s?(STATUS_COLORS[s]||C.acc)+"22":C.deep, color:statusFilter===s?(STATUS_COLORS[s]||C.atxt):C.tm, border:`1px solid ${statusFilter===s?(STATUS_COLORS[s]||C.atxt)+"44":C.b2}`, borderRadius:20, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:statusFilter===s?700:400 }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div style={{ color:C.tm, textAlign:"center", padding:"40px 0" }}>Carregando...</div>}
+
+      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+        {visible.map(p => {
+          const col = STATUS_COLORS[p.status]||C.td;
+          return (
+            <div key={p.id} style={{ ...S.card, padding:"18px 22px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                <div style={{ flex:1, minWidth:200 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+                    <span style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{p.nome||"—"}</span>
+                    <span style={{ background:col+"22", color:col, fontSize:10, padding:"2px 9px", borderRadius:20, fontWeight:700, border:`1px solid ${col}33` }}>{p.status}</span>
+                  </div>
+                  <div style={{ color:C.tm, fontSize:11.5 }}>CPF: {p.cpf} · {p.produto} · R$ {p.valorSolicitado||"—"}</div>
+                  <div style={{ color:C.td, fontSize:11, marginTop:2 }}>Por: {p.criadoPorNome} · {p.createdAt ? new Date(p.createdAt).toLocaleString("pt-BR") : "—"}</div>
+                </div>
+                {/* Alterar status — só mestre/master */}
+                {canSeeAll && (
+                  <select value={p.status} onChange={e=>updateStatus(p.id,e.target.value)}
+                    style={{ ...S.input, width:"auto", padding:"6px 10px", fontSize:12, cursor:"pointer" }}>
+                    {["Pendente","Em análise","Aprovada","Reprovada","Cancelada"].map(s=><option key={s}>{s}</option>)}
+                  </select>
+                )}
+              </div>
+              {/* Docs */}
+              {(p.docFiles||[]).length > 0 && (
+                <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.b1}`, display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {p.docFiles.map((f,i)=>(
+                    <span key={i} style={{ background:C.deep, color:C.ts, fontSize:11, padding:"3px 10px", borderRadius:7, border:`1px solid ${C.b1}` }}>
+                      {f.type?.startsWith("image/")?"🖼":"📄"} {f.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!loading && visible.length === 0 && (
+          <div style={{ textAlign:"center", padding:"50px 0", color:C.tm }}>
+            <div style={{ fontSize:36, opacity:0.3, marginBottom:10 }}>📋</div>
+            <div style={{ fontSize:14, fontWeight:600 }}>Nenhuma proposta encontrada</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState(null);
@@ -12452,10 +12840,8 @@ export default function App() {
           0%,100% { box-shadow: 0 0 0 2px #16A34A, 0 0 8px #16A34A88; }
           50%     { box-shadow: 0 0 0 3px #4ade80, 0 0 16px #4ade8099; }
         }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #1A1F2E; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #525870; }
+        ::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+        * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
       `}</style>
       <div
         key={theme}
@@ -12523,6 +12909,12 @@ export default function App() {
         )}
         {page === "usuarios_page" && (
           <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+        )}
+        {page === "digitacao" && (
+          <DigitacaoPage contacts={contacts} currentUser={currentUser} />
+        )}
+        {page === "propostas" && (
+          <PropostasPage currentUser={currentUser} />
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
