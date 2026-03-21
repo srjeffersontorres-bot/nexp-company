@@ -13314,8 +13314,6 @@ const STATUS_PROPOSTA_COLORS = {
   "Proposta Concluída":                "#34D399",
   "Cancelada":                         "#EF4444",
 };
-// Status que o digitador (quem criou) pode alterar
-const STATUS_DIGITADOR_PODE_ALTERAR = ["Análise Manual"];
 // Status visíveis apenas para propostas (mestre/master/digitador)
 const STATUS_APENAS_PROPOSTA = [
   "Aguardando Digitação","Proposta Digitada","Aguardando Formalização",
