@@ -4795,7 +4795,6 @@ function PerfisTab({ users, setUsers, currentUser }) {
 
 // ── Página de Usuários (nova aba no menu) ──────────────────────
 function RankTab({ users, currentUser }) {
-  const myRole = currentUser.role || "operador";
   const myId   = currentUser.uid || currentUser.id;
   const [search, setSearch] = useState("");
 
