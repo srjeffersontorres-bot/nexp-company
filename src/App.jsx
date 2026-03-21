@@ -12182,7 +12182,7 @@ function ApisBancosPage({ currentUser }) {
   );
 }
 
-// ── Subcomponentes de digitação (fora do componente pai para evitar perda de foco) ──
+// ── Sub-componentes de Digitação fora do pai (evita perda de foco) ──
 function DField({ label, req, val, onChange, type="text", ph="" }) {
   return (
     <div>
@@ -12220,6 +12220,164 @@ function DSimNao({ label, val, onChange }) {
             {v==="SIM"?"✓ Sim":"✗ Não"}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+function DSecTitle({ icon, title, color }) {
+  return (
+    <div style={{color:color||C.ts,fontSize:12,fontWeight:700,marginBottom:12,paddingBottom:8,
+      borderBottom:`1px solid ${color?color+"33":C.b1}`,display:"flex",alignItems:"center",gap:7}}>
+      {icon} {title}
+    </div>
+  );
+}
+function DGrid({ cols=3, children, gap=10 }) {
+  return (
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,marginBottom:12}}>{children}</div>
+  );
+}
+// Inp, Sel, SimNao com form+setF injetados — usados no JSX via renderização direta
+function DInp({ form, setF, label, k, type="text", ph="", req=false }) {
+  return <DField label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} type={type} ph={ph} />;
+}
+function DSel({ form, setF, label, k, opts, req=false }) {
+  return <DSelect label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} opts={opts} />;
+}
+function DSN({ form, setF, label, k }) {
+  return <DSimNao label={label} val={form[k]} onChange={v=>setF(k,v)} />;
+}
+
+// ── Relatório Mensal e Anual de Digitação ──────────────────────
+function RelatorioDigitacao({ myId }) {
+  const [propostas, setPropostas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const now = new Date();
+  const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db,"propostas"), snap => {
+      const all = snap.docs.map(d=>({...d.data(),id:d.id}))
+        .filter(p => p.criadoPor === myId);
+      setPropostas(all);
+      setLoading(false);
+    });
+    return ()=>unsub();
+  }, []); // eslint-disable-line
+
+  const fmtBRL = v => "R$ " + (v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
+  const parseVal = v => { const n=parseFloat((v||"0").replace(/\./g,"").replace(",",".")); return isNaN(n)?0:n; };
+
+  // Filtrar pelo mês/ano atual
+  const mesAtual = now.getMonth();
+  const anoAtual = now.getFullYear();
+
+  const doMes = propostas.filter(p => {
+    const d = new Date(p.createdAt||0);
+    return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+  });
+  const doAno = propostas.filter(p => new Date(p.createdAt||0).getFullYear()===anoAtual);
+
+  const calcMetrics = (list) => ({
+    total: list.length,
+    concluidas: list.filter(p=>p.status==="Proposta Concluída").length,
+    pendentes: list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização"].includes(p.status)).length,
+    canceladas: list.filter(p=>p.status==="Cancelada").length,
+    valorTotal: list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorSolicitado),0),
+  });
+
+  const metricsMes = calcMetrics(doMes);
+  const metricsAno = calcMetrics(doAno);
+
+  // Breakdown por mês do ano atual
+  const porMes = Array.from({length:12},(_,m) => {
+    const list = propostas.filter(p => {
+      const d = new Date(p.createdAt||0);
+      return d.getMonth()===m && d.getFullYear()===anoAtual;
+    });
+    return { mes:MESES[m], ...calcMetrics(list) };
+  });
+
+  const MetricCard = ({label,val,color,icon,isMoney=false}) => (
+    <div style={{...S.card,padding:"18px 20px",textAlign:"center",border:`1px solid ${color}33`}}>
+      <div style={{fontSize:26,marginBottom:6}}>{icon}</div>
+      <div style={{color,fontSize:isMoney?15:26,fontWeight:800,letterSpacing:isMoney?"-0.5px":"-1px",marginBottom:4,wordBreak:"break-all"}}>{val}</div>
+      <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.5px"}}>{label}</div>
+    </div>
+  );
+
+  if (loading) return <div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>;
+
+  return (
+    <div>
+      {/* ── Relatório Mensal ── */}
+      <div style={{marginBottom:28}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{color:C.tp,fontSize:16,fontWeight:700}}>📅 {MESES[mesAtual]} {anoAtual}</div>
+          <span style={{background:C.abg,color:C.atxt,fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700}}>Mês atual</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+          <MetricCard label="Enviadas" val={metricsMes.total} color={C.atxt} icon="📤"/>
+          <MetricCard label="Concluídas" val={metricsMes.concluidas} color="#34D399" icon="✅"/>
+          <MetricCard label="Pendentes" val={metricsMes.pendentes} color="#FBBF24" icon="⏳"/>
+          <MetricCard label="Canceladas" val={metricsMes.canceladas} color="#EF4444" icon="❌"/>
+        </div>
+        <div style={{...S.card,padding:"16px 20px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:14}}>
+          <div style={{fontSize:32}}>💰</div>
+          <div>
+            <div style={{color:C.td,fontSize:11,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total liberado em {MESES[mesAtual]}</div>
+            <div style={{color:"#34D399",fontSize:22,fontWeight:800}}>{fmtBRL(metricsMes.valorTotal)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Relatório Anual ── */}
+      <div>
+        <div style={{color:C.tp,fontSize:16,fontWeight:700,marginBottom:16}}>📆 Relatório Anual — {anoAtual}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+          <MetricCard label="Enviadas" val={metricsAno.total} color={C.atxt} icon="📤"/>
+          <MetricCard label="Concluídas" val={metricsAno.concluidas} color="#34D399" icon="✅"/>
+          <MetricCard label="Pendentes" val={metricsAno.pendentes} color="#FBBF24" icon="⏳"/>
+          <MetricCard label="Canceladas" val={metricsAno.canceladas} color="#EF4444" icon="❌"/>
+        </div>
+        <div style={{...S.card,padding:"16px 20px",border:"1px solid #34D39933",marginBottom:20,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{fontSize:32}}>🏆</div>
+          <div>
+            <div style={{color:C.td,fontSize:11,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total liberado em {anoAtual}</div>
+            <div style={{color:"#34D399",fontSize:22,fontWeight:800}}>{fmtBRL(metricsAno.valorTotal)}</div>
+          </div>
+        </div>
+
+        {/* Tabela mês a mês */}
+        <div style={{...S.card,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${C.b1}`,color:C.ts,fontSize:13,fontWeight:700}}>Desempenho por mês</div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:C.deep}}>
+                  {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Valor Liberado"].map(h=>(
+                    <th key={h} style={{color:C.td,fontSize:10.5,fontWeight:700,padding:"10px 14px",textAlign:"left",textTransform:"uppercase",letterSpacing:"0.3px",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {porMes.map((m,i)=>{
+                  const isAtual = i===mesAtual;
+                  return (
+                    <tr key={m.mes} style={{background:isAtual?C.abg:"transparent",borderBottom:`1px solid ${C.b1}`}}>
+                      <td style={{padding:"10px 14px",color:isAtual?C.atxt:C.ts,fontWeight:isAtual?700:400}}>{m.mes}{isAtual&&" ←"}</td>
+                      <td style={{padding:"10px 14px",color:C.ts}}>{m.total||"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.valorTotal>0?"#34D399":C.td,fontWeight:m.valorTotal>0?600:400}}>{m.valorTotal>0?fmtBRL(m.valorTotal):"—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -12378,34 +12536,17 @@ function DigitacaoPage({ contacts, currentUser }) {
   };
 
   // Subcomponentes passam form e setF como props para evitar re-render com perda de foco
-  const Inp = ({label,k,type="text",ph="",req=false}) => (
-    <DField label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} type={type} ph={ph} />
-  );
-  const Sel = ({label,k,opts,req=false}) => (
-    <DSelect label={label} req={req} val={form[k]||""} onChange={v=>setF(k,v)} opts={opts} />
-  );
-  const SimNao = ({label,k}) => (
-    <DSimNao label={label} val={form[k]} onChange={v=>setF(k,v)} />
-  );
-  const SecTitle = ({icon,title,color}) => (
-    <div style={{color:color||C.ts,fontSize:12,fontWeight:700,marginBottom:12,paddingBottom:8,
-      borderBottom:`1px solid ${color?color+"33":C.b1}`,display:"flex",alignItems:"center",gap:7}}>
-      {icon} {title}
-    </div>
-  );
-  const Grid = ({cols=3,children,gap=10}) => (
-    <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,marginBottom:12}}>{children}</div>
-  );
-
   return (
     <div style={{padding:"24px 32px",maxWidth:960}}>
-      {/* Abas Nova / Minhas Propostas */}
+      {/* Abas: Nova Digitação | Minhas Propostas | Relatório Mensal */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
         {[
-          {id:"nova",label:"📝 Nova Digitação"},
-          {id:"minhas",label:"📋 Minhas Propostas", badge: unreadMinhas},
+          {id:"nova",   label:"📝 Nova Digitação"},
+          {id:"minhas", label:"📋 Minhas Propostas", badge: unreadMinhas},
+          {id:"relatorio", label:"📊 Relatório Mensal"},
         ].map(t=>(
-          <button key={t.id} onClick={()=>{ setAbaDigitacao(t.id); if(t.id==="minhas") minhasPropostas.forEach(p=>marcarVistaDigitador(p.id,p.viewedByDigitador)); }}
+          <button key={t.id}
+            onClick={()=>{ setAbaDigitacao(t.id); if(t.id==="minhas") minhasPropostas.forEach(p=>marcarVistaDigitador(p.id,p.viewedByDigitador)); }}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
               fontWeight:abaDigitacao===t.id?700:400,color:abaDigitacao===t.id?C.atxt:C.tm,
               borderBottom:abaDigitacao===t.id?`2px solid ${C.atxt}`:"2px solid transparent",
@@ -12415,6 +12556,11 @@ function DigitacaoPage({ contacts, currentUser }) {
           </button>
         ))}
       </div>
+
+      {/* ── Aba Relatório Mensal ── */}
+      {abaDigitacao==="relatorio" && (
+        <RelatorioDigitacao myId={myId} />
+      )}
 
       {/* Aba Minhas Propostas */}
       {abaDigitacao==="minhas" && (
@@ -12500,213 +12646,213 @@ function DigitacaoPage({ contacts, currentUser }) {
       {/* ═══ FGTS ═══ */}
       {tipoProposta==="FGTS" && (<>
         <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-          <SecTitle icon="🏦" title="Informações da Proposta — FGTS" color="#4F8EF7"/>
-          <Grid cols={3}>
-            <Inp label="Banco da Proposta" k="bancoProposta" req/>
-            <Inp label="Tabela" k="tabela" ph="Ex: COMETA"/>
-            <Inp label="Anos de Antecipação" k="anosAntecipacao" ph="Ex: 3"/>
-          </Grid>
-          <Grid cols={3}>
-            <Inp label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
-            <Inp label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
-            <Inp label="Valor de Desconto (R$)" k="valorDesconto" ph="R$ 0,00"/>
-          </Grid>
-          <Grid cols={2}>
-            <SimNao label="Com Seguro?" k="comSeguro"/>
-          </Grid>
+          <DSecTitle icon="🏦" title="Informações da Proposta — FGTS" color="#4F8EF7"/>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Banco da Proposta" k="bancoProposta" req/>
+            <DInp form={form} setF={setF} label="Tabela" k="tabela" ph="Ex: COMETA"/>
+            <DInp form={form} setF={setF} label="Anos de Antecipação" k="anosAntecipacao" ph="Ex: 3"/>
+          </DGrid>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
+            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Valor de Desconto (R$)" k="valorDesconto" ph="R$ 0,00"/>
+          </DGrid>
+          <DGrid cols={2}>
+            <DSN form={form} setF={setF} label="Com Seguro?" k="comSeguro"/>
+          </DGrid>
         </div>
       </>)}
 
       {/* ═══ CLT ═══ */}
       {tipoProposta==="CLT" && (<>
         <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-          <SecTitle icon="💼" title="Informações da Proposta — CLT" color="#34D399"/>
-          <Grid cols={3}>
-            <Inp label="Banco da Proposta" k="bancoProposta" ph="Ex: V8 DIGITAL" req/>
-            <Inp label="Averbador" k="averbador" ph="Ex: CELCOIN"/>
-            <Inp label="Protocolo" k="protocolo"/>
-          </Grid>
-          <Grid cols={3}>
-            <Inp label="Tabela" k="tabela" ph="Ex: CLT ACELERA"/>
-            <Inp label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
-            <Inp label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
-          </Grid>
-          <Grid cols={3}>
-            <Inp label="Parcelas (R$)" k="parcelas" ph="R$ 0,00"/>
-            <Inp label="Prazo" k="prazo" ph="Ex: 12x"/>
-            <SimNao label="Com Seguro?" k="comSeguro"/>
-          </Grid>
-          <SecTitle icon="🏢" title="Dados da Empresa"/>
-          <Grid cols={3}>
-            <Inp label="Empresa" k="empresa"/>
-            <Inp label="CNPJ" k="cnpj"/>
-            <Inp label="Matrícula" k="matricula"/>
-          </Grid>
+          <DSecTitle icon="💼" title="Informações da Proposta — CLT" color="#34D399"/>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Banco da Proposta" k="bancoProposta" ph="Ex: V8 DIGITAL" req/>
+            <DInp form={form} setF={setF} label="Averbador" k="averbador" ph="Ex: CELCOIN"/>
+            <DInp form={form} setF={setF} label="Protocolo" k="protocolo"/>
+          </DGrid>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Tabela" k="tabela" ph="Ex: CLT ACELERA"/>
+            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
+            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00"/>
+          </DGrid>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Parcelas (R$)" k="parcelas" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Prazo" k="prazo" ph="Ex: 12x"/>
+            <DSN form={form} setF={setF} label="Com Seguro?" k="comSeguro"/>
+          </DGrid>
+          <DSecTitle icon="🏢" title="Dados da Empresa"/>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Empresa" k="empresa"/>
+            <DInp form={form} setF={setF} label="CNPJ" k="cnpj"/>
+            <DInp form={form} setF={setF} label="Matrícula" k="matricula"/>
+          </DGrid>
         </div>
       </>)}
 
       {/* ═══ INSS ═══ */}
       {tipoProposta==="INSS" && (<>
         <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-          <SecTitle icon="🏥" title="Informações da Proposta — INSS" color="#C084FC"/>
-          <Grid cols={3}>
-            <Inp label="Banco da Proposta" k="bancoProposta" req/>
-            <Inp label="Nº do Benefício" k="numBeneficio"/>
-            <Inp label="Nº da Matrícula" k="numMatricula"/>
-          </Grid>
-          <Grid cols={4}>
-            <Inp label="Tabela" k="tabela"/>
-            <Inp label="Margem (R$)" k="margem" ph="Ex: 424,00"/>
-            <Inp label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
-            <Inp label="Valor Prometido (R$)" k="valorPrometido" ph="R$ 0,00"/>
-          </Grid>
-          <Grid cols={3}>
-            <Inp label="Prazo das Parcelas" k="prazo" ph="Ex: 84x"/>
-            <SimNao label="Com Seguro?" k="comSeguro"/>
-            <SimNao label="Extrato Anexado?" k="extratoAnexado"/>
-          </Grid>
-          <Grid cols={2}>
-            <SimNao label="Com Representante Legal?" k="comRepresentante"/>
-            <SimNao label="Analfabeto?" k="analfabeto"/>
-          </Grid>
+          <DSecTitle icon="🏥" title="Informações da Proposta — INSS" color="#C084FC"/>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Banco da Proposta" k="bancoProposta" req/>
+            <DInp form={form} setF={setF} label="Nº do Benefício" k="numBeneficio"/>
+            <DInp form={form} setF={setF} label="Nº da Matrícula" k="numMatricula"/>
+          </DGrid>
+          <DGrid cols={4}>
+            <DInp form={form} setF={setF} label="Tabela" k="tabela"/>
+            <DInp form={form} setF={setF} label="Margem (R$)" k="margem" ph="Ex: 424,00"/>
+            <DInp form={form} setF={setF} label="Valor Liberado (R$)" k="valorLiberado" ph="R$ 0,00" req/>
+            <DInp form={form} setF={setF} label="Valor Prometido (R$)" k="valorPrometido" ph="R$ 0,00"/>
+          </DGrid>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Prazo das Parcelas" k="prazo" ph="Ex: 84x"/>
+            <DSN form={form} setF={setF} label="Com Seguro?" k="comSeguro"/>
+            <DSN form={form} setF={setF} label="Extrato Anexado?" k="extratoAnexado"/>
+          </DGrid>
+          <DGrid cols={2}>
+            <DSN form={form} setF={setF} label="Com Representante Legal?" k="comRepresentante"/>
+            <DSN form={form} setF={setF} label="Analfabeto?" k="analfabeto"/>
+          </DGrid>
         </div>
       </>)}
 
       {/* ═══ CARTÃO CONSIGNADO ═══ */}
       {tipoProposta==="CARTAO" && (<>
         <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-          <SecTitle icon="💳" title="Informações da Proposta — Cartão Consignado" color="#FB923C"/>
-          <Grid cols={3}>
-            <Inp label="Nº do Benefício" k="numBeneficio"/>
-            <Inp label="Nº da Matrícula" k="numMatricula"/>
-            <Inp label="Tabela" k="tabela" ph="Ex: NORMAL"/>
-          </Grid>
-          <Grid cols={4}>
-            <Inp label="Parcela (R$)" k="parcela" ph="R$ 0,00"/>
-            <Inp label="Valor do Limite (R$)" k="valorLimite" ph="R$ 0,00"/>
-            <Inp label="Valor Saque Complementar (R$)" k="valorSaqueComp" ph="R$ 0,00"/>
-            <Inp label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" req/>
-          </Grid>
-          <Grid cols={3}>
-            <Inp label="Prazo das Parcelas" k="prazo" ph="Ex: 96x"/>
-            <SimNao label="Com Seguro?" k="comSeguro"/>
-            <SimNao label="Extrato Anexado?" k="extratoAnexado"/>
-          </Grid>
+          <DSecTitle icon="💳" title="Informações da Proposta — Cartão Consignado" color="#FB923C"/>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Nº do Benefício" k="numBeneficio"/>
+            <DInp form={form} setF={setF} label="Nº da Matrícula" k="numMatricula"/>
+            <DInp form={form} setF={setF} label="Tabela" k="tabela" ph="Ex: NORMAL"/>
+          </DGrid>
+          <DGrid cols={4}>
+            <DInp form={form} setF={setF} label="Parcela (R$)" k="parcela" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Valor do Limite (R$)" k="valorLimite" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Valor Saque Complementar (R$)" k="valorSaqueComp" ph="R$ 0,00"/>
+            <DInp form={form} setF={setF} label="Valor Prometido ao Cliente (R$)" k="valorPrometido" ph="R$ 0,00" req/>
+          </DGrid>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Prazo das Parcelas" k="prazo" ph="Ex: 96x"/>
+            <DSN form={form} setF={setF} label="Com Seguro?" k="comSeguro"/>
+            <DSN form={form} setF={setF} label="Extrato Anexado?" k="extratoAnexado"/>
+          </DGrid>
         </div>
       </>)}
 
       {/* ═══ DOCUMENTO DO CLIENTE (todos) ═══ */}
       <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-        <SecTitle icon="🪪" title={tipoProposta==="CARTAO"?"Informações do Documento — Cliente":"Informações do Documento"}/>
+        <DSecTitle icon="🪪" title={tipoProposta==="CARTAO"?"Informações do Documento — Cliente":"Informações do Documento"}/>
         <div style={{background:clienteEncontrado?"#091E12":C.deep,borderRadius:9,padding:"7px 12px",marginBottom:12,border:`1px solid ${clienteEncontrado?"#34D39933":C.b1}`,fontSize:11.5,color:clienteEncontrado?"#34D399":C.tm,display:"flex",alignItems:"center",gap:7}}>
           {clienteEncontrado?"✓ Cliente encontrado no sistema — dados preenchidos automaticamente":"Digite o CPF para buscar dados automaticamente"}
         </div>
-        <Grid cols={3}>
+        <DGrid cols={3}>
           <div>
             <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:3}}>CPF <span style={{color:"#EF4444"}}>*</span></label>
             <input value={form.cpf||""} onChange={e=>buscarCPF(e.target.value)} placeholder="000.000.000-00"
               style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:clienteEncontrado?"#34D39944":undefined}}/>
           </div>
-          <Inp label="Nome do Cliente" k="nome" req/>
-          <Inp label="RG" k="rg"/>
-        </Grid>
-        <Grid cols={4}>
-          <Inp label="Data de Nascimento" k="dataNasc" type="date"/>
-          <Inp label="Data de Expedição" k="dataExpedicao" type="date"/>
-          <Inp label="Órgão Emissor" k="orgaoEmissor" ph="Ex: DETRAN"/>
-          <Inp label="UF do Documento" k="ufDoc" ph="Ex: RJ"/>
-        </Grid>
-        <Grid cols={3}>
-          <Inp label="Nome da Mãe" k="nomeMae"/>
-          <Inp label="Nome do Pai" k="nomePai"/>
-          <Inp label="Naturalidade" k="naturalidade" ph="Ex: ITABORAI - RJ"/>
-        </Grid>
+          <DInp form={form} setF={setF} label="Nome do Cliente" k="nome" req/>
+          <DInp form={form} setF={setF} label="RG" k="rg"/>
+        </DGrid>
+        <DGrid cols={4}>
+          <DInp form={form} setF={setF} label="Data de Nascimento" k="dataNasc" type="date"/>
+          <DInp form={form} setF={setF} label="Data de Expedição" k="dataExpedicao" type="date"/>
+          <DInp form={form} setF={setF} label="Órgão Emissor" k="orgaoEmissor" ph="Ex: DETRAN"/>
+          <DInp form={form} setF={setF} label="UF do Documento" k="ufDoc" ph="Ex: RJ"/>
+        </DGrid>
+        <DGrid cols={3}>
+          <DInp form={form} setF={setF} label="Nome da Mãe" k="nomeMae"/>
+          <DInp form={form} setF={setF} label="Nome do Pai" k="nomePai"/>
+          <DInp form={form} setF={setF} label="Naturalidade" k="naturalidade" ph="Ex: ITABORAI - RJ"/>
+        </DGrid>
         {tipoProposta==="CLT" && (
-          <Grid cols={2}>
-            <Inp label="Matrícula" k="matricula"/>
-            <Inp label="Empresa" k="empresa"/>
-          </Grid>
+          <DGrid cols={2}>
+            <DInp form={form} setF={setF} label="Matrícula" k="matricula"/>
+            <DInp form={form} setF={setF} label="Empresa" k="empresa"/>
+          </DGrid>
         )}
       </div>
 
       {/* ═══ REPRESENTANTE (só Cartão Consignado) ═══ */}
       {tipoProposta==="CARTAO" && (
         <div style={{...S.card,padding:"20px 22px",marginBottom:12,border:`1px solid #FB923C33`}}>
-          <SecTitle icon="👤" title="Informações do Documento — Representante" color="#FB923C"/>
-          <Grid cols={3}>
-            <Inp label="Nome do Representante" k="nomeRep" req/>
-            <Inp label="CPF do Representante" k="cpfRep"/>
-            <Inp label="RG do Representante" k="rgRep"/>
-          </Grid>
-          <Grid cols={4}>
-            <Inp label="Data de Nascimento" k="dataNascRep" type="date"/>
-            <Inp label="Data de Expedição" k="dataExpRep" type="date"/>
-            <Inp label="Órgão Emissor" k="orgaoRep" ph="Ex: DETRAN"/>
-            <Inp label="UF do Documento" k="ufDocRep" ph="Ex: RJ"/>
-          </Grid>
-          <Grid cols={3}>
-            <Inp label="Nome da Mãe" k="nomeMaeRep"/>
-            <Inp label="Nome do Pai" k="nomePaiRep"/>
-            <Inp label="Naturalidade" k="naturalidadeRep"/>
-          </Grid>
-          <SecTitle icon="📞" title="Contato do Representante"/>
-          <Grid cols={4}>
-            <Inp label="Contato 1" k="contato1Rep" type="tel" ph="(00) 00000-0000"/>
-            <Inp label="Contato 2" k="contato2Rep" type="tel"/>
-            <Inp label="Email 1" k="email1Rep" type="email"/>
-            <Inp label="Email 2" k="email2Rep" type="email"/>
-          </Grid>
+          <DSecTitle icon="👤" title="Informações do Documento — Representante" color="#FB923C"/>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Nome do Representante" k="nomeRep" req/>
+            <DInp form={form} setF={setF} label="CPF do Representante" k="cpfRep"/>
+            <DInp form={form} setF={setF} label="RG do Representante" k="rgRep"/>
+          </DGrid>
+          <DGrid cols={4}>
+            <DInp form={form} setF={setF} label="Data de Nascimento" k="dataNascRep" type="date"/>
+            <DInp form={form} setF={setF} label="Data de Expedição" k="dataExpRep" type="date"/>
+            <DInp form={form} setF={setF} label="Órgão Emissor" k="orgaoRep" ph="Ex: DETRAN"/>
+            <DInp form={form} setF={setF} label="UF do Documento" k="ufDocRep" ph="Ex: RJ"/>
+          </DGrid>
+          <DGrid cols={3}>
+            <DInp form={form} setF={setF} label="Nome da Mãe" k="nomeMaeRep"/>
+            <DInp form={form} setF={setF} label="Nome do Pai" k="nomePaiRep"/>
+            <DInp form={form} setF={setF} label="Naturalidade" k="naturalidadeRep"/>
+          </DGrid>
+          <DSecTitle icon="📞" title="Contato do Representante"/>
+          <DGrid cols={4}>
+            <DInp form={form} setF={setF} label="Contato 1" k="contato1Rep" type="tel" ph="(00) 00000-0000"/>
+            <DInp form={form} setF={setF} label="Contato 2" k="contato2Rep" type="tel"/>
+            <DInp form={form} setF={setF} label="Email 1" k="email1Rep" type="email"/>
+            <DInp form={form} setF={setF} label="Email 2" k="email2Rep" type="email"/>
+          </DGrid>
         </div>
       )}
 
       {/* ═══ CONTATO ═══ */}
       <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-        <SecTitle icon="📞" title={tipoProposta==="CARTAO"?"Informações de Contato — Cliente":"Informações de Contato"}/>
-        <Grid cols={4}>
-          <Inp label="Contato 1" k="contato1" type="tel" ph="(00) 00000-0000" req/>
-          <Inp label="Contato 2" k="contato2" type="tel"/>
-          <Inp label="Email 1" k="email1" type="email"/>
-          <Inp label="Email 2" k="email2" type="email"/>
-        </Grid>
+        <DSecTitle icon="📞" title={tipoProposta==="CARTAO"?"Informações de Contato — Cliente":"Informações de Contato"}/>
+        <DGrid cols={4}>
+          <DInp form={form} setF={setF} label="Contato 1" k="contato1" type="tel" ph="(00) 00000-0000" req/>
+          <DInp form={form} setF={setF} label="Contato 2" k="contato2" type="tel"/>
+          <DInp form={form} setF={setF} label="Email 1" k="email1" type="email"/>
+          <DInp form={form} setF={setF} label="Email 2" k="email2" type="email"/>
+        </DGrid>
       </div>
 
       {/* ═══ ENDEREÇO ═══ */}
       <div style={{...S.card,padding:"20px 22px",marginBottom:12}}>
-        <SecTitle icon="📍" title="Informações de Endereço"/>
-        <Grid cols={4}>
-          <Inp label="UF do Endereço" k="ufEnd" ph="Ex: RJ"/>
-          <Inp label="CEP" k="cep" ph="00000-000" req/>
-          <Inp label="Rua" k="rua" req/>
-          <Inp label="Número" k="numero"/>
-        </Grid>
-        <Grid cols={3}>
-          <Inp label="Bairro" k="bairro"/>
-          <Inp label="Cidade" k="cidade"/>
-          <Inp label="Complemento" k="complemento"/>
-        </Grid>
+        <DSecTitle icon="📍" title="Informações de Endereço"/>
+        <DGrid cols={4}>
+          <DInp form={form} setF={setF} label="UF do Endereço" k="ufEnd" ph="Ex: RJ"/>
+          <DInp form={form} setF={setF} label="CEP" k="cep" ph="00000-000" req/>
+          <DInp form={form} setF={setF} label="Rua" k="rua" req/>
+          <DInp form={form} setF={setF} label="Número" k="numero"/>
+        </DGrid>
+        <DGrid cols={3}>
+          <DInp form={form} setF={setF} label="Bairro" k="bairro"/>
+          <DInp form={form} setF={setF} label="Cidade" k="cidade"/>
+          <DInp form={form} setF={setF} label="Complemento" k="complemento"/>
+        </DGrid>
       </div>
 
       {/* ═══ PAGAMENTO ═══ */}
       <div style={{...S.card,padding:"20px 22px",marginBottom:12,border:`1px solid #FBBF2422`}}>
-        <SecTitle icon="🏦" title="Informações de Pagamento ao Cliente" color="#FBBF24"/>
+        <DSecTitle icon="🏦" title="Informações de Pagamento ao Cliente" color="#FBBF24"/>
         <div style={{background:"#2B1D0322",borderRadius:8,padding:"7px 12px",marginBottom:10,fontSize:11,color:"#FBBF24"}}>
           ⚠ Preenchimento manual obrigatório — não é preenchido automaticamente
         </div>
-        <Grid cols={4}>
-          <Inp label="Banco" k="bancoPagto" ph="Ex: BRADESCO" req/>
-          <Inp label="Agência" k="agencia" ph="Ex: 6856" req/>
-          <Inp label="Conta com Dígito" k="contaDigito" ph="Ex: 19136-1" req/>
-          <Sel label="Tipo de Conta" k="tipoConta" opts={[{v:"corrente",l:"Corrente"},{v:"poupanca",l:"Poupança"}]}/>
-        </Grid>
-        <Grid cols={2}>
-          <Inp label="1ª Chave PIX" k="pix1" ph="CPF, email, telefone ou aleatória"/>
-          <Inp label="2ª Chave PIX" k="pix2" ph="Opcional"/>
-        </Grid>
+        <DGrid cols={4}>
+          <DInp form={form} setF={setF} label="Banco" k="bancoPagto" ph="Ex: BRADESCO" req/>
+          <DInp form={form} setF={setF} label="Agência" k="agencia" ph="Ex: 6856" req/>
+          <DInp form={form} setF={setF} label="Conta com Dígito" k="contaDigito" ph="Ex: 19136-1" req/>
+          <DSel form={form} setF={setF} label="Tipo de Conta" k="tipoConta" opts={[{v:"corrente",l:"Corrente"},{v:"poupanca",l:"Poupança"}]}/>
+        </DGrid>
+        <DGrid cols={2}>
+          <DInp form={form} setF={setF} label="1ª Chave PIX" k="pix1" ph="CPF, email, telefone ou aleatória"/>
+          <DInp form={form} setF={setF} label="2ª Chave PIX" k="pix2" ph="Opcional"/>
+        </DGrid>
       </div>
 
       {/* ═══ DOCUMENTAÇÃO ═══ */}
       <div style={{...S.card,padding:"20px 22px",marginBottom:12,border:`1px solid ${form.docFiles.length>0?"#34D39933":"#EF444433"}`}}>
-        <SecTitle icon="📎" title={`Documentação Obrigatória ${form.docFiles.length>0?"✓":"— Nenhum arquivo"}`} color={form.docFiles.length>0?"#34D399":"#F87171"}/>
+        <DSecTitle icon="📎" title={`Documentação Obrigatória ${form.docFiles.length>0?"✓":"— Nenhum arquivo"}`} color={form.docFiles.length>0?"#34D399":"#F87171"}/>
         <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
           <div style={{flex:1}}>
             <label style={{color:C.tm,fontSize:10.5,display:"block",marginBottom:5}}>Tipo de Documento</label>
@@ -12756,7 +12902,7 @@ function DigitacaoPage({ contacts, currentUser }) {
 
       {/* ═══ OBSERVAÇÕES ═══ */}
       <div style={{...S.card,padding:"20px 22px",marginBottom:20}}>
-        <SecTitle icon="💬" title="Observações da Proposta"/>
+        <DSecTitle icon="💬" title="Observações da Proposta"/>
         <textarea value={form.observacao||""} onChange={e=>setF("observacao",e.target.value)} rows={3}
           placeholder="Informações adicionais sobre o cliente ou proposta..."
           style={{...S.input,resize:"vertical",fontSize:12}}/>
