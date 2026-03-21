@@ -406,6 +406,24 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+function CommSimTabs({ contact }) {
+  const [scTab, setScTab] = useState("comissao");
+  return (
+    <>
+      <div style={{ display:"flex", gap:1, borderBottom:`1px solid ${C.b1}`, marginBottom:12 }}>
+        {[{id:"comissao",label:"💰 Comissão"},{id:"avisos",label:"🔔 Aviso de Comissões"}].map(t=>(
+          <button key={t.id} onClick={()=>setScTab(t.id)}
+            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"6px 12px", fontSize:11.5, fontWeight:scTab===t.id?700:400, color:scTab===t.id?C.atxt:C.tm, borderBottom:scTab===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {scTab === "comissao" && <CommSim compact />}
+      {scTab === "avisos" && <AvisoComissoes contact={contact} />}
+    </>
+  );
+}
+
 function AvisoComissoes({ contact }) {
   const [avisos, setAvisos] = useState(() => {
     try { return JSON.parse(localStorage.getItem("nexp_avisos_comissao") || "[]"); } catch { return []; }
@@ -2295,21 +2313,7 @@ function CCard({ contact, onUpdate, onDelete }) {
                     }}
                   >
                     {(() => {
-                      const [scTab2, setScTab2] = React.useState("comissao");
-                      return (
-                        <>
-                          <div style={{ display:"flex", gap:1, borderBottom:`1px solid ${C.b1}`, marginBottom:12 }}>
-                            {[{id:"comissao",label:"💰 Comissão"},{id:"avisos",label:"🔔 Aviso de Comissões"}].map(t=>(
-                              <button key={t.id} onClick={()=>setScTab2(t.id)}
-                                style={{ background:"transparent", border:"none", cursor:"pointer", padding:"6px 12px", fontSize:11.5, fontWeight:scTab2===t.id?700:400, color:scTab2===t.id?C.atxt:C.tm, borderBottom:scTab2===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
-                                {t.label}
-                              </button>
-                            ))}
-                          </div>
-                          {scTab2 === "comissao" && <CommSim compact />}
-                          {scTab2 === "avisos" && <AvisoComissoes contact={contact} />}
-                        </>
-                      );
+                      return <CommSimTabs contact={contact} />;
                     })()}
                   </div>
                 )}
@@ -3549,30 +3553,11 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           </button>
         </div>
 
-        {sc && (
-          <div style={{ marginTop: 12, padding: "16px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b2}` }}>
-            {/* Sub-abas de comissão */}
-            {(() => {
-              const [scTab, setScTab] = React.useState("comissao");
-              return (
-                <>
-                  <div style={{ display:"flex", gap:1, borderBottom:`1px solid ${C.b1}`, marginBottom:14 }}>
-                    {[{id:"comissao",label:"💰 Comissão"},{id:"avisos",label:"🔔 Aviso de Comissões"}].map(t=>(
-                      <button key={t.id} onClick={()=>setScTab(t.id)}
-                        style={{ background:"transparent", border:"none", cursor:"pointer", padding:"7px 14px", fontSize:12, fontWeight:scTab===t.id?700:400, color:scTab===t.id?C.atxt:C.tm, borderBottom:scTab===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                  {scTab === "comissao" && <CommSim compact />}
-                  {scTab === "avisos" && (
-                    <AvisoComissoes contact={cur} />
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        )}
+            {sc && (
+              <div style={{ marginTop: 12, padding: "16px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b2}` }}>
+                <CommSimTabs contact={cur} />
+              </div>
+            )}
       </div>
 
       {/* ── Modal: Prosseguir com Digitação ── */}
