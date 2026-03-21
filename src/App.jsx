@@ -620,28 +620,7 @@ function CommSim({ compact = false }) {
 
 // ── Login ──────────────────────────────────────────────────────
 // ── NexpRobot — robô SVG com corpo animado e 12 poses ─────────
-const FRASES_DIA = [
-  "Hoje é um novo começo. Faça valer cada minuto! 🚀",
-  "Cada cliente atendido é uma vitória. Vai com tudo! 💪",
-  "Persistência transforma sonhos em resultados. 🌟",
-  "Seu esforço hoje é o sucesso de amanhã. ✨",
-  "Grandes conquistas começam com pequenas ações. 🏆",
-  "Você é capaz de mais do que imagina. Acredite! 🌈",
-  "Foco, força e fé. O sucesso está ao seu alcance! 💎",
-  "Cada dia é uma nova oportunidade de brilhar. ☀️",
-  "O segredo é nunca parar de tentar. 🔥",
-  "Sua dedicação faz a diferença. Orgulhe-se! 🎯",
-  "Trabalhe com propósito e os resultados virão. 💡",
-  "Hoje você é mais forte do que ontem. 🌿",
-  "O sucesso não é sorte, é construção diária. 🧱",
-  "Cada sorriso do cliente vale todo o esforço. 😊",
-  "Seja a energia que transforma o ambiente. ⚡",
-  "Você planta hoje o que vai colher amanhã. 🌱",
-  "Não existe meta grande demais para quem não desiste. 🎉",
-  "Sua presença aqui já faz a diferença. 👏",
-  "O caminho é longo, mas você já está no caminho certo. 🛤️",
-  "Celebre cada conquista, por menor que seja. 🥳",
-];
+
 
 function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
   const [pose, setPose] = useState(0);
