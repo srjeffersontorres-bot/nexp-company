@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword, getAuth, signInWithEmailAndPassword as signInSecondary } from "firebase/auth";
-import { collection, query, where, getDocs, getDoc, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import {
   auth,
   db,
