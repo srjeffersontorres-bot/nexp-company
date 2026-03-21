@@ -260,10 +260,10 @@ const INITIAL_USERS = [
 ];
 
 
-const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao,NomeMae,NomePai,CEP,Rua,Numero,Bairro,Cidade,UF
-João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,joao@email.com,,M001,FGTS,Saldo disponível,Maria Silva,José Silva,01310-100,Av. Paulista,1000,Bela Vista,São Paulo,SP
-Maria Santos,987.654.321-11,(21) 98888-0002,,,maria@email.com,,M002,INSS,Aposentada,Ana Santos,Pedro Santos,20040-020,Rua da Assembleia,200,Centro,Rio de Janeiro,RJ
-Pedro Costa,456.789.123-22,(31) 97777-0003,(31) 96666-0002,(31) 95555-0003,12.345.678/0001-90,pedro@empresa.com,M003,Empréstimo do Trabalhador,Documentação aguardando,Lucia Costa,Carlos Costa,30130-110,Av. Afonso Pena,500,Centro,Belo Horizonte,MG
+const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao
+João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,joao@email.com,,M001,FGTS,Saldo disponível
+Maria Santos,987.654.321-11,(21) 98888-0002,,,maria@email.com,,M002,INSS,Aposentada
+Pedro Costa,456.789.123-22,(31) 97777-0003,(31) 96666-0002,(31) 95555-0003,12.345.678/0001-90,pedro@empresa.com,M003,Empréstimo do Trabalhador,Documentação aguardando
 `;
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -295,20 +295,6 @@ function parseCSV(text) {
     lead: "leadType",
     observacao: "observacao",
     obs: "observacao",
-    nomemae: "nomeMae",
-    mae: "nomeMae",
-    nomepai: "nomePai",
-    pai: "nomePai",
-    cep: "cep",
-    rua: "rua",
-    logradouro: "rua",
-    numero: "numero",
-    num: "numero",
-    bairro: "bairro",
-    cidade: "cidade",
-    municipio: "cidade",
-    uf: "ufEnd",
-    estado: "ufEnd",
   };
   return lines
     .slice(1)
@@ -1578,7 +1564,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
     { id:"dashboard",  label:"Leads Gerais",  icon:"◈", roles:["mestre","master","indicado","visitante"] },
@@ -1688,12 +1674,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                     {it.id === "propostas" && unreadPropostas > 0 && (
                       <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
                         {unreadPropostas}
-                      </span>
-                    )}
-                    {/* Badge digitação */}
-                    {it.id === "digitacao" && unreadDigitacao > 0 && (
-                      <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
-                        {unreadDigitacao}
                       </span>
                     )}
                     <span style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.35)" : C.td, cursor: "grab" }} title="Arrastar">⠿</span>
@@ -2005,7 +1985,7 @@ function Dashboard({ contacts }) {
 }
 
 // ── Contact Card ───────────────────────────────────────────────
-function CCard({ contact, onUpdate, onDelete }) {
+function CCard({ contact, onUpdate, onDelete, onDigitar = null }) {
   const [open, setOpen] = useState(false);
   const [ed, setEd] = useState(false);
   const [sc, setSc] = useState(false);
@@ -2113,8 +2093,6 @@ function CCard({ contact, onUpdate, onDelete }) {
                   ["Tel 1", contact.phone || "—"],
                   ["Tel 2", contact.phone2 || "—"],
                   ["Tel 3", contact.phone3 || "—"],
-                  ...(contact.nomeMae ? [["Nome da Mãe", contact.nomeMae]] : []),
-                  ...(contact.nomePai ? [["Nome do Pai", contact.nomePai]] : []),
                 ].map(([l, v]) => (
                   <div key={l}>
                     <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 2 }}>{l}</div>
@@ -2256,7 +2234,7 @@ function CCard({ contact, onUpdate, onDelete }) {
                   </div>
                 )}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   onClick={() => {
                     setForm({ ...contact });
@@ -2271,6 +2249,14 @@ function CCard({ contact, onUpdate, onDelete }) {
                 >
                   Editar
                 </button>
+                {onDigitar && (
+                  <button
+                    onClick={() => onDigitar(contact)}
+                    style={{ background:"linear-gradient(135deg,#6366F1,#4F46E5)", color:"#fff", border:"none", borderRadius:8, fontSize:12, fontWeight:700, padding:"7px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}
+                  >
+                    📝 Digitar
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     if (window.confirm("Remover este cliente?"))
@@ -2316,14 +2302,6 @@ function CCard({ contact, onUpdate, onDelete }) {
                   ["CNPJ", "cnpj", "text"],
                   ["Email", "email", "email"],
                   ["Matrícula", "matricula", "text"],
-                  ["Nome da Mãe", "nomeMae", "text"],
-                  ["Nome do Pai", "nomePai", "text"],
-                  ["CEP", "cep", "text"],
-                  ["Rua", "rua", "text"],
-                  ["Número", "numero", "text"],
-                  ["Bairro", "bairro", "text"],
-                  ["Cidade", "cidade", "text"],
-                  ["UF", "ufEnd", "text"],
                 ].map(([l, k, t]) => (
                   <div key={k}>
                     <label
@@ -2432,7 +2410,7 @@ function CCard({ contact, onUpdate, onDelete }) {
 }
 
 // ── Contacts Page ──────────────────────────────────────────────
-function ContactsPage({ contacts, setContacts }) {
+function ContactsPage({ contacts, setContacts, onDigitar = null }) {
   const [q, setQ] = useState("");
   const res = q.trim()
     ? contacts.filter(
@@ -2532,7 +2510,7 @@ function ContactsPage({ contacts, setContacts }) {
             {res.length} resultado{res.length !== 1 ? "s" : ""}
           </div>
           {res.map((c) => (
-            <CCard key={c.id} contact={c} onUpdate={upd} onDelete={rem} />
+            <CCard key={c.id} contact={c} onUpdate={upd} onDelete={rem} onDigitar={onDigitar} />
           ))}
         </>
       )}
@@ -3205,7 +3183,7 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 }
 
 // ── Review Client ──────────────────────────────────────────────
-function ReviewClient({ contacts, setContacts, filtered = null }) {
+function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null }) {
   const list = filtered || contacts;
 
   // Rastrear pelo ID do cliente, não pelo índice — evita pulos quando contacts muda de ordem
@@ -3477,6 +3455,16 @@ function ReviewClient({ contacts, setContacts, filtered = null }) {
           >
             {sc ? "▲ Fechar" : "💰 Comissão"}
           </button>
+
+          {/* Digitar proposta */}
+          {onDigitar && (
+            <button
+              onClick={() => onDigitar(cur)}
+              style={{ background:"linear-gradient(135deg,#6366F1,#4F46E5)", color:"#fff", border:"none", borderRadius:8, padding:"10px 18px", fontSize:12, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}
+            >
+              📝 Digitar
+            </button>
+          )}
         </div>
 
         {sc && (
@@ -7014,12 +7002,7 @@ function NotificacoesPage({ currentUser, users }) {
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(n => {
-          // Notificações de proposta NÃO aparecem na aba de notificações
-          const tiposProposta = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
-          if (tiposProposta.includes(n.type)) return false;
-          return n.toId === myId || n.broadcast === true;
-        })
+        .filter(n => n.toId === myId || n.broadcast === true)
         .sort((a, b) => {
           // Broadcasts pinned at top, then by date
           if (a.broadcast && !b.broadcast) return -1;
@@ -12842,7 +12825,7 @@ function MinhasDigitacoes({ minhasPropostas, myId, contacts }) {
   );
 }
 
-function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
+function DigitacaoPage({ contacts, currentUser, unreadExterno=0, contatoParaDigitar=null, onContatoUsado=null }) {
   const EMAILJS_SVC = "nexp_service";
   const EMAILJS_KEY = "GaZRJdTXt0UMdEY3H";
   const DEST_EMAIL  = "vendas.nexpcred@gmail.com";
@@ -12929,6 +12912,42 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
     else setForm(blankCartao());
   };
 
+  // Pré-preencher form com contato vindo de Ver Clientes / Contatos
+  useEffect(() => {
+    if (!contatoParaDigitar) return;
+    const c = contatoParaDigitar;
+    setAbaDigitacao("nova");
+    setClienteEncontrado(true);
+    setMsg("");
+    setForm(f => ({
+      ...f,
+      cpf: c.cpf||"",
+      nome: c.name||"",
+      contato1: c.phone||"",
+      contato2: c.phone2||"",
+      email1: c.email||"",
+      cep: c.cep||"",
+      rua: c.rua||"",
+      numero: c.numero||"",
+      bairro: c.bairro||"",
+      cidade: c.cidade||"",
+      complemento: c.complemento||"",
+      ufEnd: c.ufEnd||c.uf||"",
+      matricula: c.matricula||"",
+      nomeMae: c.nomeMae||"",
+      nomePai: c.nomePai||"",
+      rg: c.rg||"",
+      dataNasc: c.dataNasc||"",
+      bancoPagto: c.bancoPagto||"",
+      agencia: c.agencia||"",
+      contaDigito: c.contaDigito||"",
+      tipoConta: c.tipoConta||"corrente",
+      pix1: c.pix1||"",
+      pix2: c.pix2||"",
+    }));
+    if (onContatoUsado) onContatoUsado();
+  }, [contatoParaDigitar]); // eslint-disable-line
+
   // Busca automática por CPF
   const buscarCPF = (cpf) => {
     setF("cpf", cpf);
@@ -12941,7 +12960,12 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
         cpf, nome:c.name||"", contato1:c.phone||"", contato2:c.phone2||"",
         email1:c.email||"", cep:c.cep||"", rua:c.rua||"", numero:c.numero||"",
         bairro:c.bairro||"", cidade:c.cidade||"", complemento:c.complemento||"",
-        ufEnd:c.uf||"", matricula:c.matricula||"",
+        ufEnd:c.ufEnd||c.uf||"", matricula:c.matricula||"",
+        nomeMae:c.nomeMae||"", nomePai:c.nomePai||"",
+        rg:c.rg||"", dataNasc:c.dataNasc||"",
+        bancoPagto:c.bancoPagto||"", agencia:c.agencia||"",
+        contaDigito:c.contaDigito||"", tipoConta:c.tipoConta||"corrente",
+        pix1:c.pix1||"", pix2:c.pix2||"",
       }));
     } else { setClienteEncontrado(false); }
   };
@@ -13129,7 +13153,7 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
         {[
           {id:"nova",   label:"📝 Nova Digitação"},
-          {id:"minhas", label:"📋 Minhas Propostas", badge: unreadExterno||unreadMinhas},
+          {id:"minhas", label:"📋 Minhas Propostas", badge: unreadMinhas},
           {id:"relatorio", label:"📊 Relatório Mensal"},
         ].map(t=>(
           <button key={t.id}
@@ -14092,7 +14116,7 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
   );
 }
 
-function PropostasPage({ currentUser, unreadPropostas=0 }) {
+function PropostasPage({ currentUser }) {
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -14247,14 +14271,12 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
 
       {/* Abas */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[{id:"lista",label:"📋 Propostas",badge:unreadPropostas},{id:"relatorio",label:"📊 Relatório Mensal"}].map(t=>(
+        {[{id:"lista",label:"📋 Propostas"},{id:"relatorio",label:"📊 Relatório Mensal"}].map(t=>(
           <button key={t.id} onClick={()=>setAbaProp(t.id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
               fontWeight:abaProp===t.id?700:400,color:abaProp===t.id?C.atxt:C.tm,
-              borderBottom:abaProp===t.id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px",
-              display:"flex",alignItems:"center",gap:7}}>
+              borderBottom:abaProp===t.id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px"}}>
             {t.label}
-            {t.badge>0&&<span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800,animation:"pulse 1.5s infinite"}}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -14322,8 +14344,9 @@ export default function App() {
   const [unreadNotif, setUnreadNotif] = useState(0);
   const [unreadStories, setUnreadStories] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [unreadPropostas, setUnreadPropostas] = useState(0); // para mestre/master: novas propostas
-  const [unreadDigitacao, setUnreadDigitacao] = useState(0); // para digitador: interações em minhas propostas
+  const [unreadPropostas, setUnreadPropostas] = useState(0);
+  const [unreadDigitacao, setUnreadDigitacao] = useState(0);
+  const [contatoDigitar, setContatoDigitar] = useState(null);
   const lastChatCount = useRef(0);
   // System config — mestre controls what others can access
   const [sysConfig, setSysConfig] = useState({
@@ -14398,21 +14421,13 @@ export default function App() {
     const isMestreOrMaster = ["mestre","master"].includes(currentUser.role);
     const unsub = onSnapshot(collection(db, "propostas"), (snap) => {
       const all = snap.docs.map(d=>({...d.data(), id:d.id}));
-      const isDigitador = currentUser.role === "digitador";
-      // Badge sidebar "Propostas" — mestre/master: não vistas; digitador: com nova interação
       const unread = all.filter(p => {
+        // Mestre/Master: todas pendentes não vistas
         if (isMestreOrMaster) return !p.viewedBy?.includes(myId);
-        if (isDigitador) return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
-        return false;
+        // Digitador: propostas suas com nova interação
+        return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
       }).length;
       setUnreadPropostas(unread);
-      // Badge aba "Minhas Propostas" dentro de Digitação — só para digitador
-      if (isDigitador) {
-        const unreadMeu = all.filter(p =>
-          p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)
-        ).length;
-        setUnreadDigitacao(unreadMeu);
-      }
     });
     return () => unsub();
   }, [currentUser]); // eslint-disable-line
@@ -14423,8 +14438,7 @@ export default function App() {
     const myId = currentUser.uid || currentUser.id;
     const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
       const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const tiposProposta = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
-      const mine = notifs.filter(n => !tiposProposta.includes(n.type) && (n.toId === myId || n.broadcast === true));
+      const mine = notifs.filter(n => n.toId === myId || n.broadcast === true);
       const unread = mine.filter(n => {
         if (n.broadcast) return !(n.readBy || []).includes(myId);
         return !n.readAt;
@@ -14665,7 +14679,6 @@ export default function App() {
         unreadNotif={unreadNotif}
         unreadStories={unreadStories}
         unreadPropostas={unreadPropostas}
-        unreadDigitacao={unreadDigitacao}
         presence={presence}
         flashUserId={flashUserId}
         stories={chatStories}
@@ -14687,7 +14700,7 @@ export default function App() {
         <WeatherCalcWidget />
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
-          <ContactsPage contacts={contacts} setContacts={setContacts} />
+          <ContactsPage contacts={contacts} setContacts={setContacts} onDigitar={(c)=>{ setContatoDigitar(c); setPageAndSave("digitacao"); }} />
         )}
         {page === "add" && (
           <AddClient setContacts={setContacts} setPage={setPageAndSave} />
@@ -14696,7 +14709,7 @@ export default function App() {
           <ImportPage contacts={contacts} setContacts={setContacts} setPage={setPageAndSave} currentUser={currentUser} />
         )}
         {page === "review" && (
-          <ReviewClient contacts={contacts} setContacts={setContacts} />
+          <ReviewClient contacts={contacts} setContacts={setContacts} onDigitar={(c)=>{ setContatoDigitar(c); setPageAndSave("digitacao"); }} />
         )}
         {page === "cstatus" && (
           <ClienteStatus contacts={contacts} setContacts={setContacts} />
@@ -14708,10 +14721,10 @@ export default function App() {
           <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "digitacao" && (
-          <DigitacaoPage contacts={contacts} currentUser={currentUser} unreadExterno={unreadDigitacao} />
+          <DigitacaoPage contacts={contacts} currentUser={currentUser} unreadExterno={unreadDigitacao} contatoParaDigitar={contatoDigitar} onContatoUsado={()=>setContatoDigitar(null)} />
         )}
         {page === "propostas" && (
-          <PropostasPage currentUser={currentUser} unreadPropostas={unreadPropostas} />
+          <PropostasPage currentUser={currentUser} />
         )}
         {page === "atalhos" && (
           <AtalhosPage currentUser={currentUser} />
