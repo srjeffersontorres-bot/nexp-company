@@ -13315,12 +13315,6 @@ const STATUS_PROPOSTA_COLORS = {
   "Cancelada":                         "#EF4444",
 };
 // Status visíveis apenas para propostas (mestre/master/digitador)
-const STATUS_APENAS_PROPOSTA = [
-  "Aguardando Digitação","Proposta Digitada","Aguardando Formalização",
-  "Pendente","Pago Aguardando Confirmação","Proposta Concluída","Cancelada",
-  "Aguardando Checagem de Formalização",
-];
-
 // ── Mensagem que o digitador vê em Minhas Propostas ─────────────
 function MensagemProposta({ proposta }) {
   const st = proposta.status || "Proposta Digitada";
