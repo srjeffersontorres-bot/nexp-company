@@ -25,6 +25,12 @@ import {
   updatePassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
+import {
+  getStorage,
+  ref as storageRef,
+  uploadString,
+  getDownloadURL,
+} from "firebase/storage";
 
 // ── Substitua aqui com suas credenciais ──────────────────────────
 const firebaseConfig = {
@@ -40,6 +46,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+/** Faz upload de um arquivo base64 para o Firebase Storage e retorna a URL de download. */
+export async function uploadArquivo(base64Data, path) {
+  const ref = storageRef(storage, path);
+  // base64Data já vem como "data:tipo/ext;base64,xxx"
+  await uploadString(ref, base64Data, "data_url");
+  return await getDownloadURL(ref);
+}
 
 // ── Mantém a sessão do usuário após recarregar a página ──────────
 setPersistence(auth, browserLocalPersistence);
