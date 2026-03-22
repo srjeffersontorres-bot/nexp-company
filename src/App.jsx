@@ -13284,7 +13284,6 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
-    const STATUS_LIST  = ["","formalization","analysis","manual_analysis","pending","processing","paid","canceled","refounded"];
 
     const buscar = async (pg=1, statusOverride) => {
       setLoading(true); setErr(""); setPage(pg);
