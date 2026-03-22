@@ -13503,13 +13503,33 @@ function V8DigitalTab({ currentUser, contacts }) {
     const cancelarDaFila = async (item) => {
       setCancelandoId(item.id);
       try {
-        await apiFetch(`/fgts/proposal/${item.v8ProposalId}/cancel`, "PATCH", {
+        // Usa v8ProposalId (UUID da V8). Se for igual ao id local (timestamp), busca na API
+        let proposalId = item.v8ProposalId || item.id;
+
+        // Verifica se é um UUID válido (formato da V8) — se não for, busca pela API
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proposalId);
+        if (!isUUID && item.cpf) {
+          // Busca pelo CPF para encontrar o ID correto da proposta na V8
+          const cpfLimpo = item.cpf.replace(/\D/g,"").padStart(11,"0");
+          const res = await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`);
+          const rows = res?.data || res || [];
+          // Pega a proposta em formalização mais recente
+          const found = rows.find(r => r.status==="formalization") || rows[0];
+          if (found?.id) proposalId = found.id;
+          else throw new Error("Proposta não encontrada na API. Verifique o CPF.");
+        }
+
+        await apiFetch(`/fgts/proposal/${proposalId}/cancel`, "PATCH", {
           reason: cancelReason,
           description: cancelDesc || "Cancelamento solicitado pelo operador.",
         });
-        const atualizada = fila.map(f => f.id === item.id ? { ...f, status:"canceled", resolvidoEm: Date.now() } : f);
+        const atualizada = fila.map(f => f.id === item.id
+          ? { ...f, status:"canceled", v8ProposalId: proposalId, resolvidoEm: Date.now() }
+          : f
+        );
         salvarFilaLocal(atualizada);
         setShowCancelModal(null);
+        setCancelDesc("");
       } catch(e) {
         alert("Erro ao cancelar: " + e.message);
       }
@@ -13767,83 +13787,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-        {/* Detalhe */}
-        {detalhe && (
-          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"22px 26px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>
-                {detalhe.clientName||"Proposta"} · <span style={{ fontFamily:"monospace", fontSize:12, color:"rgba(255,255,255,0.5)" }}>{detalhe.contractNumber||detalhe.id}</span>
-              </div>
-              <button onClick={()=>setDetalhe(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10, marginBottom:14 }}>
-              {[
-                ["Cliente",     detalhe.clientName||"—"],
-                ["CPF",         (detalhe.documentNumber||detalhe.individualDocumentNumber||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"],
-                ["E-mail",      detalhe.email||"—"],
-                ["Telefone",    detalhe.phone?(detalhe.phoneRegionCode||"")+detalhe.phone:"—"],
-                ["Contrato",    detalhe.contractNumber||"—"],
-                ["Status",      getStatusLabel(detalhe.status)],
-                ["Valor",       fmtBRL(detalhe.disbursedIssueAmount)],
-                ["Provider",    (detalhe.provider||"—").toUpperCase()],
-                ["Parceiro",    detalhe.partnerId||"—"],
-                ["Criado em",   detalhe.createdAt?new Date(detalhe.createdAt).toLocaleString("pt-BR"):"—"],
-              ].map(([l,v])=>(
-                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
-                  <div style={{ color:"#fff", fontWeight:600, fontSize:12.5, marginTop:2, wordBreak:"break-word" }}>{v}</div>
-                </div>
-              ))}
-            </div>
-            {/* Link de formalização */}
-            <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:10, padding:"12px 16px" }}>
-              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Link de Formalização</div>
-              {detalhe.formalizationLink ? (
-                <div>
-                  <div style={{ wordBreak:"break-all", marginBottom:10, background:"rgba(0,0,0,0.2)", borderRadius:8, padding:"8px 12px" }}>
-                    <a href={detalhe.formalizationLink} target="_blank" rel="noreferrer"
-                      style={{ color:C.atxt, fontSize:12, fontFamily:"monospace" }}>{detalhe.formalizationLink}</a>
-                  </div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-                    <button onClick={()=>copiarLink(detalhe.id, detalhe.formalizationLink)}
-                      style={{ background:C.abg, color:copied===detalhe.id?"#34D399":C.atxt, border:`1px solid ${copied===detalhe.id?"#34D39933":C.atxt+"33"}`, borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                      {copied===detalhe.id?"✅ Copiado!":"📋 Copiar Link"}
-                    </button>
-                    <button onClick={()=>window.open(detalhe.formalizationLink,"_blank")}
-                      style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer" }}>
-                      🔗 Abrir
-                    </button>
-                    {canGenerateLink(detalhe) ? (
-                      <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
-                        style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                        {acompLinkLoading?"⏳ Atualizando...":"🔄 Atualizar Link"}
-                      </button>
-                    ) : (
-                      <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
-                        🔒 {detalhe.status==="paid"?"Proposta paga":"Proposta cancelada"} — link não pode ser atualizado
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ) : canGenerateLink(detalhe) ? (
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Nenhum link gerado ainda</span>
-                  <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
-                    style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                    {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>Sem link — </span>
-                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
-                    🔒 {detalhe.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Detalhe REMOVIDO do topo — agora é inline na tabela abaixo de cada linha */}
 
         {/* Modal de Simulação */}
         {acompSimModal && (
@@ -13964,15 +13908,15 @@ function V8DigitalTab({ currentUser, contacts }) {
                     const stCol = item.status==="paid"?"#34D399":item.status==="canceled"?"#F87171":"#C084FC";
                     const stLabel = item.status==="paid"?"✅ Pago":item.status==="canceled"?"❌ Cancelado":"⏳ Formalização";
                     const isSel = detalhe?.id===item.id && detalhe?._filaItem;
-                    return (
+                    return (<>
                       <tr key={`fila_${item.id}`}
                         onClick={()=>setDetalhe(isSel?null:{...item,_filaItem:true})}
-                        style={{ background:isSel?`${C.acc}15`:`rgba(192,132,252,0.05)`, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", borderLeft:"3px solid #C084FC44" }}
+                        style={{ background:isSel?`rgba(192,132,252,0.12)`:`rgba(192,132,252,0.04)`, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", borderLeft:"3px solid #C084FC44" }}
                         onMouseEnter={e=>!isSel&&(e.currentTarget.style.background="rgba(192,132,252,0.1)")}
-                        onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:"rgba(192,132,252,0.05)")}>
+                        onMouseLeave={e=>(e.currentTarget.style.background=isSel?`rgba(192,132,252,0.12)`:"rgba(192,132,252,0.04)")}>
                         <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.clientName||"—"}</td>
                         <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>
-                          {(item.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"}
+                          {(item.cpf||"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"}
                         </td>
                         <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{item.contractNumber||"—"}</td>
                         <td style={{ padding:"10px 12px" }}>
@@ -13982,12 +13926,10 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{item.provider||"—"}</td>
                         <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
                           {item.formalizationLink ? (
-                            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                              <button onClick={()=>{navigator.clipboard.writeText(item.formalizationLink);setCopied(item.id);setTimeout(()=>setCopied(null),2000);}}
-                                style={{ background:C.abg, color:copied===item.id?"#34D399":C.atxt, border:`1px solid ${copied===item.id?"#34D39933":C.atxt+"33"}`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
-                                {copied===item.id?"✅ Copiado":"📋 Copiar"}
-                              </button>
-                            </div>
+                            <button onClick={()=>{navigator.clipboard.writeText(item.formalizationLink);setCopied(item.id);setTimeout(()=>setCopied(null),2000);}}
+                              style={{ background:C.abg, color:copied===item.id?"#34D399":C.atxt, border:`1px solid ${copied===item.id?"#34D39933":C.atxt+"33"}`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                              {copied===item.id?"✅ Copiado":"📋 Copiar"}
+                            </button>
                           ) : <span style={{ color:C.td, fontSize:11 }}>—</span>}
                         </td>
                         <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
@@ -14005,14 +13947,52 @@ function V8DigitalTab({ currentUser, contacts }) {
                           )}
                         </td>
                       </tr>
-                    );
+                      {/* Detalhe inline da fila */}
+                      {isSel && (
+                        <tr key={`fila_det_${item.id}`}>
+                          <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`1px solid ${C.b1}` }}>
+                            <div style={{ padding:"16px 20px" }}>
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:12 }}>
+                                {[
+                                  ["Cliente", item.clientName||"—"],
+                                  ["CPF", (item.cpf||"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")],
+                                  ["Contrato", item.contractNumber||"—"],
+                                  ["Status", stLabel],
+                                  ["Valor", fmtBRL(item.valor||0)],
+                                  ["Provider", (item.provider||"—").toUpperCase()],
+                                  ["Adicionado em", item.criadoEmStr||"—"],
+                                ].map(([l,v])=>(
+                                  <div key={l} style={{ background:C.card, borderRadius:8, padding:"7px 10px" }}>
+                                    <div style={{ color:C.td, fontSize:10 }}>{l}</div>
+                                    <div style={{ color:C.tp, fontWeight:600, fontSize:12, marginTop:2 }}>{v}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              {item.formalizationLink && (
+                                <div style={{ background:C.card, borderRadius:8, padding:"10px 14px", marginBottom:8 }}>
+                                  <div style={{ color:C.td, fontSize:10, marginBottom:6, textTransform:"uppercase" }}>Link de Formalização</div>
+                                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                                    <a href={item.formalizationLink} target="_blank" rel="noreferrer"
+                                      style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{item.formalizationLink}</a>
+                                    <button onClick={()=>copiarLink(item.id,item.formalizationLink)}
+                                      style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                      {copied===item.id?"✅ Copiado":"📋 Copiar"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>);
                   })}
                   {/* Propostas da API — só mostrar se status != formalization */}
                   {status !== "formalization" && (data.data||[]).map((op,i)=>{
                     const stCol = getStatusColor(op.status);
-                    const isSel = detalhe?.id===op.id;
+                    const isSel = detalhe?.id===op.id && !detalhe?._filaItem;
                     const hasLink = !!op.formalizationLink;
-                    return (
+                    return (<>
                       <tr key={op.id}
                         onClick={()=>setDetalhe(isSel?null:op)}
                         style={{ background:isSel?`${C.acc}15`:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
@@ -14047,8 +14027,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                           <div style={{ display:"flex", gap:5, flexDirection:"column" }}>
                             {/* Nova Simulação */}
                             <button onClick={async()=>{
-                              const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
-                              // Provider deve ser lowercase: qi, cartos ou bms
+                              // CPF sempre 11 dígitos com zeros à esquerda
+                              const cpfRaw = (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                              const cpfv = cpfRaw.padStart(11,"0");
                               const providerNorm = (op.provider||loteProvider||"cartos").toLowerCase().trim();
                               const providerValido = ["qi","cartos","bms"].includes(providerNorm) ? providerNorm : "cartos";
                               setAcompSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
@@ -14087,9 +14068,75 @@ function V8DigitalTab({ currentUser, contacts }) {
                           </div>
                         </td>
                       </tr>
-                    );
+                      {/* Detalhe inline da API */}
+                      {isSel && (
+                        <tr key={`api_det_${op.id}`}>
+                          <td colSpan={8} style={{ padding:0, background:"linear-gradient(135deg,rgba(15,31,61,0.95),rgba(22,42,80,0.95))", borderBottom:`1px solid rgba(79,142,247,0.3)` }}>
+                            <div style={{ padding:"16px 20px" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                                <div style={{ color:"#fff", fontSize:13, fontWeight:700 }}>
+                                  {op.clientName||"Proposta"} · <span style={{ fontFamily:"monospace", fontSize:11, color:"rgba(255,255,255,0.45)" }}>{op.contractNumber||op.id}</span>
+                                </div>
+                                <button onClick={e=>{e.stopPropagation();setDetalhe(null);}} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✕</button>
+                              </div>
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:8, marginBottom:12 }}>
+                                {[
+                                  ["Cliente",   op.clientName||"—"],
+                                  ["CPF",       (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"],
+                                  ["E-mail",    op.email||"—"],
+                                  ["Telefone",  op.phone?(op.phoneRegionCode||"")+op.phone:"—"],
+                                  ["Contrato",  op.contractNumber||"—"],
+                                  ["Status",    getStatusLabel(op.status)],
+                                  ["Valor",     fmtBRL(op.disbursedIssueAmount)],
+                                  ["Provider",  (op.provider||"—").toUpperCase()],
+                                  ["Parceiro",  op.partnerId||"—"],
+                                  ["Criado em", op.createdAt?new Date(op.createdAt).toLocaleString("pt-BR"):"—"],
+                                ].map(([l,v])=>(
+                                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"7px 10px" }}>
+                                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                                    <div style={{ color:"#fff", fontWeight:600, fontSize:12, marginTop:2, wordBreak:"break-word" }}>{v}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:8, padding:"10px 14px" }}>
+                                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10, marginBottom:8, textTransform:"uppercase" }}>Link de Formalização</div>
+                                {op.formalizationLink ? (
+                                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                                    <a href={op.formalizationLink} target="_blank" rel="noreferrer"
+                                      style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{op.formalizationLink}</a>
+                                    <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
+                                      style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                      {copied===op.id?"✅ Copiado":"📋 Copiar"}
+                                    </button>
+                                    <button onClick={()=>window.open(op.formalizationLink,"_blank")}
+                                      style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.15)", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
+                                      🔗 Abrir
+                                    </button>
+                                    {canGenerateLink(op) && (
+                                      <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                        style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
+                                        {acompLinkLoading?"⏳":"🔄"} Atualizar Link
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : canGenerateLink(op) ? (
+                                  <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                    style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                    {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link"}
+                                  </button>
+                                ) : (
+                                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
+                                    🔒 {op.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>);
                   })}
-                  {/* Empty state — só aparece se não tem fila e não tem dados da API */}
+                  {/* Empty state */}
                   {status !== "formalization" && (data.data||[]).length===0 && fila.filter(f=>!status||f.status===status).length===0 && (
                     <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"32px" }}>Nenhuma proposta encontrada.</td></tr>
                   )}
