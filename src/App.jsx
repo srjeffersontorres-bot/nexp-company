@@ -11168,7 +11168,11 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indDigModal,  setIndDigModal]  = useState(null);
   const [indSelectedSim, setIndSelectedSim] = useState(null);
   const [indContratosOpen, setIndContratosOpen] = useState(false);
-  const [indErrDetail, setIndErrDetail] = useState(null); // diagnóstico detalhado do erro
+  const [indErrDetail, setIndErrDetail] = useState(null);
+  const [indHistorico, setIndHistorico] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_v8_ind_historico")||"[]"); } catch { return []; }
+  });
+  const [indHistPage, setIndHistPage]   = useState(0); // diagnóstico detalhado do erro
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -11192,6 +11196,8 @@ function V8DigitalTab({ currentUser, contacts }) {
     const selectedSim = indSelectedSim; const setSelectedSim = setIndSelectedSim;
     const contratosOpen = indContratosOpen; const setContratosOpen = setIndContratosOpen;
     const errDetail = indErrDetail;
+    const historico = indHistorico;
+    const histPage  = indHistPage;
 
     const addLog = (msg, ok=true) => setLogs(p => {
       const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
@@ -11225,7 +11231,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(true); setErr(""); setFutureDate(null);
       setBalance(null); setTableSims([]); setOperacoes(null);
       setCpfSim(fmtCPF(c)); setSimStep("saldo");
-      setIndErrDetail(null);
+      setIndErrDetail(null); setIndHistPage(0);
       addLog(`▶ Consultando saldo — CPF ${fmtCPF(c)} (${provider.toUpperCase()})`);
       try {
         addLog("📡 Iniciando consulta de saldo (assíncrona)...");
@@ -11265,6 +11271,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               if (fd) setFutureDate(fd);
               setIndErrDetail(errDiag);
               setErr(errDiag.titulo);
+              salvarErroHistorico(c, errDiag.titulo);
               setSimStep("done"); setLoading(false);
               return;
             }
@@ -11288,6 +11295,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           const errDiag = diagnosticarErroV8("timeout", c);
           setIndErrDetail(errDiag);
           setErr(errDiag.titulo);
+          salvarErroHistorico(c, errDiag.titulo);
           addLog("❌ Timeout: sem resposta em 45s.", false);
           setSimStep("done"); setLoading(false);
           return;
@@ -11302,8 +11310,18 @@ function V8DigitalTab({ currentUser, contacts }) {
         const errDiag = diagnosticarErroV8(e.message, c);
         setIndErrDetail(errDiag);
         setErr(errDiag.titulo);
+        salvarErroHistorico(c, errDiag.titulo);
       }
       setSimStep("done"); setLoading(false);
+    };
+
+    const salvarErroHistorico = (c, errMsg) => {
+      const entrada = { id:Date.now(), cpf:fmtCPF(c), cpfRaw:c, provider, saldo:0, melhorTabela:"—", melhorValor:0, ts:new Date().toLocaleString("pt-BR"), ok:false, erro:errMsg };
+      setIndHistorico(prev => {
+        const updated = [entrada, ...prev.filter(h=>h.cpfRaw!==c)].slice(0,200);
+        localStorage.setItem("nexp_v8_ind_historico", JSON.stringify(updated));
+        return updated;
+      });
     };
 
     const simularTodasTabelas = async (c, bal) => {
@@ -11373,6 +11391,28 @@ function V8DigitalTab({ currentUser, contacts }) {
       } catch(e) { addLog(`⚠ Contratos: ${e.message}`, false); }
 
       addLog("🏁 Concluído!");
+
+      // Salvar no histórico
+      const best = [...resultados].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+      const entrada = {
+        id: Date.now(),
+        cpf: fmtCPF(c),
+        cpfRaw: c,
+        provider,
+        saldo: parseFloat(bal?.amount||0),
+        melhorTabela: best?.label||"—",
+        melhorValor: parseFloat(best?.sim?.availableBalance||0),
+        melhorSimId: best?.sim?.id||"",
+        balanceId: bal?.id||"",
+        anos: calcAnos(best?.sim),
+        ts: new Date().toLocaleString("pt-BR"),
+        ok: true,
+      };
+      setIndHistorico(prev => {
+        const updated = [entrada, ...prev.filter(h=>h.cpfRaw!==c)].slice(0,200);
+        localStorage.setItem("nexp_v8_ind_historico", JSON.stringify(updated));
+        return updated;
+      });
     };
 
     const limpar = () => {
@@ -11711,6 +11751,58 @@ function V8DigitalTab({ currentUser, contacts }) {
             contacts={contacts}
             onClose={() => setIndDigModal(null)}
           />
+        )}
+
+        {/* ── Histórico de simulações ── */}
+        {historico.length > 0 && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:`1px solid ${C.b1}` }}>
+              <div style={{ color:C.ts, fontSize:13, fontWeight:700 }}>📑 Histórico de Simulações <span style={{ color:C.td, fontSize:11, fontWeight:400 }}>({historico.length})</span></div>
+              <button onClick={()=>{ setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); }}
+                style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
+            </div>
+            {/* Header */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 0.7fr 0.9fr 0.9fr 0.7fr 0.8fr", background:C.deep, padding:"7px 16px", borderBottom:`1px solid ${C.b1}` }}>
+              {["CPF","Provider","Saldo FGTS","Melhor Oferta","Tabela","Data"].map(h=>(
+                <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
+              ))}
+            </div>
+            {/* Rows — 20 por página */}
+            {historico.slice(histPage*20, (histPage+1)*20).map((h,i)=>(
+              <div key={h.id}
+                onClick={()=>{ if(h.ok) { setIndCpf(h.cpf); } }}
+                style={{ display:"grid", gridTemplateColumns:"1fr 0.7fr 0.9fr 0.9fr 0.7fr 0.8fr", padding:"8px 16px", borderBottom:`1px solid ${C.b1}`, background:i%2===0?C.card:C.deep, cursor:h.ok?"pointer":"default", transition:"background 0.1s" }}
+                onMouseEnter={e=>{ if(h.ok) e.currentTarget.style.background=`${C.acc}10`; }}
+                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?C.card:C.deep}>
+                <div style={{ color:h.ok?C.tp:"#F87171", fontWeight:600, fontSize:12, fontFamily:"monospace" }}>{h.cpf}</div>
+                <div style={{ color:C.td, fontSize:11, textTransform:"uppercase" }}>{h.provider}</div>
+                <div style={{ color:h.ok?C.atxt:"#F87171", fontWeight:h.ok?700:400, fontSize:12 }}>
+                  {h.ok ? fmtBRL(h.saldo) : <span style={{ fontSize:11 }}>{(h.erro||"Erro").slice(0,22)}</span>}
+                </div>
+                <div style={{ color:h.ok?"#34D399":C.td, fontWeight:700, fontSize:12 }}>
+                  {h.ok ? fmtBRL(h.melhorValor) : "—"}
+                </div>
+                <div style={{ color:C.tm, fontSize:11, textTransform:"capitalize" }}>{h.melhorTabela}</div>
+                <div style={{ color:C.td, fontSize:10.5 }}>{h.ts}</div>
+              </div>
+            ))}
+            {/* Paginação */}
+            {historico.length > 20 && (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", background:C.deep, borderTop:`1px solid ${C.b1}` }}>
+                <button onClick={()=>setIndHistPage(p=>Math.max(0,p-1))} disabled={histPage===0}
+                  style={{ background:histPage>0?C.abg:C.deep, color:histPage>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 12px", fontSize:11.5, cursor:histPage>0?"pointer":"not-allowed" }}>
+                  ← Anterior
+                </button>
+                <span style={{ color:C.tm, fontSize:11.5 }}>
+                  {histPage*20+1}–{Math.min((histPage+1)*20,historico.length)} de {historico.length}
+                </span>
+                <button onClick={()=>setIndHistPage(p=>Math.min(Math.ceil(historico.length/20)-1,p+1))} disabled={(histPage+1)*20>=historico.length}
+                  style={{ background:(histPage+1)*20<historico.length?C.abg:C.deep, color:(histPage+1)*20<historico.length?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 12px", fontSize:11.5, cursor:(histPage+1)*20<historico.length?"pointer":"not-allowed" }}>
+                  Próxima →
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ── Log colapsável ── */}
