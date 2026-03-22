@@ -11485,6 +11485,9 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [acompLinkModal,   setAcompLinkModal]   = useState(null);
   const [acompLinkLoading, setAcompLinkLoading] = useState(false);
   const [acompCopied,      setAcompCopied]      = useState(null);
+  const [acompDateFrom,    setAcompDateFrom]    = useState("");
+  const [acompDateTo,      setAcompDateTo]      = useState("");
+  const [acompSimModal,    setAcompSimModal]    = useState(null);
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -13276,6 +13279,9 @@ function V8DigitalTab({ currentUser, contacts }) {
     const detalhe  = acompDetalhe;  const setDetalhe  = setAcompDetalhe;
     const copied   = acompCopied;   const setCopied   = setAcompCopied;
 
+    const dateFrom = acompDateFrom; const setDateFrom = setAcompDateFrom;
+    const dateTo   = acompDateTo;   const setDateTo   = setAcompDateTo;
+
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
     const STATUS_LIST  = ["","formalization","analysis","manual_analysis","pending","processing","paid","canceled","refounded"];
@@ -13285,17 +13291,28 @@ function V8DigitalTab({ currentUser, contacts }) {
       const s = statusOverride !== undefined ? statusOverride : status;
       try {
         const params = new URLSearchParams({ page:pg, limit:20 });
-        if (search) params.append("search", search.replace(/\D/g,"")||search);
+        // CPF: envia só dígitos se busca parece ser CPF
+        const q = search.trim();
+        if (q) {
+          const digits = q.replace(/\D/g,"");
+          params.append("search", digits.length >= 6 ? digits : q);
+        }
+        // Envia status diretamente para a API V8
         if (s) params.append("status", s);
         if (provider) params.append("provider", provider);
         const res = await apiFetch(`/fgts/proposal?${params}`);
-        if (res?.data) res.data.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
-        setData(res);
+        let rows = res?.data || [];
+        // Filtro client-side por data (API pode não suportar)
+        if (dateFrom) rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
+        if (dateTo)   rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
+        // Ordena mais recente primeiro
+        rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
+        setData({ ...res, data: rows });
       } catch(e) { setErr(e.message); }
       setLoading(false);
     };
 
-    // Carrega propostas em formalização automaticamente na primeira vez
+    // Carrega ao abrir a aba
     useEffect(() => { if (!data) buscar(1); }, []); // eslint-disable-line
 
     const gerarNovoLink = async (id) => {
@@ -13339,30 +13356,28 @@ function V8DigitalTab({ currentUser, contacts }) {
           {/* Filtros rápidos */}
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
             {[
-              { label:"Todos", value:"", color:C.atxt, bg:C.abg },
-              { label:"⏳ Aguardando Formalização", value:"formalization", color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
-              { label:"🔍 Em Análise", value:"analysis", color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
-              { label:"⚙ Processando", value:"processing", color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
-              { label:"✅ Pago", value:"paid", color:"#34D399", bg:"rgba(52,211,153,0.12)" },
-              { label:"❌ Cancelado", value:"canceled", color:"#F87171", bg:"rgba(239,68,68,0.12)" },
+              { label:"Todos",                    value:"",               color:C.atxt,    bg:C.abg },
+              { label:"⏳ Aguardando Formalização",value:"formalization",  color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
+              { label:"🔍 Em Análise",             value:"analysis",       color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
+              { label:"🔎 Análise Manual",         value:"manual_analysis",color:"#FB923C", bg:"rgba(251,146,60,0.12)" },
+              { label:"⏸ Pendente",               value:"pending",        color:"#FBBF24", bg:"rgba(251,191,36,0.12)" },
+              { label:"⚙ Processando",            value:"processing",     color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
+              { label:"✅ Pago",                   value:"paid",           color:"#34D399", bg:"rgba(52,211,153,0.12)" },
+              { label:"❌ Cancelado",              value:"canceled",       color:"#F87171", bg:"rgba(239,68,68,0.12)" },
             ].map(f=>(
               <button key={f.value} onClick={()=>{ setStatus(f.value); buscar(1, f.value); }}
-                style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"44":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:11.5, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
+                style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"55":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:11.5, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
                 {f.label}
               </button>
             ))}
           </div>
+
+          {/* Busca + Filtros + Data */}
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:180 }}>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar</label>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (nome, CPF ou contrato)</label>
               <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
-                placeholder="Nome, CPF ou nº contrato" autoComplete="off" style={{ ...S.input }} />
-            </div>
-            <div>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Status</label>
-              <select value={status} onChange={e=>{ setStatus(e.target.value); }} style={{ ...S.input, cursor:"pointer" }}>
-                {STATUS_LIST.map(s=><option key={s} value={s}>{s?STATUS_LABEL[s]:"Todos"}</option>)}
-              </select>
+                placeholder="Nome, CPF (com ou sem pontos) ou nº contrato" autoComplete="off" style={{ ...S.input }} />
             </div>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Provider</label>
@@ -13371,10 +13386,24 @@ function V8DigitalTab({ currentUser, contacts }) {
                 {["qi","cartos","bms"].map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
               </select>
             </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>De</label>
+              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{ ...S.input, cursor:"pointer", width:140 }} />
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Até</label>
+              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{ ...S.input, cursor:"pointer", width:140 }} />
+            </div>
             <button onClick={()=>buscar(1)} disabled={loading}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
               🔍 Buscar
             </button>
+            {(search||status||provider||dateFrom||dateTo) && (
+              <button onClick={()=>{ setSearch(""); setStatus(""); setProvider(""); setDateFrom(""); setDateTo(""); buscar(1,""); }}
+                style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 14px", fontSize:12, cursor:"pointer" }}>
+                ✕ Limpar
+              </button>
+            )}
           </div>
           {err && <div style={{ color:"#F87171", marginTop:10, fontSize:12 }}>⚠ {err}</div>}
         </div>
@@ -13491,7 +13520,71 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-        {/* Tabela */}
+        {/* Modal de Simulação */}
+        {acompSimModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+            <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:18, padding:"24px", width:"100%", maxWidth:660, maxHeight:"90vh", overflowY:"auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <div>
+                  <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>⚡ Nova Simulação — {acompSimModal.nome||acompSimModal.cpf}</div>
+                  <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:2 }}>CPF: {(acompSimModal.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}</div>
+                </div>
+                <button onClick={()=>setAcompSimModal(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
+              </div>
+              {acompSimModal.loading ? (
+                <div style={{ textAlign:"center", padding:"40px 0" }}>
+                  <div style={{ color:"#60A5FA", fontSize:32, marginBottom:12 }}>⏳</div>
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13 }}>Consultando saldo FGTS e simulando tabelas...</div>
+                </div>
+              ) : acompSimModal.err ? (
+                <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:10, padding:"14px", color:"#F87171" }}>❌ {acompSimModal.err}</div>
+              ) : acompSimModal.sims ? (
+                <div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                    <div style={{ background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"12px 16px" }}>
+                      <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11 }}>Saldo FGTS disponível</div>
+                      <div style={{ color:"#fff", fontSize:22, fontWeight:900 }}>{fmtBRL(acompSimModal.saldo||0)}</div>
+                    </div>
+                    {acompSimModal.best && (
+                      <div style={{ background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:10, padding:"12px 16px" }}>
+                        <div style={{ color:"#34D399", fontSize:11, fontWeight:700 }}>✅ MELHOR — {acompSimModal.best.label}</div>
+                        <div style={{ color:"#34D399", fontSize:22, fontWeight:900 }}>{fmtBRL(acompSimModal.best.sim?.availableBalance||0)}</div>
+                        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>via PIX · {calcAnos(acompSimModal.best.sim)}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>Clique para digitar</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {[...(acompSimModal.sims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
+                      const isBest = s.label===acompSimModal.best?.label;
+                      return (
+                        <div key={i}
+                          onClick={()=>{
+                            if(!s.ok)return;
+                            const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
+                            openDigModal(d); setIndDigModal(d); setAcompSimModal(null);
+                          }}
+                          style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+                          onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                          {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
+                          <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"capitalize",marginTop:isBest?4:0}}>{s.label}</div>
+                          {s.ok?<>
+                            <div style={{color:isBest?"#34D399":"#fff",fontWeight:800,fontSize:16,lineHeight:1,marginTop:2}}>{fmtBRL(s.sim?.availableBalance||0)}</div>
+                            <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginTop:2}}>{calcAnos(s.sim)}</div>
+                            <div style={{marginTop:8,background:"rgba(255,255,255,0.12)",borderRadius:6,padding:"3px 0",textAlign:"center",fontSize:10,fontWeight:700,color:"#fff"}}>📝 DIGITAR</div>
+                          </>:<div style={{color:"#F87171",fontSize:11,marginTop:4}}>✘</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Tabela de propostas */}
         {!data && !loading && (
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"40px", textAlign:"center" }}>
             <div style={{ fontSize:40, marginBottom:12 }}>📡</div>
@@ -13506,7 +13599,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:C.deep }}>
-                    {["Cliente","CPF","Contrato","Status","Valor","Provider","Link Formalização","Ações"].map(h=>(
+                    {["Cliente","CPF","Contrato","Status","Valor","Provider","Link Formalização","Nova Simulação"].map(h=>(
                       <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
                     ))}
                   </tr>
@@ -13548,28 +13641,45 @@ function V8DigitalTab({ currentUser, contacts }) {
                           )}
                         </td>
                         <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
-                          <div style={{ display:"flex", gap:6 }}>
-                            {canGenerateLink(op) ? (
-                              !hasLink ? (
-                                <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
-                                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                  ✨ Gerar Link
-                                </button>
-                              ) : (
-                                <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
-                                  style={{ background:"rgba(251,191,36,0.12)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                  🔄 Atualizar Link
-                                </button>
-                              )
-                            ) : (
-                              <span style={{ color:C.td, fontSize:10 }} title={op.status==="paid"?"Proposta paga":"Proposta cancelada"}>🔒</span>
-                            )}
-                            {hasLink && (
-                              <button onClick={()=>setAcompLinkModal({id:op.id,link:op.formalizationLink})}
-                                style={{ background:"rgba(79,142,247,0.12)", color:C.atxt, border:`1px solid rgba(79,142,247,0.25)`, borderRadius:7, padding:"4px 11px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                🔗 Ver Link
-                              </button>
-                            )}
+                          <div style={{ display:"flex", gap:5, flexDirection:"column" }}>
+                            {/* Nova Simulação */}
+                            <button onClick={async()=>{
+                              const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                              setAcompSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
+                              try{
+                                await apiFetch("/fgts/balance","POST",{documentNumber:cpfv,provider:op.provider||loteProvider});
+                                let bal=null;
+                                for(let ii=0;ii<18;ii++){
+                                  await new Promise(r=>setTimeout(r,2500));
+                                  const res=await apiFetch(`/fgts/balance?search=${cpfv}`);
+                                  const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
+                                  const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
+                                  if(ok){bal=ok;break;}
+                                  const fail=regs.find(r=>r&&(r.status==="fail"||r.status==="error"));
+                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:fail.statusInfo||fail.message||"Falha"}));return;}
+                                }
+                                if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout"}));return;}
+                                const feesR=await apiFetch("/fgts/simulations/fees");
+                                const fees=Array.isArray(feesR)?feesR.filter(f=>f.active):[];
+                                const saldoVal=parseFloat(bal.amount||0);
+                                const installments=(bal.periods||bal.installments||[]).length?(bal.periods||bal.installments).map(p=>({totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal),dueDate:p.dueDate||p.date})):[{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0]}];
+                                const sims=await Promise.all(fees.map(async fee=>{try{const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfv,desiredInstallments:installments,provider:op.provider||loteProvider});return{label:fee.simulation_fees?.label||"",sim,ok:true};}catch(e){return{label:fee.simulation_fees?.label||"",err:e.message,ok:false};}}));
+                                const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+                                setAcompSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
+                              }catch(e){setAcompSimModal(p=>({...p,loading:false,err:e.message}));}
+                            }}
+                              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:10.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                              ⚡ Simular
+                            </button>
+                            {/* Digitar Proposta */}
+                            <button onClick={()=>{
+                              const cpfv=(op.documentNumber||op.individualDocumentNumber||"");
+                              const d={ tabela:{ label:"", sim:null, feeId:"" }, balance:{ id:"" }, cpf:cpfv, provider:op.provider||loteProvider, clientePreFill:{ cpf:cpfv, nome:op.clientName||"", clienteV8:op } };
+                              openDigModal(d); setIndDigModal(d);
+                            }}
+                              style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"4px 11px", fontSize:10.5, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                              📝 Digitar
+                            </button>
                           </div>
                         </td>
                       </tr>
