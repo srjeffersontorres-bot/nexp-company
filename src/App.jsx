@@ -10727,19 +10727,29 @@ function V8DigitalTab({ currentUser, contacts }) {
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
-  // Rotas: POST /fgts/balance, GET /fgts/simulations/fees, POST /fgts/simulations
   // ════════════════════════════════════════════════════════════
   const IndividualTab = () => {
-    const [cpf, setCpf]         = useState("");
+    const [cpf, setCpf]           = useState("");
     const [provider, setProvider] = useState("cartos");
-    const [loading, setLoading] = useState(false);
-    const [err, setErr]         = useState("");
+    const [loading, setLoading]   = useState(false);
+    const [err, setErr]           = useState("");
     const [futureDate, setFutureDate] = useState(null);
-    const [result, setResult]   = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_result")||"null"); } catch { return null; } });
-    const [logs, setLogs]       = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; } });
-    const [fees, setFees]       = useState([]);
+    const [balance, setBalance]   = useState(null);   // saldo retornado
+    const [tableSims, setTableSims] = useState([]);   // resultados de cada tabela
+    const [operacoes, setOperacoes] = useState(null);
+    const [cpfSim, setCpfSim]     = useState("");     // CPF que foi simulado
+    const [logs, setLogs]         = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; } });
+    const [fees, setFees]         = useState([]);
+    const [simStep, setSimStep]   = useState("idle"); // idle | saldo | fees | simulando | contratos | done
 
-    const addLog = (msg, ok=true) => setLogs(p => { const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)]; localStorage.setItem("nexp_v8_ind_logs",JSON.stringify(u)); return u; });
+    // Tabelas da V8 — labels conforme documentação + as 8 do usuário
+    const LABELS_V8 = ["milhas","normal","cometa","turbo","pitstop","acelera","podium","grid iphone"];
+
+    const addLog = (msg, ok=true) => setLogs(p => {
+      const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
+      localStorage.setItem("nexp_v8_ind_logs",JSON.stringify(u));
+      return u;
+    });
 
     const parseFutureDate = (msg) => {
       if (!msg) return null;
@@ -10750,219 +10760,336 @@ function V8DigitalTab({ currentUser, contacts }) {
       return null;
     };
 
-    const simular = async () => {
+    // Calcula quantidade de anos com base nos periods
+    const calcAnos = (sim) => {
+      const periods = sim?.periods || sim?.installments || sim?.desiredInstallments || [];
+      if (!periods.length) return sim?.totalInstallments ? `${sim.totalInstallments} parcelas` : "—";
+      const dates = periods.map(p => new Date(p.dueDate||p.date)).filter(d => !isNaN(d));
+      if (!dates.length) return "—";
+      const minD = new Date(Math.min(...dates)); const maxD = new Date(Math.max(...dates));
+      const anos = Math.round((maxD - minD) / (1000*60*60*24*365)) + 1;
+      return `${anos} ano${anos!==1?"s":""}`;
+    };
+
+    const buscarSaldo = async () => {
       const c = padCPF(cpf);
       if (c.replace(/^0+/,"").length === 0) { setErr("Digite um CPF válido."); return; }
       setLoading(true); setErr(""); setFutureDate(null);
-      addLog(`▶ Iniciando para CPF ${fmtCPF(c)} — provider: ${provider}`);
-
+      setBalance(null); setTableSims([]); setOperacoes(null);
+      setCpfSim(fmtCPF(c)); setSimStep("saldo");
+      addLog(`▶ Consultando saldo — CPF ${fmtCPF(c)} (${provider.toUpperCase()})`);
       try {
-        // PASSO 1: Consultar saldo — POST /fgts/balance
-        addLog("📡 Consultando saldo FGTS...");
-        let balance = null;
-        try {
-          balance = await apiFetch("/fgts/balance", "POST", { documentNumber: c, provider });
-          addLog(`✅ Saldo: ${fmtBRL(balance?.balance || balance?.availableBalance || 0)} | ID: ${balance?.id || "—"}`);
-          addLog(`📦 Resposta saldo: ${JSON.stringify(balance).slice(0,200)}`);
-        } catch(e) {
-          addLog(`⚠ Saldo: ${e.message}`, false);
-          const fd = parseFutureDate(e.message);
-          if (fd) { setFutureDate(fd); }
-        }
-
-        // PASSO 2: Buscar tabelas de taxas — GET /fgts/simulations/fees
-        addLog("📡 Buscando tabelas de taxas...");
-        let feesList = fees;
-        if (!feesList.length) {
-          try {
-            const feesData = await apiFetch("/fgts/simulations/fees", "GET");
-            feesList = Array.isArray(feesData) ? feesData.filter(f => f.active) : [];
-            setFees(feesList);
-            addLog(`✅ ${feesList.length} tabelas disponíveis: ${feesList.map(f=>f.simulation_fees?.label).join(", ")}`);
-          } catch(e) { addLog(`⚠ Tabelas: ${e.message}`, false); }
-        }
-
-        // PASSO 3: Simular em cada tabela — POST /fgts/simulations
-        const tableSims = [];
-        if (feesList.length && balance) {
-          const installments = balance?.installments || balance?.desiredInstallments || [];
-          for (const fee of feesList) {
-            const feeId = fee.simulation_fees?.id_simulation_fees;
-            const label = fee.simulation_fees?.label || feeId;
-            try {
-              const simBody = {
-                simulationFeesId: feeId,
-                balanceId: balance?.id,
-                targetAmount: 0,
-                documentNumber: c,
-                desiredInstallments: installments.length ? installments : [
-                  { totalAmount: parseFloat(balance?.balance || 100), dueDate: new Date(new Date().getFullYear()+1, 1, 1).toISOString().split("T")[0] },
-                  { totalAmount: parseFloat(balance?.balance || 100), dueDate: new Date(new Date().getFullYear()+2, 1, 1).toISOString().split("T")[0] },
-                ],
-                provider,
-              };
-              const sim = await apiFetch("/fgts/simulations", "POST", simBody);
-              addLog(`✅ ${label}: ${fmtBRL(sim?.availableBalance || 0)} (CET ${fmtPct(sim?.cet)} a.m.)`);
-              tableSims.push({ label, feeId, sim, ok:true });
-            } catch(e) {
-              addLog(`❌ ${label}: ${e.message}`, false);
-              tableSims.push({ label, feeId, err:e.message, ok:false });
-            }
-          }
-        }
-
-        // PASSO 4: Contratos/Operações — GET /fgts/proposal
-        addLog("📡 Buscando contratos...");
-        let operacoes = null;
-        try {
-          const ops = await apiFetch(`/fgts/proposal?search=${c}&page=1&limit=10`);
-          operacoes = ops?.data || ops;
-          addLog(`✅ ${Array.isArray(operacoes)?operacoes.length:0} contrato(s) encontrado(s)`);
-        } catch(e) { addLog(`⚠ Contratos: ${e.message}`, false); }
-
-        const res = { balance, tableSims, operacoes, cpf:fmtCPF(c), cpfRaw:c, provider, ts:new Date().toLocaleString("pt-BR") };
-        setResult(res);
-        localStorage.setItem("nexp_v8_ind_result", JSON.stringify(res));
-        addLog("✅ Simulação concluída!");
+        const bal = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+        setBalance(bal);
+        const saldoVal = parseFloat(bal?.balance || bal?.availableBalance || bal?.amount || 0);
+        addLog(`✅ Saldo: ${fmtBRL(saldoVal)} | balanceId: ${bal?.id||"—"}`);
+        addLog(`📦 ${JSON.stringify(bal).slice(0,200)}`);
+        // Assim que tem saldo, já busca tabelas e simula tudo
+        await simularTodasTabelas(c, bal);
       } catch(e) {
+        addLog(`❌ Saldo: ${e.message}`, false);
+        const fd = parseFutureDate(e.message);
+        if (fd) setFutureDate(fd);
         setErr("❌ " + e.message);
-        addLog("❌ " + e.message, false);
       }
-      setLoading(false);
+      setSimStep("done"); setLoading(false);
     };
 
-    const clearResult = () => { setResult(null); setLogs([]); localStorage.removeItem("nexp_v8_ind_result"); localStorage.removeItem("nexp_v8_ind_logs"); };
-    const bestSim = result?.tableSims?.filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+    const simularTodasTabelas = async (c, bal) => {
+      setSimStep("fees");
+      addLog("📡 Buscando tabelas de taxas...");
+      let feesList = fees;
+      if (!feesList.length) {
+        
+        try {
+          const feesData = await apiFetch("/fgts/simulations/fees","GET");
+          feesList = Array.isArray(feesData) ? feesData.filter(f=>f.active) : [];
+          setFees(feesList);
+          addLog(`✅ ${feesList.length} tabelas: ${feesList.map(f=>f.simulation_fees?.label).join(", ")}`);
+        } catch(e) { addLog(`⚠ Tabelas: ${e.message}`, false); }
+        
+      }
+
+      if (!feesList.length || !bal) return;
+
+      const installments = bal?.installments || bal?.periods || [];
+      const saldoVal = parseFloat(bal?.balance || bal?.availableBalance || 100);
+
+      // Monta desiredInstallments a partir dos periods do saldo
+      const desiredInstallments = installments.length
+        ? installments.map(p=>({ totalAmount: parseFloat(p.amount||p.totalAmount||saldoVal), dueDate: p.dueDate||p.date }))
+        : [
+            { totalAmount: saldoVal, dueDate: new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
+            { totalAmount: saldoVal, dueDate: new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
+          ];
+
+      setSimStep("simulando");
+      addLog(`📡 Simulando em ${feesList.length} tabelas...`);
+
+      // Simula TODAS as tabelas em paralelo
+      const resultados = await Promise.all(feesList.map(async fee => {
+        const feeId = fee.simulation_fees?.id_simulation_fees;
+        const label = (fee.simulation_fees?.label || feeId || "").toLowerCase().trim();
+        try {
+          const simBody = { simulationFeesId:feeId, balanceId:bal?.id, targetAmount:0, documentNumber:c, desiredInstallments, provider };
+          const sim = await apiFetch("/fgts/simulations","POST",simBody);
+          const vlr = parseFloat(sim?.availableBalance||sim?.availableAmount||0);
+          addLog(`✅ ${label}: ${fmtBRL(vlr)} | emissão: ${fmtBRL(sim?.emissionAmount)} | ${calcAnos(sim)}`);
+          return { label, feeId, sim, ok:true };
+        } catch(e) {
+          addLog(`❌ ${label}: ${e.message}`, false);
+          return { label, feeId, err:e.message, ok:false };
+        }
+      }));
+
+      setTableSims(resultados);
+
+      // Persiste
+      const res = { balance:bal, tableSims:resultados, cpf:fmtCPF(c), cpfRaw:c, provider, ts:new Date().toLocaleString("pt-BR") };
+      localStorage.setItem("nexp_v8_ind_result", JSON.stringify(res));
+
+      // Contratos
+      setSimStep("contratos");
+      addLog("📡 Buscando contratos...");
+      try {
+        const ops = await apiFetch(`/fgts/proposal?search=${c}&page=1&limit=10`);
+        setOperacoes(ops?.data||ops);
+        addLog(`✅ ${Array.isArray(ops?.data||ops)?(ops?.data||ops).length:0} contrato(s)`);
+      } catch(e) { addLog(`⚠ Contratos: ${e.message}`, false); }
+
+      addLog("🏁 Concluído!");
+    };
+
+    const limpar = () => {
+      setBalance(null); setTableSims([]); setOperacoes(null);
+      setCpfSim(""); setLogs([]); setErr(""); setSimStep("idle");
+      localStorage.removeItem("nexp_v8_ind_result");
+      localStorage.removeItem("nexp_v8_ind_logs");
+    };
+
+    const saldoTotal = parseFloat(balance?.balance || balance?.availableBalance || balance?.amount || 0);
+    const bestSim   = [...tableSims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+    const stepLabel = { idle:"", saldo:"Consultando saldo...", fees:"Buscando tabelas...", simulando:"Simulando tabelas...", contratos:"Buscando contratos...", done:"Concluído ✅" };
 
     return (
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
-        {/* Coluna esquerda */}
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"22px" }}>
-            <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:4 }}>🔍 Simulação Individual FGTS</div>
-            <div style={{ color:C.tm, fontSize:12, marginBottom:16 }}>Consulta saldo, simula em todas as tabelas e lista contratos.</div>
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>CPF do cliente</label>
-            <input value={cpf} onChange={e=>setCpf(e.target.value)} placeholder="000.000.000-00" onKeyDown={e=>e.key==="Enter"&&simular()}
-              style={{ ...S.input, fontSize:15, fontWeight:600, marginBottom:12 }} />
-            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Provider (instituição)</label>
-            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-              {["cartos","qi","bms"].map(p=>(
-                <button key={p} onClick={()=>setProvider(p)}
-                  style={{ flex:1, background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:9, padding:"7px 0", fontSize:12.5, fontWeight:provider===p?700:400, cursor:"pointer", textTransform:"uppercase" }}>
-                  {p}
-                </button>
-              ))}
+      <div>
+        {/* ── Painel de entrada ── */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"20px 22px", marginBottom:20 }}>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap" }}>
+            <div style={{ flex:1, minWidth:180 }}>
+              <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>CPF do cliente</label>
+              <input value={cpf} onChange={e=>setCpf(e.target.value)} placeholder="000.000.000-00"
+                onKeyDown={e=>e.key==="Enter"&&!loading&&buscarSaldo()}
+                style={{ ...S.input, fontSize:16, fontWeight:700, letterSpacing:"0.5px" }} />
             </div>
-            {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>⚠ {err}</div>}
-            {futureDate && (
-              <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid #FBBF2444", borderRadius:8, padding:"10px 14px", marginBottom:12 }}>
-                <div style={{ color:"#FBBF24", fontSize:12.5, fontWeight:700 }}>📅 Cliente aniversariante do mês</div>
-                <div style={{ color:"#FBBF24", fontSize:12, marginTop:3 }}>Simulação disponível a partir de <b>{futureDate}</b></div>
-              </div>
-            )}
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={simular} disabled={loading}
-                style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 0", fontSize:13.5, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1 }}>
-                {loading?"⏳ Simulando...":"▶ Simular"}
-              </button>
-              {result && <button onClick={simular} disabled={loading} style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"11px 14px", fontSize:13, cursor:"pointer" }}>🔄</button>}
-              {(result||logs.length>0) && <button onClick={clearResult} style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"11px 12px", fontSize:13, cursor:"pointer" }}>🗑</button>}
-            </div>
-          </div>
-
-          {logs.length > 0 && (
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 16px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                <div style={{ color:C.ts, fontSize:12, fontWeight:700 }}>📋 Log ({logs.length})</div>
-                <button onClick={()=>{setLogs([]);localStorage.removeItem("nexp_v8_ind_logs");}} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
-              </div>
-              <div style={{ maxHeight:260, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
-                {logs.map((l,i)=>(
-                  <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
-                    <span style={{ color:C.td, flexShrink:0, fontFamily:"monospace" }}>{l.ts}</span>
-                    <span style={{ color:l.ok?"#34D399":"#F87171", wordBreak:"break-word" }}>{l.msg}</span>
-                  </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Instituição</label>
+              <div style={{ display:"flex", gap:6 }}>
+                {["cartos","qi","bms"].map(p=>(
+                  <button key={p} onClick={()=>setProvider(p)}
+                    style={{ background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:8, padding:"9px 14px", fontSize:12, fontWeight:provider===p?700:400, cursor:"pointer", textTransform:"uppercase" }}>
+                    {p}
+                  </button>
                 ))}
               </div>
             </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={buscarSaldo} disabled={loading}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 24px", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, whiteSpace:"nowrap" }}>
+                {loading?`⏳ ${stepLabel[simStep]||"Simulando..."}`:"▶ Simular"}
+              </button>
+              {(balance||tableSims.length>0) && (
+                <button onClick={buscarSaldo} disabled={loading} title="Recarregar"
+                  style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"9px 13px", fontSize:13, cursor:"pointer" }}>🔄</button>
+              )}
+              {(balance||tableSims.length>0||logs.length>0) && (
+                <button onClick={limpar} title="Limpar"
+                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 13px", fontSize:13, cursor:"pointer" }}>🗑</button>
+              )}
+            </div>
+          </div>
+          {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginTop:12, fontSize:12 }}>⚠ {err}</div>}
+          {futureDate && (
+            <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid #FBBF2444", borderRadius:8, padding:"10px 14px", marginTop:12 }}>
+              <div style={{ color:"#FBBF24", fontSize:12.5, fontWeight:700 }}>📅 Cliente aniversariante do mês</div>
+              <div style={{ color:"#FBBF24", fontSize:12, marginTop:2 }}>Simulação disponível a partir de <b>{futureDate}</b></div>
+            </div>
           )}
         </div>
 
-        {/* Coluna direita — resultados */}
-        <div>
-          {result ? (
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              {/* Card principal */}
-              <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:14, padding:"18px 20px", color:"#fff", position:"relative" }}>
-                <button onClick={clearResult} style={{ position:"absolute", top:10, right:12, background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:7, padding:"3px 10px", cursor:"pointer", fontSize:11 }}>✕</button>
-                <div style={{ fontSize:11, opacity:0.7, marginBottom:4 }}>CPF · {result.cpf} · {result.provider?.toUpperCase()} · {result.ts}</div>
-                <div style={{ fontSize:24, fontWeight:900, lineHeight:1 }}>
-                  {fmtBRL(result.balance?.balance || result.balance?.availableBalance || 0)}
+        {/* ── Resultado: Saldo + Tabelas ── */}
+        {balance && (
+          <div style={{ marginBottom:20 }}>
+            {/* Header saldo */}
+            <div style={{ background:`linear-gradient(135deg,${C.lg1} 0%,${C.lg2} 60%,${C.acc} 100%)`, borderRadius:16, padding:"20px 24px", marginBottom:16, position:"relative" }}>
+              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:16 }}>
+                <div>
+                  <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11, marginBottom:4 }}>
+                    CPF {cpfSim} · {provider.toUpperCase()} · {new Date().toLocaleString("pt-BR")}
+                  </div>
+                  <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, marginBottom:2 }}>Saldo FGTS disponível</div>
+                  <div style={{ color:"#fff", fontSize:32, fontWeight:900, lineHeight:1, letterSpacing:"-1px" }}>
+                    {fmtBRL(saldoTotal)}
+                  </div>
+                  {balance?.id && (
+                    <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10, marginTop:4, fontFamily:"monospace" }}>
+                      Balance ID: {balance.id}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize:11, opacity:0.7, marginTop:2 }}>Saldo disponível FGTS</div>
                 {bestSim && (
-                  <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:9, padding:"10px 14px" }}>
-                    <div style={{ fontSize:11, opacity:0.8 }}>🏆 Melhor oferta — {bestSim.label}</div>
-                    <div style={{ fontSize:20, fontWeight:800, marginTop:2 }}>{fmtBRL(bestSim.sim?.availableBalance || 0)}</div>
-                    <div style={{ fontSize:10, opacity:0.7, marginTop:2 }}>CET {fmtPct(bestSim.sim?.cet)} a.m. · IOF {fmtBRL(bestSim.sim?.iof)}</div>
+                  <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"14px 18px", minWidth:180, textAlign:"right" }}>
+                    <div style={{ color:"rgba(255,255,255,0.7)", fontSize:10.5 }}>🏆 Melhor oferta</div>
+                    <div style={{ color:"#fff", fontSize:11, fontWeight:600, marginTop:2, textTransform:"capitalize" }}>{bestSim.label}</div>
+                    <div style={{ color:"#fff", fontSize:24, fontWeight:900, lineHeight:1.1, marginTop:4 }}>{fmtBRL(bestSim.sim?.availableBalance||0)}</div>
+                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10, marginTop:3 }}>
+                      Emissão: {fmtBRL(bestSim.sim?.emissionAmount)} · {calcAnos(bestSim.sim)}
+                    </div>
                   </div>
                 )}
               </div>
+              {/* Periods do saldo */}
+              {(balance?.installments||balance?.periods||[]).length > 0 && (
+                <div style={{ marginTop:14, display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {(balance?.installments||balance?.periods||[]).map((p,i)=>(
+                    <div key={i} style={{ background:"rgba(255,255,255,0.12)", borderRadius:8, padding:"5px 10px", fontSize:10.5 }}>
+                      <div style={{ color:"rgba(255,255,255,0.6)" }}>{new Date((p.dueDate||p.date)+"T12:00:00").toLocaleDateString("pt-BR",{month:"short",year:"numeric"})}</div>
+                      <div style={{ color:"#fff", fontWeight:700 }}>{fmtBRL(p.amount||p.totalAmount)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-              {/* Tabelas */}
-              {result.tableSims?.length > 0 && (
-                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
-                  <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>📊 Resultado por Tabela</div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    {result.tableSims.map((t,i)=>(
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:t.ok?C.deep:"rgba(239,68,68,0.06)", borderRadius:9, border:`1px solid ${t.ok?C.b1:"#EF444422"}` }}>
-                        <div style={{ flex:1 }}>
-                          <span style={{ color:C.tp, fontWeight:700, fontSize:12.5, textTransform:"capitalize" }}>{t.label}</span>
-                          {t.ok && <span style={{ color:C.td, fontSize:10.5, marginLeft:8 }}>CET {fmtPct(t.sim?.cet)}/mês · IOF {fmtBRL(t.sim?.iof)}</span>}
-                          {!t.ok && <span style={{ color:"#F87171", fontSize:10.5, marginLeft:6 }}>— {(t.err||"").slice(0,60)}</span>}
-                        </div>
-                        {t.ok && (
-                          <div style={{ textAlign:"right" }}>
-                            <div style={{ color:C.atxt, fontWeight:800, fontSize:13 }}>{fmtBRL(t.sim?.availableBalance)}</div>
-                            <div style={{ color:C.td, fontSize:10 }}>{t.sim?.totalInstallments}x parcelas</div>
-                          </div>
-                        )}
-                        {!t.ok && <span style={{ color:"#F87171" }}>✘</span>}
+            {/* Tabelas — todas de uma vez */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, overflow:"hidden" }}>
+              <div style={{ padding:"14px 18px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div style={{ color:C.ts, fontSize:13.5, fontWeight:700 }}>
+                  📊 Simulação por Tabela
+                  {loading && simStep==="simulando" && <span style={{ color:C.atxt, fontSize:11, marginLeft:10, fontWeight:400 }}>⏳ calculando...</span>}
+                </div>
+                <div style={{ color:C.td, fontSize:11 }}>
+                  {tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · provider: {provider.toUpperCase()}
+                </div>
+              </div>
+
+              {/* Header da grade */}
+              <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1.2fr 1fr 0.9fr", gap:0, background:C.deep, padding:"10px 18px", borderBottom:`1px solid ${C.b1}` }}>
+                {["Tabela","Saldo Liberado","Valor Emissão","Anos / Parcelas","CET a.m."].map(h=>(
+                  <div key={h} style={{ color:C.tm, fontSize:10.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
+                ))}
+              </div>
+
+              {tableSims.length === 0 && loading && (
+                <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>⏳ Simulando tabelas em paralelo...</div>
+              )}
+              {tableSims.length === 0 && !loading && balance && (
+                <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>Aguardando simulação...</div>
+              )}
+
+              {tableSims.map((t, i) => {
+                const vlr    = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
+                const emissao = parseFloat(t.sim?.emissionAmount || t.sim?.issueAmount || 0);
+                const cet    = t.sim?.cet;
+                const anos   = calcAnos(t.sim);
+                const isBest = bestSim?.feeId === t.feeId;
+
+                return (
+                  <div key={i} style={{
+                    display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1.2fr 1fr 0.9fr",
+                    gap:0, padding:"13px 18px",
+                    background: isBest ? `${C.acc}12` : i%2===0 ? C.card : C.deep,
+                    borderBottom:`1px solid ${C.b1}`,
+                    borderLeft: isBest ? `3px solid ${C.acc}` : "3px solid transparent",
+                    transition:"all 0.15s",
+                    opacity: t.ok ? 1 : 0.55,
+                  }}>
+                    {/* Nome da tabela */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      {isBest && <span style={{ fontSize:13 }}>🏆</span>}
+                      <div>
+                        <div style={{ color: isBest ? C.atxt : C.tp, fontWeight:700, fontSize:13, textTransform:"capitalize" }}>{t.label}</div>
+                        {!t.ok && <div style={{ color:"#F87171", fontSize:10, marginTop:2 }}>{(t.err||"").slice(0,50)}</div>}
                       </div>
-                    ))}
+                    </div>
+
+                    {/* Saldo liberado */}
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      {t.ok
+                        ? <div>
+                            <div style={{ color: isBest?"#34D399":C.atxt, fontWeight:800, fontSize:15 }}>{fmtBRL(vlr)}</div>
+                            <div style={{ color:C.td, fontSize:10 }}>valor líquido</div>
+                          </div>
+                        : <span style={{ color:"#F87171", fontSize:12 }}>✘ Erro</span>}
+                    </div>
+
+                    {/* Emissão */}
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      {t.ok && <div>
+                        <div style={{ color:C.ts, fontWeight:600, fontSize:13 }}>{fmtBRL(emissao)}</div>
+                        <div style={{ color:C.td, fontSize:10 }}>valor emissão</div>
+                      </div>}
+                    </div>
+
+                    {/* Anos */}
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      {t.ok && <div style={{ color:C.tm, fontSize:13, fontWeight:600 }}>{anos}</div>}
+                    </div>
+
+                    {/* CET */}
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      {t.ok && cet && <div>
+                        <div style={{ color:C.tm, fontSize:12.5, fontWeight:600 }}>{fmtPct(cet)}</div>
+                        <div style={{ color:C.td, fontSize:10 }}>ao mês</div>
+                      </div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Contratos ── */}
+        {operacoes && Array.isArray(operacoes) && operacoes.length > 0 && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px 18px", marginBottom:16 }}>
+            <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:12 }}>📄 Contratos FGTS ({operacoes.length})</div>
+            {operacoes.map((op,i)=>{
+              const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC" };
+              const stCol = STATUS_COLOR[op.status] || "#94A3B8";
+              return (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:C.deep, borderRadius:9, marginBottom:6, border:`1px solid ${C.b1}` }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ color:C.tp, fontWeight:600, fontSize:12.5 }}>{op.clientName||"Cliente"} · <span style={{ fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</span></div>
+                    <div style={{ color:C.tm, fontSize:11, marginTop:2 }}>Parceiro: {op.partnerId||"—"}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ color:C.atxt, fontWeight:700, fontSize:13 }}>{fmtBRL(op.disbursedIssueAmount)}</div>
+                    <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>{op.status}</span>
                   </div>
                 </div>
-              )}
+              );
+            })}
+          </div>
+        )}
 
-              {/* Contratos */}
-              {result.operacoes && (
-                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
-                  <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:10 }}>📄 Contratos FGTS</div>
-                  {Array.isArray(result.operacoes) && result.operacoes.length > 0 ? (
-                    result.operacoes.slice(0,8).map((op,i)=>{
-                      const stColor = op.status==="paid"?"#34D399":op.status==="canceled"?"#F87171":"#FBBF24";
-                      return (
-                        <div key={i} style={{ padding:"8px 11px", background:C.deep, borderRadius:8, marginBottom:5, fontSize:11.5 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                            <div style={{ color:C.tp, fontWeight:600 }}>{op.clientName||"Cliente"} · {op.contractNumber||"—"}</div>
-                            <span style={{ background:stColor+"18", color:stColor, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>{op.status}</span>
-                          </div>
-                          <div style={{ color:C.tm, marginTop:2 }}>Valor: {fmtBRL(op.disbursedIssueAmount)} · Parceiro: {op.partnerId||"—"}</div>
-                        </div>
-                      );
-                    })
-                  ) : <div style={{ color:C.td, fontSize:12 }}>Nenhum contrato encontrado.</div>}
+        {/* ── Log colapsável ── */}
+        {logs.length > 0 && (
+          <details style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12 }}>
+            <summary style={{ padding:"12px 16px", cursor:"pointer", color:C.ts, fontSize:12, fontWeight:700, listStyle:"none", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>📋 Log da Simulação ({logs.length})</span>
+              <button onClick={(e)=>{e.preventDefault();setLogs([]);localStorage.removeItem("nexp_v8_ind_logs");}} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
+            </summary>
+            <div style={{ padding:"0 16px 12px", maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
+              {logs.map((l,i)=>(
+                <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
+                  <span style={{ color:C.td, flexShrink:0, fontFamily:"monospace" }}>{l.ts}</span>
+                  <span style={{ color:l.ok?"#34D399":"#F87171", wordBreak:"break-word" }}>{l.msg}</span>
                 </div>
-              )}
+              ))}
             </div>
-          ) : (
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"56px 24px", textAlign:"center" }}>
-              <div style={{ fontSize:44, marginBottom:14, opacity:0.2 }}>🔍</div>
-              <div style={{ color:C.tm, fontSize:13 }}>Digite um CPF e clique em Simular.</div>
-              <div style={{ color:C.td, fontSize:11, marginTop:8 }}>Rota: POST /fgts/balance → GET /fgts/simulations/fees → POST /fgts/simulations</div>
-            </div>
-          )}
-        </div>
+          </details>
+        )}
       </div>
     );
   };
