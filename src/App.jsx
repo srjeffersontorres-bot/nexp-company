@@ -10749,7 +10749,7 @@ function SimuladorPage() {
 
 // ── V8 Digital — aba integrada ────────────────────────────────
 // ── Modal Digitação Rápida (V8) — com revisão e edição ───────────
-function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, onSuccess, contacts, currentUser, clientePreFill,
+function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, onSuccess, setAcompData, contacts, currentUser, clientePreFill,
   // Elevated states — passed from V8DigitalTab to prevent remount
   step, setStep, banks, setBanks, payType, setPayType, loading, setLoading,
   result, setResult, err, setErr, cepLoading, setCepLoading, bankSearch, setBankSearch, form, setForm,
@@ -12163,6 +12163,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
             form={modalForm} setForm={setModalForm}
+            setAcompData={setAcompData}
             onClose={()=>{ setIndDigModal(null); }}
             onSuccess={()=>{ setIndDigModal(null); setAcompData(null); setAba("acompanhamento"); }}
           />
@@ -13271,6 +13272,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
             form={modalForm} setForm={setModalForm}
+            setAcompData={setAcompData}
             onClose={()=>{ setLoteDigModal(null); }}
             onSuccess={()=>{ setLoteDigModal(null); setAcompData(null); setAba("acompanhamento"); }}
           />
