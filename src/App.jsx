@@ -13304,26 +13304,46 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
-    const getStatusLabel = (s) => STATUS_LABEL[s] || s || "—";
-    const getStatusColor = (s) => STATUS_COLOR[s] || (STATUS_VARIANTS.formalization?.includes((s||"").toLowerCase()) ? "#C084FC" : "#94A3B8");
 
     // Todos os valores possíveis de cada status na V8 (a API pode retornar variações)
     const STATUS_VARIANTS = {
-      formalization: ["formalization","formalizacao","awaiting_formalization","awaiting","pending_formalization","in_formalization","formalize","form"],
-      analysis:      ["analysis","in_analysis","under_analysis","analysing","analyzing"],
-      manual_analysis:["manual_analysis","manual","manual_review"],
-      pending:       ["pending","pendente","waiting"],
-      processing:    ["processing","in_progress","processando"],
-      paid:          ["paid","pago","completed","done","approved"],
-      canceled:      ["canceled","cancelled","cancelado","rejected"],
-      refounded:     ["refounded","refunded","devolvido"],
+      formalization: ["formalization","formalizacao","awaiting_formalization","awaiting","pending_formalization","in_formalization","formalize","form","aguardando_form","aguardando_formalizacao","aguardando formalização","aguardando formaliz","aguardando form","waiting_formalization","wait_form","await_form","pend_form"],
+      analysis:      ["analysis","in_analysis","under_analysis","analysing","analyzing","em_analise","em analise"],
+      manual_analysis:["manual_analysis","manual","manual_review","analise_manual","análise manual"],
+      pending:       ["pending","pendente","waiting","aguardando"],
+      processing:    ["processing","in_progress","processando","em_processamento"],
+      paid:          ["paid","pago","completed","done","approved","aprovado"],
+      canceled:      ["canceled","cancelled","cancelado","rejected","rejeitado"],
+      refounded:     ["refounded","refunded","devolvido","estornado"],
+    };
+
+    const getStatusLabel = (s) => {
+      if (!s) return "—";
+      const sl = s.toLowerCase().trim();
+      for (const [key, variants] of Object.entries(STATUS_VARIANTS)) {
+        if (variants.some(v => sl === v || sl.includes(v) || v.includes(sl))) {
+          return STATUS_LABEL[key] || key;
+        }
+      }
+      return STATUS_LABEL[s] || s;
+    };
+    const getStatusColor = (s) => {
+      if (!s) return "#94A3B8";
+      const sl = s.toLowerCase().trim();
+      for (const [key, variants] of Object.entries(STATUS_VARIANTS)) {
+        if (variants.some(v => sl === v || sl.includes(v) || v.includes(sl))) {
+          return STATUS_COLOR[key] || "#94A3B8";
+        }
+      }
+      return STATUS_COLOR[s] || "#94A3B8";
     };
 
     const matchStatus = (rowStatus, filterStatus) => {
       if (!filterStatus) return true;
-      const rv = (rowStatus||"").toLowerCase();
+      const rv = (rowStatus||"").toLowerCase().trim();
       const variants = STATUS_VARIANTS[filterStatus] || [filterStatus];
-      return variants.some(v => rv === v || rv.includes(v));
+      // Verifica correspondência exata ou parcial
+      return variants.some(v => rv === v || rv.includes(v) || v.includes(rv));
     };
 
     const PAGE_SIZE = 50;
@@ -13338,6 +13358,21 @@ function V8DigitalTab({ currentUser, contacts }) {
       const s  = statusOverride !== undefined ? statusOverride : status;
       const df = fromOverride  !== undefined ? fromOverride  : dateFrom;
       const dt = toOverride    !== undefined ? toOverride    : dateTo;
+
+      // Mapeia o status interno para o valor aceito pela API da V8
+      // A API aceita: formalization, analysis, manual_analysis, pending, processing, paid, canceled, refounded
+      const apiStatusMap = {
+        formalization:  "formalization",
+        analysis:       "analysis",
+        manual_analysis:"manual_analysis",
+        pending:        "pending",
+        processing:     "processing",
+        paid:           "paid",
+        canceled:       "canceled",
+        refounded:      "refounded",
+      };
+      const apiStatus = s ? (apiStatusMap[s] || s) : "";
+
       try {
         const q = search.trim();
         let allRows = [];
@@ -13347,15 +13382,19 @@ function V8DigitalTab({ currentUser, contacts }) {
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
           if (provider) params.append("provider", provider);
+          // Passa status para a API quando buscando por texto também
+          if (apiStatus) params.append("status", apiStatus);
           const res = await apiFetch(`/fgts/proposal?${params}`);
           allRows = res?.data || [];
         } else {
-          // Busca TODAS as páginas sem exceção
+          // Busca TODAS as páginas — passa status para a API reduzir volume
           let curPage = 1;
           let keepGoing = true;
           while (keepGoing && curPage <= 40) { // até 2000 registros
             const params = new URLSearchParams({ page:curPage, limit:PAGE_SIZE });
             if (provider) params.append("provider", provider);
+            // ✅ Passa o status para a API — reduz volume e traz registros corretos
+            if (apiStatus) params.append("status", apiStatus);
             const res = await apiFetch(`/fgts/proposal?${params}`);
             const rows = res?.data || [];
             allRows = [...allRows, ...rows];
@@ -13366,7 +13405,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           // Log completo dos status encontrados
           const statusMap = {};
           allRows.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
-          console.log("[V8 Acomp] Total registros:", allRows.length);
+          console.log("[V8 Acomp] Total registros:", allRows.length, "| Filtro API:", apiStatus||"todos");
           console.log("[V8 Acomp] Status:", JSON.stringify(statusMap));
         }
 
