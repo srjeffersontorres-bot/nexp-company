@@ -10873,6 +10873,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
 
   const inputStyle = { ...S.input, fontSize:12, padding:"7px 10px" };
   const labelStyle = { color:C.tm, fontSize:10.5, display:"block", marginBottom:3 };
+  const setF = (k,v) => setForm(p=>({...p,[k]:v}));
   const fieldGroup = (label, key, type="text", placeholder="") => (
     <div>
       <label style={labelStyle}>{label}</label>
