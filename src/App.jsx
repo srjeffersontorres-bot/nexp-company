@@ -11473,6 +11473,19 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [opsDetalhe,  setOpsDetalhe]  = useState(null); // contrato selecionado
   const [opsSimModal, setOpsSimModal] = useState(null); // simulação popup
 
+  // ── Estados AcompanhamentoTab ──
+  const [acompSearch,      setAcompSearch]      = useState("");
+  const [acompStatus,      setAcompStatus]      = useState("");
+  const [acompProvider,    setAcompProvider]    = useState("");
+  const [acompPage,        setAcompPage]        = useState(1);
+  const [acompData,        setAcompData]        = useState(null);
+  const [acompLoading,     setAcompLoading]     = useState(false);
+  const [acompErr,         setAcompErr]         = useState("");
+  const [acompDetalhe,     setAcompDetalhe]     = useState(null);
+  const [acompLinkModal,   setAcompLinkModal]   = useState(null);
+  const [acompLinkLoading, setAcompLinkLoading] = useState(false);
+  const [acompCopied,      setAcompCopied]      = useState(null);
+
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
   // ════════════════════════════════════════════════════════════
@@ -13249,10 +13262,308 @@ function V8DigitalTab({ currentUser, contacts }) {
   // ════════════════════════════════════════════════════════════
   // RENDER PRINCIPAL
   // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════
+  // ABA: ACOMPANHAMENTO DE PROPOSTAS V8
+  // ════════════════════════════════════════════════════════════
+  const AcompanhamentoTab = () => {
+    const search   = acompSearch;   const setSearch   = setAcompSearch;
+    const status   = acompStatus;   const setStatus   = setAcompStatus;
+    const provider = acompProvider; const setProvider = setAcompProvider;
+    const page     = acompPage;     const setPage     = setAcompPage;
+    const data     = acompData;     const setData     = setAcompData;
+    const loading  = acompLoading;  const setLoading  = setAcompLoading;
+    const err      = acompErr;      const setErr      = setAcompErr;
+    const detalhe  = acompDetalhe;  const setDetalhe  = setAcompDetalhe;
+    const copied   = acompCopied;   const setCopied   = setAcompCopied;
+
+    const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
+    const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
+    const STATUS_LIST  = ["","formalization","analysis","manual_analysis","pending","processing","paid","canceled","refounded"];
+
+    const buscar = async (pg=1) => {
+      setLoading(true); setErr(""); setPage(pg);
+      try {
+        const params = new URLSearchParams({ page:pg, limit:20 });
+        if (search) params.append("search", search.replace(/\D/g,"")||search);
+        if (status) params.append("status", status);
+        if (provider) params.append("provider", provider);
+        const res = await apiFetch(`/fgts/proposal?${params}`);
+        if (res?.data) res.data.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
+        setData(res);
+      } catch(e) { setErr(e.message); }
+      setLoading(false);
+    };
+
+    const gerarNovoLink = async (id) => {
+      setAcompLinkLoading(true);
+      try {
+        const res = await apiFetch(`/fgts/proposal/${id}/formalization-link`, "POST");
+        const link = res?.formalizationLink || res?.link || res?.url || "";
+        setAcompLinkModal({ id, link });
+        // Atualiza o item na lista
+        setData(p => p ? { ...p, data: (p.data||[]).map(op => op.id===id ? { ...op, formalizationLink: link } : op) } : p);
+      } catch(e) { setErr("Erro ao gerar link: " + e.message); }
+      setAcompLinkLoading(false);
+    };
+
+    const copiarLink = (id, link) => {
+      if (!link) return;
+      navigator.clipboard.writeText(link).then(()=>{ setCopied(id); setTimeout(()=>setCopied(null),2500); }).catch(()=>{
+        const el = document.createElement("textarea"); el.value = link; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+        setCopied(id); setTimeout(()=>setCopied(null),2500);
+      });
+    };
+
+    return (
+      <div>
+        {/* Header */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:16 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14, flexWrap:"wrap", gap:10 }}>
+            <div>
+              <div style={{ color:C.ts, fontSize:14, fontWeight:700 }}>📡 Acompanhamento de Propostas V8</div>
+              <div style={{ color:C.tm, fontSize:12, marginTop:3 }}>Propostas digitadas, status em tempo real, links de formalização.</div>
+            </div>
+            <button onClick={()=>buscar(1)} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
+              {loading?"⏳":"🔄"} {loading?"Buscando...":"Atualizar"}
+            </button>
+          </div>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
+            <div style={{ flex:1, minWidth:180 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar</label>
+              <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
+                placeholder="Nome, CPF ou nº contrato" autoComplete="off" style={{ ...S.input }} />
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Status</label>
+              <select value={status} onChange={e=>{ setStatus(e.target.value); }} style={{ ...S.input, cursor:"pointer" }}>
+                {STATUS_LIST.map(s=><option key={s} value={s}>{s?STATUS_LABEL[s]:"Todos"}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Provider</label>
+              <select value={provider} onChange={e=>setProvider(e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                <option value="">Todos</option>
+                {["qi","cartos","bms"].map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <button onClick={()=>buscar(1)} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              🔍 Buscar
+            </button>
+          </div>
+          {err && <div style={{ color:"#F87171", marginTop:10, fontSize:12 }}>⚠ {err}</div>}
+        </div>
+
+        {/* Modal de link */}
+        {acompLinkModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:18, padding:"24px", width:"100%", maxWidth:520 }}>
+              <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:16 }}>🔗 Link de Formalização</div>
+              {acompLinkModal.link ? (
+                <div>
+                  <div style={{ background:C.deep, borderRadius:10, padding:"12px 14px", marginBottom:14, wordBreak:"break-all" }}>
+                    <div style={{ color:C.td, fontSize:10, marginBottom:4 }}>URL de Formalização:</div>
+                    <a href={acompLinkModal.link} target="_blank" rel="noreferrer"
+                      style={{ color:C.atxt, fontSize:12, fontFamily:"monospace" }}>{acompLinkModal.link}</a>
+                  </div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={()=>copiarLink(acompLinkModal.id, acompLinkModal.link)}
+                      style={{ flex:1, background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"11px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                      {copied===acompLinkModal.id?"✅ Copiado!":"📋 Copiar Link"}
+                    </button>
+                    <button onClick={()=>window.open(acompLinkModal.link,"_blank")}
+                      style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                      🔗 Abrir Link
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color:C.tm, fontSize:12.5 }}>Nenhum link disponível para esta proposta.</div>
+              )}
+              <button onClick={()=>setAcompLinkModal(null)}
+                style={{ width:"100%", background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"10px", marginTop:12, fontSize:13, cursor:"pointer" }}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Detalhe */}
+        {detalhe && (
+          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"22px 26px", marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>
+                {detalhe.clientName||"Proposta"} · <span style={{ fontFamily:"monospace", fontSize:12, color:"rgba(255,255,255,0.5)" }}>{detalhe.contractNumber||detalhe.id}</span>
+              </div>
+              <button onClick={()=>setDetalhe(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10, marginBottom:14 }}>
+              {[
+                ["Cliente",     detalhe.clientName||"—"],
+                ["CPF",         (detalhe.documentNumber||detalhe.individualDocumentNumber||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"],
+                ["E-mail",      detalhe.email||"—"],
+                ["Telefone",    detalhe.phone?(detalhe.phoneRegionCode||"")+detalhe.phone:"—"],
+                ["Contrato",    detalhe.contractNumber||"—"],
+                ["Status",      STATUS_LABEL[detalhe.status]||detalhe.status||"—"],
+                ["Valor",       fmtBRL(detalhe.disbursedIssueAmount)],
+                ["Provider",    (detalhe.provider||"—").toUpperCase()],
+                ["Parceiro",    detalhe.partnerId||"—"],
+                ["Criado em",   detalhe.createdAt?new Date(detalhe.createdAt).toLocaleString("pt-BR"):"—"],
+              ].map(([l,v])=>(
+                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                  <div style={{ color:"#fff", fontWeight:600, fontSize:12.5, marginTop:2, wordBreak:"break-word" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {/* Link de formalização */}
+            <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:10, padding:"12px 16px" }}>
+              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Link de Formalização</div>
+              {detalhe.formalizationLink ? (
+                <div>
+                  <div style={{ wordBreak:"break-all", marginBottom:10 }}>
+                    <a href={detalhe.formalizationLink} target="_blank" rel="noreferrer"
+                      style={{ color:C.atxt, fontSize:12, fontFamily:"monospace" }}>{detalhe.formalizationLink}</a>
+                  </div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <button onClick={()=>copiarLink(detalhe.id, detalhe.formalizationLink)}
+                      style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      {copied===detalhe.id?"✅ Copiado!":"📋 Copiar Link"}
+                    </button>
+                    <button onClick={()=>window.open(detalhe.formalizationLink,"_blank")}
+                      style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer" }}>
+                      🔗 Abrir
+                    </button>
+                    <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
+                      style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                      {acompLinkLoading?"⏳":"🔄"} Gerar Novo Link
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Nenhum link gerado ainda</span>
+                  <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
+                    style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                    {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tabela */}
+        {!data && !loading && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"40px", textAlign:"center" }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>📡</div>
+            <div style={{ color:C.tp, fontSize:14, fontWeight:600, marginBottom:6 }}>Consulte suas propostas</div>
+            <div style={{ color:C.tm, fontSize:12.5 }}>Use os filtros acima e clique em Buscar ou Atualizar.</div>
+          </div>
+        )}
+
+        {data && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden" }}>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:C.deep }}>
+                    {["Cliente","CPF","Contrato","Status","Valor","Provider","Link Formalização","Ações"].map(h=>(
+                      <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.data||[]).map((op,i)=>{
+                    const stCol = STATUS_COLOR[op.status]||"#94A3B8";
+                    const isSel = detalhe?.id===op.id;
+                    const hasLink = !!op.formalizationLink;
+                    return (
+                      <tr key={op.id}
+                        onClick={()=>setDetalhe(isSel?null:op)}
+                        style={{ background:isSel?`${C.acc}15`:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+                        onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=`${C.acc}08`)}
+                        onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:i%2===0?C.card:C.deep)}>
+                        <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{op.clientName||"—"}</td>
+                        <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>
+                          {(op.documentNumber||op.individualDocumentNumber||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"}
+                        </td>
+                        <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
+                        <td style={{ padding:"10px 12px" }}>
+                          <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700 }}>
+                            {STATUS_LABEL[op.status]||op.status}
+                          </span>
+                        </td>
+                        <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
+                        <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{op.provider||"—"}</td>
+                        <td style={{ padding:"10px 12px" }}>
+                          {hasLink ? (
+                            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                              <span style={{ color:"#34D399", fontSize:10, fontWeight:600 }}>✓ Link gerado</span>
+                              <button onClick={e=>{e.stopPropagation();copiarLink(op.id,op.formalizationLink);}}
+                                style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${copied===op.id?"#34D39933":C.atxt+"33"}`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                {copied===op.id?"✅ Copiado":"📋 Copiar"}
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ color:C.td, fontSize:11 }}>— Sem link</span>
+                          )}
+                        </td>
+                        <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                          <div style={{ display:"flex", gap:6 }}>
+                            {!hasLink ? (
+                              <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                ✨ Gerar Link
+                              </button>
+                            ) : (
+                              <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                style={{ background:"rgba(251,191,36,0.12)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                🔄 Novo Link
+                              </button>
+                            )}
+                            {hasLink && (
+                              <button onClick={()=>setAcompLinkModal({id:op.id,link:op.formalizationLink})}
+                                style={{ background:"rgba(79,142,247,0.12)", color:C.atxt, border:`1px solid rgba(79,142,247,0.25)`, borderRadius:7, padding:"4px 11px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                🔗 Ver Link
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(data.data||[]).length===0&&(
+                    <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"32px" }}>Nenhuma proposta encontrada.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {data.pages&&(
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
+                <button onClick={()=>buscar(page-1)} disabled={!data.pages.hasPrev||loading}
+                  style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
+                  ← Anterior
+                </button>
+                <span style={{ color:C.tm, fontSize:12 }}>Página {data.pages.current||page} · {data.pages.total||0} propostas</span>
+                <button onClick={()=>buscar(page+1)} disabled={!data.pages.hasNext||loading}
+                  style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
+                  Próxima →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const TABS = [
-    { id:"individual", label:"🔍 Individual" },
-    { id:"lote",       label:"⚡ Lote" },
-    { id:"operacoes",  label:"📋 Contratos" },
+    { id:"individual",      label:"🔍 Individual" },
+    { id:"lote",            label:"⚡ Lote" },
+    { id:"operacoes",       label:"📋 Contratos" },
+    { id:"acompanhamento",  label:"📡 Acompanhamento de Propostas" },
   ];
 
   return (
@@ -13301,9 +13612,10 @@ function V8DigitalTab({ currentUser, contacts }) {
         </div>
       )}
 
-      {isTokenValid && aba === "individual" && <IndividualTab />}
-      {isTokenValid && aba === "lote"       && <LoteTab />}
-      {isTokenValid && aba === "operacoes"  && <OperacoesTab />}
+      {isTokenValid && aba === "individual"      && <IndividualTab />}
+      {isTokenValid && aba === "lote"             && <LoteTab />}
+      {isTokenValid && aba === "operacoes"        && <OperacoesTab />}
+      {isTokenValid && aba === "acompanhamento"   && <AcompanhamentoTab />}
     </div>
   );
 }
