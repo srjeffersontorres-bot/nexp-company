@@ -10717,12 +10717,10 @@ function V8DigitalTab({ currentUser, contacts }) {
 
   const apiFetch = async (path, method="GET", body=null, retries=3) => {
     if (!isTokenValid) throw new Error("Sessão expirada. Faça login novamente.");
-    // Adiciona prefixo /v1/ se não tiver
-    const fullPath = path.startsWith("/v1/") ? path : `/v1${path}`;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ action:"bff", payload:{ path:fullPath, method, token, body } }) });
+          body: JSON.stringify({ action:"bff", payload:{ path, method, token, body } }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}`);
         return data;
@@ -10785,38 +10783,57 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 1. Saldo
         let saldo = null;
         try {
-          saldo = await apiFetch(`/saque-aniversario/cliente/saldo/${c}`);
-          // Detectar campo de saldo automaticamente — a V8 pode usar nomes diferentes
-          const saldoVal = saldo?.saldoDisponivel ?? saldo?.saldo ?? saldo?.vlrSaldo
-            ?? saldo?.valorDisponivel ?? saldo?.totalSaldo ?? saldo?.saldoTotal
-            ?? saldo?.value ?? saldo?.amount ?? null;
-          addLog(`✅ Saldo bruto: ${JSON.stringify(saldo)}`);
-          addLog(`✅ Saldo: ${fmtBRL(saldoVal || 0)}`);
-          // Normaliza para sempre ter saldoDisponivel
-          if (saldo && saldoVal !== null) saldo = { ...saldo, saldoDisponivel: saldoVal };
+          // Tenta as variações de rota de saldo
+          const saldoRoutes = [
+            `/saque-aniversario/cliente/${c}/saldo`,
+            `/saque-aniversario/saldo?cpf=${c}`,
+            `/saque-aniversario/cliente/saldo?cpf=${c}`,
+            `/fgts/saldo?cpf=${c}`,
+            `/fgts/cliente/saldo/${c}`,
+          ];
+          for (const route of saldoRoutes) {
+            try {
+              saldo = await apiFetch(route);
+              addLog(`✅ Saldo via ${route}: ${JSON.stringify(saldo).slice(0,100)}`);
+              break;
+            } catch(e) {
+              addLog(`⚠ ${route}: ${e.message}`, false);
+            }
+          }
+          if (saldo) {
+            const saldoVal = saldo?.saldoDisponivel ?? saldo?.saldo ?? saldo?.vlrSaldo
+              ?? saldo?.valorDisponivel ?? saldo?.totalSaldo ?? saldo?.value ?? null;
+            if (saldoVal !== null) saldo = { ...saldo, saldoDisponivel: saldoVal };
+          }
         } catch(e) {
           addLog(`⚠ Saldo: ${e.message}`, false);
           const fd = parseFutureDate(e.message);
           if (fd) setFutureDate(fd);
         }
 
-        // 2. Simular todas as tabelas
         const TABELAS = ["cometa","turbo","grid","normal","pitstop","acelera20"];
+        const simRoutes = [
+          { path:"/saque-aniversario/simulacao", body:(tbl)=>({ cpf:c, tabelaId:tbl, seguro:false }) },
+          { path:"/saque-aniversario/simular",   body:(tbl)=>({ cpf:c, tabelaId:tbl, seguro:false }) },
+          { path:"/fgts/simulacao",              body:(tbl)=>({ cpf:c, tabela:tbl }) },
+          { path:"/fgts/simular",                body:(tbl)=>({ cpf:c, tabela:tbl }) },
+        ];
         const tableSims = await Promise.all(TABELAS.map(async tbl => {
-          try {
-            const sim = await apiFetch("/saque-aniversario/simulacao","POST",{ cpf:c, tabelaId:tbl, seguro:false });
-            // Detectar campo de valor automaticamente
-            const vlr = sim?.valorLiquido ?? sim?.vlrLiquido ?? sim?.valor ?? sim?.valorTotal
-              ?? sim?.valorLiberar ?? sim?.valorLiberado ?? sim?.netValue ?? sim?.amount ?? 0;
-            const simNorm = { ...sim, valorLiquido: vlr };
-            addLog(`✅ ${tbl}: ${fmtBRL(vlr)} | raw: ${JSON.stringify(sim).slice(0,120)}`);
-            return { tbl, sim:simNorm, ok:true };
-          } catch(e) {
-            const fd = parseFutureDate(e.message);
-            if (fd) setFutureDate(fd);
-            addLog(`❌ ${tbl}: ${e.message}`, false);
-            return { tbl, err:e.message, ok:false };
+          for (const route of simRoutes) {
+            try {
+              const sim = await apiFetch(route.path,"POST",route.body(tbl));
+              const vlr = sim?.valorLiquido ?? sim?.vlrLiquido ?? sim?.valor ?? sim?.valorTotal
+                ?? sim?.valorLiberar ?? sim?.valorLiberado ?? sim?.netValue ?? 0;
+              addLog(`✅ ${tbl} via ${route.path}: ${fmtBRL(vlr)}`);
+              return { tbl, sim:{ ...sim, valorLiquido:vlr }, ok:true };
+            } catch(e) {
+              if (simRoutes.indexOf(route) === simRoutes.length-1) {
+                addLog(`❌ ${tbl}: ${e.message}`, false);
+                return { tbl, err:e.message, ok:false };
+              }
+            }
           }
+          return { tbl, err:"Nenhuma rota funcionou", ok:false };
         }));
 
         // 3. Contratos ativos
