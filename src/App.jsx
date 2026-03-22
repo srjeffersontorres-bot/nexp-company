@@ -13308,8 +13308,10 @@ function V8DigitalTab({ currentUser, contacts }) {
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"Pago", canceled:"Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
 
-    // Mapeamento EXATO — somente valores confirmados que a API V8 retorna
-    // Baseado na documentação oficial + valores observados em produção
+    // Status que a API V8 realmente retorna na listagem (confirmado via diagnóstico)
+    // Outros status (formalization, analysis, etc.) só aparecem via busca por CPF/ID
+    const API_KNOWN_STATUS = ["paid","canceled","processing","pending","analysis","manual_analysis","refounded","refunded","cancelled"];
+
     const STATUS_VARIANTS = {
       formalization:  ["formalization","aguardando_form","awaiting_formalization","pending_formalization","in_formalization","formalizacao"],
       analysis:       ["analysis","in_analysis","under_analysis"],
@@ -13321,13 +13323,10 @@ function V8DigitalTab({ currentUser, contacts }) {
       refounded:      ["refounded","refunded"],
     };
 
-    // Match EXATO — sem includes parciais que causam falsos positivos
     const matchStatus = (rowStatus, filterStatus) => {
       if (!filterStatus) return true;
       const rv = (rowStatus||"").toLowerCase().trim();
-      // 1. Verifica correspondência direta com a chave
       if (rv === filterStatus) return true;
-      // 2. Verifica na lista de variantes exatas
       const variants = STATUS_VARIANTS[filterStatus] || [];
       return variants.includes(rv);
     };
@@ -13338,7 +13337,6 @@ function V8DigitalTab({ currentUser, contacts }) {
       for (const [key, variants] of Object.entries(STATUS_VARIANTS)) {
         if (sl === key || variants.includes(sl)) return STATUS_LABEL[key] || key;
       }
-      // Retorna o valor original capitalizado se não reconhecido
       return s.charAt(0).toUpperCase() + s.slice(1);
     };
 
@@ -13364,19 +13362,11 @@ function V8DigitalTab({ currentUser, contacts }) {
       const df = fromOverride  !== undefined ? fromOverride  : dateFrom;
       const dt = toOverride    !== undefined ? toOverride    : dateTo;
 
-      // Mapeia o status interno para o valor aceito pela API da V8
-      // A API aceita: formalization, analysis, manual_analysis, pending, processing, paid, canceled, refounded
-      const apiStatusMap = {
-        formalization:  "formalization",
-        analysis:       "analysis",
-        manual_analysis:"manual_analysis",
-        pending:        "pending",
-        processing:     "processing",
-        paid:           "paid",
-        canceled:       "canceled",
-        refounded:      "refounded",
-      };
-      const apiStatus = s ? (apiStatusMap[s] || s) : "";
+      // Só passa status para a API se for um que ela realmente retorna na listagem
+      // Confirmado via diagnóstico: a API só retorna paid e canceled na listagem geral
+      // Os demais (formalization, analysis, etc.) chegam via busca por CPF/ID
+      const statusSuportadoAPI = ["paid","canceled","processing","pending","analysis","manual_analysis","refounded"];
+      const apiStatus = s && statusSuportadoAPI.includes(s) ? s : "";
 
       try {
         const q = search.trim();
@@ -13387,32 +13377,26 @@ function V8DigitalTab({ currentUser, contacts }) {
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
           if (provider) params.append("provider", provider);
-          // Passa status para a API quando buscando por texto também
           if (apiStatus) params.append("status", apiStatus);
           const res = await apiFetch(`/fgts/proposal?${params}`);
           allRows = res?.data || [];
         } else {
-          // Busca TODAS as páginas — passa status para a API reduzir volume
           let curPage = 1;
           let keepGoing = true;
-          while (keepGoing && curPage <= 40) { // até 2000 registros
+          while (keepGoing && curPage <= 40) {
             const params = new URLSearchParams({ page:curPage, limit:PAGE_SIZE });
             if (provider) params.append("provider", provider);
-            // ✅ Passa o status para a API — reduz volume e traz registros corretos
             if (apiStatus) params.append("status", apiStatus);
             const res = await apiFetch(`/fgts/proposal?${params}`);
             const rows = res?.data || [];
             allRows = [...allRows, ...rows];
-            // Para quando retorna menos que o limite (última página)
             keepGoing = rows.length === PAGE_SIZE;
             curPage++;
           }
-          // Log completo dos status encontrados
           const statusMap = {};
           allRows.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
-          console.log("[V8 Acomp] Total registros:", allRows.length, "| Filtro API:", apiStatus||"todos");
-          console.log("[V8 Acomp] Status:", JSON.stringify(statusMap));
-          // Salva status brutos para exibir na tela
+          console.log("[V8 Acomp] Total:", allRows.length, "| API status:", apiStatus||"todos");
+          console.log("[V8 Acomp] Status brutos:", JSON.stringify(statusMap));
           setStatusBrutos(Object.entries(statusMap).map(([k,v])=>({k,v})));
         }
 
@@ -13507,15 +13491,15 @@ function V8DigitalTab({ currentUser, contacts }) {
           {/* Filtros rápidos */}
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
             {[
-              { label:"Todos",                    value:"",               color:C.atxt,    bg:C.abg },
-              { label:"⏳ Aguardando Formalização",value:"formalization",  color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
-              { label:"🔍 Em Análise",             value:"analysis",       color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
-              { label:"🔎 Análise Manual",         value:"manual_analysis",color:"#FB923C", bg:"rgba(251,146,60,0.12)" },
-              { label:"⏸ Pendente",               value:"pending",        color:"#FBBF24", bg:"rgba(251,191,36,0.12)" },
-              { label:"⚙ Processando",            value:"processing",     color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
-              { label:"✅ Pago",                   value:"paid",           color:"#34D399", bg:"rgba(52,211,153,0.12)" },
-              { label:"❌ Cancelado",              value:"canceled",       color:"#F87171", bg:"rgba(239,68,68,0.12)" },
-              { label:"↩ Devolvido",              value:"refounded",      color:"#94A3B8", bg:"rgba(148,163,184,0.12)" },
+              { label:"Todos",         value:"",               color:C.atxt,    bg:C.abg },
+              { label:"✅ Pago",        value:"paid",           color:"#34D399", bg:"rgba(52,211,153,0.12)" },
+              { label:"❌ Cancelado",   value:"canceled",       color:"#F87171", bg:"rgba(239,68,68,0.12)" },
+              { label:"⚙ Processando", value:"processing",     color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
+              { label:"⏸ Pendente",    value:"pending",        color:"#FBBF24", bg:"rgba(251,191,36,0.12)" },
+              { label:"🔍 Em Análise", value:"analysis",       color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
+              { label:"🔎 Análise Manual", value:"manual_analysis", color:"#FB923C", bg:"rgba(251,146,60,0.12)" },
+              { label:"↩ Devolvido",   value:"refounded",      color:"#94A3B8", bg:"rgba(148,163,184,0.12)" },
+              { label:"⏳ Formalização (busca por CPF)", value:"formalization", color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
             ].map(f=>(
               <button key={f.value} onClick={()=>{ setStatus(f.value); buscar(1, f.value); }}
                 style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"55":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:11.5, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
@@ -13524,19 +13508,10 @@ function V8DigitalTab({ currentUser, contacts }) {
             ))}
           </div>
 
-          {/* Painel diagnóstico — status brutos retornados pela API */}
-          {statusBrutos.length > 0 && !status && (
-            <div style={{ background:C.deep, borderRadius:8, padding:"8px 12px", marginBottom:10, border:`1px solid ${C.b1}` }}>
-              <div style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:6 }}>
-                🔬 Status brutos retornados pela API (útil para diagnóstico):
-              </div>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                {statusBrutos.sort((a,b)=>b.v-a.v).map(({k,v})=>(
-                  <span key={k} style={{ background:C.card, border:`1px solid ${C.b2}`, borderRadius:6, padding:"2px 8px", fontSize:11, color:C.ts, fontFamily:"monospace" }}>
-                    {k || "(vazio)"} <span style={{ color:C.atxt, fontWeight:700 }}>×{v}</span>
-                  </span>
-                ))}
-              </div>
+          {/* Aviso quando filtrar por formalização */}
+          {status === "formalization" && (
+            <div style={{ background:"rgba(192,132,252,0.1)", border:"1px solid #C084FC44", borderRadius:8, padding:"9px 14px", marginBottom:10, fontSize:12, color:"#C084FC" }}>
+              ⚠️ Contratos em formalização não aparecem na listagem geral da API. Para encontrá-los, <strong>busque pelo CPF do cliente</strong> no campo de busca acima.
             </div>
           )}
 
