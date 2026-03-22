@@ -13368,13 +13368,18 @@ function V8DigitalTab({ currentUser, contacts }) {
         // Filtro client-side por status
         let filtered = s ? allRows.filter(r => matchStatus(r.status, s)) : allRows;
 
-        // Filtro por data — usa df/dt (default = últimos 3 dias)
-        const from = df ? new Date(df) : new Date(h3dias);
-        const to   = dt ? new Date(dt+"T23:59:59") : new Date(hoje+"T23:59:59");
-        filtered = filtered.filter(r => {
-          const d = new Date(r.createdAt||r.created_at||0);
-          return d >= from && d <= to;
-        });
+        // Filtro por data — só aplica se o usuário definiu datas manualmente
+        if (df || dt) {
+          const from = df ? new Date(df) : new Date("2000-01-01");
+          const to   = dt ? new Date(dt+"T23:59:59") : new Date("2099-12-31");
+          filtered = filtered.filter(r => {
+            // Tenta todos os campos de data possíveis que a V8 pode usar
+            const raw = r.createdAt || r.created_at || r.proposalDate || r.date || r.updatedAt || r.updated_at;
+            if (!raw) return true; // sem data = não filtra
+            const d = new Date(typeof raw === "number" ? raw : raw);
+            return !isNaN(d) && d >= from && d <= to;
+          });
+        }
 
         filtered.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
@@ -13406,14 +13411,9 @@ function V8DigitalTab({ currentUser, contacts }) {
       }));
     };
 
-    // Auto-carrega com últimos 3 dias como padrão
+    // Auto-carrega sem filtro de data — mostra TUDO, usuário filtra se quiser
     useEffect(() => {
-      if (acompData === null && !acompLoading) {
-        // Inicializa datas padrão se ainda não definidas
-        if (!acompDateFrom) setAcompDateFrom(h3dias);
-        if (!acompDateTo)   setAcompDateTo(hoje);
-        buscar(1, undefined, h3dias, hoje);
-      }
+      if (acompData === null && !acompLoading) buscar(1, undefined, "", "");
     }, [acompData]); // eslint-disable-line
 
     const gerarNovoLink = async (id) => {
@@ -13526,7 +13526,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             )}
           </div>
           <div style={{ color:C.td, fontSize:10.5, marginTop:8 }}>
-            📅 Exibindo contratos de <b style={{ color:C.tm }}>{dateFrom||h3dias}</b> até <b style={{ color:C.tm }}>{dateTo||hoje}</b> · Para ver contratos mais antigos, selecione outra data.
+            📅 {(dateFrom||dateTo) ? `Filtrando de ${dateFrom||"início"} até ${dateTo||"hoje"}` : "Exibindo todas as propostas — use os filtros de data para restringir o período."}
           </div>
           {err && <div style={{ color:"#F87171", marginTop:8, fontSize:12 }}>⚠ {err}</div>}
         </div>
@@ -13713,9 +13713,9 @@ function V8DigitalTab({ currentUser, contacts }) {
             <div style={{ fontSize:44, marginBottom:14 }}>📡</div>
             <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Acompanhe suas propostas V8</div>
             <div style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Clique para carregar todas as propostas ou use os filtros acima.</div>
-            <button onClick={()=>{ setAcompDateFrom(h3dias); setAcompDateTo(hoje); buscar(1, undefined, h3dias, hoje); }} disabled={loading}
+            <button onClick={()=>buscar(1, undefined, "", "")} disabled={loading}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px 32px", fontSize:14, fontWeight:700, cursor:"pointer" }}>
-              🔍 Carregar Últimos 3 Dias
+              🔍 Carregar Todas as Propostas
             </button>
           </div>
         )}
