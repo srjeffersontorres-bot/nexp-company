@@ -11153,7 +11153,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   };
 
   // ── Estados da aba Individual — elevados para evitar re-mount ──
-  const [indCpf,       setIndCpf]       = useState(() => sessionStorage.getItem("nexp_v8_simular_cpf") || localStorage.getItem("nexp_v8_ind_cpf") || "");
+  const [indCpf,       setIndCpf]       = useState(() => localStorage.getItem("nexp_v8_ind_cpf") || sessionStorage.getItem("nexp_v8_simular_cpf") || "");
   const [indProvider,  setIndProvider]  = useState(() => localStorage.getItem("nexp_v8_ind_provider") || "cartos");
   const [indLoading,   setIndLoading]   = useState(false);
   const [indErr,       setIndErr]       = useState("");
@@ -11998,26 +11998,39 @@ function V8DigitalTab({ currentUser, contacts }) {
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO EM LOTE
   // ════════════════════════════════════════════════════════════
+
+  // ════════════════════════════════════════════════════════════
+  // ABA: SIMULAÇÃO EM LOTE — completa com polling real
+  // ════════════════════════════════════════════════════════════
   const LoteTab = () => {
     const saved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
-    const [items, setItems]     = useState(()=> saved?.items || []);
-    const [running,setRunning]  = useState(false);
-    const [paused, setPaused]   = useState(false);
-    const [progress,setProgress]= useState(saved?.progress||0);
-    const [filterSaldo,setFilterSaldo]   = useState("");
-    const [filterMargem,setFilterMargem] = useState("");
-    const [filterStatus,setFilterStatus] = useState("Todos");
-    const [logs,  setLogs]      = useState([]);
-    const [page,  setPage]      = useState(0);
-    const [cpfBox,setCpfBox]    = useState("");
-    const [showCpfBox,setShowCpfBox] = useState(false);
-    const [provider,setProvider]= useState("cartos");
-    const loteProvider = provider; // alias for modal
-    const [fees, setFees]       = useState([]);
-    const [loteDigModal,setLoteDigModal] = useState(null);
-    const abortRef = useRef(false);
-    const pauseRef = useRef(false);
+    const [items,     setItems]     = useState(()=> saved?.items || []);
+    const [running,   setRunning]   = useState(false);
+    const [paused,    setPaused]    = useState(false);
+    const [progress,  setProgress]  = useState(saved?.progress||0);
+    const [filterSaldo,   setFilterSaldo]   = useState("");
+    const [filterMargem,  setFilterMargem]  = useState("");
+    const [filterStatus,  setFilterStatus]  = useState("Todos");
+    const [logs,      setLogs]      = useState([]);
+    const [page,      setPage]      = useState(0);
+    // CPF box — NÃO apaga ao adicionar, só se o usuário limpar
+    const [cpfBox,    setCpfBox]    = useState(() => localStorage.getItem("nexp_v8_lote_cpfbox")||"");
+    const [showCpfBox,setShowCpfBox]= useState(false);
+    // Provider persistido
+    const [provider,  setProvider]  = useState(() => localStorage.getItem("nexp_v8_lote_provider")||"cartos");
+    const loteProvider = provider;
+    const [fees,      setFees]      = useState([]);
+    const [loteDigModal, setLoteDigModal] = useState(null);
+    // Painel de detalhe ao clicar na linha
+    const [detalheItem, setDetalheItem] = useState(null);
+    const abortRef  = useRef(false);
+    const pauseRef  = useRef(false);
     const PAGE_SIZE = 50;
+
+    // Persiste provider
+    const setProviderPersist = (p) => { setProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
+    // Persiste cpfBox
+    const setCpfBoxPersist = (v) => { setCpfBox(v); localStorage.setItem("nexp_v8_lote_cpfbox", v); };
 
     const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
     const saveState = (newItems, prog) => localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, progress:prog }));
@@ -12030,32 +12043,77 @@ function V8DigitalTab({ currentUser, contacts }) {
       return lista;
     };
 
+    // simularUm com polling completo (igual ao individual)
     const simularUm = async (item) => {
       const c = padCPF(item.cpf);
-      if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido" };
+      if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
       try {
-        const bal = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }).catch(()=>null);
-        const saldoVal = parseFloat(bal?.balance || bal?.availableBalance || 0);
+        // 1. Dispara consulta assíncrona
+        await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+
+        // 2. Polling GET até ter resultado (max 45s)
+        let bal = null;
+        for (let i=0; i<18; i++) {
+          await new Promise(r=>setTimeout(r,2500));
+          try {
+            const res = await apiFetch(`/fgts/balance?search=${c}`);
+            const registros = res?.data || (Array.isArray(res)?res:[res]).filter(Boolean);
+            const sucesso = registros.find(r=>r && (r.status==="success"||r.amount!=null));
+            if (sucesso) { bal=sucesso; break; }
+            const falha = registros.find(r=>r && (r.status==="fail"||r.status==="error"||r.status==="failed"));
+            if (falha) {
+              const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
+              const diag = diagnosticarErroV8(rawMsg, c);
+              addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
+              return { ...item, cpf:fmtCPF(c), status:"erro", erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+            }
+          } catch {}
+        }
+
+        if (!bal) {
+          addLog(`⏳ ${fmtCPF(c)}: Timeout`, false);
+          return { ...item, cpf:fmtCPF(c), status:"erro", erro:"Timeout — sem resposta em 45s", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+        }
+
+        const saldoVal = parseFloat(bal.amount||bal.balance||0);
+
+        // 3. Simular tabelas
         const feesList = await carregarFees();
-        let melhorSim = null; let melhorVal = 0; let melhorLabel = "";
-        if (feesList.length && bal?.id) {
-          const installments = bal?.installments || [
-            { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
-            { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
-          ];
-          for (const fee of feesList.slice(0,2)) { // máx 2 tabelas no lote para não sobrecarregar
+        let melhorSim=null; let melhorVal=0; let melhorLabel=""; let melhorFeeId=""; let melhorAnos="—"; let allSims=[];
+        if (feesList.length && bal.id) {
+          const installments = (bal.periods||bal.installments||[]).length
+            ? (bal.periods||bal.installments).map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }))
+            : [
+                { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
+                { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
+              ];
+          for (const fee of feesList.slice(0,3)) {
             try {
               const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
               const v = parseFloat(sim?.availableBalance||0);
-              if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=fee.simulation_fees?.label; }
-            } catch {}
+              const label = fee.simulation_fees?.label||"";
+              allSims.push({ label, sim, ok:true });
+              if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=calcAnos(sim); }
+            } catch(e) {
+              allSims.push({ label:fee.simulation_fees?.label||"", err:e.message, ok:false });
+            }
           }
         }
-        addLog(`✅ ${item.nome} (${fmtCPF(c)}) saldo:${fmtBRL(saldoVal)} oferta:${fmtBRL(melhorVal)}`);
-        return { ...item, cpf:fmtCPF(c), saldo:saldoVal, margem:melhorVal, status:"ok", sim:{ melhor:{ label:melhorLabel, sim:melhorSim }, balanceId:bal?.id }, erro:null };
+
+        const ts = new Date().toLocaleString("pt-BR");
+        addLog(`✅ ${fmtCPF(c)} saldo:${fmtBRL(saldoVal)} melhor:${fmtBRL(melhorVal)} (${melhorLabel})`);
+        return {
+          ...item, cpf:fmtCPF(c), cpfRaw:c,
+          saldo:saldoVal, margem:melhorVal,
+          status: saldoVal > 0 ? "ok" : "saldo_zero",
+          sim:{ melhor:{ label:melhorLabel, sim:melhorSim, feeId:melhorFeeId }, balanceId:bal.id, allSims, anos:melhorAnos },
+          balance: bal,
+          ts, erro:null, erroTipo:null,
+        };
       } catch(e) {
-        addLog(`❌ ${item.nome}: ${e.message}`, false);
-        return { ...item, status:"erro", erro:e.message };
+        const diag = diagnosticarErroV8(e.message, c);
+        addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
+        return { ...item, cpf:fmtCPF(c), status:"erro", erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
       }
     };
 
@@ -12071,20 +12129,23 @@ function V8DigitalTab({ currentUser, contacts }) {
         lista[i]=updated; done++;
         const prog=Math.round(done/lista.length*100);
         setProgress(prog); setItems([...lista]); saveState(lista,prog);
-        await new Promise(r=>setTimeout(r,400));
+        await new Promise(r=>setTimeout(r,200));
       }
       setRunning(false); setPaused(false);
     };
 
+    // Adiciona CPFs SEM limpar a caixa
     const adicionarCPFs = () => {
       const linhas=cpfBox.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
-      setItems(p=>[...p,...linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf, saldo:null, margem:null, status:"pendente", erro:null, sim:null }))]);
-      setCpfBox(""); setShowCpfBox(false);
+      const novos=linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf:padCPF(cpf), saldo:null, margem:null, status:"pendente", erro:null, sim:null, ts:null }));
+      setItems(p=>[...p,...novos]);
+      // NÃO limpa cpfBox — só fecha o painel
+      setShowCpfBox(false);
     };
 
     const exportar = () => {
-      const rows=[["Nome","CPF","Saldo","Melhor Oferta","Tabela","Status","Erro"]];
-      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.saldo??""  ,it.margem??"",it.sim?.melhor?.label||"",it.status,it.erro||""]));
+      const rows=[["Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Anos","Data simulação","Erro"]];
+      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.status,it.saldo??""  ,it.margem??"",it.sim?.melhor?.label||"",it.sim?.anos||"",it.ts||"",it.erro||""]));
       const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
       const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="lote_fgts.csv"; a.click();
     };
@@ -12101,8 +12162,13 @@ function V8DigitalTab({ currentUser, contacts }) {
     const countErr=items.filter(x=>x.status==="erro").length;
     const countPend=items.filter(x=>x.status==="pendente").length;
 
+    const STATUS_LABEL = { ok:"✅ OK", erro:"❌ Erro", pendente:"⏳ Pendente", simulando:"🔄 ...", saldo_zero:"⚠ Saldo Zero" };
+    const STATUS_COL   = { ok:"#34D399", erro:"#F87171", pendente:"#FBBF24", simulando:"#60A5FA", saldo_zero:"#FBBF24" };
+    const STATUS_BG    = { ok:"#091E12", erro:"#2D1515", pendente:"#2B2310", simulando:"#0D1C38", saldo_zero:"#2B2310" };
+
     return (
       <div>
+        {/* Controles */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"18px 20px", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
             <div>
@@ -12115,24 +12181,30 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              {!running && <button onClick={simularLote} style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>▶ Simular Todos</button>}
+              {!running && <button onClick={simularLote} disabled={items.length===0} style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 16px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:items.length===0?0.5:1 }}>▶ Simular Todos</button>}
               {running && <button onClick={()=>{pauseRef.current=!pauseRef.current;setPaused(p=>!p);}} style={{ background:paused?"#091E12":"#2B2310", color:paused?"#34D399":"#FBBF24", border:`1px solid ${paused?"#34D39933":"#FBBF2433"}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>{paused?"▶ Retomar":"⏸ Pausar"}</button>}
               {running && <button onClick={()=>{abortRef.current=true;setRunning(false);setPaused(false);}} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>⏹ Parar</button>}
-              <button onClick={()=>setShowCpfBox(p=>!p)} style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>➕ CPFs</button>
+              <button onClick={()=>setShowCpfBox(p=>!p)} style={{ background:showCpfBox?C.acc:C.abg, color:"#fff", border:"none", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer", fontWeight:600 }}>➕ CPFs</button>
               <button onClick={exportar} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>📥 CSV</button>
               <button onClick={()=>{setItems([]);setLogs([]);setProgress(0);localStorage.removeItem("nexp_v8_lote_state");}} style={{ background:"transparent", color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🗑</button>
             </div>
           </div>
-          {/* Provider */}
-          <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+
+          {/* Provider — persiste ao clicar Simular Todos */}
+          <div style={{ display:"flex", gap:6, marginBottom:12 }}>
             {["cartos","qi","bms"].map(p=>(
-              <button key={p} onClick={()=>setProvider(p)} style={{ background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:provider===p?700:400, textTransform:"uppercase" }}>{p}</button>
+              <button key={p} onClick={()=>setProviderPersist(p)}
+                style={{ background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:provider===p?700:400, textTransform:"uppercase" }}>
+                {p}
+              </button>
             ))}
           </div>
+
+          {/* Progresso */}
           {(running||progress>0) && (
             <div style={{ marginBottom:12 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                <span style={{ color:C.tm, fontSize:11 }}>{running?(paused?"Pausado":"Simulando..."):"Concluído"}</span>
+                <span style={{ color:C.tm, fontSize:11 }}>{running?(paused?"Pausado":"Simulando com polling..."):"Concluído"}</span>
                 <span style={{ color:C.atxt, fontSize:11, fontWeight:700 }}>{progress}%</span>
               </div>
               <div style={{ background:C.deep, borderRadius:99, height:7, overflow:"hidden" }}>
@@ -12140,69 +12212,207 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
             </div>
           )}
+
+          {/* Caixa CPFs — não apaga ao fechar */}
           {showCpfBox && (
             <div style={{ background:C.deep, borderRadius:12, padding:"14px", marginBottom:14, border:`1px solid ${C.b1}` }}>
-              <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:6 }}>➕ Adicionar CPFs</div>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <div style={{ color:C.ts, fontSize:12.5, fontWeight:700 }}>➕ Adicionar CPFs</div>
+                <span style={{ color:C.td, fontSize:11 }}>Os CPFs digitados são mantidos até você limpar manualmente.</span>
+              </div>
               <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>Um por linha ou separados por vírgula. CPFs com menos de 11 dígitos serão completados com zeros.</div>
-              <textarea value={cpfBox} onChange={e=>setCpfBox(e.target.value)} rows={5} placeholder={"12345678901\n98765432100"} style={{ ...S.input, resize:"vertical", fontFamily:"monospace", fontSize:12, width:"100%", marginBottom:8 }} />
+              <textarea value={cpfBox} onChange={e=>setCpfBoxPersist(e.target.value)}
+                rows={6} placeholder={"12345678901\n98765432100"}
+                style={{ ...S.input, resize:"vertical", fontFamily:"monospace", fontSize:12, width:"100%", marginBottom:8 }} />
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={adicionarCPFs} disabled={!cpfBox.trim()} style={{ background:cpfBox.trim()?C.acc:C.deep, color:cpfBox.trim()?"#fff":C.td, border:"none", borderRadius:8, padding:"7px 16px", fontSize:12.5, fontWeight:600, cursor:cpfBox.trim()?"pointer":"not-allowed" }}>Adicionar {cpfBox.trim().split(/[\n,;]+/).filter(Boolean).length} CPFs</button>
-                <button onClick={()=>setShowCpfBox(false)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px 14px", fontSize:12.5, cursor:"pointer" }}>Cancelar</button>
+                <button onClick={adicionarCPFs} disabled={!cpfBox.trim()}
+                  style={{ background:cpfBox.trim()?C.acc:C.deep, color:cpfBox.trim()?"#fff":C.td, border:"none", borderRadius:8, padding:"7px 16px", fontSize:12.5, fontWeight:600, cursor:cpfBox.trim()?"pointer":"not-allowed" }}>
+                  ➕ Adicionar {cpfBox.trim().split(/[\n,;]+/).filter(Boolean).length} CPFs
+                </button>
+                <button onClick={()=>setCpfBoxPersist("")}
+                  style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"7px 12px", fontSize:12.5, cursor:"pointer" }}>
+                  🗑 Limpar caixa
+                </button>
+                <button onClick={()=>setShowCpfBox(false)}
+                  style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px 14px", fontSize:12.5, cursor:"pointer" }}>
+                  Fechar
+                </button>
               </div>
             </div>
           )}
+
+          {/* Filtros */}
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Saldo mín (R$)</label><input value={filterSaldo} onChange={e=>{setFilterSaldo(e.target.value);setPage(0);}} placeholder="Ex: 1000" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
             <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Oferta mín (R$)</label><input value={filterMargem} onChange={e=>{setFilterMargem(e.target.value);setPage(0);}} placeholder="Ex: 500" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
-            <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label><select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(0);}} style={{ ...S.input, width:110, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>{["Todos","pendente","ok","erro","simulando"].map(s=><option key={s}>{s}</option>)}</select></div>
+            <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label>
+              <select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(0);}} style={{ ...S.input, width:120, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
+                {["Todos","pendente","ok","erro","simulando","saldo_zero"].map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
             <div style={{ paddingBottom:2, color:C.td, fontSize:11 }}>{filtered.length} resultado{filtered.length!==1?"s":""}</div>
           </div>
         </div>
 
+        {/* Painel de detalhe ao clicar na linha */}
+        {detalheItem && (
+          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {detalheItem.cpf}</div>
+              <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"4px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:10, marginBottom:14 }}>
+              {[
+                ["CPF", detalheItem.cpf],
+                ["Provider", detalheItem.balance?.provider||loteProvider],
+                ["Saldo FGTS", fmtBRL(detalheItem.saldo||0)],
+                ["Melhor Oferta", fmtBRL(detalheItem.margem||0)],
+                ["Tabela", detalheItem.sim?.melhor?.label||"—"],
+                ["Anos de Antecipação", detalheItem.sim?.anos||"—"],
+                ["Data da Simulação", detalheItem.ts||"—"],
+                ["Status", detalheItem.status],
+              ].map(([l,v])=>(
+                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"9px 12px" }}>
+                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10 }}>{l}</div>
+                  <div style={{ color:"#fff", fontWeight:600, fontSize:13, marginTop:2 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {/* Tabelas simuladas */}
+            {(detalheItem.sim?.allSims||[]).length > 0 && (
+              <div>
+                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8 }}>Resultados por tabela</div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {detalheItem.sim.allSims.map((s,i)=>(
+                    <div key={i} style={{ background:s.ok?"rgba(52,211,153,0.1)":"rgba(239,68,68,0.1)", border:`1px solid ${s.ok?"rgba(52,211,153,0.2)":"rgba(239,68,68,0.2)"}`, borderRadius:9, padding:"8px 14px", minWidth:130 }}>
+                      <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10.5, textTransform:"capitalize" }}>{s.label}</div>
+                      <div style={{ color:s.ok?"#34D399":"#F87171", fontWeight:700, fontSize:14 }}>
+                        {s.ok ? fmtBRL(s.sim?.availableBalance||0) : "✘"}
+                      </div>
+                      {s.ok && <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>{calcAnos(s.sim)}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {detalheItem.erro && (
+              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px", marginTop:10 }}>
+                <div style={{ color:"#F87171", fontWeight:600 }}>{detalheItem.erro}</div>
+              </div>
+            )}
+            {/* Botão digitar */}
+            {detalheItem.status==="ok" && detalheItem.sim?.melhor?.sim && (
+              <button onClick={()=>setLoteDigModal({ tabela:detalheItem.sim.melhor, balance:{ ...detalheItem.balance, id:detalheItem.sim.balanceId }, cpf:detalheItem.cpf, provider:loteProvider })}
+                style={{ marginTop:14, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                📝 Digitar Proposta
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Tabela */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
           <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
-              <thead><tr style={{ background:C.deep }}>{["#","Nome","CPF","Saldo disponível","Melhor Oferta","Tabela","Status","Ação","Digite agora"].map(h=><th key={h} style={{ color:C.tm, fontWeight:700, padding:"10px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{h}</th>)}</tr></thead>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead>
+                <tr style={{ background:C.deep }}>
+                  {["#","Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Qtd anos","Data simulação","Ação","DIGITAR"].map(h=>(
+                    <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
                 {pageItems.map((it,idx)=>{
-                  const ri=items.findIndex(x=>x.id===it.id);
-                  const isSim=it.status==="simulando";
-                  const stCol=it.status==="ok"?"#34D399":it.status==="erro"?"#F87171":isSim?"#60A5FA":"#FBBF24";
-                  const stBg=it.status==="ok"?"#091E12":it.status==="erro"?"#2D1515":isSim?"#0D1C38":"#2B2310";
+                  const ri = items.findIndex(x=>x.id===it.id);
+                  const isSim = it.status==="simulando";
+                  const stCol = STATUS_COL[it.status]||"#94A3B8";
+                  const stBg  = STATUS_BG[it.status]||"#1a1a2e";
+                  const isDetalhado = detalheItem?.id === it.id;
                   return (
-                    <tr key={it.id} style={{ background:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, opacity:isSim?0.8:1 }}>
-                      <td style={{ color:C.td, padding:"9px 12px", fontSize:11 }}>{page*PAGE_SIZE+idx+1}</td>
-                      <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.nome}</td>
-                      <td style={{ color:C.tm, padding:"9px 12px", fontFamily:"monospace", fontSize:11 }}>{it.cpf||"—"}</td>
-                      <td style={{ padding:"9px 10px", textAlign:"center" }}>{it.saldo!=null?<span onClick={()=>{setItems(p=>{const n=[...p];simularUm(n[ri]).then(u=>{n[ri]=u;setItems([...n]);});return p;})}} style={{ color:C.atxt, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, background:C.abg }}>{fmtBRL(it.saldo)}</span>:<span style={{ color:C.td }}>—</span>}</td>
-                      <td style={{ padding:"9px 10px", textAlign:"center" }}>{it.margem!=null?<span style={{ color:"#34D399", fontWeight:700, padding:"3px 8px", borderRadius:7, background:"rgba(52,211,153,0.08)" }}>{fmtBRL(it.margem)}</span>:<span style={{ color:C.td }}>—</span>}</td>
-                      <td style={{ color:C.td, padding:"9px 10px", fontSize:11 }}>{it.sim?.melhor?.label||"—"}</td>
-                      <td style={{ padding:"9px 10px" }}><span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>{it.status==="ok"?"✅ OK":isSim?"🔄":"❌ Erro"===it.status?"❌":"⏳"}</span>{it.erro&&<div style={{ color:"#F87171", fontSize:9.5, marginTop:2 }}>{it.erro.slice(0,45)}</div>}</td>
-                      <td style={{ padding:"9px 10px" }}><button onClick={()=>{const n=[...items];simularUm(n[ri]).then(u=>{n[ri]=u;setItems([...n]);});}} disabled={running||isSim} style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>{it.status==="ok"?"🔄":"▶"}</button></td>
-                      <td style={{ padding:"9px 10px" }}>
-                        {it.status==="ok" && it.sim?.melhor?.sim && (
-                          <button onClick={()=>setLoteDigModal({ tabela:it.sim.melhor, balance:{ id:it.sim?.balanceId, amount:it.saldo }, cpf:it.cpf, provider:loteProvider })}
-                            style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"4px 10px", fontSize:11, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
-                            📝 Digitar
+                    <tr key={it.id}
+                      onClick={()=>setDetalheItem(isDetalhado?null:it)}
+                      style={{ background:isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", opacity:isSim?0.85:1, transition:"background 0.1s" }}
+                      onMouseEnter={e=>!isDetalhado&&(e.currentTarget.style.background=`${C.acc}08`)}
+                      onMouseLeave={e=>e.currentTarget.style.background=isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep}>
+                      <td style={{ color:C.td, padding:"8px 10px", fontSize:11 }}>{page*PAGE_SIZE+idx+1}</td>
+                      <td style={{ color:C.tp, fontWeight:600, padding:"8px 10px", maxWidth:110, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.nome}</td>
+                      <td style={{ color:C.tm, padding:"8px 10px", fontFamily:"monospace", fontSize:11 }}>{it.cpf||"—"}</td>
+                      <td style={{ padding:"8px 10px" }}>
+                        <span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600, whiteSpace:"nowrap" }}>
+                          {STATUS_LABEL[it.status]||it.status}
+                        </span>
+                        {it.erro && <div style={{ color:"#F87171", fontSize:9.5, marginTop:2, maxWidth:120 }} title={it.erro}>{it.erro.slice(0,30)}</div>}
+                      </td>
+                      <td style={{ padding:"8px 10px", textAlign:"center" }}>
+                        {it.saldo!=null && it.saldo>0
+                          ? <span style={{ color:C.atxt, fontWeight:700, fontSize:12 }}>{fmtBRL(it.saldo)}</span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                      <td style={{ padding:"8px 10px", textAlign:"center" }}>
+                        {it.margem!=null && it.margem>0
+                          ? <span style={{ color:"#34D399", fontWeight:700, fontSize:12 }}>{fmtBRL(it.margem)}</span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                      <td style={{ color:C.td, padding:"8px 10px", fontSize:11, textTransform:"capitalize" }}>{it.sim?.melhor?.label||"—"}</td>
+                      <td style={{ color:C.tm, padding:"8px 10px", fontSize:11 }}>{it.sim?.anos||"—"}</td>
+                      <td style={{ color:C.td, padding:"8px 10px", fontSize:10.5 }}>{it.ts||"—"}</td>
+                      <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>{ const n=[...items]; simularUm(n[ri]).then(u=>{ n[ri]=u; setItems([...n]); }); }}
+                          disabled={running||isSim}
+                          style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>
+                          {it.status==="ok"?"🔄":"▶"}
+                        </button>
+                      </td>
+                      <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
+                        {it.status==="ok" && it.sim?.melhor?.sim ? (
+                          <button
+                            onClick={()=>setLoteDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider })}
+                            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.3px" }}>
+                            DIGITAR
                           </button>
-                        )}
+                        ) : <span style={{ color:C.td, fontSize:10 }}>—</span>}
                       </td>
                     </tr>
                   );
                 })}
-                {pageItems.length===0&&<tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"28px" }}>Nenhum resultado.</td></tr>}
+                {pageItems.length===0 && (
+                  <tr><td colSpan={11} style={{ color:C.td, textAlign:"center", padding:"32px", fontSize:13 }}>
+                    {items.length===0 ? "Adicione CPFs usando o botão ➕ CPFs" : "Nenhum resultado para os filtros aplicados."}
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>
-          {totalPages>1&&(
+
+          {/* Paginação */}
+          {totalPages>1 && (
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
-              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{ background:page>0?C.abg:C.deep, color:page>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page>0?"pointer":"not-allowed" }}>← Anteriores 50</button>
+              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
+                style={{ background:page>0?C.abg:C.deep, color:page>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page>0?"pointer":"not-allowed" }}>
+                ← Anteriores 50
+              </button>
               <span style={{ color:C.tm, fontSize:12 }}>{page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} de {filtered.length}</span>
-              <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{ background:page<totalPages-1?C.abg:C.deep, color:page<totalPages-1?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page<totalPages-1?"pointer":"not-allowed" }}>Próximos 50 →</button>
+              <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1}
+                style={{ background:page<totalPages-1?C.abg:C.deep, color:page<totalPages-1?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page<totalPages-1?"pointer":"not-allowed" }}>
+                Próximos 50 →
+              </button>
             </div>
           )}
         </div>
-        {logs.length>0&&<div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px" }}><div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}><div style={{ color:C.ts, fontSize:11.5, fontWeight:700 }}>📋 Log ({logs.length})</div><button onClick={()=>setLogs([])} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button></div><div style={{ maxHeight:160, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>{logs.map((l,i)=><div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}><span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span><span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span></div>)}</div></div>}
+
+        {/* Log */}
+        {logs.length>0 && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+              <div style={{ color:C.ts, fontSize:11.5, fontWeight:700 }}>📋 Log ({logs.length})</div>
+              <button onClick={()=>setLogs([])} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
+            </div>
+            <div style={{ maxHeight:180, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
+              {logs.map((l,i)=><div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}><span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span><span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span></div>)}
+            </div>
+          </div>
+        )}
+
         {loteDigModal && (
           <ModalDigitacaoRapida
             tabela={loteDigModal.tabela}
@@ -12218,6 +12428,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       </div>
     );
   };
+
 
   // ════════════════════════════════════════════════════════════
   // RENDER PRINCIPAL
