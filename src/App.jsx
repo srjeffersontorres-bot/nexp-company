@@ -10749,7 +10749,7 @@ function SimuladorPage() {
 
 // ── V8 Digital — aba integrada ────────────────────────────────
 // ── Modal Digitação Rápida (V8) — com revisão e edição ───────────
-function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts }) {
+function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts, currentUser }) {
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
   const simId = tabela?.sim?.id || "";
   const balId = balance?.id || "";
@@ -10842,6 +10842,36 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
       };
       const res = await apiFetch("/fgts/proposal","POST",body);
       setResult(res);
+      // Salvar cópia no Firestore para aparecer em Propostas e poder anexar documentos
+      try {
+        const { addDoc, collection: fbCol, serverTimestamp } = await import("firebase/firestore");
+        const { db: fbDb } = await import("./firebase");
+        await addDoc(fbCol(fbDb,"propostas"), {
+          tipo: "FGTS",
+          origem: "V8 Digital",
+          v8ProposalId: res?.id || "",
+          v8ContractNumber: res?.contractNumber || "",
+          v8FormalizationLink: res?.formalizationLink || "",
+          v8Status: res?.status || "",
+          nome:      form.name,
+          cpf:       cpfClean,
+          email:     form.email,
+          phone:     form.phone,
+          provider,
+          tabela:    tabela?.label || "",
+          valorLiberado: parseFloat(tabela?.sim?.availableBalance||0),
+          balanceId,
+          simulationId: simId,
+          pagamento: payType === "pix" ? { tipo:"PIX", chave:form.pix } : { tipo:"Transferência", banco:form.bankId, agencia:form.bankAccountBranch, conta:form.bankAccountNumber, digito:form.bankAccountDigit },
+          status:    "Proposta Digitada",
+          criadoPor: currentUser?.uid || currentUser?.id || "v8",
+          criadoPorNome: currentUser?.name || currentUser?.email || "V8 Digital",
+          createdAt: Date.now(),
+          docFiles:  [],
+        });
+      } catch(saveErr) {
+        console.warn("Aviso: proposta criada na V8 mas não salva no Firestore:", saveErr.message);
+      }
     } catch(e) { setErr("❌ " + e.message); }
     setLoading(false);
   };
@@ -11748,6 +11778,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             apiFetch={apiFetch}
             fmtBRL={fmtBRL}
             contacts={contacts}
+            currentUser={currentUser}
             onClose={() => setIndDigModal(null)}
           />
         )}
@@ -12086,7 +12117,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
                 { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
               ];
-          for (const fee of feesList.slice(0,3)) {
+          for (const fee of feesList) {
             try {
               const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
               const v = parseFloat(sim?.availableBalance||0);
@@ -12256,55 +12287,115 @@ function V8DigitalTab({ currentUser, contacts }) {
         {/* Painel de detalhe ao clicar na linha */}
         {detalheItem && (
           <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {detalheItem.cpf}</div>
-              <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"4px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div>
+                <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {detalheItem.cpf}</div>
+                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
+                  {detalheItem.ts||""} · {(detalheItem.balance?.provider||loteProvider)?.toUpperCase()}
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button
+                  onClick={async ()=>{
+                    const ri=items.findIndex(x=>x.id===detalheItem.id);
+                    if(ri<0) return;
+                    const updated=await simularUm({...items[ri],status:"pendente"});
+                    setItems(p=>{const n=[...p];n[ri]=updated;return n;});
+                    setDetalheItem(updated);
+                  }}
+                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}>
+                  🔄 Re-simular
+                </button>
+                <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
+              </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:10, marginBottom:14 }}>
+
+            {/* Info resumida */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:18 }}>
               {[
                 ["CPF", detalheItem.cpf],
-                ["Provider", detalheItem.balance?.provider||loteProvider],
                 ["Saldo FGTS", fmtBRL(detalheItem.saldo||0)],
                 ["Melhor Oferta", fmtBRL(detalheItem.margem||0)],
                 ["Tabela", detalheItem.sim?.melhor?.label||"—"],
-                ["Anos de Antecipação", detalheItem.sim?.anos||"—"],
-                ["Data da Simulação", detalheItem.ts||"—"],
+                ["Anos", detalheItem.sim?.anos||"—"],
                 ["Status", detalheItem.status],
               ].map(([l,v])=>(
-                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"9px 12px" }}>
-                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10 }}>{l}</div>
+                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
                   <div style={{ color:"#fff", fontWeight:600, fontSize:13, marginTop:2 }}>{v}</div>
                 </div>
               ))}
             </div>
-            {/* Tabelas simuladas */}
-            {(detalheItem.sim?.allSims||[]).length > 0 && (
+
+            {/* Todas as tabelas simuladas — clicáveis para digitar */}
+            {(detalheItem.sim?.allSims||[]).length > 0 ? (
               <div>
-                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8 }}>Resultados por tabela</div>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {detalheItem.sim.allSims.map((s,i)=>(
-                    <div key={i} style={{ background:s.ok?"rgba(52,211,153,0.1)":"rgba(239,68,68,0.1)", border:`1px solid ${s.ok?"rgba(52,211,153,0.2)":"rgba(239,68,68,0.2)"}`, borderRadius:9, padding:"8px 14px", minWidth:130 }}>
-                      <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10.5, textTransform:"capitalize" }}>{s.label}</div>
-                      <div style={{ color:s.ok?"#34D399":"#F87171", fontWeight:700, fontSize:14 }}>
-                        {s.ok ? fmtBRL(s.sim?.availableBalance||0) : "✘"}
-                      </div>
-                      {s.ok && <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>{calcAnos(s.sim)}</div>}
-                    </div>
-                  ))}
+                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:12 }}>
+                  📊 {detalheItem.sim.allSims.length} tabelas simuladas — clique no balão para digitar
+                </div>
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  {[...detalheItem.sim.allSims]
+                    .sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))
+                    .map((s,i)=>{
+                      const isBest = s.label === detalheItem.sim?.melhor?.label;
+                      const vlr    = parseFloat(s.sim?.availableBalance||0);
+                      const emissao= parseFloat(s.sim?.emissionAmount||0);
+                      const anos   = calcAnos(s.sim);
+                      return (
+                        <div key={i}
+                          onClick={()=> s.ok && setLoteDigModal({
+                            tabela:{ label:s.label, sim:s.sim, feeId:s.sim?.id||"" },
+                            balance:{ ...detalheItem.balance, id:detalheItem.sim?.balanceId },
+                            cpf:detalheItem.cpf,
+                            provider:loteProvider,
+                          })}
+                          style={{
+                            background: isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
+                            border:`2px solid ${isBest?"rgba(52,211,153,0.5)":s.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
+                            borderRadius:14, padding:"14px 18px", minWidth:150,
+                            cursor:s.ok?"pointer":"default",
+                            transition:"all 0.15s",
+                            position:"relative",
+                          }}
+                          onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}}
+                          onMouseLeave={e=>{ e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"; }}>
+                          {isBest && (
+                            <div style={{ position:"absolute", top:-11, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 10px", borderRadius:99, whiteSpace:"nowrap", boxShadow:"0 2px 8px rgba(52,211,153,0.4)" }}>
+                              🏆 MELHOR OFERTA
+                            </div>
+                          )}
+                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, textTransform:"capitalize", marginBottom:6, marginTop:isBest?6:0, fontWeight:600 }}>
+                            {s.label}
+                          </div>
+                          {s.ok ? (
+                            <>
+                              <div style={{ color:isBest?"#34D399":"#fff", fontWeight:900, fontSize:20, lineHeight:1, letterSpacing:"-0.5px" }}>{fmtBRL(vlr)}</div>
+                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
+                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5 }}>{anos}</div>
+                              <div style={{ marginTop:10, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"5px 0", textAlign:"center", fontSize:11, fontWeight:800, color:"#fff", letterSpacing:"0.5px" }}>
+                                📝 DIGITAR
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ color:"#F87171", fontSize:11, marginTop:4 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
-            )}
-            {detalheItem.erro && (
-              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px", marginTop:10 }}>
-                <div style={{ color:"#F87171", fontWeight:600 }}>{detalheItem.erro}</div>
+            ) : (
+              <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.2)", borderRadius:10, padding:"12px 16px" }}>
+                <div style={{ color:"#FBBF24", fontSize:12.5, fontWeight:600 }}>⚠ Dados de tabelas não disponíveis para este item</div>
+                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, marginTop:4 }}>Clique em 🔄 Re-simular para buscar todas as tabelas.</div>
               </div>
             )}
-            {/* Botão digitar */}
-            {detalheItem.status==="ok" && detalheItem.sim?.melhor?.sim && (
-              <button onClick={()=>setLoteDigModal({ tabela:detalheItem.sim.melhor, balance:{ ...detalheItem.balance, id:detalheItem.sim.balanceId }, cpf:detalheItem.cpf, provider:loteProvider })}
-                style={{ marginTop:14, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                📝 Digitar Proposta
-              </button>
+
+            {/* Erro */}
+            {detalheItem.erro && (
+              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px", marginTop:12 }}>
+                <div style={{ color:"#F87171", fontWeight:600 }}>{detalheItem.erro}</div>
+              </div>
             )}
           </div>
         )}
@@ -12421,6 +12512,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             apiFetch={apiFetch}
             fmtBRL={fmtBRL}
             contacts={contacts}
+            currentUser={currentUser}
             onClose={()=>setLoteDigModal(null)}
           />
         )}
