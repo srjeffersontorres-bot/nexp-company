@@ -10827,28 +10827,12 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   const digitar = async () => {
     setLoading(true); setErr("");
 
-      // ── Normaliza telefone ──
-      // API V8: phoneRegionCode = DDD (ex: "84"), phone = número sem DDD (ex: "999999999")
-      const phoneRaw = (form.phone||"").replace(/\D/g,"");
-      let phoneDDD = "";
-      let phoneNum = "";
-      if (phoneRaw.length === 11) {
-        // Ex: 84999999999 → DDD=84, num=999999999
-        phoneDDD = phoneRaw.slice(0,2);
-        phoneNum = phoneRaw.slice(2);
-      } else if (phoneRaw.length === 10) {
-        // Ex: 8499999999 → DDD=84, num=99999999
-        phoneDDD = phoneRaw.slice(0,2);
-        phoneNum = phoneRaw.slice(2);
-      } else if (phoneRaw.length === 9 || phoneRaw.length === 8) {
-        // Só o número sem DDD — usa DDD do campo phoneRegionCode se disponível
-        phoneDDD = (form.phoneRegionCode||"").replace(/\D/g,"").slice(0,2) || "11";
-        phoneNum = phoneRaw;
-      } else {
-        setErr(`❌ Telefone inválido: "${form.phone}". Digite DDD + número completo. Ex: 84999999999`);
-        setLoading(false);
-        return;
-      }
+    // ── Normaliza telefone — pega sempre os últimos 11 dígitos ──
+    const phoneRaw = (form.phone||"").replace(/\D/g,"");
+    // Pega os últimos 11 dígitos (ou 10 se menor) — nunca bloqueia
+    const phoneNorm = phoneRaw.length > 11 ? phoneRaw.slice(-11) : phoneRaw;
+    const phoneDDD = phoneNorm.length >= 10 ? phoneNorm.slice(0,2) : "11";
+    const phoneNum = phoneNorm.length >= 10 ? phoneNorm.slice(2) : phoneNorm;
 
     try {
       // Normaliza chave PIX — remove formatação de CPF, formata telefone
@@ -11040,25 +11024,22 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                 </div>
                 {fieldGroup("E-mail *","email","email","email@exemplo.com")}
                 <div>
-                  <label style={labelStyle}>Telefone (DDD + número) * — máx 11 dígitos</label>
+                  <label style={labelStyle}>Telefone (DDD + número) *</label>
                   <input
-                    value={form.phone||""}
+                    value={(form.phone||"").replace(/\D/g,"").slice(0,11)}
                     onChange={e=>{
                       const v = e.target.value.replace(/\D/g,"").slice(0,11);
                       setF("phone", v);
                     }}
                     placeholder="84999999999"
-                    maxLength={11}
                     inputMode="numeric"
                     autoComplete="off"
                     style={{ ...inputStyle, fontFamily:"monospace", letterSpacing:1 }}
                   />
-                  {form.phone && form.phone.replace(/\D/g,"").length > 0 && (
-                    <div style={{ marginTop:4, fontSize:10.5, color: form.phone.replace(/\D/g,"").length>=10?"#34D399":"#FBBF24" }}>
-                      {form.phone.replace(/\D/g,"").length}/11 dígitos
-                      {form.phone.replace(/\D/g,"").length>=10 ? " ✓" : " — digite pelo menos 10 dígitos"}
-                    </div>
-                  )}
+                  <div style={{ marginTop:3, fontSize:10.5, color: (form.phone||"").replace(/\D/g,"").length>=10?"#34D399":"#FBBF24" }}>
+                    {(form.phone||"").replace(/\D/g,"").length}/11 dígitos
+                    {(form.phone||"").replace(/\D/g,"").length>=10 ? " ✓" : " — mínimo 10 dígitos com DDD"}
+                  </div>
                 </div>
                 <div>
                   <label style={labelStyle}>Nacionalidade *</label>
@@ -11473,6 +11454,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indFees,      setIndFees]      = useState([]);
   const [indSimStep,   setIndSimStep]   = useState("idle");
   const [indDigModal,  setIndDigModal]  = useState(null);
+  const [indDigLoading, setIndDigLoading] = useState(false);
   // ── Estados internos do ModalDigitacaoRapida — elevados para evitar remount ──
   const [modalStep,       setModalStep]       = useState("review");
   const [modalBanks,      setModalBanks]      = useState([]);
@@ -11635,6 +11617,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const simStep     = indSimStep;    const setSimStep     = setIndSimStep;
     const selectedSim = indSelectedSim; const setSelectedSim = setIndSelectedSim;
     const contratosOpen = indContratosOpen; const setContratosOpen = setIndContratosOpen;
+    const digLoading = indDigLoading; const setDigLoading = setIndDigLoading;
     const errDetail = indErrDetail;
     const historico     = indHistorico;
     const histPage      = indHistPage;
@@ -12198,66 +12181,63 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ))}
               </div>
             </div>
-            <button onClick={async (e)=>{
-              const btn = e.currentTarget;
-              btn.disabled = true;
-              btn.textContent = "⏳ Carregando dados...";
+            <button
+              disabled={digLoading}
+              onClick={async ()=>{
+                setDigLoading(true);
 
-              // Busca dados do cliente na V8 (contrato anterior)
-              let clienteV8 = null;
-              try {
-                const cpfBusca = (indCpfSim||"").replace(/\D/g,"");
-                const ops = await apiFetch(`/fgts/proposal?search=${cpfBusca}&page=1&limit=5`);
-                const rows = ops?.data || ops || [];
-                // Pega o contrato pago mais recente, ou o mais recente de qualquer status
-                const paid = rows.find(r=>r.status==="paid");
-                const primeiro = paid || rows[0];
-                if (primeiro?.id) {
-                  clienteV8 = await apiFetch(`/fgts/proposal/${primeiro.id}`);
-                }
-              } catch {}
+                // Busca dados do cliente na V8 (contrato anterior)
+                let clienteV8 = null;
+                try {
+                  const cpfBusca = (indCpfSim||"").replace(/\D/g,"");
+                  const ops = await apiFetch(`/fgts/proposal?search=${cpfBusca}&page=1&limit=5`);
+                  const rows = ops?.data || ops || [];
+                  const paid = rows.find(r=>r.status==="paid");
+                  const primeiro = paid || rows[0];
+                  if (primeiro?.id) {
+                    clienteV8 = await apiFetch(`/fgts/proposal/${primeiro.id}`);
+                  }
+                } catch {}
 
-              // Cruza com contatos Nexp
-              const cpfLimpo = (indCpfSim||"").replace(/\D/g,"");
-              const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === cpfLimpo) || {};
+                // Cruza com contatos Nexp
+                const cpfLimpo = (indCpfSim||"").replace(/\D/g,"");
+                const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === cpfLimpo) || {};
 
-              // Monta telefone corretamente — V8 guarda DDD em phoneRegionCode e número em phone
-              const v8Phone = clienteV8?.phone
-                ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"")
-                : "";
-              const nexpPhone = (nexp.phone||"").replace(/\D/g,"");
-              const phoneFinal = v8Phone || nexpPhone;
+                // Monta telefone — V8 guarda DDD em phoneRegionCode e número em phone
+                const v8Phone = clienteV8?.phone
+                  ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"").slice(0,11)
+                  : "";
+                const nexpPhone = (nexp.phone||"").replace(/\D/g,"").slice(0,11);
+                const phoneFinal = v8Phone || nexpPhone;
 
-              const preData = {
-                clienteV8,
-                nome:         clienteV8?.name || clienteV8?.clientName || nexp.name || "",
-                email:        clienteV8?.email || nexp.email || "",
-                phone:        phoneFinal,
-                phoneDdd:     phoneFinal.slice(0,2),
-                rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
-                nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
-                nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
-                cep:          clienteV8?.postalCode || (nexp.cep||"").replace(/\D/g,""),
-                rua:          clienteV8?.street || nexp.rua || "",
-                numero:       clienteV8?.addressNumber || nexp.numero || "",
-                complemento:  clienteV8?.complement || nexp.complemento || "",
-                bairro:       clienteV8?.neighborhood || nexp.bairro || "",
-                cidade:       clienteV8?.city || nexp.cidade || "",
-                uf:           clienteV8?.state || nexp.ufEnd || nexp.estado || "",
-                estadoCivil:  clienteV8?.maritalStatus || "single",
-                nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
-                isPEP:        clienteV8?.isPEP || false,
-              };
+                const preData = {
+                  clienteV8,
+                  nome:         clienteV8?.name || clienteV8?.clientName || nexp.name || "",
+                  email:        clienteV8?.email || nexp.email || "",
+                  phone:        phoneFinal,
+                  phoneDdd:     phoneFinal.slice(0,2),
+                  rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
+                  nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
+                  nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
+                  cep:          clienteV8?.postalCode || (nexp.cep||"").replace(/\D/g,""),
+                  rua:          clienteV8?.street || nexp.rua || "",
+                  numero:       clienteV8?.addressNumber || nexp.numero || "",
+                  complemento:  clienteV8?.complement || nexp.complemento || "",
+                  bairro:       clienteV8?.neighborhood || nexp.bairro || "",
+                  cidade:       clienteV8?.city || nexp.cidade || "",
+                  uf:           clienteV8?.state || nexp.ufEnd || nexp.estado || "",
+                  estadoCivil:  clienteV8?.maritalStatus || "single",
+                  nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
+                  isPEP:        clienteV8?.isPEP || false,
+                };
 
-              const d = { tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData };
-              // openDigModal primeiro define o modalForm, depois o useEffect no modal sincroniza
-              openDigModal(d);
-              setIndDigModal(d);
-              btn.disabled = false;
-              btn.textContent = "📝 Digitar esta proposta";
-            }}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-              📝 Digitar esta proposta
+                const d = { tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData };
+                openDigModal(d);
+                setIndDigModal(d);
+                setDigLoading(false);
+              }}
+              style={{ background:digLoading?C.deep:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1 }}>
+              {digLoading ? "⏳ Carregando dados..." : "📝 Digitar esta proposta"}
             </button>
           </div>
         )}
