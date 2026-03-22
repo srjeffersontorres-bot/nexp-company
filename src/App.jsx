@@ -11504,7 +11504,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [acompDateFrom,    setAcompDateFrom]    = useState("");
   const [acompDateTo,      setAcompDateTo]      = useState("");
   const [acompSimModal,    setAcompSimModal]    = useState(null);
-  const [acompStatusBrutos,setAcompStatusBrutos] = useState([]); // status reais retornados pela API
+  // status reais retornados pela API removido — não utilizado
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -13302,7 +13302,7 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const dateFrom = acompDateFrom; const setDateFrom = setAcompDateFrom;
     const dateTo   = acompDateTo;   const setDateTo   = setAcompDateTo;
-    const setStatusBrutos = setAcompStatusBrutos;
+    
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"Pago", canceled:"Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
@@ -13392,7 +13392,6 @@ function V8DigitalTab({ currentUser, contacts }) {
           allRows.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
           console.log("[V8 Acomp] Total:", allRows.length, "| API status:", apiStatus||"todos");
           console.log("[V8 Acomp] Status brutos:", JSON.stringify(statusMap));
-          setStatusBrutos(Object.entries(statusMap).map(([k,v])=>({k,v})));
         }
 
         // Filtro client-side por status
