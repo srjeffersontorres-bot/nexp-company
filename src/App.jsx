@@ -13328,18 +13328,22 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const PAGE_SIZE = 50;
 
-    const buscar = async (pg=1, statusOverride) => {
+    // Helpers de data
+    const toISO = (d) => d.toISOString().split("T")[0];
+    const hoje  = toISO(new Date());
+    const h3dias = toISO(new Date(Date.now() - 3*24*60*60*1000));
+
+    const buscar = async (pg=1, statusOverride, fromOverride, toOverride) => {
       setLoading(true); setErr("");
-      const s = statusOverride !== undefined ? statusOverride : status;
+      const s  = statusOverride !== undefined ? statusOverride : status;
+      const df = fromOverride  !== undefined ? fromOverride  : dateFrom;
+      const dt = toOverride    !== undefined ? toOverride    : dateTo;
       try {
         const q = search.trim();
-
-        // Se tem filtro de texto: busca só a página pedida
-        // Se não: busca TODAS as páginas para mostrar tudo (sem filtro de status na API)
         let allRows = [];
 
         if (q) {
-          // Busca com texto — só página pedida
+          // Busca com texto — API cuida do filtro
           const params = new URLSearchParams({ page:pg, limit:PAGE_SIZE });
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
@@ -13347,52 +13351,42 @@ function V8DigitalTab({ currentUser, contacts }) {
           const res = await apiFetch(`/fgts/proposal?${params}`);
           allRows = res?.data || [];
         } else {
-          // Sem texto — busca TODAS as páginas sem filtro de status
-          // A filtragem de status é feita aqui no cliente
+          // Busca todas as páginas sem filtro de status
           let curPage = 1;
           let keepGoing = true;
-          while (keepGoing && curPage <= 20) { // max 20 pag = 1000 contratos
+          while (keepGoing && curPage <= 20) {
             const params = new URLSearchParams({ page:curPage, limit:PAGE_SIZE });
             if (provider) params.append("provider", provider);
-            if (dateFrom) params.append("startDate", dateFrom);
-            if (dateTo)   params.append("endDate", dateTo);
             const res = await apiFetch(`/fgts/proposal?${params}`);
             const rows = res?.data || [];
             allRows = [...allRows, ...rows];
-            console.log(`[V8] Página ${curPage}: ${rows.length} registros. Status: ${[...new Set(rows.map(r=>r.status))].join(", ")}`);
             keepGoing = rows.length === PAGE_SIZE && (res?.pages?.hasNext !== false);
             curPage++;
           }
-          console.log(`[V8] Total carregado: ${allRows.length}. Todos status: ${[...new Set(allRows.map(r=>r.status))].join(", ")}`);
         }
 
-        // Filtro client-side por status (aceita variantes)
+        // Filtro client-side por status
         let filtered = s ? allRows.filter(r => matchStatus(r.status, s)) : allRows;
 
-        // Filtro por data client-side
-        if (dateFrom) filtered = filtered.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
-        if (dateTo)   filtered = filtered.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
+        // Filtro por data — usa df/dt (default = últimos 3 dias)
+        const from = df ? new Date(df) : new Date(h3dias);
+        const to   = dt ? new Date(dt+"T23:59:59") : new Date(hoje+"T23:59:59");
+        filtered = filtered.filter(r => {
+          const d = new Date(r.createdAt||r.created_at||0);
+          return d >= from && d <= to;
+        });
 
-        // Ordena mais recente primeiro
         filtered.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
-        // Paginação client-side
-        const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+        const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
         const pageRows   = filtered.slice((pg-1)*PAGE_SIZE, pg*PAGE_SIZE);
         setPage(pg);
         setData({
           data:  pageRows,
-          _all:  filtered, // todos os filtrados para paginação
-          pages: {
-            current: pg,
-            hasNext: pg < totalPages,
-            hasPrev: pg > 1,
-            total:   filtered.length,
-            totalPages,
-          }
+          _all:  filtered,
+          pages: { current:pg, hasNext:pg<totalPages, hasPrev:pg>1, total:filtered.length, totalPages },
         });
       } catch(e) {
-        console.error("[V8 Acomp] Erro:", e.message);
         setErr(e.message);
       }
       setLoading(false);
@@ -13402,7 +13396,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const paginar = (pg) => {
       if (!data?._all) return;
       const filtered = data._all;
-      const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+      const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
       const pageRows = filtered.slice((pg-1)*PAGE_SIZE, pg*PAGE_SIZE);
       setPage(pg);
       setData(p => ({
@@ -13412,10 +13406,14 @@ function V8DigitalTab({ currentUser, contacts }) {
       }));
     };
 
-    // Auto-carrega quando acompData é null (primeira visita ou após criar proposta)
-    // Seguro pois acompData é estado elevado (não reseta no re-mount)
+    // Auto-carrega com últimos 3 dias como padrão
     useEffect(() => {
-      if (acompData === null && !acompLoading) buscar(1);
+      if (acompData === null && !acompLoading) {
+        // Inicializa datas padrão se ainda não definidas
+        if (!acompDateFrom) setAcompDateFrom(h3dias);
+        if (!acompDateTo)   setAcompDateTo(hoje);
+        buscar(1, undefined, h3dias, hoje);
+      }
     }, [acompData]); // eslint-disable-line
 
     const gerarNovoLink = async (id) => {
@@ -13491,24 +13489,46 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>De</label>
-              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{ ...S.input, cursor:"pointer", width:140 }} />
+              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+                style={{ ...S.input, cursor:"pointer", width:150, colorScheme:"dark" }} />
             </div>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Até</label>
-              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{ ...S.input, cursor:"pointer", width:140 }} />
+              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+                style={{ ...S.input, cursor:"pointer", width:150, colorScheme:"dark" }} />
+            </div>
+            {/* Atalhos de data */}
+            <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+              <label style={{ color:C.tm, fontSize:11 }}>Atalho</label>
+              <div style={{ display:"flex", gap:5 }}>
+                {[
+                  { l:"Hoje",    f:hoje,    t:hoje },
+                  { l:"3 dias",  f:h3dias,  t:hoje },
+                  { l:"7 dias",  f:toISO(new Date(Date.now()-7*24*60*60*1000)),   t:hoje },
+                  { l:"30 dias", f:toISO(new Date(Date.now()-30*24*60*60*1000)),  t:hoje },
+                ].map(a=>(
+                  <button key={a.l} onClick={()=>{ setDateFrom(a.f); setDateTo(a.t); buscar(1, undefined, a.f, a.t); }}
+                    style={{ background:(dateFrom===a.f&&dateTo===a.t)?C.abg:C.deep, color:(dateFrom===a.f&&dateTo===a.t)?C.atxt:C.td, border:`1px solid ${(dateFrom===a.f&&dateTo===a.t)?C.atxt+"44":C.b2}`, borderRadius:7, padding:"4px 10px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
+                    {a.l}
+                  </button>
+                ))}
+              </div>
             </div>
             <button onClick={()=>buscar(1)} disabled={loading}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1, alignSelf:"flex-end" }}>
               🔍 Buscar
             </button>
-            {(search||status||provider||dateFrom||dateTo) && (
-              <button onClick={()=>{ setSearch(""); setStatus(""); setProvider(""); setDateFrom(""); setDateTo(""); buscar(1,""); }}
-                style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 14px", fontSize:12, cursor:"pointer" }}>
+            {(search||status||provider) && (
+              <button onClick={()=>{ setSearch(""); setStatus(""); setProvider(""); setDateFrom(h3dias); setDateTo(hoje); buscar(1,"",h3dias,hoje); }}
+                style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 14px", fontSize:12, cursor:"pointer", alignSelf:"flex-end" }}>
                 ✕ Limpar
               </button>
             )}
           </div>
-          {err && <div style={{ color:"#F87171", marginTop:10, fontSize:12 }}>⚠ {err}</div>}
+          <div style={{ color:C.td, fontSize:10.5, marginTop:8 }}>
+            📅 Exibindo contratos de <b style={{ color:C.tm }}>{dateFrom||h3dias}</b> até <b style={{ color:C.tm }}>{dateTo||hoje}</b> · Para ver contratos mais antigos, selecione outra data.
+          </div>
+          {err && <div style={{ color:"#F87171", marginTop:8, fontSize:12 }}>⚠ {err}</div>}
         </div>
 
         {/* Modal de link */}
@@ -13693,9 +13713,9 @@ function V8DigitalTab({ currentUser, contacts }) {
             <div style={{ fontSize:44, marginBottom:14 }}>📡</div>
             <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Acompanhe suas propostas V8</div>
             <div style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Clique para carregar todas as propostas ou use os filtros acima.</div>
-            <button onClick={()=>buscar(1)} disabled={loading}
+            <button onClick={()=>{ setAcompDateFrom(h3dias); setAcompDateTo(hoje); buscar(1, undefined, h3dias, hoje); }} disabled={loading}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px 32px", fontSize:14, fontWeight:700, cursor:"pointer" }}>
-              🔍 Carregar Propostas
+              🔍 Carregar Últimos 3 Dias
             </button>
           </div>
         )}
