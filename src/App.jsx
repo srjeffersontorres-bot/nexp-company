@@ -13306,53 +13306,56 @@ function V8DigitalTab({ currentUser, contacts }) {
       return variants.some(v => rv === v || rv.includes(v));
     };
 
+    const PAGE_SIZE = 50;
+
     const buscar = async (pg=1, statusOverride) => {
       setLoading(true); setErr(""); setPage(pg);
       const s = statusOverride !== undefined ? statusOverride : status;
+      console.log("[V8 Acomp] buscar pg="+pg+" status="+s+" provider="+provider+" search="+search);
       try {
         const q = search.trim();
-        let allRows = [];
-        let currentPage = 1;
-        let hasMore = true;
+        // Busca direto na API com paginação real
+        const params = new URLSearchParams({ page:pg, limit:PAGE_SIZE });
+        if (q) {
+          const digits = q.replace(/\D/g,"");
+          params.append("search", digits.length >= 6 ? digits : q);
+        }
+        if (provider) params.append("provider", provider);
+        // Tenta enviar status para a API — se não funcionar, filtramos client-side
+        if (s) params.append("status", s);
 
-        // Busca todas as páginas (max 10 páginas = 500 registros)
-        while (hasMore && currentPage <= 10) {
-          const params = new URLSearchParams({ page:currentPage, limit:50 });
-          if (q) {
-            const digits = q.replace(/\D/g,"");
-            params.append("search", digits.length >= 6 ? digits : q);
+        const res = await apiFetch(`/fgts/proposal?${params}`);
+        let rows = res?.data || [];
+
+        // Log status reais — abre DevTools > Console para ver
+        console.log("[V8 Acomp] Status retornados pela API:", [...new Set(rows.map(r=>r.status))]);
+        console.log("[V8 Acomp] Total registros nesta página:", rows.length);
+
+        // Filtro client-side por status (caso API não filtre corretamente)
+        if (s) {
+          const antes = rows.length;
+          rows = rows.filter(r => matchStatus(r.status, s));
+          console.log("[V8 Acomp] Após filtro client-side '"+s+"': "+rows.length+" de "+antes);
+        }
+
+        // Filtro por data
+        if (dateFrom) rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
+        if (dateTo)   rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
+
+        rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
+        setData({
+          data: rows,
+          pages: {
+            current: pg,
+            hasNext: res?.pages?.hasNext || rows.length === PAGE_SIZE,
+            hasPrev: pg > 1,
+            total:   res?.pages?.total || rows.length,
           }
-          if (provider) params.append("provider", provider);
-
-          const res = await apiFetch(`/fgts/proposal?${params}`);
-          const rows = res?.data || [];
-          allRows = [...allRows, ...rows];
-
-          // Para se não há mais páginas ou retornou menos que o limite
-          hasMore = rows.length === 50 && res?.pages?.hasNext;
-          currentPage++;
-
-          // Se estamos buscando com filtro de texto, uma página é suficiente
-          if (q) break;
-        }
-
-        // Log status reais retornados pela V8
-        if (allRows.length > 0) {
-          const statusFound = [...new Set(allRows.map(r=>r.status))];
-          console.log("[V8] Status encontrados:", statusFound);
-        }
-
-        // Filtro client-side por status
-        if (s) allRows = allRows.filter(r => matchStatus(r.status, s));
-
-        // Filtro client-side por data
-        if (dateFrom) allRows = allRows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
-        if (dateTo)   allRows = allRows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
-
-        // Ordena mais recente primeiro
-        allRows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
-        setData({ data: allRows, _total: allRows.length });
-      } catch(e) { setErr(e.message); }
+        });
+      } catch(e) {
+        console.error("[V8 Acomp] Erro:", e.message);
+        setErr(e.message);
+      }
       setLoading(false);
     };
 
@@ -13719,15 +13722,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:10.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
                               ⚡ Simular
                             </button>
-                            {/* Digitar Proposta */}
-                            <button onClick={()=>{
-                              const cpfv=(op.documentNumber||op.individualDocumentNumber||"");
-                              const d={ tabela:{ label:"", sim:null, feeId:"" }, balance:{ id:"" }, cpf:cpfv, provider:op.provider||loteProvider, clientePreFill:{ cpf:cpfv, nome:op.clientName||"", clienteV8:op } };
-                              openDigModal(d); setIndDigModal(d);
-                            }}
-                              style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"4px 11px", fontSize:10.5, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
-                              📝 Digitar
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -13739,13 +13733,16 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </tbody>
               </table>
             </div>
-            {data.pages&&(
+            {data?.pages && (
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
                 <button onClick={()=>buscar(page-1)} disabled={!data.pages.hasPrev||loading}
                   style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
                   ← Anterior
                 </button>
-                <span style={{ color:C.tm, fontSize:12 }}>Página {data.pages.current||page} · {data.pages.total||0} propostas</span>
+                <span style={{ color:C.tm, fontSize:12 }}>
+                  Página {page} · {(data.data||[]).length} resultado{(data.data||[]).length!==1?"s":""}
+                  {data.pages.total?" · "+data.pages.total+" total":""}
+                </span>
                 <button onClick={()=>buscar(page+1)} disabled={!data.pages.hasNext||loading}
                   style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
                   Próxima →
