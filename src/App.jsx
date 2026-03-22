@@ -13305,48 +13305,50 @@ function V8DigitalTab({ currentUser, contacts }) {
     const statusBrutos   = acompStatusBrutos;
     const setStatusBrutos = setAcompStatusBrutos;
 
-    const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
+    const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"Pago", canceled:"Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
 
-    // Todos os valores possíveis de cada status na V8 (a API pode retornar variações)
+    // Mapeamento EXATO — somente valores confirmados que a API V8 retorna
+    // Baseado na documentação oficial + valores observados em produção
     const STATUS_VARIANTS = {
-      formalization: ["formalization","formalizacao","awaiting_formalization","awaiting","pending_formalization","in_formalization","formalize","form","aguardando_form","aguardando_formalizacao","aguardando formalização","aguardando formaliz","aguardando form","waiting_formalization","wait_form","await_form","pend_form"],
-      analysis:      ["analysis","in_analysis","under_analysis","analysing","analyzing","em_analise","em analise"],
-      manual_analysis:["manual_analysis","manual","manual_review","analise_manual","análise manual"],
-      pending:       ["pending","pendente","waiting","aguardando"],
-      processing:    ["processing","in_progress","processando","em_processamento"],
-      paid:          ["paid","pago","completed","done","approved","aprovado"],
-      canceled:      ["canceled","cancelled","cancelado","rejected","rejeitado"],
-      refounded:     ["refounded","refunded","devolvido","estornado"],
+      formalization:  ["formalization","aguardando_form","awaiting_formalization","pending_formalization","in_formalization","formalizacao"],
+      analysis:       ["analysis","in_analysis","under_analysis"],
+      manual_analysis:["manual_analysis","manual_review"],
+      pending:        ["pending"],
+      processing:     ["processing","in_progress"],
+      paid:           ["paid"],
+      canceled:       ["canceled","cancelled"],
+      refounded:      ["refounded","refunded"],
+    };
+
+    // Match EXATO — sem includes parciais que causam falsos positivos
+    const matchStatus = (rowStatus, filterStatus) => {
+      if (!filterStatus) return true;
+      const rv = (rowStatus||"").toLowerCase().trim();
+      // 1. Verifica correspondência direta com a chave
+      if (rv === filterStatus) return true;
+      // 2. Verifica na lista de variantes exatas
+      const variants = STATUS_VARIANTS[filterStatus] || [];
+      return variants.includes(rv);
     };
 
     const getStatusLabel = (s) => {
       if (!s) return "—";
       const sl = s.toLowerCase().trim();
       for (const [key, variants] of Object.entries(STATUS_VARIANTS)) {
-        if (variants.some(v => sl === v || sl.includes(v) || v.includes(sl))) {
-          return STATUS_LABEL[key] || key;
-        }
+        if (sl === key || variants.includes(sl)) return STATUS_LABEL[key] || key;
       }
-      return STATUS_LABEL[s] || s;
+      // Retorna o valor original capitalizado se não reconhecido
+      return s.charAt(0).toUpperCase() + s.slice(1);
     };
+
     const getStatusColor = (s) => {
       if (!s) return "#94A3B8";
       const sl = s.toLowerCase().trim();
       for (const [key, variants] of Object.entries(STATUS_VARIANTS)) {
-        if (variants.some(v => sl === v || sl.includes(v) || v.includes(sl))) {
-          return STATUS_COLOR[key] || "#94A3B8";
-        }
+        if (sl === key || variants.includes(sl)) return STATUS_COLOR[key] || "#94A3B8";
       }
-      return STATUS_COLOR[s] || "#94A3B8";
-    };
-
-    const matchStatus = (rowStatus, filterStatus) => {
-      if (!filterStatus) return true;
-      const rv = (rowStatus||"").toLowerCase().trim();
-      const variants = STATUS_VARIANTS[filterStatus] || [filterStatus];
-      // Verifica correspondência exata ou parcial
-      return variants.some(v => rv === v || rv.includes(v) || v.includes(rv));
+      return "#94A3B8";
     };
 
     const PAGE_SIZE = 50;
