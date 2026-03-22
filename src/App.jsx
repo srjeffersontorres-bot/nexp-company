@@ -10749,43 +10749,46 @@ function SimuladorPage() {
 
 // ── V8 Digital — aba integrada ────────────────────────────────
 // ── Modal Digitação Rápida (V8) — com revisão e edição ───────────
-function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts, currentUser }) {
+function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts, currentUser, clientePreFill }) {
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
   const simId = tabela?.sim?.id || "";
   const balId = balance?.id || "";
   const cpfClean = (cpf||"").replace(/\D/g,"");
 
-  // Busca dados do cliente no Nexp automaticamente
+  // Prioridade: clientePreFill (V8) > Nexp contacts > vazio
   const nexpContact = (contacts||[]).find(c => (c.cpf||"").replace(/\D/g,"") === cpfClean) || {};
+  const pre = clientePreFill || {};
+  const v8c = pre.clienteV8 || {};
 
-  const [step, setStep]     = useState("review"); // review | payment | done
+  const [step, setStep]     = useState("review");
   const [banks, setBanks]   = useState([]);
   const [payType,setPayType]= useState("pix");
   const [loading,setLoading]= useState(false);
   const [result, setResult] = useState(null);
   const [err,    setErr]    = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
 
-  // Formulário com dados pré-preenchidos do Nexp
+  const pick = (...vals) => vals.find(v=>v&&String(v).trim()) || "";
+
   const [form, setForm] = useState({
-    name:            nexpContact.name || "",
+    name:            pick(pre.nome, v8c.name, v8c.clientName, nexpContact.name),
     cpf:             cpf || "",
-    rg:              nexpContact.rg || "",
-    motherName:      nexpContact.nomeMae || "",
-    birthDate:       nexpContact.dataNascimento || "",
-    email:           nexpContact.email || nexpContact.email2 || "",
-    phone:           (nexpContact.phone||"").replace(/\D/g,""),
-    phoneRegionCode: (nexpContact.phone||"").replace(/\D/g,"").slice(0,2),
-    nationality:     "Brasileiro(a)",
-    maritalStatus:   "single",
-    isPEP:           false,
-    postalCode:      (nexpContact.cep||"").replace(/\D/g,""),
-    street:          nexpContact.rua || "",
-    addressNumber:   nexpContact.numero || "",
-    complement:      nexpContact.complemento || "",
-    neighborhood:    nexpContact.bairro || "",
-    city:            nexpContact.cidade || "",
-    state:           nexpContact.ufEnd || nexpContact.estado || "",
-    // Pagamento
+    rg:              pick(v8c.documentIdentificationNumber, nexpContact.rg),
+    motherName:      pick(pre.nomeMae, v8c.motherName, nexpContact.nomeMae),
+    birthDate:       pick(pre.nascimento, v8c.birthDate, nexpContact.dataNascimento),
+    email:           pick(pre.email, v8c.email, nexpContact.email, nexpContact.email2),
+    phone:           pick(pre.phone?`${pre.phoneDdd||""}${pre.phone}`:null, v8c.phone?(v8c.phoneRegionCode||"")+v8c.phone:null, (nexpContact.phone||"").replace(/\D/g,"")),
+    phoneRegionCode: pick(pre.phoneDdd, v8c.phoneRegionCode, (nexpContact.phone||"").replace(/\D/g,"").slice(0,2)),
+    nationality:     pick(pre.nacionalidade, v8c.nationality, "Brasileiro(a)"),
+    maritalStatus:   pick(pre.estadoCivil, v8c.maritalStatus, "single"),
+    isPEP:           pre.isPEP || v8c.isPEP || false,
+    postalCode:      pick(pre.cep, v8c.postalCode, (nexpContact.cep||"").replace(/\D/g,"")),
+    street:          pick(pre.rua, v8c.street, nexpContact.rua),
+    addressNumber:   pick(pre.numero, v8c.addressNumber, nexpContact.numero),
+    complement:      pick(pre.complemento, v8c.complement, nexpContact.complemento),
+    neighborhood:    pick(pre.bairro, v8c.neighborhood, nexpContact.bairro),
+    city:            pick(pre.cidade, v8c.city, nexpContact.cidade),
+    state:           pick(pre.uf, v8c.state, nexpContact.ufEnd, nexpContact.estado),
     pix:             "",
     bankId:          "",
     bankAccountNumber:"",
@@ -10795,8 +10798,32 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   });
   const setF = (k,v) => setForm(p=>({...p,[k]:v}));
 
+  // Buscar endereço pelo CEP (ViaCEP)
+  const buscarCEP = async (cep) => {
+    const c = cep.replace(/\D/g,"");
+    if (c.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${c}/json/`);
+      const d = await r.json();
+      if (!d.erro) {
+        setForm(p=>({
+          ...p,
+          street:       d.logradouro || p.street,
+          neighborhood: d.bairro     || p.neighborhood,
+          city:         d.localidade || p.city,
+          state:        d.uf         || p.state,
+          complement:   d.complemento|| p.complement,
+        }));
+      }
+    } catch {}
+    setCepLoading(false);
+  };
+
   useEffect(() => {
     apiFetch("/banks").then(d=>setBanks(d?.data||[])).catch(()=>{});
+    // Se tiver CEP pré-preenchido e endereço incompleto, busca
+    if (form.postalCode && !form.street) buscarCEP(form.postalCode);
   }, []); // eslint-disable-line
 
   const digitar = async () => {
@@ -10844,7 +10871,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
       setResult(res);
       // Salvar cópia no Firestore para aparecer em Propostas e poder anexar documentos
       try {
-        const { addDoc, collection: fbCol, serverTimestamp } = await import("firebase/firestore");
+        const { addDoc, collection: fbCol } = await import("firebase/firestore");
         const { db: fbDb } = await import("./firebase");
         await addDoc(fbCol(fbDb,"propostas"), {
           tipo: "FGTS",
@@ -10860,7 +10887,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
           provider,
           tabela:    tabela?.label || "",
           valorLiberado: parseFloat(tabela?.sim?.availableBalance||0),
-          balanceId,
+          balanceId: balId,
           simulationId: simId,
           pagamento: payType === "pix" ? { tipo:"PIX", chave:form.pix } : { tipo:"Transferência", banco:form.bankId, agencia:form.bankAccountBranch, conta:form.bankAccountNumber, digito:form.bankAccountDigit },
           status:    "Proposta Digitada",
@@ -10954,7 +10981,21 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
               </div>
               <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:8 }}>Endereço</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
-                {fieldGroup("CEP *","postalCode","text","00000-000")}
+                {/* CEP com busca automática */}
+                <div>
+                  <label style={labelStyle}>CEP *</label>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <input value={form.postalCode} onChange={e=>setF("postalCode",e.target.value.replace(/\D/g,""))}
+                      onBlur={e=>buscarCEP(e.target.value)}
+                      placeholder="00000000" maxLength={8}
+                      style={{ ...inputStyle, flex:1 }}/>
+                    <button type="button" onClick={()=>buscarCEP(form.postalCode)} disabled={cepLoading}
+                      style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"0 10px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>
+                      {cepLoading?"...":"🔍"}
+                    </button>
+                  </div>
+                  {cepLoading && <div style={{ color:C.atxt, fontSize:10, marginTop:3 }}>Buscando endereço...</div>}
+                </div>
                 {fieldGroup("Rua / Logradouro *","street","text","Rua")}
                 {fieldGroup("Número *","addressNumber","text","Nº")}
                 {fieldGroup("Complemento","complement","text","Apto, casa...")}
@@ -11211,7 +11252,9 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indHistorico, setIndHistorico] = useState(() => {
     try { return JSON.parse(localStorage.getItem("nexp_v8_ind_historico")||"[]"); } catch { return []; }
   });
-  const [indHistPage, setIndHistPage]   = useState(0); // diagnóstico detalhado do erro
+  const [indHistPage,    setIndHistPage]    = useState(0);
+  const [indHistDetalhe, setIndHistDetalhe] = useState(null);
+  const [indHistSearch,  setIndHistSearch]  = useState("");
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -11235,8 +11278,10 @@ function V8DigitalTab({ currentUser, contacts }) {
     const selectedSim = indSelectedSim; const setSelectedSim = setIndSelectedSim;
     const contratosOpen = indContratosOpen; const setContratosOpen = setIndContratosOpen;
     const errDetail = indErrDetail;
-    const historico = indHistorico;
-    const histPage  = indHistPage;
+    const historico     = indHistorico;
+    const histPage      = indHistPage;
+    const histDetalhe   = indHistDetalhe;
+    const histSearch    = indHistSearch;
 
     const addLog = (msg, ok=true) => setLogs(p => {
       const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
@@ -11421,21 +11466,56 @@ function V8DigitalTab({ currentUser, contacts }) {
 
       addLog("🏁 Concluído!");
 
-      // Salvar no histórico
+      // Salvar no histórico — com dados completos para auto-preenchimento
       const best = [...resultados].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+
+      // Tentar buscar dados do cliente do contrato mais recente
+      let clienteV8 = null;
+      try {
+        const ops = await apiFetch(`/fgts/proposal?search=${c}&page=1&limit=1`);
+        const primeiro = (ops?.data||[])[0];
+        if (primeiro?.id) {
+          const detalhe = await apiFetch(`/fgts/proposal/${primeiro.id}`);
+          clienteV8 = detalhe;
+          addLog(`✅ Dados do cliente carregados: ${detalhe.name||detalhe.clientName||""}`);
+        }
+      } catch {}
+
       const entrada = {
-        id: Date.now(),
-        cpf: fmtCPF(c),
-        cpfRaw: c,
+        id:           Date.now(),
+        cpf:          fmtCPF(c),
+        cpfRaw:       c,
         provider,
-        saldo: parseFloat(bal?.amount||0),
+        saldo:        parseFloat(bal?.amount||0),
         melhorTabela: best?.label||"—",
-        melhorValor: parseFloat(best?.sim?.availableBalance||0),
-        melhorSimId: best?.sim?.id||"",
-        balanceId: bal?.id||"",
-        anos: calcAnos(best?.sim),
-        ts: new Date().toLocaleString("pt-BR"),
-        ok: true,
+        melhorValor:  parseFloat(best?.sim?.availableBalance||0),
+        melhorSimId:  best?.sim?.id||"",
+        melhorFeeId:  best?.feeId||"",
+        balanceId:    bal?.id||"",
+        anos:         calcAnos(best?.sim),
+        ts:           new Date().toLocaleString("pt-BR"),
+        ok:           true,
+        allSims:      resultados,
+        balance:      bal,
+        // Dados do cliente (do V8 se disponível)
+        clienteV8,
+        nome:         clienteV8?.name || clienteV8?.clientName || "",
+        email:        clienteV8?.email || "",
+        phone:        clienteV8?.phone || "",
+        phoneDdd:     clienteV8?.phoneRegionCode || "",
+        rg:           clienteV8?.documentIdentificationNumber || "",
+        nomeMae:      clienteV8?.motherName || "",
+        nascimento:   clienteV8?.birthDate || "",
+        cep:          clienteV8?.postalCode || "",
+        rua:          clienteV8?.street || "",
+        numero:       clienteV8?.addressNumber || "",
+        complemento:  clienteV8?.complement || "",
+        bairro:       clienteV8?.neighborhood || "",
+        cidade:       clienteV8?.city || "",
+        uf:           clienteV8?.state || "",
+        estadoCivil:  clienteV8?.maritalStatus || "single",
+        nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
+        isPEP:        clienteV8?.isPEP || false,
       };
       setIndHistorico(prev => {
         const updated = [entrada, ...prev.filter(h=>h.cpfRaw!==c)].slice(0,200);
@@ -11779,59 +11859,163 @@ function V8DigitalTab({ currentUser, contacts }) {
             fmtBRL={fmtBRL}
             contacts={contacts}
             currentUser={currentUser}
+            clientePreFill={indDigModal.clientePreFill}
             onClose={() => setIndDigModal(null)}
           />
         )}
 
         {/* ── Histórico de simulações ── */}
         {historico.length > 0 && (
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:`1px solid ${C.b1}` }}>
+          <div style={{ marginBottom:16 }}>
+            {/* Header + busca */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"14px 14px 0 0", padding:"12px 16px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
               <div style={{ color:C.ts, fontSize:13, fontWeight:700 }}>📑 Histórico de Simulações <span style={{ color:C.td, fontSize:11, fontWeight:400 }}>({historico.length})</span></div>
-              <button onClick={()=>{ setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); }}
-                style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
+              <input
+                value={histSearch} onChange={e=>{ setIndHistSearch(e.target.value); setIndHistPage(0); }}
+                placeholder="🔍 Buscar por CPF ou nome..."
+                style={{ ...S.input, flex:1, minWidth:180, fontSize:12, padding:"5px 10px" }}
+              />
+              <select
+                onChange={e=>setIndHistPage(0)}
+                style={{ ...S.input, width:120, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
+                {["Todos","ok","erro"].map(s=><option key={s}>{s}</option>)}
+              </select>
+              <button onClick={()=>{ setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null); }}
+                style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar tudo</button>
             </div>
-            {/* Header */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 0.7fr 0.9fr 0.9fr 0.7fr 0.8fr", background:C.deep, padding:"7px 16px", borderBottom:`1px solid ${C.b1}` }}>
-              {["CPF","Provider","Saldo FGTS","Melhor Oferta","Tabela","Data"].map(h=>(
-                <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
-              ))}
-            </div>
-            {/* Rows — 20 por página */}
-            {historico.slice(histPage*20, (histPage+1)*20).map((h,i)=>(
-              <div key={h.id}
-                onClick={()=>{ if(h.ok) { setIndCpf(h.cpf); } }}
-                style={{ display:"grid", gridTemplateColumns:"1fr 0.7fr 0.9fr 0.9fr 0.7fr 0.8fr", padding:"8px 16px", borderBottom:`1px solid ${C.b1}`, background:i%2===0?C.card:C.deep, cursor:h.ok?"pointer":"default", transition:"background 0.1s" }}
-                onMouseEnter={e=>{ if(h.ok) e.currentTarget.style.background=`${C.acc}10`; }}
-                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?C.card:C.deep}>
-                <div style={{ color:h.ok?C.tp:"#F87171", fontWeight:600, fontSize:12, fontFamily:"monospace" }}>{h.cpf}</div>
-                <div style={{ color:C.td, fontSize:11, textTransform:"uppercase" }}>{h.provider}</div>
-                <div style={{ color:h.ok?C.atxt:"#F87171", fontWeight:h.ok?700:400, fontSize:12 }}>
-                  {h.ok ? fmtBRL(h.saldo) : <span style={{ fontSize:11 }}>{(h.erro||"Erro").slice(0,22)}</span>}
+
+            {/* Painel de detalhe */}
+            {histDetalhe && (
+              <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderTop:"none", padding:"20px 22px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                  <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {histDetalhe.cpf} {histDetalhe.nome && <span style={{ color:"rgba(255,255,255,0.6)", fontSize:12, fontWeight:400 }}>· {histDetalhe.nome}</span>}</div>
+                  <button onClick={()=>setIndHistDetalhe(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"4px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
                 </div>
-                <div style={{ color:h.ok?"#34D399":C.td, fontWeight:700, fontSize:12 }}>
-                  {h.ok ? fmtBRL(h.melhorValor) : "—"}
+
+                {/* Dados do cliente */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:8, marginBottom:16 }}>
+                  {[
+                    ["CPF",          histDetalhe.cpf],
+                    ["Nome",         histDetalhe.nome||"—"],
+                    ["Provider",     histDetalhe.provider?.toUpperCase()],
+                    ["Saldo FGTS",   fmtBRL(histDetalhe.saldo||0)],
+                    ["Melhor Oferta",fmtBRL(histDetalhe.melhorValor||0)],
+                    ["Tabela",       histDetalhe.melhorTabela],
+                    ["Anos",         histDetalhe.anos||"—"],
+                    ["Data",         histDetalhe.ts||"—"],
+                    ["E-mail",       histDetalhe.email||"—"],
+                    ["Telefone",     histDetalhe.phone?`(${histDetalhe.phoneDdd||""}) ${histDetalhe.phone}`:"—"],
+                    ["Nascimento",   histDetalhe.nascimento||"—"],
+                    ["Cidade/UF",    histDetalhe.cidade&&histDetalhe.uf?`${histDetalhe.cidade}/${histDetalhe.uf}`:"—"],
+                  ].map(([l,v])=>(
+                    <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                      <div style={{ color:"#fff", fontWeight:600, fontSize:12.5, marginTop:2 }}>{v}</div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ color:C.tm, fontSize:11, textTransform:"capitalize" }}>{h.melhorTabela}</div>
-                <div style={{ color:C.td, fontSize:10.5 }}>{h.ts}</div>
-              </div>
-            ))}
-            {/* Paginação */}
-            {historico.length > 20 && (
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", background:C.deep, borderTop:`1px solid ${C.b1}` }}>
-                <button onClick={()=>setIndHistPage(p=>Math.max(0,p-1))} disabled={histPage===0}
-                  style={{ background:histPage>0?C.abg:C.deep, color:histPage>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 12px", fontSize:11.5, cursor:histPage>0?"pointer":"not-allowed" }}>
-                  ← Anterior
-                </button>
-                <span style={{ color:C.tm, fontSize:11.5 }}>
-                  {histPage*20+1}–{Math.min((histPage+1)*20,historico.length)} de {historico.length}
-                </span>
-                <button onClick={()=>setIndHistPage(p=>Math.min(Math.ceil(historico.length/20)-1,p+1))} disabled={(histPage+1)*20>=historico.length}
-                  style={{ background:(histPage+1)*20<historico.length?C.abg:C.deep, color:(histPage+1)*20<historico.length?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 12px", fontSize:11.5, cursor:(histPage+1)*20<historico.length?"pointer":"not-allowed" }}>
-                  Próxima →
-                </button>
+
+                {/* Tabelas clicáveis */}
+                {(histDetalhe.allSims||[]).filter(t=>t.ok).length > 0 && (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>
+                      Todas as tabelas — clique para digitar
+                    </div>
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                      {[...( histDetalhe.allSims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
+                        const isBest = s.label===histDetalhe.melhorTabela;
+                        const vlr = parseFloat(s.sim?.availableBalance||0);
+                        return (
+                          <div key={i}
+                            onClick={()=> s.ok && setIndDigModal({
+                              tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" },
+                              balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId },
+                              cpf:histDetalhe.cpf, provider:histDetalhe.provider,
+                              clientePreFill: histDetalhe, // dados do cliente para auto-fill
+                            })}
+                            style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.1)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+                            onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";} }}
+                            onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                            {isBest&&<div style={{ position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap" }}>🏆 MELHOR</div>}
+                            <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, textTransform:"capitalize", marginTop:isBest?4:0 }}>{s.label}</div>
+                            <div style={{ color:isBest?"#34D399":"#fff", fontWeight:800, fontSize:16, lineHeight:1, marginTop:2 }}>{fmtBRL(vlr)}</div>
+                            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:2 }}>{calcAnos(s.sim)}</div>
+                            {s.ok&&<div style={{ marginTop:6, background:"rgba(255,255,255,0.12)", borderRadius:6, padding:"3px 0", textAlign:"center", fontSize:10, fontWeight:700, color:"#fff" }}>📝 DIGITAR</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {!histDetalhe.ok && histDetalhe.erro && (
+                  <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px" }}>
+                    <div style={{ color:"#F87171", fontWeight:600 }}>{histDetalhe.erro}</div>
+                  </div>
+                )}
               </div>
             )}
+
+            {/* Tabela */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderTop:"none", overflow:"hidden", borderRadius: histDetalhe?"0":"0 0 14px 14px" }}>
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                  <thead>
+                    <tr style={{ background:C.deep }}>
+                      {["#","CPF","Nome","Provider","Status","Saldo FGTS","Melhor Oferta","Tabela","Anos","Data"].map(h=>(
+                        <th key={h} style={{ color:C.td, fontSize:10, fontWeight:700, padding:"8px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", textTransform:"uppercase", letterSpacing:"0.3px" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historico
+                      .filter(h => !histSearch || h.cpf?.includes(histSearch) || (h.nome||"").toLowerCase().includes(histSearch.toLowerCase()))
+                      .slice(histPage*20, (histPage+1)*20)
+                      .map((h,i)=>{
+                        const isSelected = histDetalhe?.id === h.id;
+                        return (
+                          <tr key={h.id}
+                            onClick={()=>setIndHistDetalhe(isSelected?null:h)}
+                            style={{ background:isSelected?`${C.acc}15`:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+                            onMouseEnter={e=>!isSelected&&(e.currentTarget.style.background=`${C.acc}08`)}
+                            onMouseLeave={e=>(e.currentTarget.style.background=isSelected?`${C.acc}15`:i%2===0?C.card:C.deep)}>
+                            <td style={{ color:C.td, padding:"8px 12px", fontSize:11 }}>{histPage*20+i+1}</td>
+                            <td style={{ color:C.tp, fontWeight:600, padding:"8px 12px", fontFamily:"monospace", fontSize:11.5 }}>{h.cpf}</td>
+                            <td style={{ color:C.tm, padding:"8px 12px", fontSize:11.5, maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{h.nome||"—"}</td>
+                            <td style={{ color:C.td, padding:"8px 12px", fontSize:11, textTransform:"uppercase" }}>{h.provider}</td>
+                            <td style={{ padding:"8px 12px" }}>
+                              {h.ok
+                                ? <span style={{ background:"#091E12", color:"#34D399", fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>✅ OK</span>
+                                : <span style={{ background:"#2D1515", color:"#F87171", fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>❌ Erro</span>}
+                            </td>
+                            <td style={{ color:h.ok?C.atxt:"#F87171", fontWeight:h.ok?700:400, padding:"8px 12px", fontSize:12 }}>
+                              {h.ok ? fmtBRL(h.saldo) : (h.erro||"Erro").slice(0,20)}
+                            </td>
+                            <td style={{ color:"#34D399", fontWeight:700, padding:"8px 12px", fontSize:12 }}>{h.ok?fmtBRL(h.melhorValor):"—"}</td>
+                            <td style={{ color:C.tm, padding:"8px 12px", fontSize:11, textTransform:"capitalize" }}>{h.melhorTabela}</td>
+                            <td style={{ color:C.td, padding:"8px 12px", fontSize:11 }}>{h.anos||"—"}</td>
+                            <td style={{ color:C.td, padding:"8px 12px", fontSize:10.5, whiteSpace:"nowrap" }}>{h.ts}</td>
+                          </tr>
+                        );
+                      })}
+                    {historico.filter(h=>!histSearch||h.cpf?.includes(histSearch)||(h.nome||"").toLowerCase().includes(histSearch.toLowerCase())).length===0 && (
+                      <tr><td colSpan={10} style={{ color:C.td, textAlign:"center", padding:"20px", fontSize:13 }}>Nenhum resultado.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginação */}
+              {historico.filter(h=>!histSearch||h.cpf?.includes(histSearch)||(h.nome||"").toLowerCase().includes(histSearch.toLowerCase())).length > 20 && (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", background:C.deep, borderTop:`1px solid ${C.b1}`, borderRadius:"0 0 14px 14px" }}>
+                  <button onClick={()=>setIndHistPage(p=>Math.max(0,p-1))} disabled={histPage===0}
+                    style={{ background:histPage>0?C.abg:C.deep, color:histPage>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 12px", fontSize:11.5, cursor:histPage>0?"pointer":"not-allowed" }}>← Anterior</button>
+                  <span style={{ color:C.tm, fontSize:11.5 }}>{histPage*20+1}–{Math.min((histPage+1)*20,historico.length)} de {historico.length}</span>
+                  <button onClick={()=>setIndHistPage(p=>p+1)} disabled={(histPage+1)*20>=historico.length}
+                    style={{ background:(histPage+1)*20<historico.length?C.abg:C.deep, color:(histPage+1)*20<historico.length?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 12px", fontSize:11.5, cursor:(histPage+1)*20<historico.length?"pointer":"not-allowed" }}>Próxima →</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
