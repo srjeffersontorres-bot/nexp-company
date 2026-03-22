@@ -10784,7 +10784,14 @@ function V8DigitalTab({ currentUser, contacts }) {
         let saldo = null;
         try {
           saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`);
-          addLog(`✅ Saldo: ${fmtBRL(saldo?.saldoDisponivel || 0)}`);
+          // Detectar campo de saldo automaticamente — a V8 pode usar nomes diferentes
+          const saldoVal = saldo?.saldoDisponivel ?? saldo?.saldo ?? saldo?.vlrSaldo
+            ?? saldo?.valorDisponivel ?? saldo?.totalSaldo ?? saldo?.saldoTotal
+            ?? saldo?.value ?? saldo?.amount ?? null;
+          addLog(`✅ Saldo bruto: ${JSON.stringify(saldo)}`);
+          addLog(`✅ Saldo: ${fmtBRL(saldoVal || 0)}`);
+          // Normaliza para sempre ter saldoDisponivel
+          if (saldo && saldoVal !== null) saldo = { ...saldo, saldoDisponivel: saldoVal };
         } catch(e) {
           addLog(`⚠ Saldo: ${e.message}`, false);
           const fd = parseFutureDate(e.message);
@@ -10796,8 +10803,12 @@ function V8DigitalTab({ currentUser, contacts }) {
         const tableSims = await Promise.all(TABELAS.map(async tbl => {
           try {
             const sim = await apiFetch("/saque-aniversario/simulacao","POST",{ cpf:c, tabelaId:tbl, seguro:false });
-            addLog(`✅ ${tbl}: ${fmtBRL(sim?.valorLiquido || sim?.vlrLiquido || 0)}`);
-            return { tbl, sim, ok:true };
+            // Detectar campo de valor automaticamente
+            const vlr = sim?.valorLiquido ?? sim?.vlrLiquido ?? sim?.valor ?? sim?.valorTotal
+              ?? sim?.valorLiberar ?? sim?.valorLiberado ?? sim?.netValue ?? sim?.amount ?? 0;
+            const simNorm = { ...sim, valorLiquido: vlr };
+            addLog(`✅ ${tbl}: ${fmtBRL(vlr)} | raw: ${JSON.stringify(sim).slice(0,120)}`);
+            return { tbl, sim:simNorm, ok:true };
           } catch(e) {
             const fd = parseFutureDate(e.message);
             if (fd) setFutureDate(fd);
@@ -11004,15 +11015,21 @@ function V8DigitalTab({ currentUser, contacts }) {
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido — pulado" };
 
       try {
-        const saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`).catch(()=>null);
+        const saldoRaw = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`).catch(()=>null);
+        const saldoVal = saldoRaw?.saldoDisponivel ?? saldoRaw?.saldo ?? saldoRaw?.vlrSaldo
+          ?? saldoRaw?.valorDisponivel ?? saldoRaw?.totalSaldo ?? saldoRaw?.value ?? 0;
         const TABELAS = ["cometa","turbo","grid","normal"];
         const tableSims = await Promise.all(TABELAS.map(async tbl=>{
-          try { return { tbl, sim:await apiFetch("/saque-aniversario/simulacao","POST",{cpf:c,tabelaId:tbl,seguro:false}), ok:true }; }
-          catch(e) { return { tbl, err:e.message, ok:false }; }
+          try {
+            const sim = await apiFetch("/saque-aniversario/simulacao","POST",{cpf:c,tabelaId:tbl,seguro:false});
+            const vlr = sim?.valorLiquido ?? sim?.vlrLiquido ?? sim?.valor ?? sim?.valorTotal
+              ?? sim?.valorLiberar ?? sim?.valorLiberado ?? sim?.netValue ?? 0;
+            return { tbl, sim:{ ...sim, valorLiquido:vlr }, ok:true };
+          } catch(e) { return { tbl, err:e.message, ok:false }; }
         }));
         const melhor = [...tableSims].filter(t=>t.ok).sort((a,b)=>(b.sim?.valorLiquido||0)-(a.sim?.valorLiquido||0))[0];
-        addLog(`✅ ${item.nome} (${fmtCPF(c)}) saldo:${fmtBRL(saldo?.saldoDisponivel||0)} oferta:${fmtBRL(melhor?.sim?.valorLiquido||0)}`);
-        return { ...item, cpf:fmtCPF(c), saldo:saldo?.saldoDisponivel||0, margem:melhor?.sim?.valorLiquido||0, status:"ok", sim:{tableSims,melhor}, erro:null };
+        addLog(`✅ ${item.nome} (${fmtCPF(c)}) saldo:${fmtBRL(saldoVal)} oferta:${fmtBRL(melhor?.sim?.valorLiquido||0)}`);
+        return { ...item, cpf:fmtCPF(c), saldo:saldoVal, margem:melhor?.sim?.valorLiquido||0, status:"ok", sim:{tableSims,melhor}, erro:null };
       } catch(e) {
         addLog(`❌ ${item.nome} (${fmtCPF(c)}): ${e.message}`, false);
         return { ...item, status:"erro", erro:e.message };
