@@ -12289,6 +12289,18 @@ function V8DigitalTab({ currentUser, contacts }) {
               <button onClick={(e)=>{e.preventDefault();setLogs([]);localStorage.removeItem("nexp_v8_ind_logs");}} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
             </summary>
             <div style={{ padding:"0 16px 12px", maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
+              {logs.map((l,i)=>(
+                <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
+                  <span style={{ color:C.td, flexShrink:0, fontFamily:"monospace" }}>{l.ts}</span>
+                  <span style={{ color:l.ok?"#34D399":"#F87171", wordBreak:"break-word" }}>{l.msg}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+    );
+  };
 
   const OperacoesTab = () => {
     const search   = opsSearch;   const setSearch   = setOpsSearch;
