@@ -12453,7 +12453,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ["E-mail",           detalhe.email||"—"],
                 ["Telefone",         detalhe.phone?(detalhe.phoneRegionCode||"")+detalhe.phone:"—"],
                 ["Contrato",         detalhe.contractNumber||"—"],
-                ["Status",           getStatusLabel(detalhe.status)],
+                ["Status",           STATUS_LABEL[detalhe.status]||detalhe.status||"—"],
                 ["Valor Liberado",   fmtBRL(detalhe.disbursedIssueAmount)],
                 ["Provider",         (detalhe.provider||"—").toUpperCase()],
                 ["Parceiro",         detalhe.partnerId||"—"],
@@ -12597,7 +12597,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <td style={{ color:C.td, padding:"9px 10px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
                         <td style={{ padding:"9px 10px" }}>
                           <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>
-                            {getStatusLabel(op.status)}
+                            {STATUS_LABEL[op.status]||op.status}
                           </span>
                         </td>
                         <td style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", fontSize:12.5 }}>{fmtBRL(op.disbursedIssueAmount)}</td>
@@ -13651,7 +13651,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
                         <td style={{ padding:"10px 12px" }}>
                           <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700 }}>
-                            {getStatusLabel(op.status)}
+                            {STATUS_LABEL[op.status]||op.status}
                           </span>
                         </td>
                         <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
