@@ -1009,11 +1009,33 @@ function LoginPage({ onLogin }) {
   const [err, setErr] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const [showResetLogin, setShowResetLogin] = useState(false);
   const [resetEmail, setResetEmail]         = useState("");
   const [resetMsg, setResetMsg]             = useState("");
   const [resetBusy, setResetBusy]           = useState(false);
+
+  // Previsão do tempo em tempo real
+  const [weather, setWeather]   = useState(null);
+  const [cityName, setCityName] = useState(null);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&forecast_days=5`);
+        const d = await r.json();
+        setWeather(d);
+        try {
+          const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
+          const gd  = await geo.json();
+          const city  = gd.address?.city || gd.address?.town || gd.address?.village || "";
+          const state = gd.address?.state_code || "";
+          setCityName(city && state ? `${city}, ${state}` : city || state || null);
+        } catch {}
+      } catch {}
+    }, () => {});
+  }, []);
 
   const doLoginReset = async () => {
     if (!resetEmail.trim()) { setResetMsg("Digite seu e-mail de acesso."); return; }
@@ -1022,17 +1044,15 @@ function LoginPage({ onLogin }) {
       const { sendPasswordResetEmail } = await import("firebase/auth");
       const { auth: fbAuth } = await import("./firebase");
       await sendPasswordResetEmail(fbAuth, resetEmail.trim());
-      setResetMsg("✅ E-mail de redefinição enviado! Verifique sua caixa de entrada.");
+      setResetMsg("✅ E-mail enviado! Verifique sua caixa de entrada.");
     } catch(e) {
       const code = e.code || "";
-      if (code === "auth/user-not-found") setResetMsg("❌ E-mail não encontrado. Verifique e tente novamente.");
+      if (code === "auth/user-not-found") setResetMsg("❌ E-mail não encontrado.");
       else if (code === "auth/invalid-email") setResetMsg("❌ E-mail inválido.");
       else setResetMsg("❌ Erro: " + e.message);
     }
     setResetBusy(false);
   };
-
-
 
   const go = async () => {
     if (!un.trim() || !pw.trim()) { setErr("Preencha e-mail e senha."); return; }
@@ -1047,264 +1067,384 @@ function LoginPage({ onLogin }) {
     setLoading(false);
   };
 
+  // Determinar cenário baseado no clima real
+  const wcode   = weather?.current_weather?.weathercode ?? -1;
+  const temp    = weather?.current_weather?.temperature ?? null;
+  const hour    = new Date().getHours();
+  const isNight = hour >= 20 || hour < 6;
+  const isRain  = wcode >= 51 && wcode <= 82;
+  const isSnow  = wcode >= 71 && wcode <= 77;
+  const isCloud = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
+  const isThunder = wcode >= 95;
+  const isClear = wcode === 0 || wcode === 1;
+
+  // Gradiente de fundo dinâmico
+  const getBg = () => {
+    if (isThunder) return "linear-gradient(180deg,#050a12 0%,#0a1020 50%,#0d1428 100%)";
+    if (isRain && isNight) return "linear-gradient(180deg,#060c18 0%,#0c1830 50%,#101e38 100%)";
+    if (isRain)  return "linear-gradient(180deg,#101828 0%,#1a2c42 50%,#233450 100%)";
+    if (isSnow && isNight) return "linear-gradient(180deg,#0d1520 0%,#1a2535 50%,#243040 100%)";
+    if (isSnow)  return "linear-gradient(180deg,#1a2535 0%,#2a3f55 50%,#3a5070 100%)";
+    if (isNight) return "linear-gradient(180deg,#020510 0%,#050d22 40%,#080f28 100%)";
+    if (isCloud) return "linear-gradient(180deg,#1c2f48 0%,#2a4060 50%,#364e70 100%)";
+    if (hour < 9) return "linear-gradient(180deg,#1a2c50 0%,#2a4a80 40%,#e07030 85%,#f0a050 100%)"; // manhã
+    if (hour > 17) return "linear-gradient(180deg,#2a1040 0%,#5a1a6a 35%,#c04020 70%,#f06030 100%)"; // tarde/pôr
+    return "linear-gradient(180deg,#0a1828 0%,#1040a0 40%,#2060d0 75%,#80b8f0 100%)"; // dia claro
+  };
+
+  // WMO icons
+  const WMO = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"};
+  const wxIcon = WMO[wcode] || (isNight ? "🌙" : "☀️");
+
   return (
-    <div style={{ width:"100vw", height:"100vh", background:"linear-gradient(180deg,#060c14 0%,#0d1520 40%,#111a28 100%)", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBg(), display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
 
       <style>{`
-        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes catFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
-        @keyframes catTail { 0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(18deg)} }
-        @keyframes lightning1 { 0%,92%,100%{opacity:0} 93%,95%{opacity:1} 94%,96%{opacity:0} 97%{opacity:0.7} 98%{opacity:0} }
-        @keyframes lightning2 { 0%,70%,100%{opacity:0} 71%,73%{opacity:0.9} 72%,74%{opacity:0} 78%{opacity:0.5} 79%{opacity:0} }
-        @keyframes skyFlash  { 0%,91%,100%{opacity:0} 92%,94%{opacity:0.08} 93%,95%{opacity:0} 97%{opacity:0.05} 98%{opacity:0} }
-        @keyframes rainFall  { 0%{transform:translateY(-20px)} 100%{transform:translateY(920px)} }
-        @keyframes thunderSound { 0%,100%{opacity:0.5} 50%{opacity:1} }
+        @keyframes fadeIn      { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes floatUp     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes twinkle     { 0%,100%{opacity:0.3} 50%{opacity:1} }
+        @keyframes cloudDrift  { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
+        @keyframes cloudDriftR { 0%{transform:translateX(0)} 100%{transform:translateX(-50px)} }
+        @keyframes rainFall    { from{transform:translateY(-30px)} to{transform:translateY(102vh)} }
+        @keyframes snowFall    { from{transform:translateY(-20px) rotate(0deg)} to{transform:translateY(102vh) rotate(360deg)} }
+        @keyframes lightning1  { 0%,91%,100%{opacity:0} 92%,94%{opacity:1} 93%,95%{opacity:0} 96%{opacity:0.6} 97%{opacity:0} }
+        @keyframes lightning2  { 0%,74%,100%{opacity:0} 75%,77%{opacity:0.9} 76%,78%{opacity:0} 82%{opacity:0.4} 83%{opacity:0} }
+        @keyframes skyFlash    { 0%,90%,100%{opacity:0} 91%,93%{opacity:0.07} 92%,94%{opacity:0} }
+        @keyframes sunRays     { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes sunPulse    { 0%,100%{r:58} 50%{r:62} }
+        @keyframes moonGlow    { 0%,100%{opacity:0.06} 50%{opacity:0.14} }
+        @keyframes splashRing  { from{r:1;opacity:0.5} to{r:8;opacity:0} }
       `}</style>
 
-      {/* ══ FUNDO SVG — CHUVA + RELÂMPAGOS ══ */}
-      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }} viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      {/* ══ FUNDO SVG DINÂMICO ══ */}
+      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0, pointerEvents:"none" }}
+        viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <filter id="lglow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <linearGradient id="rainGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#060c14"/>
-            <stop offset="100%" stopColor="#0a1220"/>
+          <radialGradient id="lgSunGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FFF7D4" stopOpacity="1"/>
+            <stop offset="50%" stopColor="#FDE68A" stopOpacity="0.6"/>
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/>
+          </radialGradient>
+          <radialGradient id="lgMoonGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#EEF2FF" stopOpacity="0.15"/>
+            <stop offset="100%" stopColor="#C7D2FE" stopOpacity="0"/>
+          </radialGradient>
+          <filter id="lgGlow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="lgGlow2"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="lgRoad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a2234"/>
+            <stop offset="100%" stopColor="#0f1520"/>
           </linearGradient>
-          <linearGradient id="roadGrad2" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1f2937"/>
-            <stop offset="100%" stopColor="#111827"/>
+          <linearGradient id="lgGrass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={isRain||isThunder?"#0a1a0f":"#112a14"}/>
+            <stop offset="100%" stopColor={isRain||isThunder?"#060d08":"#0a1a0c"}/>
           </linearGradient>
         </defs>
 
-        {/* Céu escuro tempestuoso */}
-        <rect width="1440" height="900" fill="url(#rainGrad)"/>
+        {/* Flash céu (trovão) */}
+        {(isThunder||isRain) && <>
+          <rect width="1440" height="900" fill="#6EA8FF" style={{ animation:"skyFlash 7s ease-in-out infinite" }}/>
+          <rect width="1440" height="900" fill="#A0C4FF" style={{ animation:"skyFlash 11s ease-in-out infinite 4s" }}/>
+        </>}
 
-        {/* Flash do céu durante relâmpago */}
-        <rect width="1440" height="900" fill="#6EA8FF" style={{ animation:"skyFlash 7s ease-in-out infinite" }}/>
-        <rect width="1440" height="900" fill="#A0C4FF" style={{ animation:"skyFlash 11s ease-in-out infinite 3s" }}/>
-
-        {/* Nuvens escuras de tempestade */}
-        {[
-          {cx:180,cy:80,rx:160,ry:60},{cx:350,cy:60,rx:120,ry:50},{cx:500,cy:90,rx:180,ry:65},
-          {cx:750,cy:55,rx:200,ry:70},{cx:980,cy:75,rx:170,ry:60},{cx:1150,cy:50,rx:150,ry:58},
-          {cx:1320,cy:85,rx:130,ry:52},{cx:100,cy:130,rx:100,ry:40},{cx:650,cy:120,rx:140,ry:48},
-          {cx:1050,cy:130,rx:120,ry:45},{cx:1380,cy:110,rx:90,ry:38},
-        ].map((cl,i)=>(
-          <ellipse key={i} cx={cl.cx} cy={cl.cy} rx={cl.rx} ry={cl.ry}
-            fill={i%3===0?"#1c2535":i%3===1?"#1a2030":"#151e2d"} opacity={0.85+(i%3)*0.05}/>
+        {/* ── ESTRELAS (noite) ── */}
+        {isNight && [
+          [80,40],[200,25],[380,55],[560,30],[740,45],[920,20],[1100,50],[1300,35],[1420,60],
+          [140,100],[320,80],[500,110],[680,90],[860,120],[1040,85],[1220,105],[1390,95],
+          [60,160],[240,140],[440,170],[620,155],[800,175],[980,145],[1160,165],[1360,150],
+          [170,220],[350,200],[530,230],[710,210],[890,235],[1070,205],[1250,225],[1430,215],
+          [100,280],[280,260],[460,290],[640,270],[820,295],[1000,265],[1180,285],[1380,275],
+        ].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r={i%7===0?2.2:i%3===0?1.4:0.9}
+            fill={i%5===0?"#FEF9C3":i%3===0?"#C7D2FE":"#fff"}
+            opacity={0.3+(i%4)*0.15}>
+            <animate attributeName="opacity"
+              values={`${0.2+(i%3)*0.2};${0.9};${0.2+(i%3)*0.2}`}
+              dur={`${1.8+(i%5)*0.6}s`} begin={`${i*0.13}s`} repeatCount="indefinite"/>
+          </circle>
         ))}
 
-        {/* Relâmpago 1 — esquerda */}
-        <g filter="url(#lglow)" style={{ animation:"lightning1 7s ease-in-out infinite" }}>
-          <polyline points="320,100 295,220 315,220 282,380 305,380 268,520" fill="none" stroke="#E8F4FF" strokeWidth="3" strokeLinejoin="round"/>
-          <polyline points="320,100 295,220 315,220 282,380 305,380 268,520" fill="none" stroke="#FFFFFF" strokeWidth="1.2" strokeLinejoin="round" opacity="0.9"/>
-        </g>
+        {/* ── LUA (noite, não chuva intensa) ── */}
+        {isNight && !isThunder && (
+          <g filter="url(#lgGlow)">
+            <circle cx="1080" cy="120" r="100" fill="url(#lgMoonGlow)">
+              <animate attributeName="opacity" values="0.06;0.14;0.06" dur="4s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="1080" cy="120" r="62" fill="#F5E878"/>
+            <circle cx="1080" cy="120" r="62" fill="#C8B030" opacity="0.2"/>
+            <circle cx="1108" cy="112" r="55" fill="#04081a" opacity="0.93"/>
+            <circle cx="1080" cy="120" r="62" fill="none" stroke="#FDE68A" strokeWidth="1.5" opacity="0.4"/>
+            <circle cx="1062" cy="108" r="7" fill="#B8960A" opacity="0.45"/>
+            <circle cx="1075" cy="135" r="5" fill="#B8960A" opacity="0.4"/>
+            <circle cx="1090" cy="108" r="3.5" fill="#A07808" opacity="0.35"/>
+            <circle cx="1064" cy="100" r="9" fill="#FFFDE7" opacity="0.2"/>
+          </g>
+        )}
 
-        {/* Relâmpago 2 — direita */}
-        <g filter="url(#lglow)" style={{ animation:"lightning2 11s ease-in-out infinite 2s" }}>
-          <polyline points="1100,80 1075,200 1095,200 1055,350 1080,350 1040,490" fill="none" stroke="#CCE8FF" strokeWidth="2.5" strokeLinejoin="round"/>
-          <polyline points="1100,80 1075,200 1095,200 1055,350 1080,350 1040,490" fill="none" stroke="#FFFFFF" strokeWidth="1" strokeLinejoin="round" opacity="0.85"/>
-        </g>
+        {/* ── SOL (dia claro ou parcialmente nublado) ── */}
+        {!isNight && !isRain && !isThunder && (
+          <g filter="url(#lgGlow)">
+            <circle cx="200" cy="110" r="110" fill="url(#lgSunGlow)" opacity="0.4">
+              <animate attributeName="opacity" values="0.3;0.55;0.3" dur="5s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="200" cy="110" r="85" fill="url(#lgSunGlow)" opacity="0.55"/>
+            <g style={{ transformOrigin:"200px 110px", animation:"sunRays 80s linear infinite" }}>
+              {Array.from({length:18}).map((_,ri)=>{
+                const a = ri*20 * Math.PI/180;
+                return <line key={ri}
+                  x1={200+Math.cos(a)*70} y1={110+Math.sin(a)*70}
+                  x2={200+Math.cos(a)*100} y2={110+Math.sin(a)*100}
+                  stroke="#FDE68A" strokeWidth="2.5" strokeLinecap="round" opacity="0.5"/>;
+              })}
+            </g>
+            <circle cx="200" cy="110" r="58" fill="#FDE68A"/>
+            <circle cx="200" cy="110" r="46" fill="#FFFDE7"/>
+            <circle cx="182" cy="92" r="13" fill="#fff" opacity="0.3"/>
+          </g>
+        )}
 
-        {/* Prédios escuros ao fundo */}
+        {/* ── NUVENS ── */}
+        {/* Nuvens escuras (chuva/trovão) */}
+        {(isRain||isThunder||isCloud) && [
+          {cx:160,cy:72,rx:155,ry:58,f:"#1c2535"},{cx:340,cy:52,rx:118,ry:48,f:"#1a2030"},
+          {cx:520,cy:82,rx:175,ry:62,f:"#151e2d"},{cx:720,cy:50,rx:195,ry:68,f:"#1c2535"},
+          {cx:950,cy:68,rx:165,ry:58,f:"#1a2030"},{cx:1130,cy:46,rx:148,ry:56,f:"#151e2d"},
+          {cx:1310,cy:80,rx:128,ry:50,f:"#1c2535"},{cx:80,cy:125,rx:98,ry:38,f:"#1a2030"},
+          {cx:620,cy:118,rx:138,ry:46,f:"#151e2d"},{cx:1050,cy:128,rx:118,ry:43,f:"#1c2535"},
+        ].map((cl,i)=>(
+          <ellipse key={i} cx={cl.cx} cy={cl.cy} rx={cl.rx} ry={cl.ry} fill={cl.f} opacity={0.85+(i%3)*0.04}>
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;${i%2===0?30:-22} 0;0 0`} dur={`${20+(i*4)}s`} repeatCount="indefinite"/>
+          </ellipse>
+        ))}
+        {/* Nuvens brancas/claras (dia) */}
+        {!isRain && !isThunder && !isNight && (
+          <>
+            <g opacity={isCloud?0.9:0.55}>
+              <ellipse cx="600" cy="130" rx="110" ry="44" fill="white" opacity="0.9">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="530" cy="148" rx="74" ry="34" fill="white" opacity="0.85">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="668" cy="152" rx="64" ry="30" fill="white" opacity="0.78">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+            <g opacity={isCloud?0.8:0.42}>
+              <ellipse cx="1100" cy="95" rx="95" ry="38" fill="white" opacity="0.82">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="1038" cy="112" rx="65" ry="30" fill="white" opacity="0.74">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+          </>
+        )}
+
+        {/* ── RELÂMPAGOS (trovão/chuva forte) ── */}
+        {(isThunder||isRain) && <>
+          <g filter="url(#lgGlow2)" style={{ animation:"lightning1 8s ease-in-out infinite" }}>
+            <polyline points="310,95 284,218 306,218 272,382 296,382 258,525" fill="none" stroke="#E8F4FF" strokeWidth="3.5" strokeLinejoin="round"/>
+            <polyline points="310,95 284,218 306,218 272,382 296,382 258,525" fill="none" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" opacity="0.9"/>
+          </g>
+          <g filter="url(#lgGlow2)" style={{ animation:"lightning2 11s ease-in-out infinite 3s" }}>
+            <polyline points="1095,75 1068,198 1090,198 1050,348 1076,348 1036,492" fill="none" stroke="#CCE8FF" strokeWidth="2.8" strokeLinejoin="round"/>
+            <polyline points="1095,75 1068,198 1090,198 1050,348 1076,348 1036,492" fill="none" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" opacity="0.82"/>
+          </g>
+        </>}
+
+        {/* ── FLOCOS DE NEVE ── */}
+        {isSnow && Array.from({length:60}).map((_,i)=>(
+          <circle key={i} cx={(i*24+12)%1440} cy="-10" r={i%4===0?3.5:i%3===0?2.5:1.8} fill="white" opacity={0.6+(i%3)*0.13}>
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;${(i%7-3)*18} 920`}
+              dur={`${3+(i%5)*0.8}s`} begin={`${(i*0.18)%3.5}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+
+        {/* ── CHUVA ── */}
+        {(isRain||isThunder) && Array.from({length:130}).map((_,i)=>(
+          <line key={i} x1={(i*11+5)%1440} y1="-12" x2={(i*11+10)%1440} y2="28"
+            stroke={i%4===0?"rgba(147,197,253,0.55)":"rgba(147,197,253,0.38)"} strokeWidth={i%5===0?1.7:1.1} strokeLinecap="round">
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;4 940`} dur={`${0.44+(i%7)*0.055}s`} begin={`${(i*0.036)%1.1}s`} repeatCount="indefinite"/>
+          </line>
+        ))}
+
+        {/* ── PRÉDIOS ── */}
         {[
-          {x:0,w:55,h:160},{x:65,w:40,h:120},{x:115,w:60,h:200},{x:185,w:35,h:140},
-          {x:230,w:55,h:175},{x:295,w:42,h:130},{x:348,w:65,h:220},{x:424,w:38,h:155},
-          {x:475,w:58,h:185},{x:544,w:44,h:145},{x:600,w:70,h:240},{x:682,w:36,h:160},
-          {x:730,w:55,h:195},{x:797,w:42,h:150},{x:851,w:62,h:210},{x:925,w:38,h:165},
-          {x:975,w:55,h:180},{x:1042,w:40,h:140},{x:1094,w:68,h:230},{x:1174,w:36,h:155},
-          {x:1222,w:52,h:185},{x:1286,w:44,h:145},{x:1342,w:60,h:200},{x:1414,w:38,h:160},
+          {x:0,  w:55,h:165},{x:65, w:42,h:122},{x:117,w:62,h:205},{x:189,w:36,h:145},
+          {x:235,w:58,h:178},{x:303,w:44,h:132},{x:357,w:68,h:225},{x:435,w:40,h:158},
+          {x:485,w:60,h:188},{x:555,w:46,h:148},{x:611,w:72,h:244},{x:693,w:38,h:162},
+          {x:741,w:56,h:198},{x:807,w:44,h:152},{x:861,w:64,h:214},{x:935,w:40,h:168},
+          {x:985,w:57,h:183},{x:1052,w:42,h:143},{x:1104,w:70,h:234},{x:1184,w:38,h:158},
+          {x:1232,w:54,h:188},{x:1296,w:46,h:148},{x:1352,w:62,h:204},{x:1424,w:40,h:162},
         ].map((b,i)=>(
           <g key={i}>
-            <rect x={b.x} y={700-b.h} width={b.w} height={b.h} fill={i%2===0?"#0c1420":"#0e1828"}/>
-            {/* Janelas apagadas/acesas */}
+            <rect x={b.x} y={710-b.h} width={b.w} height={b.h}
+              fill={isNight||isRain||isThunder?(i%2===0?"#0c1520":"#0e1828"):(i%2===0?"#1a2535":"#1e2d42")}/>
             {Array.from({length:Math.floor(b.h/28)}).map((_,row)=>
-              Array.from({length:Math.floor(b.w/18)}).map((_,col)=>{
-                const on = (i*7+row*3+col*5)%11 < 3;
-                return <rect key={`${row}-${col}`} x={b.x+4+col*18} y={700-b.h+8+row*28} width={10} height={7} rx={1}
-                  fill={on?"#FDE68A":"#0a1320"} opacity={on?0.7:0.5}/>;
+              Array.from({length:Math.max(1,Math.floor(b.w/18))}).map((_,col)=>{
+                const lit = isNight ? (i*7+row*3+col*5)%9 < 4 : false;
+                const dusk = !isNight && (hour > 17 || hour < 8) ? (i*5+row*2+col*4)%11 < 3 : false;
+                return <rect key={`${row}-${col}`} x={b.x+4+col*18} y={710-b.h+8+row*28} width={12} height={8} rx={1}
+                  fill={lit?"#FDE68A":dusk?"#FBBF24":"#0a1320"} opacity={lit?0.75:dusk?0.5:0.4}/>;
               })
             )}
+            <line x1={b.x+b.w/2} y1={710-b.h} x2={b.x+b.w/2} y2={710-b.h-14} stroke="#475569" strokeWidth="1.8"/>
+            {isNight && <circle cx={b.x+b.w/2} cy={710-b.h-16} r="2.2" fill="#EF4444" opacity="0.85">
+              <animate attributeName="opacity" values="0.85;0.12;0.85" dur={`${1.6+(i%4)*0.3}s`} repeatCount="indefinite"/>
+            </circle>}
           </g>
         ))}
 
-        {/* Estrada */}
-        <rect x="0" y="700" width="1440" height="40" fill="url(#roadGrad2)"/>
-        <rect x="0" y="718" width="1440" height="2" fill="#1f2937" opacity="0.8"/>
+        {/* ── ESTRADA ── */}
+        <rect x="0" y="710" width="1440" height="38" fill="url(#lgRoad)"/>
+        <rect x="0" y="727" width="1440" height="2" fill="#252f40" opacity="0.8"/>
         {Array.from({length:14}).map((_,i)=>(
-          <rect key={i} x={i*110} y="718" width="55" height="2" rx="1" fill="#374151" opacity="0.5">
-            <animateTransform attributeName="transform" type="translate" values="0 0;-110 0" dur="4s" begin={`${i*0.28}s`} repeatCount="indefinite"/>
+          <rect key={i} x={i*110} y="727" width="55" height="2" rx="1" fill="#2d3a50" opacity="0.6">
+            <animateTransform attributeName="transform" type="translate" values="0 0;-110 0" dur="5s" begin={`${i*0.35}s`} repeatCount="indefinite"/>
           </rect>
         ))}
+        {/* Reflexo molhado na estrada */}
+        {(isRain||isThunder) && <rect x="0" y="710" width="1440" height="38" fill="#4F8EF7" opacity="0.07"/>}
 
-        {/* Reflexo úmido na estrada */}
-        <rect x="0" y="700" width="1440" height="40" fill="#3B6EF5" opacity="0.06"/>
+        {/* ── GRAMA ── */}
+        <rect x="0" y="748" width="1440" height="152" fill="url(#lgGrass)"/>
 
-        {/* Grama molhada */}
-        <rect x="0" y="740" width="1440" height="160" fill="#061208"/>
-
-        {/* Poças de água brilhando */}
-        {[200,480,750,1020,1280].map((x,i)=>(
-          <ellipse key={i} cx={x} cy={755} rx={60+i*8} ry={6} fill="#3B6EF5" opacity="0.18"/>
+        {/* ── POSTES (noite) ── */}
+        {isNight && [120,360,600,840,1080,1320].map((x,i)=>(
+          <g key={i} transform={`translate(${x},710)`}>
+            <rect x="-3" y="-68" width="6" height="68" rx="2" fill="#2d3a50"/>
+            <rect x="-15" y="-71" width="30" height="5" rx="2" fill="#3a4a60"/>
+            <ellipse cx="0" cy="-74" rx="6.5" ry="4.5" fill="#FDE68A" opacity="0.9" filter="url(#lgGlow2)"/>
+            <path d="M -6,-71 L -26,-12 L 26,-12 L 6,-71 Z" fill="#FDE68A" opacity="0.07"/>
+          </g>
         ))}
 
-        {/* CHUVA — gotas animadas */}
-        {Array.from({length:120}).map((_,i)=>{
-          const x = (i*12+7)%1440;
-          const dur = 0.45+(i%7)*0.06;
-          const delay = (i*0.038)%1.2;
-          return (
-            <line key={i} x1={x} y1={-10} x2={x+4} y2={26}
-              stroke={i%5===0?"rgba(147,197,253,0.55)":"rgba(147,197,253,0.38)"} strokeWidth={i%4===0?1.6:1.1} strokeLinecap="round">
-              <animateTransform attributeName="transform" type="translate"
-                values={`0 0;3 930`} dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite"/>
-            </line>
-          );
-        })}
-
-        {/* Respingos no chão */}
-        {Array.from({length:30}).map((_,i)=>(
-          <circle key={i} cx={(i*48+20)%1440} cy={742} r={2+(i%3)} fill="none" stroke="rgba(147,197,253,0.3)" strokeWidth="0.8">
-            <animate attributeName="r" values={`${1+(i%3)};${4+(i%3)};0`} dur={`${0.6+(i%4)*0.1}s`} begin={`${(i*0.07)%0.9}s`} repeatCount="indefinite"/>
-            <animate attributeName="opacity" values="0.4;0;0" dur={`${0.6+(i%4)*0.1}s`} begin={`${(i*0.07)%0.9}s`} repeatCount="indefinite"/>
+        {/* Respingos de chuva no chão */}
+        {(isRain||isThunder) && Array.from({length:28}).map((_,i)=>(
+          <circle key={i} cx={(i*52+18)%1440} cy="750" fill="none" stroke="rgba(147,197,253,0.28)" strokeWidth="0.8">
+            <animate attributeName="r" values="1;7;0" dur={`${0.55+(i%4)*0.1}s`} begin={`${(i*0.09)%1.0}s`} repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.4;0;0" dur={`${0.55+(i%4)*0.1}s`} begin={`${(i*0.09)%1.0}s`} repeatCount="indefinite"/>
           </circle>
         ))}
+        {/* Neve no chão */}
+        {isSnow && <rect x="0" y="745" width="1440" height="8" fill="white" opacity="0.25" rx="2"/>}
       </svg>
 
-      {/* ══ CARTÃO DE LOGIN CENTRALIZADO ══ */}
-      <div style={{ position:"relative", zIndex:1, display:"flex", gap:32, alignItems:"center", animation:"fadeIn 0.6s ease" }}>
+      {/* ══ CONTEÚDO CENTRAL ══ */}
+      <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:18, animation:"fadeIn 0.7s ease", width:"100%", maxWidth:380, padding:"0 20px" }}>
 
-        {/* Gatinho SVG animado */}
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, flexShrink:0 }}>
-          <div style={{ animation:"catFloat 3s ease-in-out infinite" }}>
-            <svg width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
-              {/* Corpo */}
-              <ellipse cx="80" cy="110" rx="42" ry="36" fill="#b0b8c8"/>
-              {/* Barriga branca */}
-              <ellipse cx="80" cy="118" rx="22" ry="22" fill="#e8eaf0"/>
-              {/* Cabeça */}
-              <circle cx="80" cy="72" r="34" fill="#b0b8c8"/>
-              {/* Orelhas */}
-              <polygon points="52,46 44,20 66,38" fill="#b0b8c8"/>
-              <polygon points="108,46 116,20 94,38" fill="#b0b8c8"/>
-              {/* Interior orelhas */}
-              <polygon points="54,42 49,28 63,38" fill="#e8a0b0"/>
-              <polygon points="106,42 111,28 97,38" fill="#e8a0b0"/>
-              {/* Olhos — piscando suavemente */}
-              <ellipse cx="67" cy="70" rx="7" ry="8" fill="#2d3a4a"/>
-              <ellipse cx="93" cy="70" rx="7" ry="8" fill="#2d3a4a"/>
-              {/* Brilho dos olhos */}
-              <circle cx="70" cy="67" r="2.5" fill="white"/>
-              <circle cx="96" cy="67" r="2.5" fill="white"/>
-              {/* Pupila */}
-              <ellipse cx="67" cy="71" rx="3" ry="5" fill="#1a2535"/>
-              <ellipse cx="93" cy="71" rx="3" ry="5" fill="#1a2535"/>
-              {/* Nariz */}
-              <polygon points="80,80 76,85 84,85" fill="#e8a0b0"/>
-              {/* Boca */}
-              <path d="M76,85 Q80,90 84,85" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/>
-              <path d="M76,85 Q73,89 70,87" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/>
-              <path d="M84,85 Q87,89 90,87" fill="none" stroke="#6b7280" strokeWidth="1.5" strokeLinecap="round"/>
-              {/* Bigodes esquerda */}
-              <line x1="44" y1="82" x2="72" y2="84" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
-              <line x1="44" y1="88" x2="72" y2="87" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
-              <line x1="46" y1="94" x2="72" y2="90" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
-              {/* Bigodes direita */}
-              <line x1="88" y1="84" x2="116" y2="82" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
-              <line x1="88" y1="87" x2="116" y2="88" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
-              <line x1="88" y1="90" x2="114" y2="94" stroke="#9ca3af" strokeWidth="1.3" strokeLinecap="round"/>
-              {/* Patas da frente */}
-              <ellipse cx="60" cy="142" rx="14" ry="10" fill="#b0b8c8"/>
-              <ellipse cx="100" cy="142" rx="14" ry="10" fill="#b0b8c8"/>
-              {/* Patinhas brancas */}
-              <ellipse cx="60" cy="144" rx="10" ry="6" fill="#d8dce8"/>
-              <ellipse cx="100" cy="144" rx="10" ry="6" fill="#d8dce8"/>
-              {/* Rabo — animado */}
-              <path d="M122,128 Q148,110 145,88 Q142,70 130,72" fill="none" stroke="#b0b8c8" strokeWidth="9" strokeLinecap="round">
-                <animateTransform attributeName="transform" type="rotate" values="-10 122 128;18 122 128;-10 122 128" dur="2.5s" repeatCount="indefinite"/>
-              </path>
-              {/* Listras no corpo */}
-              <path d="M58,98 Q65,92 72,98" fill="none" stroke="#9aa0b0" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-              <path d="M88,98 Q95,92 102,98" fill="none" stroke="#9aa0b0" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-              {/* Listras na cabeça */}
-              <path d="M75,48 Q80,42 85,48" fill="none" stroke="#9aa0b0" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
-            </svg>
+        {/* Clima em tempo real (compacto, acima do card) */}
+        {weather?.current_weather && (
+          <div style={{ background:"rgba(8,12,22,0.55)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"10px 18px", display:"flex", alignItems:"center", gap:12, width:"100%", animation:"fadeIn 0.9s ease 0.2s both" }}>
+            <span style={{ fontSize:26 }}>{wxIcon}</span>
+            <div style={{ flex:1 }}>
+              {cityName && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
+              <div style={{ color:"#fff", fontSize:18, fontWeight:800, lineHeight:1 }}>{Math.round(temp)}°C</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:1 }}>
+                {isThunder?"Tempestade":isRain?"Chuva":isSnow?"Neve":isCloud?"Nublado":isClear?(isNight?"Céu limpo":"Ensolarado"):"—"}
+              </div>
+            </div>
+            {/* Mini previsão 3 dias */}
+            <div style={{ display:"flex", gap:8 }}>
+              {(weather.daily?.time||[]).slice(1,4).map((d,i)=>{
+                const wc2 = weather.daily.weathercode[i+1];
+                const tmax = Math.round(weather.daily.temperature_2m_max[i+1]);
+                const day = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d+"T12:00:00").getDay()];
+                return (
+                  <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9 }}>{day}</div>
+                    <div style={{ fontSize:13 }}>{WMO[wc2]||"🌡"}</div>
+                    <div style={{ color:"rgba(255,255,255,0.65)", fontSize:9.5, fontWeight:600 }}>{tmax}°</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ color:"rgba(180,190,210,0.5)", fontSize:11, fontStyle:"italic", textAlign:"center" }}>Nexp Consultas</div>
-        </div>
+        )}
 
-        {/* Card de login */}
-        <div style={{ background:"rgba(10,14,22,0.85)", backdropFilter:"blur(20px)", border:"1px solid rgba(79,142,247,0.2)", borderRadius:20, padding:"32px 28px", width:340, boxShadow:"0 20px 60px rgba(0,0,0,0.7)" }}>
+        {/* Card de login centralizado */}
+        <div style={{ background:"rgba(8,12,22,0.75)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:22, padding:"32px 28px", width:"100%", boxShadow:"0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)", animation:"fadeIn 0.7s ease" }}>
           {/* Logo */}
-          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:24 }}>
-            <NexpRobot size={32} showFaceOnly />
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:26 }}>
+            <NexpRobot size={34} showFaceOnly />
             <div>
-              <div style={{ fontWeight:900, fontSize:18, letterSpacing:"-0.6px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Nexp Consultas</div>
-              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10.5 }}>Sistema de Leads</div>
+              <div style={{ fontWeight:900, fontSize:19, letterSpacing:"-0.6px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Nexp Consultas</div>
+              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10.5 }}>Sistema de Leads</div>
             </div>
           </div>
 
-          {err && <div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:16, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
+          {err && <div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:9, padding:"9px 13px", marginBottom:16, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
 
           <div style={{ marginBottom:13 }}>
-            <label style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, display:"block", marginBottom:5 }}>E-mail</label>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, display:"block", marginBottom:5 }}>E-mail</label>
             <input value={un} onChange={e=>setUn(e.target.value)} placeholder="seu@email.com" onKeyDown={e=>e.key==="Enter"&&go()}
-              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF" }} />
+              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF" }} />
           </div>
           <div style={{ marginBottom:22 }}>
-            <label style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5, display:"block", marginBottom:5 }}>Senha</label>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, display:"block", marginBottom:5 }}>Senha</label>
             <div style={{ position:"relative" }}>
               <input value={pw} onChange={e=>setPw(e.target.value)} type={show?"text":"password"} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()}
-                style={{ ...S.input, paddingRight:40, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF" }} />
-              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:14 }}>
+                style={{ ...S.input, paddingRight:42, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF" }} />
+              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:14 }}>
                 {show?"🙈":"👁"}
               </button>
             </div>
           </div>
           <button onClick={go} disabled={loading}
-            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 20px rgba(59,110,245,0.4)" }}>
+            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 24px rgba(59,110,245,0.35)", borderRadius:12 }}>
             {loading ? "Entrando..." : "Entrar →"}
           </button>
 
-          {/* Redefinir senha */}
-          <div style={{ marginTop:10, borderTop:"1px solid rgba(79,142,247,0.15)", paddingTop:10 }}>
-            <button onClick={() => { setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
+          {/* Esqueci minha senha */}
+          <div style={{ marginTop:12, borderTop:"1px solid rgba(255,255,255,0.07)", paddingTop:12 }}>
+            <button onClick={()=>{ setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
               style={{ width:"100%", display:"flex", alignItems:"center", gap:8, background:"transparent", border:"none", cursor:"pointer", padding:"4px 0" }}>
-              <span style={{ fontSize:14 }}>🔑</span>
-              <span style={{ color:"rgba(255,255,255,0.45)", fontSize:11.5 }}>Esqueci minha senha</span>
-              <span style={{ color:"rgba(79,142,247,0.4)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
+              <span style={{ fontSize:13 }}>🔑</span>
+              <span style={{ color:"rgba(255,255,255,0.38)", fontSize:11.5 }}>Esqueci minha senha</span>
+              <span style={{ color:"rgba(255,255,255,0.2)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
             </button>
             {showResetLogin && (
               <div style={{ marginTop:8 }}>
                 <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
-                  onKeyDown={e=>e.key==="Enter"&&doLoginReset()}
-                  placeholder="seu@email.com"
-                  style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(79,142,247,0.25)", color:"#E8EAEF", marginBottom:7 }} />
+                  onKeyDown={e=>e.key==="Enter"&&doLoginReset()} placeholder="seu@email.com"
+                  style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF", marginBottom:7 }} />
                 <button onClick={doLoginReset} disabled={resetBusy}
                   style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"8px", fontSize:12.5, opacity:resetBusy?0.7:1 }}>
                   {resetBusy ? "Enviando..." : "📧 Enviar link de redefinição"}
                 </button>
-                {resetMsg && (
-                  <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:6, textAlign:"center" }}>
-                    {resetMsg}
-                  </div>
-                )}
+                {resetMsg && <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:6, textAlign:"center" }}>{resetMsg}</div>}
               </div>
             )}
           </div>
-
-          {/* Solicitar usuário */}
-          <a href={`https://wa.me/5584981323542?text=${encodeURIComponent("Olá, gostaria de saber como ter acesso ao Nexp Consultas. Preciso de um usuário.")}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, textDecoration:"none", opacity:0.6 }}>
-            <span style={{ fontSize:13 }}>👤</span>
-            <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>Solicitar acesso via WhatsApp</span>
-            <span style={{ color:"rgba(37,211,102,0.5)", fontSize:11, marginLeft:"auto" }}>→</span>
-          </a>
         </div>
       </div>
+
+      {/* ══ BOTÃO DE SUPORTE — direita, circular e discreto ══ */}
+      <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+        title="Suporte WhatsApp"
+        style={{
+          position:"fixed", right:22, bottom:22, zIndex:10,
+          width:48, height:48, borderRadius:"50%",
+          background:"rgba(10,35,20,0.55)", backdropFilter:"blur(12px)",
+          border:"1px solid rgba(37,211,102,0.28)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.4)",
+          textDecoration:"none", transition:"transform 0.2s, box-shadow 0.2s",
+        }}
+        onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.1)"; e.currentTarget.style.boxShadow="0 6px 28px rgba(37,211,102,0.25)"; }}
+        onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)";   e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,0.4)"; }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366">
+          <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
+        </svg>
+      </a>
     </div>
   );
 }
+
 
 
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
