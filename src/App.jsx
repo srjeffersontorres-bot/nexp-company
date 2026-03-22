@@ -11504,7 +11504,33 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [acompDateFrom,    setAcompDateFrom]    = useState("");
   const [acompDateTo,      setAcompDateTo]      = useState("");
   const [acompSimModal,    setAcompSimModal]    = useState(null);
-  // status reais retornados pela API removido — não utilizado
+
+  // ── Fila de Formalização (contratos digitados aguardando processamento) ──
+  const [filaFormalizacao, setFilaFormalizacao] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_fila_formalizacao")||"[]"); } catch { return []; }
+  });
+  const salvarFilaLocal = (fila) => {
+    setFilaFormalizacao(fila);
+    localStorage.setItem("nexp_fila_formalizacao", JSON.stringify(fila));
+  };
+  const adicionarNaFila = (res, dadosDigitacao) => {
+    const novo = {
+      id:               res?.id || String(Date.now()),
+      v8ProposalId:     res?.id || "",
+      contractNumber:   res?.contractNumber || "",
+      formalizationLink:res?.formalizationLink || "",
+      clientName:       dadosDigitacao?.nome || dadosDigitacao?.name || "",
+      cpf:              (dadosDigitacao?.cpf||dadosDigitacao?.documentNumber||"").replace(/\D/g,""),
+      valor:            parseFloat(dadosDigitacao?.valorLiberado || dadosDigitacao?.availableBalance || 0),
+      provider:         dadosDigitacao?.provider || "",
+      status:           "formalization",
+      criadoEm:         Date.now(),
+      criadoEmStr:      new Date().toLocaleDateString("pt-BR"),
+    };
+    const atualizada = [novo, ...filaFormalizacao.filter(f => f.id !== novo.id)];
+    salvarFilaLocal(atualizada);
+    return novo;
+  };
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -12166,7 +12192,17 @@ function V8DigitalTab({ currentUser, contacts }) {
             form={modalForm} setForm={setModalForm}
             setAcompData={setAcompData}
             onClose={()=>{ setIndDigModal(null); }}
-            onSuccess={()=>{ setIndDigModal(null); setAcompData(null); setAba("acompanhamento"); }}
+            onSuccess={(res)=>{ 
+              setIndDigModal(null); 
+              setAcompData(null); 
+              if (res) adicionarNaFila(res, { 
+                nome: indDigModal?.clientePreFill?.name || indDigModal?.clientePreFill?.nome || "",
+                cpf: indDigModal?.cpf || "",
+                valorLiberado: indDigModal?.tabela?.sim?.availableBalance || 0,
+                provider: indDigModal?.provider || "",
+              });
+              setAba("acompanhamento"); 
+            }}
           />
         )}
 
@@ -13275,7 +13311,17 @@ function V8DigitalTab({ currentUser, contacts }) {
             form={modalForm} setForm={setModalForm}
             setAcompData={setAcompData}
             onClose={()=>{ setLoteDigModal(null); }}
-            onSuccess={()=>{ setLoteDigModal(null); setAcompData(null); setAba("acompanhamento"); }}
+            onSuccess={(res)=>{ 
+              setLoteDigModal(null); 
+              setAcompData(null); 
+              if (res) adicionarNaFila(res, {
+                nome: loteDigModal?.clientePreFill?.name || loteDigModal?.clientePreFill?.nome || "",
+                cpf: loteDigModal?.cpf || "",
+                valorLiberado: loteDigModal?.tabela?.sim?.availableBalance || 0,
+                provider: loteDigModal?.provider || "",
+              });
+              setAba("acompanhamento"); 
+            }}
           />
         )}
       </div>
@@ -13299,10 +13345,71 @@ function V8DigitalTab({ currentUser, contacts }) {
     const err      = acompErr;      const setErr      = setAcompErr;
     const detalhe  = acompDetalhe;  const setDetalhe  = setAcompDetalhe;
     const copied   = acompCopied;   const setCopied   = setAcompCopied;
-
     const dateFrom = acompDateFrom; const setDateFrom = setAcompDateFrom;
     const dateTo   = acompDateTo;   const setDateTo   = setAcompDateTo;
-    
+
+    // ── Fila de formalização com acesso ao estado pai ──
+    const fila = filaFormalizacao;
+
+    // Cruza fila com dados da API — atualiza automaticamente
+    const cruzarFilaComAPI = (apiRows) => {
+      if (!apiRows || apiRows.length === 0) return;
+      const filaAtual = filaFormalizacao;
+      let houveMudanca = false;
+      const filaAtualizada = filaAtual.map(item => {
+        if (item.status !== "formalization") return item; // já resolvido
+        const cpfItem = (item.cpf||"").replace(/\D/g,"");
+        const valorItem = parseFloat(item.valor||0);
+        // Busca match por CPF na API
+        const match = apiRows.find(r => {
+          const cpfApi = (r.documentNumber||r.individualDocumentNumber||"").replace(/\D/g,"");
+          const valorApi = parseFloat(r.disbursedIssueAmount||0);
+          const cpfBate = cpfItem && cpfApi && cpfItem === cpfApi;
+          // Match por CPF + (valor aproximado OU mesmo ID de proposta)
+          const valorBate = Math.abs(valorItem - valorApi) < 5; // tolerância de R$5
+          const idBate = item.v8ProposalId && r.id === item.v8ProposalId;
+          return cpfBate && (valorBate || idBate);
+        });
+        if (!match) return item;
+        if (match.status === "paid" && item.status !== "paid") {
+          houveMudanca = true;
+          return { ...item, status:"paid", contractNumber: match.contractNumber||item.contractNumber, resolvidoEm: Date.now() };
+        }
+        if ((match.status === "canceled" || match.status === "cancelled") && item.status !== "canceled") {
+          houveMudanca = true;
+          return { ...item, status:"canceled", resolvidoEm: Date.now() };
+        }
+        return item;
+      });
+      if (houveMudanca) salvarFilaLocal(filaAtualizada);
+    };
+
+    // Cancelar proposta da fila
+    const [cancelandoId, setCancelandoId] = useState(null);
+    const [showCancelModal, setShowCancelModal] = useState(null);
+    const [cancelReason, setCancelReason] = useState("invalid_data:other");
+    const [cancelDesc, setCancelDesc] = useState("");
+
+    const cancelarDaFila = async (item) => {
+      setCancelandoId(item.id);
+      try {
+        await apiFetch(`/fgts/proposal/${item.v8ProposalId}/cancel`, "PATCH", {
+          reason: cancelReason,
+          description: cancelDesc || "Cancelamento solicitado pelo operador.",
+        });
+        const atualizada = fila.map(f => f.id === item.id ? { ...f, status:"canceled", resolvidoEm: Date.now() } : f);
+        salvarFilaLocal(atualizada);
+        setShowCancelModal(null);
+      } catch(e) {
+        alert("Erro ao cancelar: " + e.message);
+      }
+      setCancelandoId(null);
+    };
+
+    const removerDaFila = (id) => {
+      const atualizada = fila.filter(f => f.id !== id);
+      salvarFilaLocal(atualizada);
+    };
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"Pago", canceled:"Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
@@ -13419,6 +13526,8 @@ function V8DigitalTab({ currentUser, contacts }) {
           _all:  filtered,
           pages: { current:pg, hasNext:pg<totalPages, hasPrev:pg>1, total:filtered.length, totalPages },
         });
+        // Cruza fila de formalização com dados da API
+        cruzarFilaComAPI(allRows);
       } catch(e) {
         setErr(e.message);
       }
@@ -13743,8 +13852,131 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-        {/* Tabela de propostas */}
-        {!data && !loading && (
+        {/* ── Fila de Formalização (contratos locais aguardando processamento) ── */}
+        {fila.length > 0 && (
+          <div style={{ background:C.card, border:`1px solid #C084FC44`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+            <div style={{ background:"rgba(192,132,252,0.08)", borderBottom:`1px solid #C084FC33`, padding:"12px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <span style={{ color:"#C084FC", fontSize:13, fontWeight:700 }}>⏳ Fila de Formalização</span>
+                <span style={{ color:C.td, fontSize:11, marginLeft:8 }}>Contratos digitados aguardando processamento do banco</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ background:"#C084FC22", color:"#C084FC", borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700 }}>
+                  {fila.filter(f=>f.status==="formalization").length} aguardando
+                </span>
+                <button onClick={()=>buscar(1)} disabled={loading} title="Atualizar e cruzar com API"
+                  style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:7, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                  🔄 Cruzar com API
+                </button>
+              </div>
+            </div>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:C.deep }}>
+                    {["Cliente","CPF","Nº Contrato","Status","Valor","Provider","Link Formalização","Ações"].map(h=>(
+                      <th key={h} style={{ color:C.tm, fontWeight:700, padding:"8px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...fila].sort((a,b)=>b.criadoEm-a.criadoEm).map((item, i) => {
+                    const stCol = item.status==="paid" ? "#34D399" : item.status==="canceled" ? "#F87171" : "#C084FC";
+                    const stLabel = item.status==="paid" ? "✅ Pago" : item.status==="canceled" ? "❌ Cancelado" : "⏳ Formalização";
+                    const isSelected = detalhe?.id === item.id && detalhe?._filaItem;
+                    return (
+                      <tr key={item.id}
+                        onClick={()=>setDetalhe(isSelected ? null : {...item, _filaItem:true})}
+                        style={{ background:isSelected?`${C.acc}15`:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+                        onMouseEnter={e=>!isSelected&&(e.currentTarget.style.background=`${C.acc}08`)}
+                        onMouseLeave={e=>(e.currentTarget.style.background=isSelected?`${C.acc}15`:i%2===0?C.card:C.deep)}>
+                        <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.clientName||"—"}</td>
+                        <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>
+                          {(item.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"}
+                        </td>
+                        <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{item.contractNumber||"—"}</td>
+                        <td style={{ padding:"10px 12px" }}>
+                          <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700 }}>
+                            {stLabel}
+                          </span>
+                        </td>
+                        <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(item.valor||0)}</td>
+                        <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{item.provider||"—"}</td>
+                        <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                          {item.formalizationLink ? (
+                            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                              <span style={{ color:"#34D399", fontSize:10, fontWeight:600 }}>✓ Link</span>
+                              <button onClick={()=>{navigator.clipboard.writeText(item.formalizationLink); setCopied(item.id); setTimeout(()=>setCopied(null),2000);}}
+                                style={{ background:C.abg, color:copied===item.id?"#34D399":C.atxt, border:`1px solid ${copied===item.id?"#34D39933":C.atxt+"33"}`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                                {copied===item.id?"✅ Copiado":"📋 Copiar"}
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ color:C.td, fontSize:11 }}>— Sem link</span>
+                          )}
+                        </td>
+                        <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                          <div style={{ display:"flex", gap:5 }}>
+                            {item.status === "formalization" && (
+                              <button onClick={()=>setShowCancelModal(item)}
+                                style={{ background:"rgba(239,68,68,0.1)", color:"#F87171", border:"1px solid #EF444433", borderRadius:7, padding:"4px 10px", fontSize:10.5, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                ✕ Cancelar
+                              </button>
+                            )}
+                            {(item.status === "paid" || item.status === "canceled") && (
+                              <button onClick={()=>removerDaFila(item.id)} title="Remover da fila"
+                                style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
+                                🗑
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de cancelamento da fila */}
+        {showCancelModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+            <div style={{ background:C.card, border:`1px solid #EF444433`, borderRadius:16, padding:"24px", width:"100%", maxWidth:440 }}>
+              <div style={{ color:"#F87171", fontSize:15, fontWeight:700, marginBottom:8 }}>❌ Cancelar Proposta</div>
+              <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>
+                Cliente: <strong style={{ color:C.tp }}>{showCancelModal.clientName||"—"}</strong><br/>
+                CPF: <span style={{ fontFamily:"monospace" }}>{(showCancelModal.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}</span>
+              </div>
+              <div style={{ marginBottom:12 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Motivo *</label>
+                <select value={cancelReason} onChange={e=>setCancelReason(e.target.value)} style={{ ...S.input }}>
+                  <option value="invalid_data:other">Outros</option>
+                  <option value="invalid_data:invalid_address">Endereço incorreto</option>
+                  <option value="invalid_data:incomplete_name">Nome incompleto</option>
+                  <option value="invalid_data:invalid_name">Nome incorreto</option>
+                </select>
+              </div>
+              <div style={{ marginBottom:16 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Descrição (opcional)</label>
+                <input value={cancelDesc} onChange={e=>setCancelDesc(e.target.value)}
+                  placeholder="Descreva o motivo do cancelamento..."
+                  style={{ ...S.input }} />
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>cancelarDaFila(showCancelModal)} disabled={!!cancelandoId}
+                  style={{ flex:1, background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"11px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:cancelandoId?0.6:1 }}>
+                  {cancelandoId?"⏳ Cancelando...":"✕ Confirmar Cancelamento"}
+                </button>
+                <button onClick={()=>{setShowCancelModal(null);setCancelDesc("");}}
+                  style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"11px 16px", fontSize:13, cursor:"pointer" }}>
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"48px", textAlign:"center" }}>
             <div style={{ fontSize:44, marginBottom:14 }}>📡</div>
             <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Acompanhe suas propostas V8</div>
