@@ -12091,40 +12091,12 @@ function V8DigitalTab({ currentUser, contacts }) {
 
 // ── APIs Bancos ────────────────────────────────────────────────
 function ApisBancosPage({ currentUser, contacts }) {
-  const [aba, setAba] = useState("geral");
-  const isMestre = currentUser.role === "mestre";
-  const [apis, setApis] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("nexp_bank_apis") || "[]"); } catch { return []; }
-  });
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ banco:"", apiKey:"", endpoint:"", descricao:"" });
-  const [selectedApi, setSelectedApi] = useState(null);
-
-  const saveApis = (list) => { setApis(list); localStorage.setItem("nexp_bank_apis", JSON.stringify(list)); };
-  const addApi = () => {
-    if (!form.banco.trim() || !form.apiKey.trim()) return;
-    saveApis([...apis, { ...form, id: Date.now() }]);
-    setForm({ banco:"", apiKey:"", endpoint:"", descricao:"" });
-    setShowAdd(false);
-  };
-  const removeApi = (id) => { if (selectedApi === id) setSelectedApi(null); saveApis(apis.filter(a => a.id !== id)); };
-
   return (
     <div style={{ padding:"24px 30px", maxWidth:900 }}>
       <h1 style={{ color:C.tp, fontSize:20, fontWeight:700, margin:"0 0 4px" }}>🏦 Bancos</h1>
       <p style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Integração V8 Digital e APIs bancárias.</p>
 
-      {/* Tabs */}
-      <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:24 }}>
-        {[{v:"v8",l:"⚡ V8 Digital"}].map(t=>(
-          <button key={t.v} onClick={()=>setAba(t.v)}
-            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, fontWeight:aba===t.v?700:400, color:aba===t.v?C.atxt:C.tm, borderBottom:aba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
-            {t.l}
-          </button>
-        ))}
-      </div>
-
-      {/* ABA V8 DIGITAL */}
+      {/* V8 Digital direto */}
       {<V8DigitalTab currentUser={currentUser} contacts={contacts} />}
     </div>
   );
