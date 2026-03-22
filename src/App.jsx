@@ -10758,6 +10758,36 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
 }) {
   // ✅ Form state local — evita re-render do pai ao digitar (bug 1 caractere)
   const [form, setForm] = useState(() => initialForm || {});
+
+  // ✅ Sincroniza form quando initialForm muda (cruzamento de dados carregado depois)
+  useEffect(() => {
+    if (initialForm && Object.keys(initialForm).length > 0) {
+      setForm(initialForm);
+    }
+  }, [initialForm]); // eslint-disable-line
+
+  // ✅ Quando initialForm mudar (novo cliente), atualiza o form interno
+  // Preserva campos de pagamento se o usuário já preencheu
+  useEffect(() => {
+    if (initialForm && Object.keys(initialForm).length > 0) {
+      setForm(prev => {
+        const paymentFilled = prev.pix || prev.bankId || prev.bankAccountNumber;
+        if (paymentFilled) {
+          // Mantém os dados de pagamento já preenchidos
+          return {
+            ...initialForm,
+            pix:              prev.pix              || initialForm.pix              || "",
+            bankId:           prev.bankId           || initialForm.bankId           || "",
+            bankAccountNumber:prev.bankAccountNumber|| initialForm.bankAccountNumber|| "",
+            bankAccountBranch:prev.bankAccountBranch|| initialForm.bankAccountBranch|| "",
+            bankAccountDigit: prev.bankAccountDigit || initialForm.bankAccountDigit || "",
+            bankAccountType:  prev.bankAccountType  || initialForm.bankAccountType  || "checking_account",
+          };
+        }
+        return initialForm;
+      });
+    }
+  }, [initialForm]); // eslint-disable-line
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
   const simId = tabela?.sim?.id || "";
   const balId = balance?.id || "";
@@ -10797,13 +10827,28 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   const digitar = async () => {
     setLoading(true); setErr("");
 
-    // Valida telefone antes de enviar
-    const phoneDigits = (form.phone||"").replace(/\D/g,"");
-    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
-      setErr(`❌ Telefone inválido: "${form.phone}". Digite DDD + número, ex: 84999999999 (11 dígitos) ou 8499999999 (10 dígitos).`);
-      setLoading(false);
-      return;
-    }
+      // ── Normaliza telefone ──
+      // API V8: phoneRegionCode = DDD (ex: "84"), phone = número sem DDD (ex: "999999999")
+      const phoneRaw = (form.phone||"").replace(/\D/g,"");
+      let phoneDDD = "";
+      let phoneNum = "";
+      if (phoneRaw.length === 11) {
+        // Ex: 84999999999 → DDD=84, num=999999999
+        phoneDDD = phoneRaw.slice(0,2);
+        phoneNum = phoneRaw.slice(2);
+      } else if (phoneRaw.length === 10) {
+        // Ex: 8499999999 → DDD=84, num=99999999
+        phoneDDD = phoneRaw.slice(0,2);
+        phoneNum = phoneRaw.slice(2);
+      } else if (phoneRaw.length === 9 || phoneRaw.length === 8) {
+        // Só o número sem DDD — usa DDD do campo phoneRegionCode se disponível
+        phoneDDD = (form.phoneRegionCode||"").replace(/\D/g,"").slice(0,2) || "11";
+        phoneNum = phoneRaw;
+      } else {
+        setErr(`❌ Telefone inválido: "${form.phone}". Digite DDD + número completo. Ex: 84999999999`);
+        setLoading(false);
+        return;
+      }
 
     try {
       // Normaliza chave PIX — remove formatação de CPF, formata telefone
@@ -10848,9 +10893,9 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
         birthDate:                    form.birthDate,
         maritalStatus:                form.maritalStatus,
         personType:                   "natural",
-        phone:                        form.phone.replace(/\D/g,""),
+        phone:                        phoneNum,
         phoneCountryCode:             "55",
-        phoneRegionCode:              form.phone.replace(/\D/g,"").slice(0,2),
+        phoneRegionCode:              phoneDDD,
         postalCode:                   form.postalCode,
         state:                        form.state,
         neighborhood:                 form.neighborhood,
@@ -10905,7 +10950,11 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
       } catch(saveErr) {
         console.warn("Aviso: proposta criada na V8 mas não salva no Firestore:", saveErr.message);
       }
-    } catch(e) { setErr("❌ " + e.message); }
+    } catch(e) { 
+      // Mostra erro detalhado sem apagar campos
+      const detail = `❌ ${e.message}\n\n📋 Telefone enviado: DDD=${phoneDDD} | Número=${phoneNum}`;
+      setErr(detail);
+    }
     setLoading(false);
   };
 
@@ -10990,7 +11039,27 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                     style={inputStyle}/>
                 </div>
                 {fieldGroup("E-mail *","email","email","email@exemplo.com")}
-                {fieldGroup("Telefone (DDD+número, só números) *","phone","text","84999999999")}
+                <div>
+                  <label style={labelStyle}>Telefone (DDD + número) * — máx 11 dígitos</label>
+                  <input
+                    value={form.phone||""}
+                    onChange={e=>{
+                      const v = e.target.value.replace(/\D/g,"").slice(0,11);
+                      setF("phone", v);
+                    }}
+                    placeholder="84999999999"
+                    maxLength={11}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    style={{ ...inputStyle, fontFamily:"monospace", letterSpacing:1 }}
+                  />
+                  {form.phone && form.phone.replace(/\D/g,"").length > 0 && (
+                    <div style={{ marginTop:4, fontSize:10.5, color: form.phone.replace(/\D/g,"").length>=10?"#34D399":"#FBBF24" }}>
+                      {form.phone.replace(/\D/g,"").length}/11 dígitos
+                      {form.phone.replace(/\D/g,"").length>=10 ? " ✓" : " — digite pelo menos 10 dígitos"}
+                    </div>
+                  )}
+                </div>
                 <div>
                   <label style={labelStyle}>Nacionalidade *</label>
                   <select value={form.nationality} onChange={e=>setF("nationality",e.target.value)} style={inputStyle}>
@@ -12129,25 +12198,42 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ))}
               </div>
             </div>
-            <button onClick={async ()=>{
-              // Cruzamento de dados igual ao lote — busca contrato anterior do V8
+            <button onClick={async (e)=>{
+              const btn = e.currentTarget;
+              btn.disabled = true;
+              btn.textContent = "⏳ Carregando dados...";
+
+              // Busca dados do cliente na V8 (contrato anterior)
               let clienteV8 = null;
               try {
-                const ops = await apiFetch(`/fgts/proposal?search=${(indCpfSim||"").replace(/\D/g,"")}&page=1&limit=1`);
-                const primeiro = (ops?.data||ops||[])[0];
+                const cpfBusca = (indCpfSim||"").replace(/\D/g,"");
+                const ops = await apiFetch(`/fgts/proposal?search=${cpfBusca}&page=1&limit=5`);
+                const rows = ops?.data || ops || [];
+                // Pega o contrato pago mais recente, ou o mais recente de qualquer status
+                const paid = rows.find(r=>r.status==="paid");
+                const primeiro = paid || rows[0];
                 if (primeiro?.id) {
-                  const det = await apiFetch(`/fgts/proposal/${primeiro.id}`);
-                  clienteV8 = det;
+                  clienteV8 = await apiFetch(`/fgts/proposal/${primeiro.id}`);
                 }
               } catch {}
+
               // Cruza com contatos Nexp
-              const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === (indCpfSim||"").replace(/\D/g,"")) || {};
+              const cpfLimpo = (indCpfSim||"").replace(/\D/g,"");
+              const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === cpfLimpo) || {};
+
+              // Monta telefone corretamente — V8 guarda DDD em phoneRegionCode e número em phone
+              const v8Phone = clienteV8?.phone
+                ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"")
+                : "";
+              const nexpPhone = (nexp.phone||"").replace(/\D/g,"");
+              const phoneFinal = v8Phone || nexpPhone;
+
               const preData = {
                 clienteV8,
                 nome:         clienteV8?.name || clienteV8?.clientName || nexp.name || "",
                 email:        clienteV8?.email || nexp.email || "",
-                phone:        clienteV8?.phone ? (clienteV8.phoneRegionCode||"")+(clienteV8.phone||"") : (nexp.phone||"").replace(/\D/g,""),
-                phoneDdd:     clienteV8?.phoneRegionCode || (nexp.phone||"").replace(/\D/g,"").slice(0,2),
+                phone:        phoneFinal,
+                phoneDdd:     phoneFinal.slice(0,2),
                 rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
                 nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
                 nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
@@ -12162,9 +12248,14 @@ function V8DigitalTab({ currentUser, contacts }) {
                 nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
                 isPEP:        clienteV8?.isPEP || false,
               };
+
               const d = { tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData };
+              // openDigModal primeiro define o modalForm, depois o useEffect no modal sincroniza
               openDigModal(d);
               setIndDigModal(d);
+              btn.disabled = false;
+              btn.textContent = "📝 Digitar esta proposta";
+            }}
             }}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
               📝 Digitar esta proposta
@@ -12900,6 +12991,12 @@ function V8DigitalTab({ currentUser, contacts }) {
         const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === c) || {};
         if (!nomeCliente && nexp.name) nomeCliente = nexp.name;
 
+        // Monta telefone — V8 guarda DDD em phoneRegionCode e número em phone
+        const v8PhoneLote = clienteV8?.phone
+          ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"")
+          : "";
+        const phoneFinalLote = v8PhoneLote || (nexp.phone||"").replace(/\D/g,"");
+
         return {
           ...item, cpf:fmtCPF(c), cpfRaw:c,
           nome: nomeCliente || fmtCPF(c),
@@ -12911,8 +13008,8 @@ function V8DigitalTab({ currentUser, contacts }) {
           nomeCliente,
           // Dados para auto-fill no modal de digitação
           email:        clienteV8?.email || nexp.email || "",
-          phone:        clienteV8?.phone ? (clienteV8.phoneRegionCode||"")+clienteV8.phone : (nexp.phone||"").replace(/\D/g,""),
-          phoneDdd:     clienteV8?.phoneRegionCode || (nexp.phone||"").replace(/\D/g,"").slice(0,2),
+          phone:        phoneFinalLote,
+          phoneDdd:     phoneFinalLote.slice(0,2),
           rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
           nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
           nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
