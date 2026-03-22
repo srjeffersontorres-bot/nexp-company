@@ -11335,14 +11335,18 @@ function V8DigitalTab({ currentUser, contacts }) {
       try {
         const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ action:"bff", payload:{ path, method, token, body } }) });
-        const data = await res.json();
+
+        // Trata resposta — pode ser JSON ou HTML de erro do Vercel
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch { throw new Error(`Servidor indisponível (${res.status}). Tente novamente.`); }
+
         if (!res.ok) {
-          // Extrai mensagem de erro de vários formatos que a V8 pode retornar
           const msg = data.message
             || data.error_description
             || data.error
             || (Array.isArray(data.errors) ? data.errors.map(e=>e.message||e).join("; ") : null)
-            || data.errors?.message
             || data.detail
             || data.details
             || (typeof data === "string" ? data : null)

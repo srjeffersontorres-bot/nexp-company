@@ -12,26 +12,21 @@ function paymentVariants(payment) {
 
   if (isPix) {
     const key = d.pix || d.pixKey;
+    // Ordem: mais provável primeiro
     return [
-      { type: "PIX",      data: { pix:    key } },
-      { type: "pix",      data: { pix:    key } },
+      { type: "pix",      data: { pix: key } },       // snake_case
+      { type: "PIX",      data: { pix: key } },       // UPPER
+      { type: "pix",      data: { pixKey: key } },    // camelCase key
       { type: "PIX",      data: { pixKey: key } },
-      { type: "pix",      data: { pixKey: key } },
-      {                         pix:    key,  type: "PIX" },
-      {                         pixKey: key,  type: "pix" },
     ];
   } else {
     const { bankId, bankAccountNumber, bankAccountBranch, bankAccountDigit, bankAccountType } = d;
     const base = { bankId, bankAccountNumber, bankAccountBranch, bankAccountDigit, bankAccountType };
     return [
-      { type: "TED",      data: base },
       { type: "ted",      data: base },
-      { type: "TRANSFER", data: base },
+      { type: "TED",      data: base },
       { type: "transfer", data: base },
-      { type: "BANK",     data: base },
-      { type: "bank",     data: base },
-      { ...base, type: "TED" },
-      { ...base, type: "transfer" },
+      { type: "TRANSFER", data: base },
     ];
   }
 }
@@ -41,7 +36,7 @@ async function bffFetch(url, fetchOpts) {
   const text = await r.text();
   let data;
   try   { data = JSON.parse(text); }
-  catch { data = { raw: text }; }
+  catch { data = { raw: text, message: text.slice(0, 200) }; }
   return { r, data, text };
 }
 
