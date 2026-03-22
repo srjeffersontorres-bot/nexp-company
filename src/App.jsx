@@ -10672,50 +10672,44 @@ function SimuladorPage() {
 
 // ── V8 Digital — aba integrada ────────────────────────────────
 function V8DigitalTab({ currentUser, contacts }) {
-  // ── Persistência de sessão ───────────────────────────────────
+  const PROXY = "/api/v8proxy";
+  const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); };
+  const fmtPct = v => { const n = parseFloat(v); return isNaN(n) ? "—" : (n * 100).toFixed(2) + "%"; };
+  const padCPF = raw => raw.replace(/\D/g,"").padStart(11,"0");
+  const fmtCPF = v => { const c = padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"); };
+
+  // ── Sessão persistente ───────────────────────────────────────
+  const [token,    setToken]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
+  const [tokenExp, setTokenExp] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.exp||null; } catch { return null; } });
   const [savedUser, setSavedUser] = useState(() => localStorage.getItem("nexp_v8_user") || "");
-  const [token,     setToken]     = useState(() => {
-    try { const t = JSON.parse(localStorage.getItem("nexp_v8_session")||"null"); return t?.token||null; } catch { return null; }
-  });
-  const [tokenExp,  setTokenExp]  = useState(() => {
-    try { const t = JSON.parse(localStorage.getItem("nexp_v8_session")||"null"); return t?.exp||null; } catch { return null; }
-  });
-  const [aba, setAba] = useState(() => token ? "individual" : "config");
-  const [credForm,  setCredForm]  = useState({ username: savedUser, password: "" });
+  const [credForm, setCredForm] = useState({ username: savedUser, password: "" });
   const [authLoading, setAuthLoading] = useState(false);
-  const [authErr,   setAuthErr]   = useState("");
+  const [authErr, setAuthErr] = useState("");
+  const [aba, setAba] = useState(() => token && tokenExp && Date.now() < tokenExp ? "individual" : "config");
 
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
-  const PROXY = "/api/v8proxy";
 
-  const saveSession = (tk, exp) => {
-    setToken(tk); setTokenExp(exp);
-    localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp }));
-  };
-  const clearSession = () => {
-    setToken(null); setTokenExp(null);
-    localStorage.removeItem("nexp_v8_session");
-    setAba("config");
-  };
+  const saveSession = (tk, exp) => { setToken(tk); setTokenExp(exp); localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp })); };
+  const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); setAba("config"); };
 
   const autenticar = async () => {
     if (!credForm.username || !credForm.password) { setAuthErr("Preencha e-mail e senha."); return; }
     setAuthLoading(true); setAuthErr("");
     try {
-      localStorage.setItem("nexp_v8_user", credForm.username);
-      setSavedUser(credForm.username);
+      localStorage.setItem("nexp_v8_user", credForm.username); setSavedUser(credForm.username);
       const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ action:"auth", payload:{ username:credForm.username, password:credForm.password } }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_description || data.message || data.error || `Erro ${res.status}`);
-      const exp = Date.now() + ((data.expires_in || 86400) - 60) * 1000; // 24h padrão
+      const exp = Date.now() + ((data.expires_in || 86400) - 60) * 1000;
       saveSession(data.access_token, exp);
       setAba("individual");
     } catch(e) { setAuthErr(e.message); }
     setAuthLoading(false);
   };
 
-  const apiFetch = async (path, method="GET", body=null, retries=3) => {
+  // ── apiFetch — rotas corretas conforme documentação V8 ───────
+  const apiFetch = async (path, method="GET", body=null, retries=2) => {
     if (!isTokenValid) throw new Error("Sessão expirada. Faça login novamente.");
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -10731,119 +10725,102 @@ function V8DigitalTab({ currentUser, contacts }) {
     }
   };
 
-  const fmtBRL = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
-  const padCPF = raw => { const d = raw.replace(/\D/g,""); return d.padStart(11,"0"); };
-  const fmtCPF = v => { const c = padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
-
-  // Detectar mensagem de simulação futura
-  const parseFutureDate = (errMsg) => {
-    if (!errMsg) return null;
-    const m = errMsg.match(/(\d{1,2})[/-](\d{1,2})[/-]?(\d{2,4})?/);
-    if (m) return `${m[1]}/${m[2]}${m[3]?"/"+m[3]:""}`;
-    const m2 = errMsg.match(/dia\s+(\d+)/i);
-    if (m2) {
-      const hoje = new Date();
-      const proximo = new Date(hoje.getFullYear(), hoje.getMonth()+1, parseInt(m2[1]));
-      return proximo.toLocaleDateString("pt-BR");
-    }
-    return null;
-  };
-
-  // ──────────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
-  // ──────────────────────────────────────────────────────────────
+  // Rotas: POST /fgts/balance, GET /fgts/simulations/fees, POST /fgts/simulations
+  // ════════════════════════════════════════════════════════════
   const IndividualTab = () => {
-    const [cpf,     setCpf]     = useState("");
+    const [cpf, setCpf]         = useState("");
+    const [provider, setProvider] = useState("cartos");
     const [loading, setLoading] = useState(false);
-    const [err,     setErr]     = useState("");
+    const [err, setErr]         = useState("");
     const [futureDate, setFutureDate] = useState(null);
-    const [result,  setResult]  = useState(() => {
-      try { return JSON.parse(localStorage.getItem("nexp_v8_ind_result")||"null"); } catch { return null; }
-    });
-    const [logs,    setLogs]    = useState(() => {
-      try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; }
-    });
+    const [result, setResult]   = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_result")||"null"); } catch { return null; } });
+    const [logs, setLogs]       = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; } });
+    const [fees, setFees]       = useState([]);
 
-    const addLog = (msg, ok=true) => {
-      const entry = { ts: new Date().toLocaleTimeString("pt-BR"), msg, ok };
-      setLogs(p => {
-        const updated = [entry, ...p.slice(0,99)];
-        localStorage.setItem("nexp_v8_ind_logs", JSON.stringify(updated));
-        return updated;
-      });
+    const addLog = (msg, ok=true) => setLogs(p => { const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)]; localStorage.setItem("nexp_v8_ind_logs",JSON.stringify(u)); return u; });
+
+    const parseFutureDate = (msg) => {
+      if (!msg) return null;
+      const m = msg.match(/(\d{1,2})[/-](\d{1,2})/);
+      if (m) return `${m[1]}/${m[2]}`;
+      const m2 = msg.match(/dia\s+(\d+)/i);
+      if (m2) { const d = new Date(); d.setMonth(d.getMonth()+1); d.setDate(parseInt(m2[1])); return d.toLocaleDateString("pt-BR"); }
+      return null;
     };
 
     const simular = async () => {
-      const raw = cpf.replace(/\D/g,"");
-      if (!raw) { setErr("Digite um CPF."); return; }
-      const c = padCPF(raw);
+      const c = padCPF(cpf);
+      if (c.replace(/^0+/,"").length === 0) { setErr("Digite um CPF válido."); return; }
       setLoading(true); setErr(""); setFutureDate(null);
-      addLog(`Iniciando simulação — CPF ${fmtCPF(c)}`);
+      addLog(`▶ Iniciando para CPF ${fmtCPF(c)} — provider: ${provider}`);
+
       try {
-        // 1. Saldo
-        let saldo = null;
+        // PASSO 1: Consultar saldo — POST /fgts/balance
+        addLog("📡 Consultando saldo FGTS...");
+        let balance = null;
         try {
-          // Tenta as variações de rota de saldo
-          const saldoRoutes = [
-            `/saque-aniversario/cliente/${c}/saldo`,
-            `/saque-aniversario/saldo?cpf=${c}`,
-            `/saque-aniversario/cliente/saldo?cpf=${c}`,
-            `/fgts/saldo?cpf=${c}`,
-            `/fgts/cliente/saldo/${c}`,
-          ];
-          for (const route of saldoRoutes) {
-            try {
-              saldo = await apiFetch(route);
-              addLog(`✅ Saldo via ${route}: ${JSON.stringify(saldo).slice(0,100)}`);
-              break;
-            } catch(e) {
-              addLog(`⚠ ${route}: ${e.message}`, false);
-            }
-          }
-          if (saldo) {
-            const saldoVal = saldo?.saldoDisponivel ?? saldo?.saldo ?? saldo?.vlrSaldo
-              ?? saldo?.valorDisponivel ?? saldo?.totalSaldo ?? saldo?.value ?? null;
-            if (saldoVal !== null) saldo = { ...saldo, saldoDisponivel: saldoVal };
-          }
+          balance = await apiFetch("/fgts/balance", "POST", { documentNumber: c, provider });
+          addLog(`✅ Saldo: ${fmtBRL(balance?.balance || balance?.availableBalance || 0)} | ID: ${balance?.id || "—"}`);
+          addLog(`📦 Resposta saldo: ${JSON.stringify(balance).slice(0,200)}`);
         } catch(e) {
           addLog(`⚠ Saldo: ${e.message}`, false);
           const fd = parseFutureDate(e.message);
-          if (fd) setFutureDate(fd);
+          if (fd) { setFutureDate(fd); }
         }
 
-        const TABELAS = ["cometa","turbo","grid","normal","pitstop","acelera20"];
-        const simRoutes = [
-          { path:"/saque-aniversario/simulacao", body:(tbl)=>({ cpf:c, tabelaId:tbl, seguro:false }) },
-          { path:"/saque-aniversario/simular",   body:(tbl)=>({ cpf:c, tabelaId:tbl, seguro:false }) },
-          { path:"/fgts/simulacao",              body:(tbl)=>({ cpf:c, tabela:tbl }) },
-          { path:"/fgts/simular",                body:(tbl)=>({ cpf:c, tabela:tbl }) },
-        ];
-        const tableSims = await Promise.all(TABELAS.map(async tbl => {
-          for (const route of simRoutes) {
+        // PASSO 2: Buscar tabelas de taxas — GET /fgts/simulations/fees
+        addLog("📡 Buscando tabelas de taxas...");
+        let feesList = fees;
+        if (!feesList.length) {
+          try {
+            const feesData = await apiFetch("/fgts/simulations/fees", "GET");
+            feesList = Array.isArray(feesData) ? feesData.filter(f => f.active) : [];
+            setFees(feesList);
+            addLog(`✅ ${feesList.length} tabelas disponíveis: ${feesList.map(f=>f.simulation_fees?.label).join(", ")}`);
+          } catch(e) { addLog(`⚠ Tabelas: ${e.message}`, false); }
+        }
+
+        // PASSO 3: Simular em cada tabela — POST /fgts/simulations
+        const tableSims = [];
+        if (feesList.length && balance) {
+          const installments = balance?.installments || balance?.desiredInstallments || [];
+          for (const fee of feesList) {
+            const feeId = fee.simulation_fees?.id_simulation_fees;
+            const label = fee.simulation_fees?.label || feeId;
             try {
-              const sim = await apiFetch(route.path,"POST",route.body(tbl));
-              const vlr = sim?.valorLiquido ?? sim?.vlrLiquido ?? sim?.valor ?? sim?.valorTotal
-                ?? sim?.valorLiberar ?? sim?.valorLiberado ?? sim?.netValue ?? 0;
-              addLog(`✅ ${tbl} via ${route.path}: ${fmtBRL(vlr)}`);
-              return { tbl, sim:{ ...sim, valorLiquido:vlr }, ok:true };
+              const simBody = {
+                simulationFeesId: feeId,
+                balanceId: balance?.id,
+                targetAmount: 0,
+                documentNumber: c,
+                desiredInstallments: installments.length ? installments : [
+                  { totalAmount: parseFloat(balance?.balance || 100), dueDate: new Date(new Date().getFullYear()+1, 1, 1).toISOString().split("T")[0] },
+                  { totalAmount: parseFloat(balance?.balance || 100), dueDate: new Date(new Date().getFullYear()+2, 1, 1).toISOString().split("T")[0] },
+                ],
+                provider,
+              };
+              const sim = await apiFetch("/fgts/simulations", "POST", simBody);
+              addLog(`✅ ${label}: ${fmtBRL(sim?.availableBalance || 0)} (CET ${fmtPct(sim?.cet)} a.m.)`);
+              tableSims.push({ label, feeId, sim, ok:true });
             } catch(e) {
-              if (simRoutes.indexOf(route) === simRoutes.length-1) {
-                addLog(`❌ ${tbl}: ${e.message}`, false);
-                return { tbl, err:e.message, ok:false };
-              }
+              addLog(`❌ ${label}: ${e.message}`, false);
+              tableSims.push({ label, feeId, err:e.message, ok:false });
             }
           }
-          return { tbl, err:"Nenhuma rota funcionou", ok:false };
-        }));
+        }
 
-        // 3. Contratos ativos
+        // PASSO 4: Contratos/Operações — GET /fgts/proposal
+        addLog("📡 Buscando contratos...");
         let operacoes = null;
         try {
-          operacoes = await apiFetch(`/saque-aniversario/operacoes/${c}`);
-          addLog(`✅ Contratos: ${Array.isArray(operacoes)?operacoes.length:"carregado"}`);
+          const ops = await apiFetch(`/fgts/proposal?search=${c}&page=1&limit=10`);
+          operacoes = ops?.data || ops;
+          addLog(`✅ ${Array.isArray(operacoes)?operacoes.length:0} contrato(s) encontrado(s)`);
         } catch(e) { addLog(`⚠ Contratos: ${e.message}`, false); }
 
-        const res = { saldo, tableSims, operacoes, cpf:fmtCPF(c), cpfRaw:c, ts:new Date().toLocaleString("pt-BR") };
+        const res = { balance, tableSims, operacoes, cpf:fmtCPF(c), cpfRaw:c, provider, ts:new Date().toLocaleString("pt-BR") };
         setResult(res);
         localStorage.setItem("nexp_v8_ind_result", JSON.stringify(res));
         addLog("✅ Simulação concluída!");
@@ -10854,26 +10831,28 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(false);
     };
 
-    const clearResult = () => {
-      setResult(null); setLogs([]);
-      localStorage.removeItem("nexp_v8_ind_result");
-      localStorage.removeItem("nexp_v8_ind_logs");
-    };
-
-    const anyOkSim = result?.tableSims?.filter(t=>t.ok) || [];
-    const bestSim  = [...anyOkSim].sort((a,b)=>(b.sim?.valorLiquido||0)-(a.sim?.valorLiquido||0))[0];
+    const clearResult = () => { setResult(null); setLogs([]); localStorage.removeItem("nexp_v8_ind_result"); localStorage.removeItem("nexp_v8_ind_logs"); };
+    const bestSim = result?.tableSims?.filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
 
     return (
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
-        {/* Coluna esquerda: input + log */}
-        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+        {/* Coluna esquerda */}
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"22px" }}>
             <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:4 }}>🔍 Simulação Individual FGTS</div>
-            <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Simula saldo, todas as tabelas e contratos ativos em tempo real.</div>
+            <div style={{ color:C.tm, fontSize:12, marginBottom:16 }}>Consulta saldo, simula em todas as tabelas e lista contratos.</div>
             <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>CPF do cliente</label>
-            <input value={cpf} onChange={e=>setCpf(e.target.value)} placeholder="000.000.000-00"
-              onKeyDown={e=>e.key==="Enter"&&simular()}
-              style={{ ...S.input, fontSize:15, fontWeight:600, marginBottom:14 }} />
+            <input value={cpf} onChange={e=>setCpf(e.target.value)} placeholder="000.000.000-00" onKeyDown={e=>e.key==="Enter"&&simular()}
+              style={{ ...S.input, fontSize:15, fontWeight:600, marginBottom:12 }} />
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Provider (instituição)</label>
+            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+              {["cartos","qi","bms"].map(p=>(
+                <button key={p} onClick={()=>setProvider(p)}
+                  style={{ flex:1, background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:9, padding:"7px 0", fontSize:12.5, fontWeight:provider===p?700:400, cursor:"pointer", textTransform:"uppercase" }}>
+                  {p}
+                </button>
+              ))}
+            </div>
             {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>⚠ {err}</div>}
             {futureDate && (
               <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid #FBBF2444", borderRadius:8, padding:"10px 14px", marginBottom:12 }}>
@@ -10883,30 +10862,267 @@ function V8DigitalTab({ currentUser, contacts }) {
             )}
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={simular} disabled={loading}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13.5, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, flex:1 }}>
-                {loading ? "⏳ Simulando..." : "▶ Simular"}
+                style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 0", fontSize:13.5, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1 }}>
+                {loading?"⏳ Simulando...":"▶ Simular"}
               </button>
-              {(result||logs.length>0) && (
-                <button onClick={clearResult} style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"11px 14px", fontSize:12, cursor:"pointer" }} title="Limpar">🗑</button>
-              )}
-              {result && (
-                <button onClick={simular} disabled={loading} style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"11px 14px", fontSize:13, cursor:"pointer" }} title="Recarregar">🔄</button>
-              )}
+              {result && <button onClick={simular} disabled={loading} style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"11px 14px", fontSize:13, cursor:"pointer" }}>🔄</button>}
+              {(result||logs.length>0) && <button onClick={clearResult} style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"11px 12px", fontSize:13, cursor:"pointer" }}>🗑</button>}
             </div>
           </div>
 
-          {/* Log — sempre visível enquanto tiver entradas */}
           {logs.length > 0 && (
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 16px" }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                <div style={{ color:C.ts, fontSize:12, fontWeight:700 }}>📋 Log da Simulação ({logs.length})</div>
-                <button onClick={()=>{ setLogs([]); localStorage.removeItem("nexp_v8_ind_logs"); }}
-                  style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                <div style={{ color:C.ts, fontSize:12, fontWeight:700 }}>📋 Log ({logs.length})</div>
+                <button onClick={()=>{setLogs([]);localStorage.removeItem("nexp_v8_ind_logs");}} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
               </div>
-              <div style={{ maxHeight:240, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ maxHeight:260, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
                 {logs.map((l,i)=>(
-                  <div key={i} style={{ display:"flex", gap:8, fontSize:11 }}>
+                  <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
                     <span style={{ color:C.td, flexShrink:0, fontFamily:"monospace" }}>{l.ts}</span>
+                    <span style={{ color:l.ok?"#34D399":"#F87171", wordBreak:"break-word" }}>{l.msg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Coluna direita — resultados */}
+        <div>
+          {result ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {/* Card principal */}
+              <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:14, padding:"18px 20px", color:"#fff", position:"relative" }}>
+                <button onClick={clearResult} style={{ position:"absolute", top:10, right:12, background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:7, padding:"3px 10px", cursor:"pointer", fontSize:11 }}>✕</button>
+                <div style={{ fontSize:11, opacity:0.7, marginBottom:4 }}>CPF · {result.cpf} · {result.provider?.toUpperCase()} · {result.ts}</div>
+                <div style={{ fontSize:24, fontWeight:900, lineHeight:1 }}>
+                  {fmtBRL(result.balance?.balance || result.balance?.availableBalance || 0)}
+                </div>
+                <div style={{ fontSize:11, opacity:0.7, marginTop:2 }}>Saldo disponível FGTS</div>
+                {bestSim && (
+                  <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:9, padding:"10px 14px" }}>
+                    <div style={{ fontSize:11, opacity:0.8 }}>🏆 Melhor oferta — {bestSim.label}</div>
+                    <div style={{ fontSize:20, fontWeight:800, marginTop:2 }}>{fmtBRL(bestSim.sim?.availableBalance || 0)}</div>
+                    <div style={{ fontSize:10, opacity:0.7, marginTop:2 }}>CET {fmtPct(bestSim.sim?.cet)} a.m. · IOF {fmtBRL(bestSim.sim?.iof)}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabelas */}
+              {result.tableSims?.length > 0 && (
+                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
+                  <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>📊 Resultado por Tabela</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {result.tableSims.map((t,i)=>(
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:t.ok?C.deep:"rgba(239,68,68,0.06)", borderRadius:9, border:`1px solid ${t.ok?C.b1:"#EF444422"}` }}>
+                        <div style={{ flex:1 }}>
+                          <span style={{ color:C.tp, fontWeight:700, fontSize:12.5, textTransform:"capitalize" }}>{t.label}</span>
+                          {t.ok && <span style={{ color:C.td, fontSize:10.5, marginLeft:8 }}>CET {fmtPct(t.sim?.cet)}/mês · IOF {fmtBRL(t.sim?.iof)}</span>}
+                          {!t.ok && <span style={{ color:"#F87171", fontSize:10.5, marginLeft:6 }}>— {(t.err||"").slice(0,60)}</span>}
+                        </div>
+                        {t.ok && (
+                          <div style={{ textAlign:"right" }}>
+                            <div style={{ color:C.atxt, fontWeight:800, fontSize:13 }}>{fmtBRL(t.sim?.availableBalance)}</div>
+                            <div style={{ color:C.td, fontSize:10 }}>{t.sim?.totalInstallments}x parcelas</div>
+                          </div>
+                        )}
+                        {!t.ok && <span style={{ color:"#F87171" }}>✘</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Contratos */}
+              {result.operacoes && (
+                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
+                  <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:10 }}>📄 Contratos FGTS</div>
+                  {Array.isArray(result.operacoes) && result.operacoes.length > 0 ? (
+                    result.operacoes.slice(0,8).map((op,i)=>{
+                      const stColor = op.status==="paid"?"#34D399":op.status==="canceled"?"#F87171":"#FBBF24";
+                      return (
+                        <div key={i} style={{ padding:"8px 11px", background:C.deep, borderRadius:8, marginBottom:5, fontSize:11.5 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <div style={{ color:C.tp, fontWeight:600 }}>{op.clientName||"Cliente"} · {op.contractNumber||"—"}</div>
+                            <span style={{ background:stColor+"18", color:stColor, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>{op.status}</span>
+                          </div>
+                          <div style={{ color:C.tm, marginTop:2 }}>Valor: {fmtBRL(op.disbursedIssueAmount)} · Parceiro: {op.partnerId||"—"}</div>
+                        </div>
+                      );
+                    })
+                  ) : <div style={{ color:C.td, fontSize:12 }}>Nenhum contrato encontrado.</div>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"56px 24px", textAlign:"center" }}>
+              <div style={{ fontSize:44, marginBottom:14, opacity:0.2 }}>🔍</div>
+              <div style={{ color:C.tm, fontSize:13 }}>Digite um CPF e clique em Simular.</div>
+              <div style={{ color:C.td, fontSize:11, marginTop:8 }}>Rota: POST /fgts/balance → GET /fgts/simulations/fees → POST /fgts/simulations</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ════════════════════════════════════════════════════════════
+  // ABA: DIGITAÇÃO DE PROPOSTA
+  // Rota: GET /banks, POST /fgts/proposal
+  // ════════════════════════════════════════════════════════════
+  const DigitacaoTab = () => {
+    const [banks, setBanks]     = useState([]);
+    const [loadBanks, setLoadBanks] = useState(false);
+    const [simId, setSimId]     = useState("");
+    const [balanceId, setBalanceId] = useState("");
+    const [logs, setLogs]       = useState([]);
+    const [result, setResult]   = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr]         = useState("");
+    const [payType, setPayType] = useState("pix"); // pix | transfer
+    const [form, setForm]       = useState({
+      documentNumber:"", provider:"cartos", targetAmount:"0",
+      pix:"", bankId:"", bankAccountNumber:"", bankAccountBranch:"", bankAccountDigit:"", bankAccountType:"checking_account",
+    });
+
+    const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)]);
+    const setF = (k,v) => setForm(p=>({...p,[k]:v}));
+
+    const carregarBancos = async () => {
+      setLoadBanks(true);
+      try {
+        const data = await apiFetch("/banks");
+        setBanks(data?.data || data || []);
+        addLog(`✅ ${(data?.data||data||[]).length} bancos carregados`);
+      } catch(e) { addLog(`❌ Bancos: ${e.message}`, false); }
+      setLoadBanks(false);
+    };
+
+    const digitarProposta = async () => {
+      if (!form.documentNumber) { setErr("CPF obrigatório."); return; }
+      if (!simId) { setErr("ID da simulação obrigatório. Faça uma simulação primeiro."); return; }
+      setLoading(true); setErr(""); setResult(null);
+      addLog("📡 Criando proposta...");
+      try {
+        const paymentData = payType === "pix"
+          ? { type:"pix", pix:form.pix }
+          : { type:"transfer", bankId:form.bankId, bankAccountNumber:form.bankAccountNumber, bankAccountBranch:form.bankAccountBranch, bankAccountDigit:form.bankAccountDigit, bankAccountType:form.bankAccountType };
+
+        const body = {
+          simulationId: simId,
+          balanceId,
+          documentNumber: padCPF(form.documentNumber),
+          targetAmount: parseFloat(form.targetAmount) || 0,
+          provider: form.provider,
+          payment: paymentData,
+        };
+        const res = await apiFetch("/fgts/proposal", "POST", body);
+        setResult(res);
+        addLog(`✅ Proposta criada! ID: ${res?.id} · Status: ${res?.status}`);
+        addLog(`📦 Resposta: ${JSON.stringify(res).slice(0,200)}`);
+      } catch(e) { setErr("❌ " + e.message); addLog("❌ " + e.message, false); }
+      setLoading(false);
+    };
+
+    return (
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {/* Dados da simulação */}
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"20px" }}>
+            <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:14 }}>📝 Digitação de Proposta FGTS</div>
+            <div style={{ color:C.td, fontSize:11, marginBottom:14, padding:"8px 12px", background:C.deep, borderRadius:8 }}>
+              💡 Realize uma simulação na aba Individual primeiro para obter os IDs necessários.
+            </div>
+            {[
+              ["CPF do cliente *","documentNumber","text","000.000.000-00"],
+              ["ID da Simulação *","simId","text","UUID da simulação"],
+              ["ID do Saldo *","balanceId","text","UUID do saldo"],
+            ].map(([label, key, type, ph])=>(
+              <div key={key} style={{ marginBottom:10 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{label}</label>
+                <input value={key==="simId"?simId:key==="balanceId"?balanceId:form[key]}
+                  onChange={e=>{ if(key==="simId") setSimId(e.target.value); else if(key==="balanceId") setBalanceId(e.target.value); else setF(key,e.target.value); }}
+                  type={type} placeholder={ph} style={{ ...S.input }} />
+              </div>
+            ))}
+            <div style={{ marginBottom:10 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Provider *</label>
+              <div style={{ display:"flex", gap:6 }}>
+                {["cartos","qi","bms"].map(p=>(
+                  <button key={p} onClick={()=>setF("provider",p)}
+                    style={{ flex:1, background:form.provider===p?C.abg:C.deep, color:form.provider===p?C.atxt:C.tm, border:form.provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 0", fontSize:12, cursor:"pointer", fontWeight:form.provider===p?700:400, textTransform:"uppercase" }}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Forma de pagamento */}
+            <div style={{ marginBottom:12 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Forma de Pagamento *</label>
+              <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                {[["pix","💠 PIX"],["transfer","🏦 Transferência"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setPayType(v)}
+                    style={{ flex:1, background:payType===v?C.abg:C.deep, color:payType===v?C.atxt:C.tm, border:payType===v?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"7px 0", fontSize:12, cursor:"pointer", fontWeight:payType===v?700:400 }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              {payType === "pix" && (
+                <div>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave PIX *</label>
+                  <input value={form.pix} onChange={e=>setF("pix",e.target.value)} placeholder="CPF, telefone, e-mail ou chave aleatória" style={{ ...S.input }} />
+                  <div style={{ color:C.td, fontSize:10, marginTop:3 }}>CPF sem pontuação · Tel: +5511999999999 · Chave aleatória: UUID</div>
+                </div>
+              )}
+              {payType === "transfer" && (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
+                    <div style={{ flex:1 }}>
+                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco *</label>
+                      <select value={form.bankId} onChange={e=>setF("bankId",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                        <option value="">Selecione...</option>
+                        {banks.map(b=><option key={b.id} value={b.id}>{b.name} ({b.code}){b.isTurbo?" ⚡":""}</option>)}
+                      </select>
+                    </div>
+                    <button onClick={carregarBancos} disabled={loadBanks}
+                      style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"9px 12px", fontSize:12, cursor:"pointer", flexShrink:0, opacity:loadBanks?0.6:1 }}>
+                      {loadBanks?"⏳":"🔄"}
+                    </button>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 80px", gap:8 }}>
+                    <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Agência</label><input value={form.bankAccountBranch} onChange={e=>setF("bankAccountBranch",e.target.value)} placeholder="0001" style={{ ...S.input }} /></div>
+                    <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Conta</label><input value={form.bankAccountNumber} onChange={e=>setF("bankAccountNumber",e.target.value)} placeholder="123456" style={{ ...S.input }} /></div>
+                    <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Dígito</label><input value={form.bankAccountDigit} onChange={e=>setF("bankAccountDigit",e.target.value)} placeholder="2" style={{ ...S.input }} /></div>
+                  </div>
+                  <div>
+                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta</label>
+                    <select value={form.bankAccountType} onChange={e=>setF("bankAccountType",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                      <option value="checking_account">Conta Corrente</option>
+                      <option value="saving_account">Conta Poupança</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+            {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>⚠ {err}</div>}
+            <button onClick={digitarProposta} disabled={loading}
+              style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px 0", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1 }}>
+              {loading?"⏳ Enviando...":"📤 Criar Proposta"}
+            </button>
+          </div>
+
+          {/* Log */}
+          {logs.length > 0 && (
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                <div style={{ color:C.ts, fontSize:11.5, fontWeight:700 }}>📋 Log</div>
+                <button onClick={()=>setLogs([])} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
+              </div>
+              <div style={{ maxHeight:160, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
+                {logs.map((l,i)=>(
+                  <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
+                    <span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span>
                     <span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span>
                   </div>
                 ))}
@@ -10915,71 +11131,34 @@ function V8DigitalTab({ currentUser, contacts }) {
           )}
         </div>
 
-        {/* Coluna direita: resultado — permanece aberto */}
+        {/* Resultado */}
         <div>
           {result ? (
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              {/* Card principal */}
-              <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:14, padding:"18px 20px", color:"#fff", position:"relative" }}>
-                <button onClick={clearResult} style={{ position:"absolute", top:12, right:12, background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:8, padding:"4px 10px", cursor:"pointer", fontSize:11 }}>✕</button>
-                <div style={{ fontSize:11, opacity:0.7, marginBottom:4 }}>CPF · {result.cpf} · {result.ts}</div>
-                <div style={{ fontSize:24, fontWeight:900, lineHeight:1 }}>{fmtBRL(result.saldo?.saldoDisponivel || 0)}</div>
-                <div style={{ fontSize:11, opacity:0.7, marginTop:2 }}>Saldo disponível</div>
-                {bestSim && (
-                  <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:9, padding:"10px 14px" }}>
-                    <div style={{ fontSize:11, opacity:0.8 }}>🏆 Melhor oferta — Tabela {bestSim.tbl}</div>
-                    <div style={{ fontSize:20, fontWeight:800, marginTop:2 }}>{fmtBRL(bestSim.sim?.valorLiquido || bestSim.sim?.vlrLiquido || 0)}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Tabelas */}
-              <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
-                <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>📊 Resultado por Tabela</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                  {(result.tableSims||[]).map((t,i)=>{
-                    const vl = t.sim?.valorLiquido || t.sim?.vlrLiquido || 0;
-                    const parcelas = t.sim?.quantidadeParcelas || t.sim?.parcelas || "—";
-                    const taxa = t.sim?.taxaMensal || t.sim?.taxa || null;
-                    return (
-                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:t.ok?C.deep:"rgba(239,68,68,0.06)", borderRadius:9, border:`1px solid ${t.ok?C.b1:"#EF444422"}` }}>
-                        <div style={{ flex:1 }}>
-                          <span style={{ color:C.tp, fontWeight:700, fontSize:12.5, textTransform:"capitalize" }}>{t.tbl}</span>
-                          {taxa && <span style={{ color:C.td, fontSize:10.5, marginLeft:8 }}>taxa {typeof taxa==="number"?(taxa*100).toFixed(2):taxa}%</span>}
-                          {!t.ok && <span style={{ color:"#F87171", fontSize:10.5, marginLeft:6 }}>— {(t.err||"").slice(0,60)}</span>}
-                        </div>
-                        {t.ok && <div style={{ textAlign:"right" }}>
-                          <div style={{ color:C.atxt, fontWeight:800, fontSize:13 }}>{fmtBRL(vl)}</div>
-                          {parcelas !== "—" && <div style={{ color:C.td, fontSize:10 }}>{parcelas}x</div>}
-                        </div>}
-                        {!t.ok && <span style={{ color:"#F87171", fontSize:14 }}>✘</span>}
-                      </div>
-                    );
-                  })}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px" }}>
+              <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:14 }}>✅ Proposta Criada</div>
+              {[
+                ["ID da Proposta", result.id],
+                ["Status", result.status],
+                ["Número do Contrato", result.contractNumber],
+                ["Cliente", result.clientName],
+                ["Valor Liberado", fmtBRL(result.disbursedIssueAmount || result.availableBalance)],
+                ["Parceiro", result.partnerId],
+              ].filter(([,v])=>v).map(([l,v])=>(
+                <div key={l} style={{ padding:"8px 10px", background:C.deep, borderRadius:8, marginBottom:6 }}>
+                  <div style={{ color:C.td, fontSize:10.5 }}>{l}</div>
+                  <div style={{ color:C.tp, fontWeight:600, fontSize:12.5, marginTop:1 }}>{v}</div>
                 </div>
+              ))}
+              <div style={{ marginTop:10, background:C.deep, borderRadius:8, padding:"10px 12px" }}>
+                <div style={{ color:C.td, fontSize:10.5, marginBottom:4 }}>JSON completo</div>
+                <pre style={{ color:C.ts, fontSize:10, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, maxHeight:200, overflowY:"auto" }}>{JSON.stringify(result, null, 2)}</pre>
               </div>
-
-              {/* Contratos */}
-              {result.operacoes && (
-                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
-                  <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:10 }}>📄 Contratos Ativos</div>
-                  {Array.isArray(result.operacoes) && result.operacoes.length > 0 ? (
-                    result.operacoes.slice(0,8).map((op,i)=>(
-                      <div key={i} style={{ padding:"8px 11px", background:C.deep, borderRadius:8, marginBottom:5, fontSize:11.5 }}>
-                        <div style={{ color:C.tp, fontWeight:600 }}>{op.banco||op.nomeBanco||"Banco"} · {op.tabelaDescricao||op.tabela||"—"}</div>
-                        <div style={{ color:C.tm, marginTop:2 }}>
-                          {op.quantidadeParcelas&&`${op.quantidadeParcelas}x`} {op.valorParcela&&`· ${fmtBRL(op.valorParcela)}`} {op.status&&`· ${op.status}`}
-                        </div>
-                      </div>
-                    ))
-                  ) : <div style={{ color:C.td, fontSize:12 }}>Nenhum contrato ativo.</div>}
-                </div>
-              )}
             </div>
           ) : (
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"56px 24px", textAlign:"center" }}>
-              <div style={{ fontSize:44, marginBottom:14, opacity:0.2 }}>🔍</div>
-              <div style={{ color:C.tm, fontSize:13 }}>Digite um CPF e clique em Simular.</div>
+              <div style={{ fontSize:44, marginBottom:14, opacity:0.2 }}>📝</div>
+              <div style={{ color:C.tm, fontSize:13 }}>Preencha os dados e clique em Criar Proposta.</div>
+              <div style={{ color:C.td, fontSize:11, marginTop:8 }}>Rota: POST /fgts/proposal</div>
             </div>
           )}
         </div>
@@ -10987,142 +11166,282 @@ function V8DigitalTab({ currentUser, contacts }) {
     );
   };
 
-  // ──────────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════
+  // ABA: OPERAÇÕES / CONTRATOS
+  // Rota: GET /fgts/proposal
+  // ════════════════════════════════════════════════════════════
+  const OperacoesTab = () => {
+    const [search, setSearch]   = useState("");
+    const [status, setStatus]   = useState("");
+    const [provider, setProvider] = useState("");
+    const [page, setPage]       = useState(1);
+    const [data, setData]       = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr]         = useState("");
+    const [cancelId, setCancelId] = useState(null);
+    const [cancelReason, setCancelReason] = useState("invalid_data:other");
+    const [cancelDesc, setCancelDesc] = useState("");
+    const [cancelLoading, setCancelLoading] = useState(false);
+
+    const buscar = async (pg=1) => {
+      setLoading(true); setErr(""); setPage(pg);
+      try {
+        const params = new URLSearchParams({ page:pg, limit:20 });
+        if (search) params.append("search", search.replace(/\D/g,"") || search);
+        if (status) params.append("status", status);
+        if (provider) params.append("provider", provider);
+        const res = await apiFetch(`/fgts/proposal?${params}`);
+        setData(res);
+      } catch(e) { setErr(e.message); }
+      setLoading(false);
+    };
+
+    const cancelar = async (id) => {
+      setCancelLoading(true);
+      try {
+        await apiFetch(`/fgts/proposal/${id}/cancel`, "PATCH", { reason:cancelReason, description:cancelDesc });
+        setCancelId(null); setCancelDesc("");
+        await buscar(page);
+      } catch(e) { setErr("Cancelamento: " + e.message); }
+      setCancelLoading(false);
+    };
+
+    const STATUS_LIST = ["","formalization","analysis","manual_analysis","pending","processing","paid","canceled","refounded"];
+    const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"Pago", canceled:"Cancelado", refounded:"Devolvido" };
+    const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
+
+    return (
+      <div>
+        {/* Filtros */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:16 }}>
+          <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:14 }}>📋 Contratos FGTS</div>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
+            <div style={{ flex:1, minWidth:160 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (CPF ou contrato)</label>
+              <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)} placeholder="12345678900" style={{ ...S.input }} />
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Status</label>
+              <select value={status} onChange={e=>setStatus(e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                {STATUS_LIST.map(s=><option key={s} value={s}>{s?STATUS_LABEL[s]:"Todos"}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Provider</label>
+              <select value={provider} onChange={e=>setProvider(e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                <option value="">Todos</option>
+                {["qi","cartos","bms"].map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <button onClick={()=>buscar(1)} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
+              {loading?"⏳ Buscando...":"🔍 Buscar"}
+            </button>
+          </div>
+          {err && <div style={{ color:"#F87171", marginTop:10, fontSize:12 }}>⚠ {err}</div>}
+        </div>
+
+        {/* Tabela */}
+        {data && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden" }}>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
+                <thead>
+                  <tr style={{ background:C.deep }}>
+                    {["Cliente","Contrato","Status","Valor","Parceiro","Ações"].map(h=>(
+                      <th key={h} style={{ color:C.tm, fontWeight:700, padding:"10px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.data||[]).map((op,i)=>{
+                    const stCol = STATUS_COLOR[op.status] || "#94A3B8";
+                    return (
+                      <tr key={op.id} style={{ background:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}` }}>
+                        <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px" }}>{op.clientName||"—"}</td>
+                        <td style={{ color:C.tm, padding:"9px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
+                        <td style={{ padding:"9px 10px" }}>
+                          <span style={{ background:stCol+"18", color:stCol, fontSize:10.5, padding:"2px 9px", borderRadius:20, fontWeight:600 }}>
+                            {STATUS_LABEL[op.status]||op.status}
+                          </span>
+                        </td>
+                        <td style={{ color:C.atxt, fontWeight:700, padding:"9px 10px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
+                        <td style={{ color:C.td, padding:"9px 10px", fontSize:11 }}>{op.partnerId||"—"}</td>
+                        <td style={{ padding:"9px 10px" }}>
+                          {op.status !== "paid" && op.status !== "canceled" && (
+                            <button onClick={()=>setCancelId(op.id)}
+                              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:7, padding:"3px 9px", fontSize:11, cursor:"pointer" }}>
+                              Cancelar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(data.data||[]).length===0 && (
+                    <tr><td colSpan={6} style={{ color:C.td, textAlign:"center", padding:"28px" }}>Nenhum resultado.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {/* Paginação */}
+            {data.pages && (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
+                <button onClick={()=>buscar(page-1)} disabled={!data.pages.hasPrev||loading}
+                  style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
+                  ← Anterior
+                </button>
+                <span style={{ color:C.tm, fontSize:12 }}>Página {data.pages.current} de {data.pages.totalPages} · Total: {data.pages.total}</span>
+                <button onClick={()=>buscar(page+1)} disabled={!data.pages.hasNext||loading}
+                  style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
+                  Próxima →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modal cancelamento */}
+        {cancelId && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"24px", width:420 }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>⚠ Cancelar Proposta</div>
+              <div style={{ marginBottom:12 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Motivo *</label>
+                <select value={cancelReason} onChange={e=>setCancelReason(e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                  <option value="invalid_data:other">Outros</option>
+                  <option value="invalid_data:invalid_address">Endereço incorreto</option>
+                  <option value="invalid_data:incomplete_name">Nome incompleto</option>
+                  <option value="invalid_data:invalid_name">Nome incorreto</option>
+                </select>
+              </div>
+              <div style={{ marginBottom:16 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição (recomendado)</label>
+                <textarea value={cancelDesc} onChange={e=>setCancelDesc(e.target.value)} rows={3} placeholder="Descreva o motivo do cancelamento..." style={{ ...S.input, resize:"vertical" }} />
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>cancelar(cancelId)} disabled={cancelLoading}
+                  style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:9, padding:"10px 0", fontSize:13, fontWeight:700, cursor:"pointer", opacity:cancelLoading?0.7:1 }}>
+                  {cancelLoading?"Cancelando...":"Confirmar Cancelamento"}
+                </button>
+                <button onClick={()=>setCancelId(null)} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"10px 16px", fontSize:13, cursor:"pointer" }}>
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO EM LOTE
-  // ──────────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════
   const LoteTab = () => {
     const allContacts = contacts || [];
-
-    // Persistência de estado completo
-    const loadState = () => {
-      try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; }
-    };
-    const saved = loadState();
-
-    const [items, setItems]       = useState(() => saved?.items || allContacts.slice(0,1000).map(c=>({
-      id:c.id||String(Math.random()), nome:c.name||"—", cpf:c.cpf||"", saldo:null, margem:null, status:"pendente", erro:null, sim:null
-    })));
-    const [running,   setRunning]   = useState(false);
-    const [paused,    setPaused]    = useState(false);
-    const [progress,  setProgress]  = useState(saved?.progress || 0);
-    const [filterSaldo,  setFilterSaldo]  = useState("");
-    const [filterMargem, setFilterMargem] = useState("");
-    const [filterStatus, setFilterStatus] = useState("Todos");
-    const [logs,  setLogs]  = useState(saved?.logs || []);
-    const [page,  setPage]  = useState(0); // paginação 50/página
-    const [cpfBox, setCpfBox] = useState(""); // caixa de CPFs manual
-    const [showCpfBox, setShowCpfBox] = useState(false);
-    const abortRef  = useRef(false);
-    const pauseRef  = useRef(false);
+    const saved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
+    const [items, setItems]     = useState(()=> saved?.items || allContacts.slice(0,1000).map(c=>({ id:c.id||String(Math.random()), nome:c.name||"—", cpf:c.cpf||"", saldo:null, margem:null, status:"pendente", erro:null, sim:null })));
+    const [running,setRunning]  = useState(false);
+    const [paused, setPaused]   = useState(false);
+    const [progress,setProgress]= useState(saved?.progress||0);
+    const [filterSaldo,setFilterSaldo]   = useState("");
+    const [filterMargem,setFilterMargem] = useState("");
+    const [filterStatus,setFilterStatus] = useState("Todos");
+    const [logs,  setLogs]      = useState([]);
+    const [page,  setPage]      = useState(0);
+    const [cpfBox,setCpfBox]    = useState("");
+    const [showCpfBox,setShowCpfBox] = useState(false);
+    const [provider,setProvider]= useState("cartos");
+    const [fees, setFees]       = useState([]);
+    const abortRef = useRef(false);
+    const pauseRef = useRef(false);
     const PAGE_SIZE = 50;
 
-    const saveState = (newItems, newLogs, newProgress) => {
-      localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, logs:newLogs, progress:newProgress }));
-    };
+    const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
+    const saveState = (newItems, prog) => localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, progress:prog }));
 
-    const addLog = (msg, ok=true) => {
-      const entry = { ts:new Date().toLocaleTimeString("pt-BR"), msg, ok };
-      setLogs(p => { const u=[entry,...p.slice(0,199)]; return u; });
+    const carregarFees = async () => {
+      if (fees.length) return fees;
+      const data = await apiFetch("/fgts/simulations/fees");
+      const lista = Array.isArray(data) ? data.filter(f=>f.active) : [];
+      setFees(lista);
+      return lista;
     };
 
     const simularUm = async (item) => {
-      let rawCpf = item.cpf.replace(/\D/g,"");
-      if (!rawCpf) return { ...item, status:"erro", erro:"CPF vazio" };
-      // Completar com zeros à esquerda
-      const c = padCPF(rawCpf);
-      // CPF com menos de 11 dígitos mesmo após pad — provavelmente inválido, pular
-      if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido — pulado" };
-
+      const c = padCPF(item.cpf);
+      if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido" };
       try {
-        const saldoRaw = await apiFetch(`/saque-aniversario/cliente/saldo/${c}`).catch(()=>null);
-        const saldoVal = saldoRaw?.saldoDisponivel ?? saldoRaw?.saldo ?? saldoRaw?.vlrSaldo
-          ?? saldoRaw?.valorDisponivel ?? saldoRaw?.totalSaldo ?? saldoRaw?.value ?? 0;
-        const TABELAS = ["cometa","turbo","grid","normal"];
-        const tableSims = await Promise.all(TABELAS.map(async tbl=>{
-          try {
-            const sim = await apiFetch("/saque-aniversario/simulacao","POST",{cpf:c,tabelaId:tbl,seguro:false});
-            const vlr = sim?.valorLiquido ?? sim?.vlrLiquido ?? sim?.valor ?? sim?.valorTotal
-              ?? sim?.valorLiberar ?? sim?.valorLiberado ?? sim?.netValue ?? 0;
-            return { tbl, sim:{ ...sim, valorLiquido:vlr }, ok:true };
-          } catch(e) { return { tbl, err:e.message, ok:false }; }
-        }));
-        const melhor = [...tableSims].filter(t=>t.ok).sort((a,b)=>(b.sim?.valorLiquido||0)-(a.sim?.valorLiquido||0))[0];
-        addLog(`✅ ${item.nome} (${fmtCPF(c)}) saldo:${fmtBRL(saldoVal)} oferta:${fmtBRL(melhor?.sim?.valorLiquido||0)}`);
-        return { ...item, cpf:fmtCPF(c), saldo:saldoVal, margem:melhor?.sim?.valorLiquido||0, status:"ok", sim:{tableSims,melhor}, erro:null };
+        const bal = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }).catch(()=>null);
+        const saldoVal = parseFloat(bal?.balance || bal?.availableBalance || 0);
+        const feesList = await carregarFees();
+        let melhorSim = null; let melhorVal = 0; let melhorLabel = "";
+        if (feesList.length && bal?.id) {
+          const installments = bal?.installments || [
+            { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
+            { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
+          ];
+          for (const fee of feesList.slice(0,2)) { // máx 2 tabelas no lote para não sobrecarregar
+            try {
+              const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
+              const v = parseFloat(sim?.availableBalance||0);
+              if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=fee.simulation_fees?.label; }
+            } catch {}
+          }
+        }
+        addLog(`✅ ${item.nome} (${fmtCPF(c)}) saldo:${fmtBRL(saldoVal)} oferta:${fmtBRL(melhorVal)}`);
+        return { ...item, cpf:fmtCPF(c), saldo:saldoVal, margem:melhorVal, status:"ok", sim:{ melhor:{ label:melhorLabel, sim:melhorSim } }, erro:null };
       } catch(e) {
-        addLog(`❌ ${item.nome} (${fmtCPF(c)}): ${e.message}`, false);
+        addLog(`❌ ${item.nome}: ${e.message}`, false);
         return { ...item, status:"erro", erro:e.message };
       }
     };
 
     const simularLote = async () => {
-      setRunning(true); setPaused(false);
-      abortRef.current = false; pauseRef.current = false;
-      const lista = [...items];
-      let done = 0;
+      setRunning(true); setPaused(false); abortRef.current=false; pauseRef.current=false;
+      const lista=[...items]; let done=0;
       for (let i=0; i<lista.length; i++) {
-        // Pausa
-        while (pauseRef.current) await new Promise(r=>setTimeout(r,300));
-        if (abortRef.current) break;
-        if (lista[i].status === "ok") { done++; continue; }
-        lista[i] = { ...lista[i], status:"simulando" };
-        setItems([...lista]);
+        while(pauseRef.current) await new Promise(r=>setTimeout(r,300));
+        if(abortRef.current) break;
+        if(lista[i].status==="ok") { done++; continue; }
+        lista[i]={ ...lista[i], status:"simulando" }; setItems([...lista]);
         const updated = await simularUm(lista[i]);
-        lista[i] = updated;
-        done++;
-        const prog = Math.round(done/lista.length*100);
-        setProgress(prog);
-        setItems([...lista]);
-        saveState(lista, [], prog);
-        await new Promise(r=>setTimeout(r,250));
+        lista[i]=updated; done++;
+        const prog=Math.round(done/lista.length*100);
+        setProgress(prog); setItems([...lista]); saveState(lista,prog);
+        await new Promise(r=>setTimeout(r,400));
       }
       setRunning(false); setPaused(false);
     };
 
-    const pausar = () => { pauseRef.current = !pauseRef.current; setPaused(p=>!p); };
-    const parar  = () => { abortRef.current = true; setRunning(false); setPaused(false); };
-
-    const simularItem = async (idx) => {
-      const updated = await simularUm(items[idx]);
-      setItems(p => { const n=[...p]; n[idx]=updated; saveState(n,[],progress); return n; });
-    };
-
     const adicionarCPFs = () => {
-      const linhas = cpfBox.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
-      const novos = linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf, saldo:null, margem:null, status:"pendente", erro:null, sim:null }));
-      setItems(p=>[...p,...novos]);
+      const linhas=cpfBox.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
+      setItems(p=>[...p,...linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf, saldo:null, margem:null, status:"pendente", erro:null, sim:null }))]);
       setCpfBox(""); setShowCpfBox(false);
     };
 
-    const limparLote = () => {
-      setItems(allContacts.slice(0,1000).map(c=>({ id:c.id||String(Math.random()), nome:c.name||"—", cpf:c.cpf||"", saldo:null, margem:null, status:"pendente", erro:null, sim:null })));
-      setLogs([]); setProgress(0);
-      localStorage.removeItem("nexp_v8_lote_state");
-    };
-
     const exportar = () => {
-      const rows = [["Nome","CPF","Saldo","Melhor Oferta","Tabela","Status","Erro"]];
-      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.saldo!=null?it.saldo:"",it.margem!=null?it.margem:"",it.sim?.melhor?.tbl||"",it.status,it.erro||""]));
-      const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-      const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="simulacao_lote.csv"; a.click();
+      const rows=[["Nome","CPF","Saldo","Melhor Oferta","Tabela","Status","Erro"]];
+      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.saldo??""  ,it.margem??"",it.sim?.melhor?.label||"",it.status,it.erro||""]));
+      const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="lote_fgts.csv"; a.click();
     };
 
-    const filtered = items.filter(it=>{
-      if (filterStatus!=="Todos" && it.status!==filterStatus) return false;
-      if (filterSaldo  && it.saldo!==null  && it.saldo  < (parseFloat(filterSaldo)||0))  return false;
-      if (filterMargem && it.margem!==null && it.margem < (parseFloat(filterMargem)||0)) return false;
+    const filtered=items.filter(it=>{
+      if(filterStatus!=="Todos"&&it.status!==filterStatus) return false;
+      if(filterSaldo&&it.saldo!==null&&it.saldo<(parseFloat(filterSaldo)||0)) return false;
+      if(filterMargem&&it.margem!==null&&it.margem<(parseFloat(filterMargem)||0)) return false;
       return true;
     });
-
-    const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-    const pageItems  = filtered.slice(page*PAGE_SIZE, (page+1)*PAGE_SIZE);
-    const countOk    = items.filter(x=>x.status==="ok").length;
-    const countErr   = items.filter(x=>x.status==="erro").length;
-    const countPend  = items.filter(x=>x.status==="pendente").length;
+    const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
+    const pageItems=filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+    const countOk=items.filter(x=>x.status==="ok").length;
+    const countErr=items.filter(x=>x.status==="erro").length;
+    const countPend=items.filter(x=>x.status==="pendente").length;
 
     return (
       <div>
-        {/* Controles principais */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"18px 20px", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
             <div>
@@ -11135,196 +11454,116 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              {!running && <button onClick={simularLote}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                ▶ Simular Todos
-              </button>}
-              {running && <button onClick={pausar}
-                style={{ background:paused?"#091E12":"#2B2310", color:paused?"#34D399":"#FBBF24", border:`1px solid ${paused?"#34D39933":"#FBBF2433"}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
-                {paused?"▶ Retomar":"⏸ Pausar"}
-              </button>}
-              {running && <button onClick={parar}
-                style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
-                ⏹ Parar
-              </button>}
-              <button onClick={()=>setShowCpfBox(p=>!p)}
-                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
-                ➕ CPFs
-              </button>
-              <button onClick={exportar}
-                style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
-                📥 CSV
-              </button>
-              <button onClick={limparLote}
-                style={{ background:"transparent", color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
-                🗑
-              </button>
+              {!running && <button onClick={simularLote} style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>▶ Simular Todos</button>}
+              {running && <button onClick={()=>{pauseRef.current=!pauseRef.current;setPaused(p=>!p);}} style={{ background:paused?"#091E12":"#2B2310", color:paused?"#34D399":"#FBBF24", border:`1px solid ${paused?"#34D39933":"#FBBF2433"}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>{paused?"▶ Retomar":"⏸ Pausar"}</button>}
+              {running && <button onClick={()=>{abortRef.current=true;setRunning(false);setPaused(false);}} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>⏹ Parar</button>}
+              <button onClick={()=>setShowCpfBox(p=>!p)} style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>➕ CPFs</button>
+              <button onClick={exportar} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>📥 CSV</button>
+              <button onClick={()=>{setItems(allContacts.slice(0,1000).map(c=>({id:c.id||String(Math.random()),nome:c.name||"—",cpf:c.cpf||"",saldo:null,margem:null,status:"pendente",erro:null,sim:null})));setLogs([]);setProgress(0);localStorage.removeItem("nexp_v8_lote_state");}} style={{ background:"transparent", color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🗑</button>
             </div>
           </div>
-
-          {/* Barra de progresso */}
-          {(running || progress > 0) && (
+          {/* Provider */}
+          <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+            {["cartos","qi","bms"].map(p=>(
+              <button key={p} onClick={()=>setProvider(p)} style={{ background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 14px", fontSize:12, cursor:"pointer", fontWeight:provider===p?700:400, textTransform:"uppercase" }}>{p}</button>
+            ))}
+          </div>
+          {(running||progress>0) && (
             <div style={{ marginBottom:12 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                <span style={{ color:C.tm, fontSize:11 }}>{running?(paused?"Pausado...":"Simulando..."):"Concluído"}</span>
+                <span style={{ color:C.tm, fontSize:11 }}>{running?(paused?"Pausado":"Simulando..."):"Concluído"}</span>
                 <span style={{ color:C.atxt, fontSize:11, fontWeight:700 }}>{progress}%</span>
               </div>
               <div style={{ background:C.deep, borderRadius:99, height:7, overflow:"hidden" }}>
-                <div style={{ background:`linear-gradient(90deg,${C.acc},${C.lg2})`, height:"100%", width:`${progress}%`, borderRadius:99, transition:"width 0.4s ease" }}/>
+                <div style={{ background:`linear-gradient(90deg,${C.acc},${C.lg2})`, height:"100%", width:`${progress}%`, borderRadius:99, transition:"width 0.4s" }}/>
               </div>
             </div>
           )}
-
-          {/* Caixa de CPFs manual */}
           {showCpfBox && (
             <div style={{ background:C.deep, borderRadius:12, padding:"14px", marginBottom:14, border:`1px solid ${C.b1}` }}>
-              <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:8 }}>➕ Adicionar CPFs manualmente</div>
-              <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>Um por linha, ou separados por vírgula/ponto-e-vírgula. CPFs com menos de 11 dígitos serão completados com zeros à esquerda.</div>
-              <textarea value={cpfBox} onChange={e=>setCpfBox(e.target.value)}
-                placeholder={"12345678901\n98765432100\n..."}
-                rows={6} style={{ ...S.input, resize:"vertical", fontFamily:"monospace", fontSize:12, width:"100%", marginBottom:10 }} />
+              <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:6 }}>➕ Adicionar CPFs</div>
+              <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>Um por linha ou separados por vírgula. CPFs com menos de 11 dígitos serão completados com zeros.</div>
+              <textarea value={cpfBox} onChange={e=>setCpfBox(e.target.value)} rows={5} placeholder={"12345678901\n98765432100"} style={{ ...S.input, resize:"vertical", fontFamily:"monospace", fontSize:12, width:"100%", marginBottom:8 }} />
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={adicionarCPFs} disabled={!cpfBox.trim()}
-                  style={{ background:cpfBox.trim()?C.acc:C.deep, color:cpfBox.trim()?"#fff":C.td, border:"none", borderRadius:9, padding:"8px 18px", fontSize:13, fontWeight:600, cursor:cpfBox.trim()?"pointer":"not-allowed" }}>
-                  Adicionar {cpfBox.trim().split(/[\n,;]+/).filter(Boolean).length} CPFs
-                </button>
-                <button onClick={()=>setShowCpfBox(false)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:9, padding:"8px 14px", fontSize:13, cursor:"pointer" }}>Cancelar</button>
+                <button onClick={adicionarCPFs} disabled={!cpfBox.trim()} style={{ background:cpfBox.trim()?C.acc:C.deep, color:cpfBox.trim()?"#fff":C.td, border:"none", borderRadius:8, padding:"7px 16px", fontSize:12.5, fontWeight:600, cursor:cpfBox.trim()?"pointer":"not-allowed" }}>Adicionar {cpfBox.trim().split(/[\n,;]+/).filter(Boolean).length} CPFs</button>
+                <button onClick={()=>setShowCpfBox(false)} style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px 14px", fontSize:12.5, cursor:"pointer" }}>Cancelar</button>
               </div>
             </div>
           )}
-
-          {/* Filtros */}
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
-            <div>
-              <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Saldo mín (R$)</label>
-              <input value={filterSaldo} onChange={e=>{setFilterSaldo(e.target.value);setPage(0);}} placeholder="Ex: 1000" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/>
-            </div>
-            <div>
-              <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Oferta mín (R$)</label>
-              <input value={filterMargem} onChange={e=>{setFilterMargem(e.target.value);setPage(0);}} placeholder="Ex: 500" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/>
-            </div>
-            <div>
-              <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label>
-              <select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(0);}} style={{ ...S.input, width:110, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
-                {["Todos","pendente","ok","erro","simulando"].map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
+            <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Saldo mín (R$)</label><input value={filterSaldo} onChange={e=>{setFilterSaldo(e.target.value);setPage(0);}} placeholder="Ex: 1000" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
+            <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Oferta mín (R$)</label><input value={filterMargem} onChange={e=>{setFilterMargem(e.target.value);setPage(0);}} placeholder="Ex: 500" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
+            <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label><select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(0);}} style={{ ...S.input, width:110, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>{["Todos","pendente","ok","erro","simulando"].map(s=><option key={s}>{s}</option>)}</select></div>
             <div style={{ paddingBottom:2, color:C.td, fontSize:11 }}>{filtered.length} resultado{filtered.length!==1?"s":""}</div>
           </div>
         </div>
 
-        {/* Tabela */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
           <div style={{ overflowX:"auto" }}>
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
-              <thead>
-                <tr style={{ background:C.deep }}>
-                  {["#","Nome","CPF","Saldo","Melhor Oferta","Tabela","Status","Ação"].map(h=>(
-                    <th key={h} style={{ color:C.tm, fontWeight:700, padding:"10px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <thead><tr style={{ background:C.deep }}>{["#","Nome","CPF","Saldo","Melhor Oferta","Tabela","Status","Ação"].map(h=><th key={h} style={{ color:C.tm, fontWeight:700, padding:"10px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{h}</th>)}</tr></thead>
               <tbody>
-                {pageItems.map((it, idx)=>{
-                  const realIdx = items.findIndex(x=>x.id===it.id);
-                  const isSimulando = it.status==="simulando";
-                  const stCol = it.status==="ok"?"#34D399":it.status==="erro"?"#F87171":isSimulando?"#60A5FA":"#FBBF24";
-                  const stBg  = it.status==="ok"?"#091E12":it.status==="erro"?"#2D1515":isSimulando?"#0D1C38":"#2B2310";
+                {pageItems.map((it,idx)=>{
+                  const ri=items.findIndex(x=>x.id===it.id);
+                  const isSim=it.status==="simulando";
+                  const stCol=it.status==="ok"?"#34D399":it.status==="erro"?"#F87171":isSim?"#60A5FA":"#FBBF24";
+                  const stBg=it.status==="ok"?"#091E12":it.status==="erro"?"#2D1515":isSim?"#0D1C38":"#2B2310";
                   return (
-                    <tr key={it.id} style={{ background:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, opacity:isSimulando?0.8:1 }}>
+                    <tr key={it.id} style={{ background:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, opacity:isSim?0.8:1 }}>
                       <td style={{ color:C.td, padding:"9px 12px", fontSize:11 }}>{page*PAGE_SIZE+idx+1}</td>
                       <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.nome}</td>
                       <td style={{ color:C.tm, padding:"9px 12px", fontFamily:"monospace", fontSize:11 }}>{it.cpf||"—"}</td>
-                      <td style={{ padding:"9px 10px", textAlign:"center" }}>
-                        {it.saldo!=null
-                          ? <span onClick={()=>simularItem(realIdx)} style={{ color:C.atxt, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, background:C.abg, display:"inline-block" }} title="Re-simular">{fmtBRL(it.saldo)}</span>
-                          : <span style={{ color:C.td }}>—</span>}
-                      </td>
-                      <td style={{ padding:"9px 10px", textAlign:"center" }}>
-                        {it.margem!=null
-                          ? <span onClick={()=>simularItem(realIdx)} style={{ color:"#34D399", fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, background:"rgba(52,211,153,0.08)", display:"inline-block" }} title="Re-simular">{fmtBRL(it.margem)}</span>
-                          : <span style={{ color:C.td }}>—</span>}
-                      </td>
-                      <td style={{ color:C.td, padding:"9px 10px", fontSize:11 }}>{it.sim?.melhor?.tbl||"—"}</td>
-                      <td style={{ padding:"9px 10px" }}>
-                        <span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>
-                          {it.status==="ok"?"✅ OK":isSimulando?"🔄 ...":it.status==="erro"?"❌ Erro":"⏳"}
-                        </span>
-                        {it.erro && <div style={{ color:"#F87171", fontSize:9.5, marginTop:2, maxWidth:160 }} title={it.erro}>{it.erro.slice(0,50)}</div>}
-                      </td>
-                      <td style={{ padding:"9px 10px" }}>
-                        <button onClick={()=>simularItem(realIdx)} disabled={running||isSimulando}
-                          style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>
-                          {it.status==="ok"?"🔄":"▶"}
-                        </button>
-                      </td>
+                      <td style={{ padding:"9px 10px", textAlign:"center" }}>{it.saldo!=null?<span onClick={()=>{setItems(p=>{const n=[...p];simularUm(n[ri]).then(u=>{n[ri]=u;setItems([...n]);});return p;})}} style={{ color:C.atxt, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, background:C.abg }}>{fmtBRL(it.saldo)}</span>:<span style={{ color:C.td }}>—</span>}</td>
+                      <td style={{ padding:"9px 10px", textAlign:"center" }}>{it.margem!=null?<span style={{ color:"#34D399", fontWeight:700, padding:"3px 8px", borderRadius:7, background:"rgba(52,211,153,0.08)" }}>{fmtBRL(it.margem)}</span>:<span style={{ color:C.td }}>—</span>}</td>
+                      <td style={{ color:C.td, padding:"9px 10px", fontSize:11 }}>{it.sim?.melhor?.label||"—"}</td>
+                      <td style={{ padding:"9px 10px" }}><span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>{it.status==="ok"?"✅ OK":isSim?"🔄":"❌ Erro"===it.status?"❌":"⏳"}</span>{it.erro&&<div style={{ color:"#F87171", fontSize:9.5, marginTop:2 }}>{it.erro.slice(0,45)}</div>}</td>
+                      <td style={{ padding:"9px 10px" }}><button onClick={()=>{const n=[...items];simularUm(n[ri]).then(u=>{n[ri]=u;setItems([...n]);});}} disabled={running||isSim} style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>{it.status==="ok"?"🔄":"▶"}</button></td>
                     </tr>
                   );
                 })}
-                {pageItems.length===0 && (
-                  <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"28px", fontSize:13 }}>Nenhum resultado para os filtros aplicados.</td></tr>
-                )}
+                {pageItems.length===0&&<tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"28px" }}>Nenhum resultado.</td></tr>}
               </tbody>
             </table>
           </div>
-
-          {/* Paginação */}
-          {totalPages > 1 && (
+          {totalPages>1&&(
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
-              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
-                style={{ background:page===0?C.deep:C.abg, color:page===0?C.td:C.atxt, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page===0?"not-allowed":"pointer" }}>
-                ← Anteriores 50
-              </button>
-              <span style={{ color:C.tm, fontSize:12 }}>
-                {page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} de {filtered.length}
-              </span>
-              <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1}
-                style={{ background:page===totalPages-1?C.deep:C.abg, color:page===totalPages-1?C.td:C.atxt, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page===totalPages-1?"not-allowed":"pointer" }}>
-                Próximos 50 →
-              </button>
+              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{ background:page>0?C.abg:C.deep, color:page>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page>0?"pointer":"not-allowed" }}>← Anteriores 50</button>
+              <span style={{ color:C.tm, fontSize:12 }}>{page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} de {filtered.length}</span>
+              <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{ background:page<totalPages-1?C.abg:C.deep, color:page<totalPages-1?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page<totalPages-1?"pointer":"not-allowed" }}>Próximos 50 →</button>
             </div>
           )}
         </div>
-
-        {/* Log */}
-        {logs.length > 0 && (
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-              <div style={{ color:C.ts, fontSize:11.5, fontWeight:700 }}>📋 Log ({logs.length})</div>
-              <button onClick={()=>setLogs([])} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
-            </div>
-            <div style={{ maxHeight:180, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
-              {logs.map((l,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
-                  <span style={{ color:C.td, flexShrink:0, fontFamily:"monospace" }}>{l.ts}</span>
-                  <span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {logs.length>0&&<div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px" }}><div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}><div style={{ color:C.ts, fontSize:11.5, fontWeight:700 }}>📋 Log ({logs.length})</div><button onClick={()=>setLogs([])} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button></div><div style={{ maxHeight:160, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>{logs.map((l,i)=><div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}><span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span><span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span></div>)}</div></div>}
       </div>
     );
   };
 
+  // ════════════════════════════════════════════════════════════
+  // RENDER PRINCIPAL
+  // ════════════════════════════════════════════════════════════
+  const TABS = [
+    { id:"individual", label:"🔍 Individual" },
+    { id:"lote",       label:"⚡ Lote" },
+    { id:"digitacao",  label:"📝 Digitar Proposta" },
+    { id:"operacoes",  label:"📋 Contratos" },
+  ];
+
   return (
     <div style={{ padding:"4px 0" }}>
-      {/* Status da sessão */}
       {isTokenValid && (
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"8px 14px", background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.2)", borderRadius:9 }}>
-          <span style={{ color:"#34D399", fontSize:13 }}>🟢</span>
-          <span style={{ color:"#34D399", fontSize:12, fontWeight:600 }}>Autenticado como {savedUser}</span>
-          <span style={{ color:C.td, fontSize:10.5, marginLeft:4 }}>· Sessão salva até {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
+          <span style={{ color:"#34D399" }}>🟢</span>
+          <span style={{ color:"#34D399", fontSize:12, fontWeight:600 }}>V8 Digital — {savedUser}</span>
+          <span style={{ color:C.td, fontSize:10.5, marginLeft:4 }}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
           <button onClick={clearSession} style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>Desconectar</button>
         </div>
       )}
 
-      {/* Tabs */}
       {isTokenValid && (
         <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:20 }}>
-          {[{id:"individual",label:"🔍 Individual"},{id:"lote",label:"⚡ Lote"}].map(t=>(
+          {TABS.map(t=>(
             <button key={t.id} onClick={()=>setAba(t.id)}
-              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13,
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 16px", fontSize:13,
                 fontWeight:aba===t.id?700:400, color:aba===t.id?C.atxt:C.tm,
                 borderBottom:aba===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
               {t.label}
@@ -11333,37 +11572,32 @@ function V8DigitalTab({ currentUser, contacts }) {
         </div>
       )}
 
-      {/* Auth */}
       {!isTokenValid && (
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"22px 24px" }}>
           <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
-          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Use seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8 Digital. A sessão fica salva no navegador.</div>
+          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Use seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8. Sessão salva no navegador.</div>
           <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:9, padding:"10px 14px", marginBottom:16, fontSize:11 }}>
             <div style={{ color:C.td }}>Auth: <span style={{ color:C.tm }}>https://auth.v8sistema.com/oauth/token</span></div>
-            <div style={{ color:C.td }}>Audience: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
+            <div style={{ color:C.td }}>BFF: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
             <div style={{ color:C.td }}>Client ID: <span style={{ color:C.tm }}>DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn</span></div>
           </div>
           {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-            <div>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label>
-              <input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} />
-            </div>
-            <div>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label>
-              <input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} />
-            </div>
+            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label><input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} /></div>
+            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label><input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} /></div>
           </div>
           <button onClick={autenticar} disabled={authLoading}
             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
-            {authLoading ? "⏳ Autenticando..." : "🔐 Entrar na V8 Digital →"}
+            {authLoading?"⏳ Autenticando...":"🔐 Entrar na V8 Digital →"}
           </button>
-          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>A sessão é salva no navegador. Você não precisará fazer login novamente ao recarregar a página.</div>
+          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>Sessão salva. Não precisará fazer login ao recarregar.</div>
         </div>
       )}
 
       {isTokenValid && aba === "individual" && <IndividualTab />}
       {isTokenValid && aba === "lote"       && <LoteTab />}
+      {isTokenValid && aba === "digitacao"  && <DigitacaoTab />}
+      {isTokenValid && aba === "operacoes"  && <OperacoesTab />}
     </div>
   );
 }
