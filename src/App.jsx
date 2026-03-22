@@ -10959,7 +10959,20 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                 {fieldGroup("CPF *","cpf","text","000.000.000-00")}
                 {fieldGroup("RG / Documento *","rg","text","Número do documento")}
                 {fieldGroup("Nome da mãe *","motherName","text","Nome da mãe")}
-                {fieldGroup("Data de nascimento *","birthDate","date","")}
+                <div>
+                  <label style={labelStyle}>Data de nascimento * <span style={{ color:C.td, fontSize:9 }}>(AAAA-MM-DD ou cole)</span></label>
+                  <input value={form.birthDate} onChange={e=>setF("birthDate",e.target.value)}
+                    onPaste={e=>{
+                      e.preventDefault();
+                      const raw=(e.clipboardData||window.clipboardData).getData("text");
+                      // Normaliza DD/MM/AAAA → AAAA-MM-DD
+                      const m=raw.trim().match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+                      if(m) setF("birthDate",`${m[3]}-${m[2]}-${m[1]}`);
+                      else setF("birthDate",raw.trim());
+                    }}
+                    placeholder="AAAA-MM-DD" type="text"
+                    style={inputStyle}/>
+                </div>
                 {fieldGroup("E-mail *","email","email","email@exemplo.com")}
                 {fieldGroup("Telefone (DDD+número) *","phone","text","84999999999")}
                 <div>
@@ -11256,6 +11269,27 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indHistDetalhe, setIndHistDetalhe] = useState(null);
   const [indHistSearch,  setIndHistSearch]  = useState("");
 
+  // ── Estados LoteTab — elevados para evitar re-mount e perda de estado ──
+  const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
+  const [loteItems,        setLoteItems]        = useState(()=> lSaved?.items || []);
+  const [loteRunning,      setLoteRunning]       = useState(false);
+  const [lotePaused,       setLotePaused]        = useState(false);
+  const [loteProgress,     setLoteProgress]      = useState(lSaved?.progress||0);
+  const [loteFilterSaldo,  setLoteFilterSaldo]   = useState("");
+  const [loteFilterMargem, setLoteFilterMargem]  = useState("");
+  const [loteFilterStatus, setLoteFilterStatus]  = useState("Todos");
+  const [loteLogs,         setLoteLogs]          = useState([]);
+  const [lotePage,         setLotePage]          = useState(0);
+  const [loteCpfBox,       setLoteCpfBox]        = useState(() => localStorage.getItem("nexp_v8_lote_cpfbox")||"");
+  const [loteShowCpfBox,   setLoteShowCpfBox]    = useState(false);
+  const [loteProvider,     setLoteProvider]      = useState(() => localStorage.getItem("nexp_v8_lote_provider")||"cartos");
+  const [loteFees,         setLoteFees]          = useState([]);
+  const [loteDigModal,     setLoteDigModal]      = useState(null);
+  const [loteDetalhe,      setLoteDetalhe]       = useState(null);
+  const [loteSearch,       setLoteSearch]        = useState("");
+  const loteAbortRef = useRef(false);
+  const lotePauseRef = useRef(false);
+
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
   // ════════════════════════════════════════════════════════════
@@ -11547,8 +11581,12 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap" }}>
             <div style={{ flex:1, minWidth:180 }}>
               <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>CPF do cliente</label>
-              <input value={cpf} onChange={e=>setCpf(e.target.value)} placeholder="000.000.000-00"
+              <input
+                value={cpf}
+                onChange={e=>{ const v=e.target.value; setCpf(v); }}
                 onKeyDown={e=>e.key==="Enter"&&!loading&&buscarSaldo()}
+                placeholder="000.000.000-00"
+                autoComplete="off"
                 style={{ ...S.input, fontSize:16, fontWeight:700, letterSpacing:"0.5px" }} />
             </div>
             <div>
@@ -11643,15 +11681,39 @@ function V8DigitalTab({ currentUser, contacts }) {
                 {/* Lado direito: melhor oferta */}
                 {bestSim && (
                   <div style={{ background:"linear-gradient(135deg,rgba(79,142,247,0.2),rgba(124,58,237,0.2))", border:"1px solid rgba(79,142,247,0.3)", borderRadius:14, padding:"18px 22px", minWidth:200, textAlign:"center" }}>
-                    <div style={{ color:"#34D399", fontSize:14, fontWeight:800, letterSpacing:"0.5px", marginBottom:8 }}>✅ MELHOR OFERTA</div>
-                    <div style={{ color:"#fff", fontSize:28, fontWeight:900, lineHeight:1, letterSpacing:"-1px", marginBottom:6 }}>
+                    <div style={{ color:"#34D399", fontSize:14, fontWeight:800, letterSpacing:"0.5px", marginBottom:6 }}>✅ MELHOR OFERTA</div>
+                    <div style={{ color:"#fff", fontSize:28, fontWeight:900, lineHeight:1, letterSpacing:"-1px", marginBottom:4 }}>
                       {fmtBRL(bestSim.sim?.availableBalance||0)}
                     </div>
-                    <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:2 }}>
-                      valor liberado
+                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, marginBottom:8 }}>
+                      Valor liberado via PIX
                     </div>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:8, paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.1)" }}>
+                    <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:8, padding:"4px 10px", display:"inline-block", fontSize:11, color:"rgba(255,255,255,0.6)", marginBottom:6 }}>
+                      Emissão: {fmtBRL(bestSim.sim?.emissionAmount||0)}
+                    </div>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, paddingTop:6, borderTop:"1px solid rgba(255,255,255,0.1)" }}>
                       {calcAnos(bestSim.sim)} de antecipação
+                    </div>
+                    <button
+                      onClick={()=>{
+                        const el=document.getElementById("ind_best_print");
+                        if(!el)return;
+                        const w=window.open("","_blank","width=500,height=400");
+                        w.document.write(`<html><head><title>Melhor Oferta FGTS</title><style>body{font-family:sans-serif;background:#fff;color:#000;padding:32px;text-align:center}h2{color:#1a6bb5}p{font-size:14px;margin:6px 0}.val{font-size:32px;font-weight:900;color:#1a6bb5}</style></head><body>${el.innerHTML}</body></html>`);
+                        w.document.close();w.focus();w.print();w.close();
+                      }}
+                      style={{ marginTop:10, background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", color:"#fff", borderRadius:7, padding:"5px 14px", fontSize:11, cursor:"pointer", width:"100%" }}>
+                      🖨 Print desta oferta
+                    </button>
+                    <div id="ind_best_print" style={{ display:"none" }}>
+                      <h2>✅ Melhor Oferta FGTS</h2>
+                      <p>CPF: <b>{cpfSim}</b></p>
+                      <p>Tabela: <b style={{ textTransform:"capitalize" }}>{bestSim.label}</b></p>
+                      <p class="val">{fmtBRL(bestSim.sim?.availableBalance||0)}</p>
+                      <p>Valor liberado via PIX</p>
+                      <p>Emissão: <b>{fmtBRL(bestSim.sim?.emissionAmount||0)}</b></p>
+                      <p>{calcAnos(bestSim.sim)} de antecipação · {provider?.toUpperCase()}</p>
+                      <p style={{ fontSize:11, color:"#888" }}>{new Date().toLocaleString("pt-BR")}</p>
                     </div>
                   </div>
                 )}
@@ -11680,23 +11742,37 @@ function V8DigitalTab({ currentUser, contacts }) {
               )}
             </div>
 
-            {/* Tabelas — todas de uma vez */}
+            {/* Tabelas — formato lote */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, overflow:"hidden" }}>
-              <div style={{ padding:"14px 18px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ padding:"12px 16px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
                 <div style={{ color:C.ts, fontSize:13.5, fontWeight:700 }}>
                   📊 Simulação por Tabela
                   {loading && simStep==="simulando" && <span style={{ color:C.atxt, fontSize:11, marginLeft:10, fontWeight:400 }}>⏳ calculando...</span>}
                 </div>
-                <div style={{ color:C.td, fontSize:11 }}>
-                  {tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · provider: {provider.toUpperCase()}
+                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  {/* Apagar cache por CPF */}
+                  <input id="ind_cache_cpf" placeholder="CPF apagar cache"
+                    style={{ ...S.input, width:150, fontSize:11.5, padding:"5px 9px" }}
+                    onKeyDown={async e=>{
+                      if(e.key==="Enter"&&e.target.value.trim()){
+                        const cv=padCPF(e.target.value);
+                        try{await apiFetch(`/fgts/balance/cache/${cv}`,"DELETE");}catch{}
+                        if(padCPF(cpf)===cv){setBalance(null);setTableSims([]);}
+                        e.target.value="";
+                      }
+                    }}/>
+                  <button onClick={async()=>{
+                    const inp=document.getElementById("ind_cache_cpf");
+                    if(!inp?.value.trim())return;
+                    const cv=padCPF(inp.value);
+                    try{await apiFetch(`/fgts/balance/cache/${cv}`,"DELETE");}catch{}
+                    if(padCPF(cpf)===cv){setBalance(null);setTableSims([]);}
+                    inp.value="";
+                  }} style={{ background:"#2D1515",color:"#F87171",border:"1px solid #EF444422",borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",whiteSpace:"nowrap" }}>
+                    🗑 Cache
+                  </button>
+                  <span style={{ color:C.td, fontSize:11 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
                 </div>
-              </div>
-
-              {/* Header da grade */}
-              <div style={{ display:"grid", gridTemplateColumns:"1.3fr 1.1fr 0.9fr 0.8fr 1.1fr 0.8fr", gap:0, background:C.deep, padding:"10px 18px", borderBottom:`1px solid ${C.b1}` }}>
-                {["Tabela","Saldo Liberado","Anos / Parcelas","CET a.m.","Valor Emissão",""].map(h=>(
-                  <div key={h} style={{ color:C.tm, fontSize:10.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
-                ))}
               </div>
 
               {tableSims.length === 0 && loading && (
@@ -11706,6 +11782,15 @@ function V8DigitalTab({ currentUser, contacts }) {
                 <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>Aguardando simulação...</div>
               )}
 
+              {/* Header */}
+              {tableSims.length > 0 && (
+                <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
+                  {["Tabela","Saldo Liberado","Anos","CET a.m.","Emissão",""].map(h=>(
+                    <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
+                  ))}
+                </div>
+              )}
+
               {sortedSims.map((t, i) => {
                 const vlr    = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
                 const emissao = parseFloat(t.sim?.emissionAmount || t.sim?.issueAmount || 0);
@@ -11713,59 +11798,44 @@ function V8DigitalTab({ currentUser, contacts }) {
                 const anos   = calcAnos(t.sim);
                 const isBest = bestSim?.feeId === t.feeId;
                 const isSel  = selectedSim?.feeId === t.feeId;
-
                 return (
                   <div key={i}
                     onClick={()=> t.ok && setSelectedSim(isSel ? null : t)}
                     style={{
-                      display:"grid", gridTemplateColumns:"1.3fr 1.1fr 0.9fr 0.8fr 1.1fr 0.8fr",
-                      gap:0, padding:"13px 18px",
-                      background: isSel ? `${C.acc}20` : isBest ? `${C.acc}12` : i%2===0 ? C.card : C.deep,
+                      display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr",
+                      gap:0, padding:"11px 14px",
+                      background: isSel?`${C.acc}20`:isBest?`${C.acc}12`:i%2===0?C.card:C.deep,
                       borderBottom:`1px solid ${C.b1}`,
-                      borderLeft: isSel ? `3px solid ${C.acc}` : isBest ? `3px solid ${C.acc}88` : "3px solid transparent",
-                      cursor: t.ok ? "pointer" : "default",
-                      transition:"all 0.15s",
-                      opacity: t.ok ? 1 : 0.45,
+                      borderLeft: isSel?`3px solid ${C.acc}`:isBest?`3px solid ${C.acc}88`:"3px solid transparent",
+                      cursor:t.ok?"pointer":"default", transition:"all 0.15s", opacity:t.ok?1:0.45,
                     }}>
-                    {/* Nome */}
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      {isBest && <span style={{ fontSize:13 }}>🏆</span>}
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      {isBest && <span style={{ fontSize:12 }}>🏆</span>}
                       <div>
-                        <div style={{ color: isBest||isSel ? C.atxt : C.tp, fontWeight:700, fontSize:13, textTransform:"capitalize" }}>{t.label}</div>
-                        {!t.ok && <div style={{ color:"#F87171", fontSize:10, marginTop:2 }}>{(t.err||"").slice(0,50)}</div>}
+                        <div style={{ color:isBest||isSel?C.atxt:C.tp, fontWeight:700, fontSize:12.5, textTransform:"capitalize" }}>{t.label}</div>
+                        {!t.ok && <div style={{ color:"#F87171", fontSize:10 }}>{(t.err||"").slice(0,40)}</div>}
                       </div>
                     </div>
-                    {/* Saldo liberado */}
                     <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok ? <div>
-                        <div style={{ color: isBest?"#34D399":C.atxt, fontWeight:800, fontSize:15 }}>{fmtBRL(vlr)}</div>
-                        <div style={{ color:C.td, fontSize:10 }}>valor líquido</div>
-                      </div> : <span style={{ color:"#F87171", fontSize:12 }}>✘</span>}
+                      {t.ok?<div>
+                        <div style={{ color:isBest?"#34D399":C.atxt, fontWeight:800, fontSize:14 }}>{fmtBRL(vlr)}</div>
+                        <div style={{ color:C.td, fontSize:10 }}>via PIX</div>
+                      </div>:<span style={{ color:"#F87171", fontSize:12 }}>✘</span>}
                     </div>
-                    {/* Anos */}
                     <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <div style={{ color:C.tm, fontSize:13, fontWeight:600 }}>{anos}</div>}
+                      {t.ok && <span style={{ color:C.tm, fontSize:12.5, fontWeight:600 }}>{anos}</span>}
                     </div>
-                    {/* CET */}
                     <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && cet && <div>
-                        <div style={{ color:C.tm, fontSize:12.5, fontWeight:600 }}>{fmtPct(cet)}</div>
-                        <div style={{ color:C.td, fontSize:10 }}>ao mês</div>
-                      </div>}
+                      {t.ok && cet && <span style={{ color:C.tm, fontSize:12 }}>{fmtPct(cet)}</span>}
                     </div>
-                    {/* Emissão */}
                     <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <div>
-                        <div style={{ color:C.ts, fontWeight:600, fontSize:13 }}>{fmtBRL(emissao)}</div>
-                        <div style={{ color:C.td, fontSize:10 }}>emissão</div>
-                      </div>}
+                      {t.ok && <span style={{ color:C.ts, fontSize:12, fontWeight:600 }}>{fmtBRL(emissao)}</span>}
                     </div>
-                    {/* Digitar */}
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
                       {t.ok && (
-                        <button onClick={e=>{e.stopPropagation();setIndDigModal({ tabela:t, balance:indBalance, cpf:indCpfSim, provider:indProvider });}}
-                          style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"5px 12px", fontSize:11.5, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
-                          📝 Digitar
+                        <button onClick={e=>{e.stopPropagation();setIndDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider});}}
+                          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                          DIGITAR
                         </button>
                       )}
                     </div>
@@ -11776,44 +11846,53 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-        {/* ── Proposta selecionada (para print/envio) ── */}
+        {/* ── Proposta selecionada — painel estilo Lote ── */}
         {selectedSim && (
-          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"22px 26px", marginBottom:16, boxShadow:"0 8px 32px rgba(0,0,0,0.4)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>📋 Proposta — {selectedSim.label?.toUpperCase()}</div>
-              <button onClick={()=>setSelectedSim(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"4px 12px", cursor:"pointer", fontSize:11 }}>✕ Fechar</button>
+          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {selectedSim.label?.toUpperCase()} · <span style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:400 }}>{cpfSim}</span></div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button
+                  onClick={()=>{
+                    // Print apenas esse painel
+                    const el = document.getElementById("ind_sim_print");
+                    if(!el) return;
+                    const w = window.open("","_blank","width=700,height=600");
+                    w.document.write(`<html><head><title>Simulação FGTS</title><style>body{font-family:sans-serif;background:#fff;color:#000;padding:24px}table{border-collapse:collapse;width:100%}td{padding:8px 12px;border:1px solid #ddd;font-size:13px}.head{font-size:11px;color:#666}.val{font-weight:700;font-size:14px}</style></head><body>${el.innerHTML}</body></html>`);
+                    w.document.close(); w.focus(); w.print(); w.close();
+                  }}
+                  style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.2)", borderRadius:7, padding:"5px 14px", fontSize:12, cursor:"pointer" }}>
+                  🖨 Print
+                </button>
+                <button onClick={()=>setSelectedSim(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
+              </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {[
-                ["CPF", cpfSim],
-                ["Provider", provider?.toUpperCase()],
-                ["Tabela", selectedSim.label],
-                ["Valor Liberado", fmtBRL(selectedSim.sim?.availableBalance||0)],
-                ["Valor Emissão", fmtBRL(selectedSim.sim?.emissionAmount||0)],
-                ["Anos de Antecipação", calcAnos(selectedSim.sim)],
-                ["CET Mensal", fmtPct(selectedSim.sim?.cet)],
-                ["CET Anual", fmtPct(selectedSim.sim?.annualCet)],
-                ["IOF", fmtBRL(selectedSim.sim?.iof)],
-                ["Total Bloqueado", fmtBRL(selectedSim.sim?.totalBalance||saldoTotal)],
-                ["Parcelas", String(selectedSim.sim?.totalInstallments||"—")],
-                ["Data da Simulação", new Date().toLocaleString("pt-BR")],
-              ].map(([l,v])=>(
-                <div key={l} style={{ padding:"8px 12px", background:"rgba(255,255,255,0.06)", borderRadius:9 }}>
-                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5 }}>{l}</div>
-                  <div style={{ color:"#fff", fontSize:13, fontWeight:600, marginTop:2 }}>{v}</div>
-                </div>
-              ))}
+            <div id="ind_sim_print">
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:8, marginBottom:14 }}>
+                {[
+                  ["CPF",          cpfSim],
+                  ["Provider",     provider?.toUpperCase()],
+                  ["Tabela",       selectedSim.label],
+                  ["Valor Liberado",fmtBRL(selectedSim.sim?.availableBalance||0)],
+                  ["Valor Emissão",fmtBRL(selectedSim.sim?.emissionAmount||0)],
+                  ["Anos",         calcAnos(selectedSim.sim)],
+                  ["CET Mensal",   fmtPct(selectedSim.sim?.cet)],
+                  ["IOF",          fmtBRL(selectedSim.sim?.iof)],
+                  ["Total Bloqueado",fmtBRL(selectedSim.sim?.totalBalance||saldoTotal)],
+                  ["Parcelas",     String(selectedSim.sim?.totalInstallments||"—")],
+                  ["Data",         new Date().toLocaleString("pt-BR")],
+                ].map(([l,v])=>(
+                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                    <div style={{ color:"#fff", fontWeight:600, fontSize:13, marginTop:2 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ display:"flex", gap:8, marginTop:14 }}>
-              <button onClick={()=>setIndDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider })}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                📝 Digitar esta proposta
-              </button>
-              <button onClick={()=>window.print()}
-                style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.2)", borderRadius:9, padding:"10px 16px", fontSize:13, cursor:"pointer" }}>
-                🖨 Print
-              </button>
-            </div>
+            <button onClick={()=>setIndDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider })}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              📝 Digitar esta proposta
+            </button>
           </div>
         )}
 
@@ -12217,34 +12296,26 @@ function V8DigitalTab({ currentUser, contacts }) {
   // ABA: SIMULAÇÃO EM LOTE — completa com polling real
   // ════════════════════════════════════════════════════════════
   const LoteTab = () => {
-    const saved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
-    const [items,     setItems]     = useState(()=> saved?.items || []);
-    const [running,   setRunning]   = useState(false);
-    const [paused,    setPaused]    = useState(false);
-    const [progress,  setProgress]  = useState(saved?.progress||0);
-    const [filterSaldo,   setFilterSaldo]   = useState("");
-    const [filterMargem,  setFilterMargem]  = useState("");
-    const [filterStatus,  setFilterStatus]  = useState("Todos");
-    const [logs,      setLogs]      = useState([]);
-    const [page,      setPage]      = useState(0);
-    // CPF box — NÃO apaga ao adicionar, só se o usuário limpar
-    const [cpfBox,    setCpfBox]    = useState(() => localStorage.getItem("nexp_v8_lote_cpfbox")||"");
-    const [showCpfBox,setShowCpfBox]= useState(false);
-    // Provider persistido
-    const [provider,  setProvider]  = useState(() => localStorage.getItem("nexp_v8_lote_provider")||"cartos");
-    const loteProvider = provider;
-    const [fees,      setFees]      = useState([]);
-    const [loteDigModal, setLoteDigModal] = useState(null);
-    // Painel de detalhe ao clicar na linha
-    const [detalheItem, setDetalheItem] = useState(null);
-    const abortRef  = useRef(false);
-    const pauseRef  = useRef(false);
-    const PAGE_SIZE = 50;
+    const items        = loteItems;       const setItems        = setLoteItems;
+    const running      = loteRunning;     const setRunning      = setLoteRunning;
+    const paused       = lotePaused;      const setPaused       = setLotePaused;
+    const progress     = loteProgress;    const setProgress     = setLoteProgress;
+    const filterSaldo  = loteFilterSaldo; const setFilterSaldo  = setLoteFilterSaldo;
+    const filterMargem = loteFilterMargem;const setFilterMargem = setLoteFilterMargem;
+    const filterStatus = loteFilterStatus;const setFilterStatus = setLoteFilterStatus;
+    const logs         = loteLogs;        const setLogs         = setLoteLogs;
+    const page         = lotePage;        const setPage         = setLotePage;
+    const cpfBox       = loteCpfBox;      const setCpfBox       = setLoteCpfBox;
+    const showCpfBox   = loteShowCpfBox;  const setShowCpfBox   = setLoteShowCpfBox;
+    const provider     = loteProvider;
+    const fees         = loteFees;        const setFees         = setLoteFees;
+    const detalheItem  = loteDetalhe;     const setDetalheItem  = setLoteDetalhe;
+    const abortRef     = loteAbortRef;
+    const pauseRef     = lotePauseRef;
+    const PAGE_SIZE    = 50;
 
-    // Persiste provider
-    const setProviderPersist = (p) => { setProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
-    // Persiste cpfBox
-    const setCpfBoxPersist = (v) => { setCpfBox(v); localStorage.setItem("nexp_v8_lote_cpfbox", v); };
+    const setProviderPersist = (p) => { setLoteProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
+    const setCpfBoxPersist   = (v) => { setLoteCpfBox(v);  localStorage.setItem("nexp_v8_lote_cpfbox", v); };
 
     const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
     const saveState = (newItems, prog) => localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, progress:prog }));
@@ -12316,12 +12387,50 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         const ts = new Date().toLocaleString("pt-BR");
         addLog(`✅ ${fmtCPF(c)} saldo:${fmtBRL(saldoVal)} melhor:${fmtBRL(melhorVal)} (${melhorLabel})`);
+
+        // Busca dados do cliente do V8 (contratos existentes)
+        let clienteV8 = null;
+        let nomeCliente = item.nome && item.nome !== "Manual" ? item.nome : "";
+        try {
+          const ops = await apiFetch(`/fgts/proposal?search=${c}&page=1&limit=1`);
+          const primeiro = (ops?.data||ops||[])[0];
+          if (primeiro?.id) {
+            const det = await apiFetch(`/fgts/proposal/${primeiro.id}`);
+            clienteV8 = det;
+            if (det.name || det.clientName) nomeCliente = det.name || det.clientName || nomeCliente;
+          }
+        } catch {}
+
+        // Cruzamento com Nexp
+        const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === c) || {};
+        if (!nomeCliente && nexp.name) nomeCliente = nexp.name;
+
         return {
           ...item, cpf:fmtCPF(c), cpfRaw:c,
+          nome: nomeCliente || fmtCPF(c),
           saldo:saldoVal, margem:melhorVal,
           status: saldoVal > 0 ? "ok" : "saldo_zero",
           sim:{ melhor:{ label:melhorLabel, sim:melhorSim, feeId:melhorFeeId }, balanceId:bal.id, allSims, anos:melhorAnos },
           balance: bal,
+          clienteV8,
+          nomeCliente,
+          // Dados para auto-fill no modal de digitação
+          email:        clienteV8?.email || nexp.email || "",
+          phone:        clienteV8?.phone ? (clienteV8.phoneRegionCode||"")+clienteV8.phone : (nexp.phone||"").replace(/\D/g,""),
+          phoneDdd:     clienteV8?.phoneRegionCode || (nexp.phone||"").replace(/\D/g,"").slice(0,2),
+          rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
+          nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
+          nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
+          cep:          clienteV8?.postalCode || (nexp.cep||"").replace(/\D/g,""),
+          rua:          clienteV8?.street || nexp.rua || "",
+          numero:       clienteV8?.addressNumber || nexp.numero || "",
+          complemento:  clienteV8?.complement || nexp.complemento || "",
+          bairro:       clienteV8?.neighborhood || nexp.bairro || "",
+          cidade:       clienteV8?.city || nexp.cidade || "",
+          uf:           clienteV8?.state || nexp.ufEnd || "",
+          estadoCivil:  clienteV8?.maritalStatus || "single",
+          nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
+          isPEP:        clienteV8?.isPEP || false,
           ts, erro:null, erroTipo:null,
         };
       } catch(e) {
@@ -12368,6 +12477,11 @@ function V8DigitalTab({ currentUser, contacts }) {
       if(filterStatus!=="Todos"&&it.status!==filterStatus) return false;
       if(filterSaldo&&it.saldo!==null&&it.saldo<(parseFloat(filterSaldo)||0)) return false;
       if(filterMargem&&it.margem!==null&&it.margem<(parseFloat(filterMargem)||0)) return false;
+      if(loteSearch){
+        const q=loteSearch.toLowerCase();
+        const match=(it.cpf||"").includes(loteSearch)||(it.nome||"").toLowerCase().includes(q)||(it.cpfRaw||"").includes(loteSearch);
+        if(!match) return false;
+      }
       return true;
     });
     const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
@@ -12583,6 +12697,37 @@ function V8DigitalTab({ currentUser, contacts }) {
             )}
           </div>
         )}
+
+        {/* Barra de pesquisa + apagar cache */}
+        <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
+          <input value={loteSearch} onChange={e=>{setLoteSearch(e.target.value);setPage(0);}}
+            placeholder="🔍 Pesquisar CPF ou nome..."
+            style={{ ...S.input, flex:1, minWidth:200, fontSize:12.5, padding:"7px 12px" }}/>
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            <input id="lote_cache_cpf" placeholder="CPF para apagar cache"
+              style={{ ...S.input, width:160, fontSize:12, padding:"6px 10px" }}
+              onKeyDown={async e=>{
+                if(e.key==="Enter"){
+                  const cpfv = padCPF(e.target.value);
+                  try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE"); } catch {}
+                  setItems(p=>p.map(x=>(x.cpfRaw===cpfv||x.cpf===fmtCPF(cpfv))?{...x,status:"pendente",saldo:null,margem:null,sim:null,erro:null}:x));
+                  e.target.value="";
+                }
+              }}/>
+            <button
+              onClick={async ()=>{
+                const inp = document.getElementById("lote_cache_cpf");
+                if(!inp?.value.trim()) return;
+                const cpfv = padCPF(inp.value);
+                try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE"); } catch {}
+                setItems(p=>p.map(x=>(x.cpfRaw===cpfv||x.cpf===fmtCPF(cpfv))?{...x,status:"pendente",saldo:null,margem:null,sim:null,erro:null}:x));
+                inp.value="";
+              }}
+              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>
+              🗑 Apagar cache
+            </button>
+          </div>
+        </div>
 
         {/* Tabela */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
