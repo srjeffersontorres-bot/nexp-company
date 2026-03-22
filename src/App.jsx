@@ -10798,10 +10798,10 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
         const v = (raw||"").trim();
         const digitos = v.replace(/\D/g,"");
         // CPF com formatação → só números
-        if (/^\d{3}[.\-]\d{3}[.\-]\d{3}[-]\d{2}$/.test(v)) return digitos;
-        if (/^\d{11}$/.test(digitos) && /^[\d.\-]+$/.test(v)) return digitos;
+        if (/^\d{3}[.\-]\d{3}[.\-]\d{3}-\d{2}$/.test(v)) return digitos;
+        if (/^\d{11}$/.test(digitos) && /^[\d.-]+$/.test(v)) return digitos;
         // Telefone → +55DDDNUMERO
-        if (/^[\(\+\d][\d\s\(\)\-]+$/.test(v) && digitos.length >= 10) {
+        if (/^[(+\d][\d\s()-]+$/.test(v) && digitos.length >= 10) {
           return digitos.startsWith("55") ? `+${digitos}` : `+55${digitos}`;
         }
         return v; // e-mail ou UUID — mantém como está
@@ -11047,8 +11047,8 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                     const v=(form.pix||"").trim();
                     let norm=v, tipo="";
                     const digitos=v.replace(/\D/g,"");
-                    if(/^\d{3}[.\-]\d{3}[.\-]\d{3}[-]\d{2}$/.test(v)||(/^\d{11}$/.test(digitos)&&/^[\d.\-]+$/.test(v))){ norm=digitos; tipo="CPF"; }
-                    else if(/^[\(\+\d][\d\s\(\)\-]+$/.test(v)&&digitos.length>=10){ norm=digitos.startsWith("55")?`+${digitos}`:`+55${digitos}`; tipo="Telefone"; }
+                    if(/^\d{3}[.\-]\d{3}[.\-]\d{3}-\d{2}$/.test(v)||(/^\d{11}$/.test(digitos)&&/^[\d.\-]+$/.test(v))){ norm=digitos; tipo="CPF"; }
+                    else if(/^[(+\d][\d\s()-]+$/.test(v)&&digitos.length>=10){ norm=digitos.startsWith("55")?`+${digitos}`:`+55${digitos}`; tipo="Telefone"; }
                     else if(v.includes("@")){ tipo="E-mail"; }
                     else if(/^[0-9a-f-]{36}$/i.test(v)){ tipo="Chave aleatória"; }
                     return (
