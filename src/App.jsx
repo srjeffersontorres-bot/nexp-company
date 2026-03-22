@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword, getAuth, signInWithEmailAndPassword as signInSecondary } from "firebase/auth";
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
@@ -13891,161 +13891,163 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
           </div>
         )}
-        {data && (
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden" }}>
+        {/* Tabela — sempre visível, mostra loading ou dados */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden" }}>
+          {loading && (
+            <div style={{ textAlign:"center", padding:"32px", color:C.tm, fontSize:13 }}>
+              ⏳ Carregando propostas...
+            </div>
+          )}
+          {err && !loading && (
+            <div style={{ padding:"16px 20px", color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>
+          )}
+          {!loading && (
             <div style={{ overflowX:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:C.deep }}>
-                    {["Cliente","CPF","Contrato","Status","Valor","Provider","Link Formalização","Nova Simulação"].map(h=>(
+                    {["Cliente","CPF","Contrato","Status","Valor","Provider","Link Formalização","Ações"].map(h=>(
                       <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Fila de Formalização integrada — aparece em "Todos" e em "Formalização" */}
-                  {(!status || status === "formalization") && [...fila].sort((a,b)=>b.criadoEm-a.criadoEm).map((item, i) => {
+                  {/* ── Fila de Formalização ── */}
+                  {(!status || status === "formalization") && [...fila].sort((a,b)=>b.criadoEm-a.criadoEm).map((item) => {
                     const stCol = item.status==="paid"?"#34D399":item.status==="canceled"?"#F87171":"#C084FC";
                     const stLabel = item.status==="paid"?"✅ Pago":item.status==="canceled"?"❌ Cancelado":"⏳ Formalização";
                     const isSel = detalhe?.id===item.id && detalhe?._filaItem;
-                    return (<>
-                      <tr key={`fila_${item.id}`}
-                        onClick={()=>setDetalhe(isSel?null:{...item,_filaItem:true})}
-                        style={{ background:isSel?`rgba(192,132,252,0.12)`:`rgba(192,132,252,0.04)`, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", borderLeft:"3px solid #C084FC44" }}
-                        onMouseEnter={e=>!isSel&&(e.currentTarget.style.background="rgba(192,132,252,0.1)")}
-                        onMouseLeave={e=>(e.currentTarget.style.background=isSel?`rgba(192,132,252,0.12)`:"rgba(192,132,252,0.04)")}>
-                        <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.clientName||"—"}</td>
-                        <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>
-                          {(item.cpf||"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"}
-                        </td>
-                        <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{item.contractNumber||"—"}</td>
-                        <td style={{ padding:"10px 12px" }}>
-                          <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700 }}>{stLabel}</span>
-                        </td>
-                        <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(item.valor||0)}</td>
-                        <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{item.provider||"—"}</td>
-                        <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
-                          {item.formalizationLink ? (
-                            <button onClick={()=>{navigator.clipboard.writeText(item.formalizationLink);setCopied(item.id);setTimeout(()=>setCopied(null),2000);}}
-                              style={{ background:C.abg, color:copied===item.id?"#34D399":C.atxt, border:`1px solid ${copied===item.id?"#34D39933":C.atxt+"33"}`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
-                              {copied===item.id?"✅ Copiado":"📋 Copiar"}
-                            </button>
-                          ) : <span style={{ color:C.td, fontSize:11 }}>—</span>}
-                        </td>
-                        <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
-                          {item.status==="formalization" && (
-                            <button onClick={()=>setShowCancelModal(item)}
-                              style={{ background:"rgba(239,68,68,0.1)", color:"#F87171", border:"1px solid #EF444433", borderRadius:7, padding:"4px 10px", fontSize:10.5, fontWeight:600, cursor:"pointer" }}>
-                              ✕ Cancelar
-                            </button>
-                          )}
-                          {(item.status==="paid"||item.status==="canceled") && (
-                            <button onClick={()=>removerDaFila(item.id)}
-                              style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
-                              🗑
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                      {/* Detalhe inline da fila */}
-                      {isSel && (
-                        <tr key={`fila_det_${item.id}`}>
-                          <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`1px solid ${C.b1}` }}>
-                            <div style={{ padding:"16px 20px" }}>
-                              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:12 }}>
-                                {[
-                                  ["Cliente", item.clientName||"—"],
-                                  ["CPF", (item.cpf||"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")],
-                                  ["Contrato", item.contractNumber||"—"],
-                                  ["Status", stLabel],
-                                  ["Valor", fmtBRL(item.valor||0)],
-                                  ["Provider", (item.provider||"—").toUpperCase()],
-                                  ["Adicionado em", item.criadoEmStr||"—"],
-                                ].map(([l,v])=>(
-                                  <div key={l} style={{ background:C.card, borderRadius:8, padding:"7px 10px" }}>
-                                    <div style={{ color:C.td, fontSize:10 }}>{l}</div>
-                                    <div style={{ color:C.tp, fontWeight:600, fontSize:12, marginTop:2 }}>{v}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              {item.formalizationLink && (
-                                <div style={{ background:C.card, borderRadius:8, padding:"10px 14px", marginBottom:8 }}>
-                                  <div style={{ color:C.td, fontSize:10, marginBottom:6, textTransform:"uppercase" }}>Link de Formalização</div>
-                                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                                    <a href={item.formalizationLink} target="_blank" rel="noreferrer"
-                                      style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{item.formalizationLink}</a>
-                                    <button onClick={()=>copiarLink(item.id,item.formalizationLink)}
-                                      style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                      {copied===item.id?"✅ Copiado":"📋 Copiar"}
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                    const cpfFmt = (item.cpf||"").replace(/\D/g,"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+                    return (
+                      <React.Fragment key={`fila_${item.id}`}>
+                        <tr
+                          onClick={()=>setDetalhe(isSel?null:{...item,_filaItem:true})}
+                          style={{ background:isSel?"rgba(192,132,252,0.15)":"rgba(192,132,252,0.04)", borderBottom:`1px solid ${C.b1}`, cursor:"pointer", borderLeft:"3px solid #C084FC66" }}>
+                          <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.clientName||"—"}</td>
+                          <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{cpfFmt}</td>
+                          <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{item.contractNumber||"—"}</td>
+                          <td style={{ padding:"10px 12px" }}>
+                            <span style={{ background:stCol+"22", color:stCol, fontSize:10, padding:"3px 10px", borderRadius:20, fontWeight:700 }}>{stLabel}</span>
+                          </td>
+                          <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(item.valor||0)}</td>
+                          <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{item.provider||"—"}</td>
+                          <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                            {item.formalizationLink
+                              ? <button onClick={()=>{navigator.clipboard.writeText(item.formalizationLink);setCopied(item.id);setTimeout(()=>setCopied(null),2000);}}
+                                  style={{ background:C.abg, color:copied===item.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                                  {copied===item.id?"✅ Copiado":"📋 Copiar"}
+                                </button>
+                              : <span style={{ color:C.td, fontSize:11 }}>—</span>
+                            }
+                          </td>
+                          <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                            {item.status==="formalization"
+                              ? <button onClick={()=>setShowCancelModal(item)}
+                                  style={{ background:"rgba(239,68,68,0.1)", color:"#F87171", border:"1px solid #EF444433", borderRadius:7, padding:"4px 10px", fontSize:10.5, fontWeight:600, cursor:"pointer" }}>
+                                  ✕ Cancelar
+                                </button>
+                              : <button onClick={()=>removerDaFila(item.id)}
+                                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
+                                  🗑
+                                </button>
+                            }
                           </td>
                         </tr>
-                      )}
-                    </>);
+                        {/* Detalhe inline da fila */}
+                        {isSel && (
+                          <tr>
+                            <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`2px solid #C084FC44` }}>
+                              <div style={{ padding:"16px 20px" }}>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:12 }}>
+                                  {[
+                                    ["Cliente", item.clientName||"—"],
+                                    ["CPF", cpfFmt],
+                                    ["Contrato", item.contractNumber||"—"],
+                                    ["Status", stLabel],
+                                    ["Valor", fmtBRL(item.valor||0)],
+                                    ["Provider", (item.provider||"—").toUpperCase()],
+                                    ["Adicionado em", item.criadoEmStr||"—"],
+                                  ].map(([l,v])=>(
+                                    <div key={l} style={{ background:C.card, borderRadius:8, padding:"8px 12px" }}>
+                                      <div style={{ color:C.td, fontSize:10 }}>{l}</div>
+                                      <div style={{ color:C.tp, fontWeight:600, fontSize:12.5, marginTop:2 }}>{v}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {item.formalizationLink && (
+                                  <div style={{ background:C.card, borderRadius:8, padding:"10px 14px" }}>
+                                    <div style={{ color:C.td, fontSize:10, marginBottom:6, textTransform:"uppercase" }}>Link de Formalização</div>
+                                    <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                                      <a href={item.formalizationLink} target="_blank" rel="noreferrer"
+                                        style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{item.formalizationLink}</a>
+                                      <button onClick={()=>copiarLink(item.id,item.formalizationLink)}
+                                        style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                        {copied===item.id?"✅ Copiado":"📋 Copiar"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
                   })}
-                  {/* Propostas da API — só mostrar se status != formalization */}
-                  {status !== "formalization" && (data.data||[]).map((op,i)=>{
+
+                  {/* ── Propostas da API ── */}
+                  {status !== "formalization" && (data?.data||[]).map((op) => {
                     const stCol = getStatusColor(op.status);
                     const isSel = detalhe?.id===op.id && !detalhe?._filaItem;
                     const hasLink = !!op.formalizationLink;
-                    return (<>
-                      <tr key={op.id}
-                        onClick={()=>setDetalhe(isSel?null:op)}
-                        style={{ background:isSel?`${C.acc}15`:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
-                        onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=`${C.acc}08`)}
-                        onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:i%2===0?C.card:C.deep)}>
-                        <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:130, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{op.clientName||"—"}</td>
-                        <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>
-                          {(op.documentNumber||op.individualDocumentNumber||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"}
-                        </td>
-                        <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
-                        <td style={{ padding:"10px 12px" }}>
-                          <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700 }}>
-                            {STATUS_LABEL[op.status]||op.status}
-                          </span>
-                        </td>
-                        <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
-                        <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{op.provider||"—"}</td>
-                        <td style={{ padding:"10px 12px" }}>
-                          {hasLink ? (
-                            <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                              <span style={{ color:"#34D399", fontSize:10, fontWeight:600 }}>✓ Link gerado</span>
-                              <button onClick={e=>{e.stopPropagation();copiarLink(op.id,op.formalizationLink);}}
-                                style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${copied===op.id?"#34D39933":C.atxt+"33"}`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                {copied===op.id?"✅ Copiado":"📋 Copiar"}
-                              </button>
-                            </div>
-                          ) : (
-                            <span style={{ color:C.td, fontSize:11 }}>— Sem link</span>
-                          )}
-                        </td>
-                        <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
-                          <div style={{ display:"flex", gap:5, flexDirection:"column" }}>
-                            {/* Nova Simulação */}
+                    const cpfRaw = (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"").padStart(11,"0");
+                    const cpfFmt = cpfRaw.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+                    return (
+                      <React.Fragment key={op.id}>
+                        <tr
+                          onClick={()=>setDetalhe(isSel?null:op)}
+                          style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+                          onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
+                          onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}>
+                          <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{op.clientName||"—"}</td>
+                          <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{cpfFmt}</td>
+                          <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
+                          <td style={{ padding:"10px 12px" }}>
+                            <span style={{ background:stCol+"22", color:stCol, fontSize:10, padding:"3px 10px", borderRadius:20, fontWeight:700 }}>
+                              {STATUS_LABEL[op.status]||op.status}
+                            </span>
+                          </td>
+                          <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
+                          <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{op.provider||"—"}</td>
+                          <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                            {hasLink
+                              ? <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                  <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
+                                    style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                                    {copied===op.id?"✅ Copiado":"📋 Copiar"}
+                                  </button>
+                                </div>
+                              : <span style={{ color:C.td, fontSize:11 }}>—</span>
+                            }
+                          </td>
+                          <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
                             <button onClick={async()=>{
-                              // CPF sempre 11 dígitos com zeros à esquerda
-                              const cpfRaw = (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
-                              const cpfv = cpfRaw.padStart(11,"0");
                               const providerNorm = (op.provider||loteProvider||"cartos").toLowerCase().trim();
                               const providerValido = ["qi","cartos","bms"].includes(providerNorm) ? providerNorm : "cartos";
-                              setAcompSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
+                              setAcompSimModal({loading:true,cpf:cpfRaw,nome:op.clientName||"",contrato:op});
                               try{
-                                await apiFetch("/fgts/balance","POST",{documentNumber:cpfv,provider:providerValido});
+                                await apiFetch("/fgts/balance","POST",{documentNumber:cpfRaw,provider:providerValido});
                                 let bal=null;
                                 for(let ii=0;ii<18;ii++){
                                   await new Promise(r=>setTimeout(r,2500));
-                                  const res=await apiFetch(`/fgts/balance?search=${cpfv}`);
+                                  const res=await apiFetch(`/fgts/balance?search=${cpfRaw}`);
                                   const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
-                                  const fail=regs.find(r=>r&&(r.status==="fail"||r.status==="error"));
-                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:fail.statusInfo||fail.message||"Falha na consulta"}));return;}
+                                  const fail=regs.find(r=>r&&r.status==="fail");
+                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:fail.statusInfo||"Falha na consulta"}));return;}
                                 }
-                                if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout na consulta de saldo"}));return;}
+                                if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout — tente novamente"}));return;}
                                 const feesR=await apiFetch("/fgts/simulations/fees");
                                 const fees=Array.isArray(feesR)?feesR.filter(f=>f.active):[];
                                 const saldoVal=parseFloat(bal.amount||0);
@@ -14053,113 +14055,97 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   ?(bal.periods||bal.installments).map(p=>({totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal),dueDate:p.dueDate||p.date}))
                                   :[{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0]},{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0]}];
                                 const sims=await Promise.all(fees.map(async fee=>{
-                                  try{
-                                    const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfv,desiredInstallments:installments,provider:providerValido});
-                                    return{label:fee.simulation_fees?.label||"",sim,ok:true};
-                                  }catch(e){return{label:fee.simulation_fees?.label||"",err:e.message,ok:false};}
+                                  try{const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfRaw,desiredInstallments:installments,provider:providerValido});return{label:fee.simulation_fees?.label||"",sim,ok:true};}
+                                  catch(e){return{label:fee.simulation_fees?.label||"",err:e.message,ok:false};}
                                 }));
                                 const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
                                 setAcompSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
                               }catch(e){setAcompSimModal(p=>({...p,loading:false,err:e.message}));}
                             }}
-                              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:10.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
                               ⚡ Simular
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {/* Detalhe inline da API */}
-                      {isSel && (
-                        <tr key={`api_det_${op.id}`}>
-                          <td colSpan={8} style={{ padding:0, background:"linear-gradient(135deg,rgba(15,31,61,0.95),rgba(22,42,80,0.95))", borderBottom:`1px solid rgba(79,142,247,0.3)` }}>
-                            <div style={{ padding:"16px 20px" }}>
-                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-                                <div style={{ color:"#fff", fontSize:13, fontWeight:700 }}>
-                                  {op.clientName||"Proposta"} · <span style={{ fontFamily:"monospace", fontSize:11, color:"rgba(255,255,255,0.45)" }}>{op.contractNumber||op.id}</span>
-                                </div>
-                                <button onClick={e=>{e.stopPropagation();setDetalhe(null);}} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✕</button>
-                              </div>
-                              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:8, marginBottom:12 }}>
-                                {[
-                                  ["Cliente",   op.clientName||"—"],
-                                  ["CPF",       (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"").padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")||"—"],
-                                  ["E-mail",    op.email||"—"],
-                                  ["Telefone",  op.phone?(op.phoneRegionCode||"")+op.phone:"—"],
-                                  ["Contrato",  op.contractNumber||"—"],
-                                  ["Status",    getStatusLabel(op.status)],
-                                  ["Valor",     fmtBRL(op.disbursedIssueAmount)],
-                                  ["Provider",  (op.provider||"—").toUpperCase()],
-                                  ["Parceiro",  op.partnerId||"—"],
-                                  ["Criado em", op.createdAt?new Date(op.createdAt).toLocaleString("pt-BR"):"—"],
-                                ].map(([l,v])=>(
-                                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"7px 10px" }}>
-                                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
-                                    <div style={{ color:"#fff", fontWeight:600, fontSize:12, marginTop:2, wordBreak:"break-word" }}>{v}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:8, padding:"10px 14px" }}>
-                                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10, marginBottom:8, textTransform:"uppercase" }}>Link de Formalização</div>
-                                {op.formalizationLink ? (
-                                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                                    <a href={op.formalizationLink} target="_blank" rel="noreferrer"
-                                      style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{op.formalizationLink}</a>
-                                    <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
-                                      style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                      {copied===op.id?"✅ Copiado":"📋 Copiar"}
-                                    </button>
-                                    <button onClick={()=>window.open(op.formalizationLink,"_blank")}
-                                      style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.15)", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
-                                      🔗 Abrir
-                                    </button>
-                                    {canGenerateLink(op) && (
-                                      <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
-                                        style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
-                                        {acompLinkLoading?"⏳":"🔄"} Atualizar Link
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : canGenerateLink(op) ? (
-                                  <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
-                                    style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                                    {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link"}
-                                  </button>
-                                ) : (
-                                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
-                                    🔒 {op.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
-                                  </span>
-                                )}
-                              </div>
-                            </div>
                           </td>
                         </tr>
-                      )}
-                    </>);
+                        {/* Detalhe inline da API */}
+                        {isSel && (
+                          <tr>
+                            <td colSpan={8} style={{ padding:0, background:"linear-gradient(135deg,rgba(15,31,61,0.98),rgba(22,42,80,0.98))", borderBottom:`2px solid rgba(79,142,247,0.4)` }}>
+                              <div style={{ padding:"18px 22px" }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                                  <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>
+                                    {op.clientName||"Proposta"} <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, fontWeight:400 }}>· {op.contractNumber||op.id}</span>
+                                  </div>
+                                  <button onClick={e=>{e.stopPropagation();setDetalhe(null);}} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✕ Fechar</button>
+                                </div>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:8, marginBottom:14 }}>
+                                  {[
+                                    ["Cliente",   op.clientName||"—"],
+                                    ["CPF",       cpfFmt],
+                                    ["E-mail",    op.email||"—"],
+                                    ["Telefone",  op.phone?(op.phoneRegionCode||"")+op.phone:"—"],
+                                    ["Contrato",  op.contractNumber||"—"],
+                                    ["Status",    getStatusLabel(op.status)],
+                                    ["Valor",     fmtBRL(op.disbursedIssueAmount)],
+                                    ["Provider",  (op.provider||"—").toUpperCase()],
+                                    ["Parceiro",  op.partnerId||"—"],
+                                    ["Criado em", op.createdAt?new Date(op.createdAt).toLocaleString("pt-BR"):"—"],
+                                  ].map(([l,v])=>(
+                                    <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"8px 12px" }}>
+                                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                                      <div style={{ color:"#fff", fontWeight:600, fontSize:12.5, marginTop:2, wordBreak:"break-word" }}>{v}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:9, padding:"12px 16px" }}>
+                                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Link de Formalização</div>
+                                  {op.formalizationLink ? (
+                                    <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                                      <a href={op.formalizationLink} target="_blank" rel="noreferrer"
+                                        style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{op.formalizationLink}</a>
+                                      <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
+                                        style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
+                                        {copied===op.id?"✅ Copiado":"📋 Copiar"}
+                                      </button>
+                                      <button onClick={()=>window.open(op.formalizationLink,"_blank")}
+                                        style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>🔗 Abrir</button>
+                                      {canGenerateLink(op) && (
+                                        <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                          style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
+                                          {acompLinkLoading?"⏳":"🔄"} Atualizar Link
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : canGenerateLink(op) ? (
+                                    <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                      style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                      {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
+                                    </button>
+                                  ) : (
+                                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
+                                      🔒 {op.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
                   })}
-                  {/* Empty state */}
-                  {status !== "formalization" && (data.data||[]).length===0 && fila.filter(f=>!status||f.status===status).length===0 && (
-                    <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"32px" }}>Nenhuma proposta encontrada.</td></tr>
+
+                  {/* Empty */}
+                  {!loading && (!data?.data||data.data.length===0) && fila.filter(f=>!status||f.status===status).length===0 && (
+                    <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"40px", fontSize:13 }}>
+                      {status === "formalization" ? "Nenhum contrato na fila de formalização." : "Nenhuma proposta encontrada. Use os filtros acima."}
+                    </td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            {data?.pages && (
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
-                <button onClick={()=>paginar(page-1)} disabled={!data.pages.hasPrev||loading}
-                  style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
-                  ← Anterior
-                </button>
-                <span style={{ color:C.tm, fontSize:12 }}>
-                  Página {page}/{data.pages.totalPages||1} · {data.pages.total} resultado{data.pages.total!==1?"s":""}
-                </span>
-                <button onClick={()=>paginar(page+1)} disabled={!data.pages.hasNext||loading}
-                  style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
-                  Próxima →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   };
