@@ -11092,6 +11092,15 @@ function V8DigitalTab({ currentUser, contacts }) {
   const fmtPct = v => { const n = parseFloat(v); return isNaN(n) ? "—" : (n * 100).toFixed(2) + "%"; };
   const padCPF = raw => raw.replace(/\D/g,"").padStart(11,"0");
   const fmtCPF = v => { const c = padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"); };
+  const calcAnos = (sim) => {
+    const periods = sim?.periods || sim?.installments || sim?.desiredInstallments || [];
+    if (!periods.length) return sim?.totalInstallments ? `${sim.totalInstallments} parcelas` : "—";
+    const dates = periods.map(p => new Date(p.dueDate||p.date)).filter(d => !isNaN(d));
+    if (!dates.length) return "—";
+    const minD = new Date(Math.min(...dates)); const maxD = new Date(Math.max(...dates));
+    const anos = Math.round((maxD - minD) / (1000*60*60*24*365)) + 1;
+    return `${anos} ano${anos!==1?"s":""}`;
+  };
 
   // ── Sessão persistente ───────────────────────────────────────
   const [token,    setToken]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
@@ -11215,16 +11224,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
 
     // Calcula quantidade de anos com base nos periods
-    const calcAnos = (sim) => {
-      const periods = sim?.periods || sim?.installments || sim?.desiredInstallments || [];
-      if (!periods.length) return sim?.totalInstallments ? `${sim.totalInstallments} parcelas` : "—";
-      const dates = periods.map(p => new Date(p.dueDate||p.date)).filter(d => !isNaN(d));
-      if (!dates.length) return "—";
-      const minD = new Date(Math.min(...dates)); const maxD = new Date(Math.max(...dates));
-      const anos = Math.round((maxD - minD) / (1000*60*60*24*365)) + 1;
-      return `${anos} ano${anos!==1?"s":""}`;
-    };
-
     const buscarSaldo = async () => {
       const c = padCPF(cpf);
       if (c.replace(/^0+/,"").length === 0) { setErr("Digite um CPF válido."); return; }
