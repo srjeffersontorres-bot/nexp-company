@@ -13451,8 +13451,6 @@ function V8DigitalTab({ currentUser, contacts }) {
       return "#94A3B8";
     };
 
-    const PAGE_SIZE = 50;
-
     // Helpers de data
     const toISO = (d) => d.toISOString().split("T")[0];
     const hoje  = toISO(new Date());
@@ -13464,70 +13462,34 @@ function V8DigitalTab({ currentUser, contacts }) {
       const df = fromOverride  !== undefined ? fromOverride  : dateFrom;
       const dt = toOverride    !== undefined ? toOverride    : dateTo;
 
-      // Só passa status para a API se for um que ela realmente retorna na listagem
-      // Confirmado via diagnóstico: a API só retorna paid e canceled na listagem geral
-      // Os demais (formalization, analysis, etc.) chegam via busca por CPF/ID
+      // Só passa status para API se for suportado (paid/canceled)
       const statusSuportadoAPI = ["paid","canceled","processing","pending","analysis","manual_analysis","refounded"];
       const apiStatus = s && statusSuportadoAPI.includes(s) ? s : "";
 
       try {
         const q = search.trim();
-        let allRows = [];
-
+        const params = new URLSearchParams({ page:pg, limit:50 });
         if (q) {
-          const params = new URLSearchParams({ page:pg, limit:PAGE_SIZE });
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
-          if (provider) params.append("provider", provider);
-          if (apiStatus) params.append("status", apiStatus);
-          const res = await apiFetch(`/fgts/proposal?${params}`);
-          allRows = res?.data || [];
-        } else {
-          let curPage = 1;
-          let keepGoing = true;
-          while (keepGoing && curPage <= 40) {
-            const params = new URLSearchParams({ page:curPage, limit:PAGE_SIZE });
-            if (provider) params.append("provider", provider);
-            if (apiStatus) params.append("status", apiStatus);
-            const res = await apiFetch(`/fgts/proposal?${params}`);
-            const rows = res?.data || [];
-            allRows = [...allRows, ...rows];
-            keepGoing = rows.length === PAGE_SIZE;
-            curPage++;
-          }
-          const statusMap = {};
-          allRows.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
-          console.log("[V8 Acomp] Total:", allRows.length, "| API status:", apiStatus||"todos");
-          console.log("[V8 Acomp] Status brutos:", JSON.stringify(statusMap));
         }
+        if (provider) params.append("provider", provider);
+        if (apiStatus) params.append("status", apiStatus);
+        if (df) params.append("startDate", df);
+        if (dt) params.append("endDate", dt);
 
-        // Filtro client-side por status
-        let filtered = s ? allRows.filter(r => matchStatus(r.status, s)) : allRows;
+        const res = await apiFetch(`/fgts/proposal?${params}`);
+        const rows = res?.data || [];
+        rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
-        // Filtro por data — só aplica se definido manualmente
-        if (df || dt) {
-          const from = df ? new Date(df) : new Date("2000-01-01");
-          const to   = dt ? new Date(dt+"T23:59:59") : new Date("2099-12-31");
-          filtered = filtered.filter(r => {
-            const raw = r.createdAt||r.created_at||r.proposalDate||r.date||r.updatedAt||r.updated_at;
-            if (!raw) return true;
-            const d = new Date(raw);
-            return !isNaN(d) && d >= from && d <= to;
-          });
-        }
-
-        filtered.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
-
-        const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
-        const pageRows   = filtered.slice((pg-1)*PAGE_SIZE, pg*PAGE_SIZE);
         setPage(pg);
         setData({
-          data:  pageRows,
-          _all:  filtered,
-          pages: { current:pg, hasNext:pg<totalPages, hasPrev:pg>1, total:filtered.length, totalPages },
+          data: rows,
+          _all: rows,
+          pages: res?.pages || { current:pg, hasNext:false, hasPrev:pg>1, total:rows.length, totalPages:1 },
         });
         // Cruza fila de formalização com dados da API
-        cruzarFilaComAPI(allRows);
+        cruzarFilaComAPI(rows);
       } catch(e) {
         setErr(e.message);
       }
@@ -13535,18 +13497,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
 
     // Paginação client-side sem re-buscar
-    const paginar = (pg) => {
-      if (!data?._all) return;
-      const filtered = data._all;
-      const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
-      const pageRows = filtered.slice((pg-1)*PAGE_SIZE, pg*PAGE_SIZE);
-      setPage(pg);
-      setData(p => ({
-        ...p,
-        data: pageRows,
-        pages: { current:pg, hasNext:pg<totalPages, hasPrev:pg>1, total:filtered.length, totalPages },
-      }));
-    };
+    const paginar = (pg) => buscar(pg);
 
     // Auto-carrega sem filtro de data — mostra TUDO, usuário filtra se quiser
     useEffect(() => {
@@ -13591,21 +13542,16 @@ function V8DigitalTab({ currentUser, contacts }) {
             </button>
           </div>
 
-          {/* Filtros rápidos */}
+          {/* Filtros rápidos — apenas os 3 status relevantes */}
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
             {[
-              { label:"Todos",         value:"",               color:C.atxt,    bg:C.abg },
-              { label:"✅ Pago",        value:"paid",           color:"#34D399", bg:"rgba(52,211,153,0.12)" },
-              { label:"❌ Cancelado",   value:"canceled",       color:"#F87171", bg:"rgba(239,68,68,0.12)" },
-              { label:"⚙ Processando", value:"processing",     color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
-              { label:"⏸ Pendente",    value:"pending",        color:"#FBBF24", bg:"rgba(251,191,36,0.12)" },
-              { label:"🔍 Em Análise", value:"analysis",       color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
-              { label:"🔎 Análise Manual", value:"manual_analysis", color:"#FB923C", bg:"rgba(251,146,60,0.12)" },
-              { label:"↩ Devolvido",   value:"refounded",      color:"#94A3B8", bg:"rgba(148,163,184,0.12)" },
-              { label:"⏳ Formalização (busca por CPF)", value:"formalization", color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
+              { label:"Todos",                      value:"",         color:C.atxt,    bg:C.abg },
+              { label:"⏳ Aguardando Formalização",  value:"formalization", color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
+              { label:"✅ Pago",                     value:"paid",     color:"#34D399", bg:"rgba(52,211,153,0.12)" },
+              { label:"❌ Cancelado",                value:"canceled", color:"#F87171", bg:"rgba(239,68,68,0.12)" },
             ].map(f=>(
               <button key={f.value} onClick={()=>{ setStatus(f.value); buscar(1, f.value); }}
-                style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"55":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:11.5, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
+                style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"55":C.b2}`, borderRadius:20, padding:"5px 18px", fontSize:12, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
                 {f.label}
               </button>
             ))}
@@ -13614,7 +13560,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           {/* Aviso quando filtrar por formalização */}
           {status === "formalization" && (
             <div style={{ background:"rgba(192,132,252,0.1)", border:"1px solid #C084FC44", borderRadius:8, padding:"9px 14px", marginBottom:10, fontSize:12, color:"#C084FC" }}>
-              ⚠️ Contratos em formalização não aparecem na listagem geral da API. Para encontrá-los, <strong>busque pelo CPF do cliente</strong> no campo de busca acima.
+              ⚠️ Contratos em formalização ficam na <strong>Fila de Formalização</strong> acima. Para buscar na API, use o CPF do cliente no campo de busca.
             </div>
           )}
 
