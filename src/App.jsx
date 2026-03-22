@@ -10778,15 +10778,58 @@ function V8DigitalTab({ currentUser, contacts }) {
       setCpfSim(fmtCPF(c)); setSimStep("saldo");
       addLog(`▶ Consultando saldo — CPF ${fmtCPF(c)} (${provider.toUpperCase()})`);
       try {
-        const bal = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+        // PASSO 1: Dispara consulta assíncrona (retorna null — comportamento esperado da V8)
+        addLog("📡 Iniciando consulta de saldo (assíncrona)...");
+        await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+        addLog("✅ Consulta disparada. Aguardando processamento...");
+
+        // PASSO 2: Polling — GET /fgts/balance?search=CPF até ter resultado (max 30s)
+        let bal = null;
+        const maxTentativas = 15; // 15 tentativas × 2s = 30s
+        for (let i = 0; i < maxTentativas; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          addLog(`🔄 Verificando resultado (${i+1}/${maxTentativas})...`);
+          try {
+            const res = await apiFetch(`/fgts/balance?search=${c}`);
+            // A resposta é { data: [...], pages: {...} }
+            const registros = res?.data || (Array.isArray(res) ? res : []);
+            // Pega o mais recente com status success
+            const sucesso = registros.find(r => r.status === "success" || r.amount != null);
+            if (sucesso) {
+              bal = sucesso;
+              addLog(`✅ Saldo: ${fmtBRL(sucesso.amount || 0)} | ID: ${sucesso.id}`);
+              addLog(`📦 ${JSON.stringify(sucesso).slice(0,200)}`);
+              break;
+            }
+            // Se tem registro com falha
+            const falha = registros.find(r => r.status === "fail" || r.status === "error");
+            if (falha) {
+              const errMsg = falha.statusInfo || falha.errorMessage || "Falha na consulta";
+              addLog(`❌ Saldo: ${errMsg}`, false);
+              const fd = parseFutureDate(errMsg);
+              if (fd) setFutureDate(fd);
+              setErr("❌ " + errMsg);
+              setSimStep("done"); setLoading(false);
+              return;
+            }
+            addLog(`⏳ Processando... (aguardando resposta)`);
+          } catch(e) {
+            addLog(`⚠ Polling ${i+1}: ${e.message}`, false);
+          }
+        }
+
+        if (!bal) {
+          setErr("⏳ Timeout — saldo não retornou em 30s. Tente novamente.");
+          addLog("❌ Timeout: saldo não disponível ainda. Tente novamente em alguns segundos.", false);
+          setSimStep("done"); setLoading(false);
+          return;
+        }
+
         setBalance(bal);
-        const saldoVal = parseFloat(bal?.balance || bal?.availableBalance || bal?.amount || 0);
-        addLog(`✅ Saldo: ${fmtBRL(saldoVal)} | balanceId: ${bal?.id||"—"}`);
-        addLog(`📦 ${JSON.stringify(bal).slice(0,200)}`);
-        // Assim que tem saldo, já busca tabelas e simula tudo
+        // Com saldo em mãos, simula todas as tabelas
         await simularTodasTabelas(c, bal);
       } catch(e) {
-        addLog(`❌ Saldo: ${e.message}`, false);
+        addLog(`❌ Erro: ${e.message}`, false);
         const fd = parseFutureDate(e.message);
         if (fd) setFutureDate(fd);
         setErr("❌ " + e.message);
@@ -10811,8 +10854,9 @@ function V8DigitalTab({ currentUser, contacts }) {
 
       if (!feesList.length || !bal) return;
 
-      const installments = bal?.installments || bal?.periods || [];
-      const saldoVal = parseFloat(bal?.balance || bal?.availableBalance || 100);
+      // GET balance retorna: { id, amount, periods:[{amount,dueDate}], status, provider }
+      const saldoVal = parseFloat(bal?.amount || bal?.balance || bal?.availableBalance || 100);
+      const installments = bal?.periods || bal?.installments || [];
 
       // Monta desiredInstallments a partir dos periods do saldo
       const desiredInstallments = installments.length
@@ -10866,7 +10910,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       localStorage.removeItem("nexp_v8_ind_logs");
     };
 
-    const saldoTotal = parseFloat(balance?.balance || balance?.availableBalance || balance?.amount || 0);
+    const saldoTotal = parseFloat(balance?.amount || balance?.balance || balance?.availableBalance || 0);
     const bestSim   = [...tableSims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
     const stepLabel = { idle:"", saldo:"Consultando saldo...", fees:"Buscando tabelas...", simulando:"Simulando tabelas...", contratos:"Buscando contratos...", done:"Concluído ✅" };
 
