@@ -13612,7 +13612,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         const rows = res?.data || [];
         rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
-        setPage(pg);
+        setAcompPage(pg);
         setData({
           data: rows,
           _all: rows,
