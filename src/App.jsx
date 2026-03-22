@@ -10796,6 +10796,15 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
 
   const digitar = async () => {
     setLoading(true); setErr("");
+
+    // Valida telefone antes de enviar
+    const phoneDigits = (form.phone||"").replace(/\D/g,"");
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      setErr(`❌ Telefone inválido: "${form.phone}". Digite DDD + número, ex: 84999999999 (11 dígitos) ou 8499999999 (10 dígitos).`);
+      setLoading(false);
+      return;
+    }
+
     try {
       // Normaliza chave PIX — remove formatação de CPF, formata telefone
       const normalizePix = (raw) => {
@@ -10839,7 +10848,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
         birthDate:                    form.birthDate,
         maritalStatus:                form.maritalStatus,
         personType:                   "natural",
-        phone:                        form.phone.replace(/\D/g,"").slice(2),
+        phone:                        form.phone.replace(/\D/g,""),
         phoneCountryCode:             "55",
         phoneRegionCode:              form.phone.replace(/\D/g,"").slice(0,2),
         postalCode:                   form.postalCode,
@@ -10981,7 +10990,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                     style={inputStyle}/>
                 </div>
                 {fieldGroup("E-mail *","email","email","email@exemplo.com")}
-                {fieldGroup("Telefone (DDD+número) *","phone","text","84999999999")}
+                {fieldGroup("Telefone (DDD+número, só números) *","phone","text","84999999999")}
                 <div>
                   <label style={labelStyle}>Nacionalidade *</label>
                   <select value={form.nationality} onChange={e=>setF("nationality",e.target.value)} style={inputStyle}>
