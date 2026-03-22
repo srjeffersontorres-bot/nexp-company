@@ -12453,7 +12453,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ["E-mail",           detalhe.email||"—"],
                 ["Telefone",         detalhe.phone?(detalhe.phoneRegionCode||"")+detalhe.phone:"—"],
                 ["Contrato",         detalhe.contractNumber||"—"],
-                ["Status",           STATUS_LABEL[detalhe.status]||detalhe.status||"—"],
+                ["Status",           getStatusLabel(detalhe.status)],
                 ["Valor Liberado",   fmtBRL(detalhe.disbursedIssueAmount)],
                 ["Provider",         (detalhe.provider||"—").toUpperCase()],
                 ["Parceiro",         detalhe.partnerId||"—"],
@@ -12597,7 +12597,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <td style={{ color:C.td, padding:"9px 10px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
                         <td style={{ padding:"9px 10px" }}>
                           <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>
-                            {STATUS_LABEL[op.status]||op.status}
+                            {getStatusLabel(op.status)}
                           </span>
                         </td>
                         <td style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", fontSize:12.5 }}>{fmtBRL(op.disbursedIssueAmount)}</td>
@@ -13284,29 +13284,59 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
+    const getStatusLabel = (s) => STATUS_LABEL[s] || s || "—";
+    const getStatusColor = (s) => STATUS_COLOR[s] || (STATUS_VARIANTS.formalization?.includes((s||"").toLowerCase()) ? "#C084FC" : "#94A3B8");
+
+    // Todos os valores possíveis de cada status na V8 (a API pode retornar variações)
+    const STATUS_VARIANTS = {
+      formalization: ["formalization","formalizacao","awaiting_formalization","awaiting","pending_formalization","in_formalization","formalize","form"],
+      analysis:      ["analysis","in_analysis","under_analysis","analysing","analyzing"],
+      manual_analysis:["manual_analysis","manual","manual_review"],
+      pending:       ["pending","pendente","waiting"],
+      processing:    ["processing","in_progress","processando"],
+      paid:          ["paid","pago","completed","done","approved"],
+      canceled:      ["canceled","cancelled","cancelado","rejected"],
+      refounded:     ["refounded","refunded","devolvido"],
+    };
+
+    const matchStatus = (rowStatus, filterStatus) => {
+      if (!filterStatus) return true;
+      const rv = (rowStatus||"").toLowerCase();
+      const variants = STATUS_VARIANTS[filterStatus] || [filterStatus];
+      return variants.some(v => rv === v || rv.includes(v));
+    };
 
     const buscar = async (pg=1, statusOverride) => {
       setLoading(true); setErr(""); setPage(pg);
       const s = statusOverride !== undefined ? statusOverride : status;
       try {
-        const params = new URLSearchParams({ page:pg, limit:20 });
-        // CPF: envia só dígitos se busca parece ser CPF
+        // Busca SEM filtro de status na API — filtra client-side para não depender dos valores exatos
+        const params = new URLSearchParams({ page:1, limit:100 });
         const q = search.trim();
         if (q) {
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
         }
-        // Envia status diretamente para a API V8
-        if (s) params.append("status", s);
         if (provider) params.append("provider", provider);
         const res = await apiFetch(`/fgts/proposal?${params}`);
         let rows = res?.data || [];
-        // Filtro client-side por data (API pode não suportar)
+
+        // Log para debug — mostra os status reais retornados pela V8
+        if (rows.length > 0) {
+          const statusFound = [...new Set(rows.map(r=>r.status))];
+          console.log("[V8 Acompanhamento] Status encontrados:", statusFound);
+        }
+
+        // Filtro client-side por status (aceita todas as variações)
+        if (s) rows = rows.filter(r => matchStatus(r.status, s));
+
+        // Filtro client-side por data
         if (dateFrom) rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
         if (dateTo)   rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
+
         // Ordena mais recente primeiro
         rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
-        setData({ ...res, data: rows });
+        setData({ ...res, data: rows, _total: rows.length });
       } catch(e) { setErr(e.message); }
       setLoading(false);
     };
@@ -13335,7 +13365,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
 
     // Proposta paga ou cancelada não pode gerar/atualizar link
-    const canGenerateLink = (op) => op?.status !== "paid" && op?.status !== "canceled";
+    const canGenerateLink = (op) => !matchStatus(op?.status,"paid") && !matchStatus(op?.status,"canceled");
 
     return (
       <div>
@@ -13457,7 +13487,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ["E-mail",      detalhe.email||"—"],
                 ["Telefone",    detalhe.phone?(detalhe.phoneRegionCode||"")+detalhe.phone:"—"],
                 ["Contrato",    detalhe.contractNumber||"—"],
-                ["Status",      STATUS_LABEL[detalhe.status]||detalhe.status||"—"],
+                ["Status",      getStatusLabel(detalhe.status)],
                 ["Valor",       fmtBRL(detalhe.disbursedIssueAmount)],
                 ["Provider",    (detalhe.provider||"—").toUpperCase()],
                 ["Parceiro",    detalhe.partnerId||"—"],
@@ -13605,7 +13635,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </thead>
                 <tbody>
                   {(data.data||[]).map((op,i)=>{
-                    const stCol = STATUS_COLOR[op.status]||"#94A3B8";
+                    const stCol = getStatusColor(op.status);
                     const isSel = detalhe?.id===op.id;
                     const hasLink = !!op.formalizationLink;
                     return (
@@ -13621,7 +13651,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
                         <td style={{ padding:"10px 12px" }}>
                           <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700 }}>
-                            {STATUS_LABEL[op.status]||op.status}
+                            {getStatusLabel(op.status)}
                           </span>
                         </td>
                         <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
