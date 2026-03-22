@@ -13341,8 +13341,8 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(false);
     };
 
-    // Carrega ao abrir a aba
-    useEffect(() => { if (!data) buscar(1); }, []); // eslint-disable-line
+    // NÃO auto-carrega — usuário clica em Buscar ou filtro rápido
+    // (auto-load causava loop infinito pois AcompanhamentoTab é função interna e re-monta a cada render)
 
     const gerarNovoLink = async (id) => {
       setAcompLinkLoading(true);
@@ -13615,10 +13615,14 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         {/* Tabela de propostas */}
         {!data && !loading && (
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"40px", textAlign:"center" }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>📡</div>
-            <div style={{ color:C.tp, fontSize:14, fontWeight:600, marginBottom:6 }}>Consulte suas propostas</div>
-            <div style={{ color:C.tm, fontSize:12.5 }}>Use os filtros acima e clique em Buscar ou Atualizar.</div>
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"48px", textAlign:"center" }}>
+            <div style={{ fontSize:44, marginBottom:14 }}>📡</div>
+            <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Acompanhe suas propostas V8</div>
+            <div style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Clique para carregar todas as propostas ou use os filtros acima.</div>
+            <button onClick={()=>buscar(1)} disabled={loading}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px 32px", fontSize:14, fontWeight:700, cursor:"pointer" }}>
+              🔍 Carregar Propostas
+            </button>
           </div>
         )}
 
