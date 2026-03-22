@@ -61,6 +61,8 @@ export default async function handler(req, res) {
 
       if (reqBody && method.toUpperCase() !== "GET") {
         fetchOpts.body = JSON.stringify(reqBody);
+        // Log request body for debugging payment issues
+        if (url.includes("/fgts/proposal")) console.log(`[V8 BFF] Req body: ${JSON.stringify(reqBody).slice(0,600)}`);
       }
 
       const r    = await fetch(url, fetchOpts);

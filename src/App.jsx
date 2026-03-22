@@ -10793,9 +10793,25 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   const digitar = async () => {
     setLoading(true); setErr("");
     try {
+      // Normaliza chave PIX — remove formatação de CPF, formata telefone
+      const normalizePix = (raw) => {
+        const v = (raw||"").trim();
+        const digitos = v.replace(/\D/g,"");
+        // CPF com formatação → só números
+        if (/^\d{3}[.\-]\d{3}[.\-]\d{3}[-]\d{2}$/.test(v)) return digitos;
+        if (/^\d{11}$/.test(digitos) && /^[\d.\-]+$/.test(v)) return digitos;
+        // Telefone → +55DDDNUMERO
+        if (/^[\(\+\d][\d\s\(\)\-]+$/.test(v) && digitos.length >= 10) {
+          return digitos.startsWith("55") ? `+${digitos}` : `+55${digitos}`;
+        }
+        return v; // e-mail ou UUID — mantém como está
+      };
+
+      const pixKey = normalizePix(form.pix);
+
       const paymentData = payType === "pix"
-        ? { type: "pix",      data: { pixKey: form.pix } }
-        : { type: "transfer", data: {
+        ? { type: "PIX",      data: { pix: pixKey } }
+        : { type: "TED",      data: {
               bankId:            form.bankId,
               bankAccountNumber: form.bankAccountNumber,
               bankAccountBranch: form.bankAccountBranch,
@@ -11023,18 +11039,35 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                   <input
                     value={form.pix}
                     onChange={e=>{ const v=e.target.value; setForm(p=>({...p,pix:v})); }}
-                    placeholder="CPF sem pontuação, telefone, e-mail ou chave UUID"
+                    placeholder="CPF (com ou sem pontos), telefone, e-mail ou UUID"
                     autoComplete="off"
                     style={inputStyle}/>
-                  <div style={{ color:C.td, fontSize:10, marginTop:4 }}>CPF sem pontos · Tel: +5584999999999 · Aleatória: UUID</div>
+                  {/* Preview ao vivo da chave normalizada */}
+                  {form.pix && (() => {
+                    const v=(form.pix||"").trim();
+                    let norm=v, tipo="";
+                    const digitos=v.replace(/\D/g,"");
+                    if(/^\d{3}[.\-]\d{3}[.\-]\d{3}[-]\d{2}$/.test(v)||(/^\d{11}$/.test(digitos)&&/^[\d.\-]+$/.test(v))){ norm=digitos; tipo="CPF"; }
+                    else if(/^[\(\+\d][\d\s\(\)\-]+$/.test(v)&&digitos.length>=10){ norm=digitos.startsWith("55")?`+${digitos}`:`+55${digitos}`; tipo="Telefone"; }
+                    else if(v.includes("@")){ tipo="E-mail"; }
+                    else if(/^[0-9a-f-]{36}$/i.test(v)){ tipo="Chave aleatória"; }
+                    return (
+                      <div style={{ marginTop:6,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:8,padding:"6px 10px",display:"flex",gap:8,alignItems:"center" }}>
+                        <span style={{ color:"#34D399",fontSize:10.5,fontWeight:700 }}>{tipo||"Chave"}:</span>
+                        <span style={{ color:C.tp,fontSize:11,fontFamily:"monospace" }}>{norm}</span>
+                        {norm!==v&&<span style={{ color:C.td,fontSize:10 }}>← será enviada assim</span>}
+                      </div>
+                    );
+                  })()}
+                  <div style={{ color:C.td, fontSize:10, marginTop:4 }}>Aceita CPF com ou sem formatação · Telefone em qualquer formato · E-mail · UUID</div>
 
                   {/* Sugestão de PIX do V8 */}
-                  {v8c?.payment?.data?.pixKey && !form.pix && (
+                  {(v8c?.payment?.data?.pix||v8c?.payment?.data?.pixKey) && !form.pix && (
                     <div style={{ marginTop:10, background:"rgba(79,142,247,0.08)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:10, padding:"10px 14px" }}>
                       <div style={{ color:C.atxt, fontSize:11, fontWeight:700, marginBottom:6 }}>🔑 Chave PIX cadastrada no V8:</div>
                       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-                        <span style={{ color:C.tp, fontSize:12.5, fontFamily:"monospace" }}>{v8c.payment.data.pixKey}</span>
-                        <button onClick={()=>setForm(p=>({...p,pix:v8c.payment.data.pixKey}))}
+                        <span style={{ color:C.tp, fontSize:12.5, fontFamily:"monospace" }}>{v8c.payment.data.pix||v8c.payment.data.pixKey}</span>
+                        <button onClick={()=>setForm(p=>({...p,pix:v8c.payment.data.pix||v8c.payment.data.pixKey}))}
                           style={{ background:C.acc, color:"#fff", border:"none", borderRadius:7, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
                           ✓ Usar esta
                         </button>
@@ -13148,6 +13181,7 @@ function DField({ label, req, val, onChange, type="text", ph="", mask="" }) {
         {label}{req&&<span style={{color:"#EF4444"}}> *</span>}
       </label>
       <input value={val} onChange={handle} type={type} placeholder={ph}
+        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
         style={{...S.input,fontSize:12,padding:"7px 10px",borderColor:req&&!val?"#EF444455":undefined}}/>
     </div>
   );
