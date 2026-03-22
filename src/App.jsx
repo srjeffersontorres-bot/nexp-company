@@ -11073,10 +11073,12 @@ function diagnosticarErroV8(rawMsg, cpf) {
       bg: "rgba(239,68,68,0.08)",
     };
   }
-  // Genérico — mostra a mensagem original
+  // Genérico — mostra a mensagem original da V8
   return {
-    titulo: "❌ Erro na consulta",
-    descricao: rawMsg || "Erro desconhecido retornado pela API V8.",
+    titulo: rawMsg && !rawMsg.includes("https://") ? `❌ ${rawMsg}` : "❌ Erro na consulta V8",
+    descricao: rawMsg && rawMsg.includes("https://")
+      ? "A API V8 retornou um erro mas a mensagem específica não foi capturada. Verifique os logs do Vercel para o detalhe completo."
+      : (rawMsg || "Erro desconhecido retornado pela API V8."),
     solucao: "Verifique os dados e tente novamente. Se persistir, entre em contato com o suporte.",
     tipo: "generico",
     cor: "#F87171",

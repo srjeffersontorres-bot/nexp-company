@@ -70,28 +70,40 @@ export default async function handler(req, res) {
       try   { data = JSON.parse(text); }
       catch { data = { raw: text }; }
 
-      // Log completo no Vercel para debug
+      // Log COMPLETO no Vercel para debug
       console.log(`[V8 BFF] ${method.toUpperCase()} ${url} → ${r.status}`);
+      console.log(`[V8 BFF] Response body: ${text.slice(0, 1000)}`);
+
+      // Extrai mensagem de erro do campo real da V8
+      const extractMsg = (d) => {
+        if (!d) return null;
+        if (typeof d === "string") return d;
+        // Percorre todos os campos conhecidos
+        const candidates = [
+          d.message, d.error_description, d.error,
+          d.statusInfo, d.errorMessage, d.detail, d.details,
+          d.description, d.msg,
+          // Array de erros
+          Array.isArray(d.errors) ? d.errors.map(e => e.message || e.msg || e).join("; ") : null,
+          Array.isArray(d.messages) ? d.messages.join("; ") : null,
+          // Objeto aninhado
+          d.error?.message, d.data?.message,
+          typeof d.raw === "string" ? d.raw : null,
+        ];
+        return candidates.find(c => c && typeof c === "string" && c.trim()) || null;
+      };
+
       if (!r.ok) {
-        console.error(`[V8 BFF] ERRO ${r.status}:`, JSON.stringify(data).slice(0, 500));
+        const errMsg = extractMsg(data) || `Erro ${r.status}`;
+        console.error(`[V8 BFF] ERRO ${r.status}: ${errMsg}`);
+        return res.status(r.status).json({
+          ...data,
+          message: errMsg,
+          _v8status: r.status,
+        });
       }
 
-      // Sempre devolve o status real da V8 + corpo completo normalizado
-      return res.status(r.ok ? 200 : r.status).json(
-        r.ok ? data : {
-          ...data,
-          message: data.message
-            || data.error_description
-            || data.error
-            || (Array.isArray(data.errors) ? data.errors.map(e => e.message || e).join("; ") : null)
-            || data.statusInfo
-            || data.errorMessage
-            || (typeof data.raw === "string" ? data.raw : null)
-            || `Erro ${r.status} — ${url}`,
-          _v8status: r.status,
-          _v8raw: data,
-        }
-      );
+      return res.status(200).json(data);
     }
 
     return res.status(400).json({ error: "Action inválida. Use 'auth' ou 'bff'." });
