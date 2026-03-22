@@ -3148,7 +3148,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
     setExtraStatus(c.extraStatus || []);
     setDone(false);
     setSc(false);
-  }); // sem dependências — roda a cada render mas usa guard prevClientId
+  }, [cur.id, list]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!list.length)
     return (
@@ -10950,8 +10950,8 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const filtered = items.filter(it=>{
       if (filterStatus !== "Todos" && it.status !== filterStatus) return false;
-      if (filterSaldo && it.saldo !== null && it.saldo < parseFloat(filterSaldo)||0) return false;
-      if (filterMargem && it.margem !== null && it.margem < parseFloat(filterMargem)||0) return false;
+      if (filterSaldo && it.saldo !== null && it.saldo < (parseFloat(filterSaldo) || 0)) return false;
+      if (filterMargem && it.margem !== null && it.margem < (parseFloat(filterMargem) || 0)) return false;
       return true;
     });
 
