@@ -1487,7 +1487,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"cstatus",    label:"Status",          icon:"◐", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
-    { id:"apis",       label:"APIs Bancos",     icon:"⬧", roles:["administrador","gerente","mestre","master"] },
+    { id:"apis",       label:"Bancos",          icon:"⬧", roles:["administrador","gerente","mestre","master"] },
     { id:"leds",       label:"Leds",            icon:"⬦", roles:["administrador","gerente","mestre","master"] },
     { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
     { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"] },
@@ -3375,19 +3375,17 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
             📝 Digitar
           </button>
 
-          {/* Simulação API V8 — só para FGTS e CLT */}
+          {/* V8 Digital — só para FGTS e CLT */}
           {(leadTypeRef.current === "FGTS" || leadTypeRef.current === "CLT" || (extraLeadsRef.current||[]).some(l=>l==="FGTS"||l==="CLT")) && (
             <button
               onClick={() => {
                 sessionStorage.setItem("nexp_v8_simular_cpf", cur.cpf||"");
-                sessionStorage.setItem("nexp_v8_simular_nome", cur.name||"");
-                // Navega para a aba APIs
-                const event = new CustomEvent("nexp_navigate", { detail:{ page:"apis", v8tab:"individual", cpf:cur.cpf } });
+                const event = new CustomEvent("nexp_navigate", { detail:{ page:"apis", cpf:cur.cpf } });
                 window.dispatchEvent(event);
               }}
               style={{ background:"linear-gradient(135deg,#0f4c81,#1a6bb5)", color:"#fff", border:"1px solid rgba(79,142,247,0.4)", borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap", boxShadow:"0 2px 12px rgba(79,142,247,0.3)" }}
             >
-              🏦 Simulação API — V8
+              🏦 V8 Digital
             </button>
           )}
 
@@ -5142,7 +5140,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"add",          label:"Adicionar" },
             { id:"import",       label:"Importar" },
             { id:"simulador",    label:"Simulador" },
-            { id:"apis",         label:"APIs Bancos" },
+            { id:"apis",         label:"Bancos" },
             { id:"leds",         label:"Leds" },
             { id:"usuarios_page",label:"Usuários" },
             { id:"atalhos",      label:"Atalhos" },
@@ -5242,6 +5240,62 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
   );
 }
 
+// ── Configurar API (aba em Configurações) ─────────────────────
+function ConfigurarAPITab({ currentUser }) {
+  const isMestre = currentUser.role === "mestre" || currentUser.role === "administrador";
+  const [apis, setApis] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_bank_apis")||"[]"); } catch { return []; } });
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ banco:"", apiKey:"", endpoint:"", descricao:"" });
+  const saveApis = (list) => { setApis(list); localStorage.setItem("nexp_bank_apis", JSON.stringify(list)); };
+  const addApi = () => {
+    if (!form.banco.trim() || !form.apiKey.trim()) return;
+    saveApis([...apis, { ...form, id:Date.now() }]);
+    setForm({ banco:"", apiKey:"", endpoint:"", descricao:"" }); setShowAdd(false);
+  };
+  const removeApi = (id) => saveApis(apis.filter(a=>a.id!==id));
+  return (
+    <div style={{ padding:"24px 0" }}>
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div>
+            <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>⬧ APIs configuradas ({apis.length})</div>
+            <div style={{ color:C.tm, fontSize:12, marginTop:2 }}>Endpoints bancários para consultas no sistema.</div>
+          </div>
+          {isMestre && (
+            <button onClick={()=>setShowAdd(p=>!p)} style={{ background:showAdd?C.deep:C.acc, color:showAdd?C.tm:"#fff", border:showAdd?`1px solid ${C.b2}`:"none", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+              {showAdd?"✕ Cancelar":"＋ Nova API"}
+            </button>
+          )}
+        </div>
+        {showAdd && isMestre && (
+          <div style={{ background:C.deep, borderRadius:11, padding:"16px", marginBottom:14, border:`1px solid ${C.b1}` }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+              <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome *</label><input value={form.banco} onChange={e=>setForm(f=>({...f,banco:e.target.value}))} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} /></div>
+              <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave API *</label><input value={form.apiKey} onChange={e=>setForm(f=>({...f,apiKey:e.target.value}))} placeholder="Chave secreta" style={{ ...S.input }} type="password" /></div>
+              <div style={{ gridColumn:"1/-1" }}><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Endpoint</label><input value={form.endpoint} onChange={e=>setForm(f=>({...f,endpoint:e.target.value}))} placeholder="https://api.banco.com/consulta?cpf={cpf}&key={apiKey}" style={{ ...S.input }} /><div style={{ color:C.td, fontSize:10, marginTop:3 }}>Use {"{cpf}"} e {"{apiKey}"} como variáveis dinâmicas</div></div>
+              <div style={{ gridColumn:"1/-1" }}><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição</label><input value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} placeholder="Ex: Crédito consignado" style={{ ...S.input }} /></div>
+            </div>
+            <button onClick={addApi} disabled={!form.banco.trim()||!form.apiKey.trim()} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", opacity:!form.banco.trim()||!form.apiKey.trim()?0.5:1 }}>Salvar API</button>
+          </div>
+        )}
+        {apis.length===0&&!showAdd&&<div style={{ textAlign:"center", padding:"28px 0", color:C.tm }}>{isMestre?"Clique em ＋ Nova API para adicionar":"Solicite ao administrador configurar as APIs"}</div>}
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {apis.map(a=>(
+            <div key={a.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:C.deep, borderRadius:10, border:`1px solid ${C.b2}` }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:C.abg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>🏦</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{a.banco}</div>
+                <div style={{ color:C.td, fontSize:11 }}>{a.descricao||"API configurada"}{a.endpoint?" · Endpoint ✓":" · ⚠ Sem endpoint"}</div>
+              </div>
+              {isMestre&&<button onClick={()=>removeApi(a.id)} style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:7, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}><svg width="11" height="12" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg></button>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("perfil");
   const [permSearch, setPermSearch] = useState("");
@@ -5258,6 +5312,12 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       label: "Temas",
       icon: "🎨",
       roles: ["mestre", "master", "indicado"],
+    },
+    {
+      id: "apis",
+      label: "Configurar API",
+      icon: "⬧",
+      roles: ["mestre", "administrador"],
     },
   ].filter((t) => t.roles.includes(currentUser.role));
   return (
@@ -5309,6 +5369,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
           />
         )}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
+        {tab === "apis" && <ConfigurarAPITab currentUser={currentUser} />}
         {false && (() => {
           const isMestre = currentUser.role === "mestre";
           // Master só vê usuários que ele criou; mestre vê todos
@@ -5329,7 +5390,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             { id:"add",          label:"Adicionar" },
             { id:"import",       label:"Importar" },
             { id:"simulador",    label:"Simulador" },
-            { id:"apis",         label:"APIs Bancos" },
+            { id:"apis",         label:"Bancos" },
             { id:"leds",         label:"Leds" },
             { id:"atalhos",      label:"Atalhos" },
             { id:"calendario",   label:"Agenda" },
@@ -11311,7 +11372,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                     ["CPF", cpfSim],
                     ["Nome completo", balance?.name || balance?.clientName || "—"],
                     ["Valor Liberado", fmtBRL(bestSim?.sim?.availableBalance || 0)],
-                    ["Saldo FGTS (bloqueado como garantia)", fmtBRL(saldoTotal)],
+                    ["Saldo FGTS que ficará bloqueado e usado como garantia", fmtBRL(saldoTotal)],
                   ].map(([label, value])=>(
                     <div key={label} style={{ marginBottom:10, paddingBottom:10, borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
                       <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginBottom:2 }}>{label}</div>
@@ -11331,8 +11392,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 {/* Lado direito: melhor oferta */}
                 {bestSim && (
                   <div style={{ background:"linear-gradient(135deg,rgba(79,142,247,0.2),rgba(124,58,237,0.2))", border:"1px solid rgba(79,142,247,0.3)", borderRadius:14, padding:"18px 22px", minWidth:200, textAlign:"center" }}>
-                    <div style={{ color:"#34D399", fontSize:11, fontWeight:700, letterSpacing:"0.5px", marginBottom:4 }}>✅ MELHOR OFERTA</div>
-                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, textTransform:"capitalize", marginBottom:8 }}>{bestSim.label}</div>
+                    <div style={{ color:"#34D399", fontSize:14, fontWeight:800, letterSpacing:"0.5px", marginBottom:8 }}>✅ MELHOR OFERTA</div>
                     <div style={{ color:"#fff", fontSize:28, fontWeight:900, lineHeight:1, letterSpacing:"-1px", marginBottom:6 }}>
                       {fmtBRL(bestSim.sim?.availableBalance||0)}
                     </div>
@@ -11575,205 +11635,6 @@ function V8DigitalTab({ currentUser, contacts }) {
   // ════════════════════════════════════════════════════════════
   // ABA: DIGITAÇÃO DE PROPOSTA
   // Rota: GET /banks, POST /fgts/proposal
-  // ════════════════════════════════════════════════════════════
-  const DigitacaoTab = () => {
-    const [banks, setBanks]     = useState([]);
-    const [loadBanks, setLoadBanks] = useState(false);
-    const [simId, setSimId]     = useState("");
-    const [balanceId, setBalanceId] = useState("");
-    const [logs, setLogs]       = useState([]);
-    const [result, setResult]   = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [err, setErr]         = useState("");
-    const [payType, setPayType] = useState("pix"); // pix | transfer
-    const [form, setForm]       = useState({
-      documentNumber:"", provider:"cartos", targetAmount:"0",
-      pix:"", bankId:"", bankAccountNumber:"", bankAccountBranch:"", bankAccountDigit:"", bankAccountType:"checking_account",
-    });
-
-    const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)]);
-    const setF = (k,v) => setForm(p=>({...p,[k]:v}));
-
-    const carregarBancos = async () => {
-      setLoadBanks(true);
-      try {
-        const data = await apiFetch("/banks");
-        setBanks(data?.data || data || []);
-        addLog(`✅ ${(data?.data||data||[]).length} bancos carregados`);
-      } catch(e) { addLog(`❌ Bancos: ${e.message}`, false); }
-      setLoadBanks(false);
-    };
-
-    const digitarProposta = async () => {
-      if (!form.documentNumber) { setErr("CPF obrigatório."); return; }
-      if (!simId) { setErr("ID da simulação obrigatório. Faça uma simulação primeiro."); return; }
-      setLoading(true); setErr(""); setResult(null);
-      addLog("📡 Criando proposta...");
-      try {
-        const paymentData = payType === "pix"
-          ? { type:"pix", pix:form.pix }
-          : { type:"transfer", bankId:form.bankId, bankAccountNumber:form.bankAccountNumber, bankAccountBranch:form.bankAccountBranch, bankAccountDigit:form.bankAccountDigit, bankAccountType:form.bankAccountType };
-
-        const body = {
-          simulationId: simId,
-          balanceId,
-          documentNumber: padCPF(form.documentNumber),
-          targetAmount: parseFloat(form.targetAmount) || 0,
-          provider: form.provider,
-          payment: paymentData,
-        };
-        const res = await apiFetch("/fgts/proposal", "POST", body);
-        setResult(res);
-        addLog(`✅ Proposta criada! ID: ${res?.id} · Status: ${res?.status}`);
-        addLog(`📦 Resposta: ${JSON.stringify(res).slice(0,200)}`);
-      } catch(e) { setErr("❌ " + e.message); addLog("❌ " + e.message, false); }
-      setLoading(false);
-    };
-
-    return (
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {/* Dados da simulação */}
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"20px" }}>
-            <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:14 }}>📝 Digitação de Proposta FGTS</div>
-            <div style={{ color:C.td, fontSize:11, marginBottom:14, padding:"8px 12px", background:C.deep, borderRadius:8 }}>
-              💡 Realize uma simulação na aba Individual primeiro para obter os IDs necessários.
-            </div>
-            {[
-              ["CPF do cliente *","documentNumber","text","000.000.000-00"],
-              ["ID da Simulação *","simId","text","UUID da simulação"],
-              ["ID do Saldo *","balanceId","text","UUID do saldo"],
-            ].map(([label, key, type, ph])=>(
-              <div key={key} style={{ marginBottom:10 }}>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{label}</label>
-                <input value={key==="simId"?simId:key==="balanceId"?balanceId:form[key]}
-                  onChange={e=>{ if(key==="simId") setSimId(e.target.value); else if(key==="balanceId") setBalanceId(e.target.value); else setF(key,e.target.value); }}
-                  type={type} placeholder={ph} style={{ ...S.input }} />
-              </div>
-            ))}
-            <div style={{ marginBottom:10 }}>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Provider *</label>
-              <div style={{ display:"flex", gap:6 }}>
-                {["cartos","qi","bms"].map(p=>(
-                  <button key={p} onClick={()=>setF("provider",p)}
-                    style={{ flex:1, background:form.provider===p?C.abg:C.deep, color:form.provider===p?C.atxt:C.tm, border:form.provider===p?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 0", fontSize:12, cursor:"pointer", fontWeight:form.provider===p?700:400, textTransform:"uppercase" }}>
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* Forma de pagamento */}
-            <div style={{ marginBottom:12 }}>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Forma de Pagamento *</label>
-              <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-                {[["pix","💠 PIX"],["transfer","🏦 Transferência"]].map(([v,l])=>(
-                  <button key={v} onClick={()=>setPayType(v)}
-                    style={{ flex:1, background:payType===v?C.abg:C.deep, color:payType===v?C.atxt:C.tm, border:payType===v?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"7px 0", fontSize:12, cursor:"pointer", fontWeight:payType===v?700:400 }}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-              {payType === "pix" && (
-                <div>
-                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave PIX *</label>
-                  <input value={form.pix} onChange={e=>setF("pix",e.target.value)} placeholder="CPF, telefone, e-mail ou chave aleatória" style={{ ...S.input }} />
-                  <div style={{ color:C.td, fontSize:10, marginTop:3 }}>CPF sem pontuação · Tel: +5511999999999 · Chave aleatória: UUID</div>
-                </div>
-              )}
-              {payType === "transfer" && (
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
-                    <div style={{ flex:1 }}>
-                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco *</label>
-                      <select value={form.bankId} onChange={e=>setF("bankId",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
-                        <option value="">Selecione...</option>
-                        {banks.map(b=><option key={b.id} value={b.id}>{b.name} ({b.code}){b.isTurbo?" ⚡":""}</option>)}
-                      </select>
-                    </div>
-                    <button onClick={carregarBancos} disabled={loadBanks}
-                      style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"9px 12px", fontSize:12, cursor:"pointer", flexShrink:0, opacity:loadBanks?0.6:1 }}>
-                      {loadBanks?"⏳":"🔄"}
-                    </button>
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 80px", gap:8 }}>
-                    <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Agência</label><input value={form.bankAccountBranch} onChange={e=>setF("bankAccountBranch",e.target.value)} placeholder="0001" style={{ ...S.input }} /></div>
-                    <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Conta</label><input value={form.bankAccountNumber} onChange={e=>setF("bankAccountNumber",e.target.value)} placeholder="123456" style={{ ...S.input }} /></div>
-                    <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Dígito</label><input value={form.bankAccountDigit} onChange={e=>setF("bankAccountDigit",e.target.value)} placeholder="2" style={{ ...S.input }} /></div>
-                  </div>
-                  <div>
-                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta</label>
-                    <select value={form.bankAccountType} onChange={e=>setF("bankAccountType",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
-                      <option value="checking_account">Conta Corrente</option>
-                      <option value="saving_account">Conta Poupança</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
-            {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>⚠ {err}</div>}
-            <button onClick={digitarProposta} disabled={loading}
-              style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px 0", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1 }}>
-              {loading?"⏳ Enviando...":"📤 Criar Proposta"}
-            </button>
-          </div>
-
-          {/* Log */}
-          {logs.length > 0 && (
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                <div style={{ color:C.ts, fontSize:11.5, fontWeight:700 }}>📋 Log</div>
-                <button onClick={()=>setLogs([])} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
-              </div>
-              <div style={{ maxHeight:160, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
-                {logs.map((l,i)=>(
-                  <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
-                    <span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span>
-                    <span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Resultado */}
-        <div>
-          {result ? (
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px" }}>
-              <div style={{ color:C.ts, fontSize:13, fontWeight:700, marginBottom:14 }}>✅ Proposta Criada</div>
-              {[
-                ["ID da Proposta", result.id],
-                ["Status", result.status],
-                ["Número do Contrato", result.contractNumber],
-                ["Cliente", result.clientName],
-                ["Valor Liberado", fmtBRL(result.disbursedIssueAmount || result.availableBalance)],
-                ["Parceiro", result.partnerId],
-              ].filter(([,v])=>v).map(([l,v])=>(
-                <div key={l} style={{ padding:"8px 10px", background:C.deep, borderRadius:8, marginBottom:6 }}>
-                  <div style={{ color:C.td, fontSize:10.5 }}>{l}</div>
-                  <div style={{ color:C.tp, fontWeight:600, fontSize:12.5, marginTop:1 }}>{v}</div>
-                </div>
-              ))}
-              <div style={{ marginTop:10, background:C.deep, borderRadius:8, padding:"10px 12px" }}>
-                <div style={{ color:C.td, fontSize:10.5, marginBottom:4 }}>JSON completo</div>
-                <pre style={{ color:C.ts, fontSize:10, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, maxHeight:200, overflowY:"auto" }}>{JSON.stringify(result, null, 2)}</pre>
-              </div>
-            </div>
-          ) : (
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"56px 24px", textAlign:"center" }}>
-              <div style={{ fontSize:44, marginBottom:14, opacity:0.2 }}>📝</div>
-              <div style={{ color:C.tm, fontSize:13 }}>Preencha os dados e clique em Criar Proposta.</div>
-              <div style={{ color:C.td, fontSize:11, marginTop:8 }}>Rota: POST /fgts/proposal</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ════════════════════════════════════════════════════════════
-  // ABA: OPERAÇÕES / CONTRATOS
-  // Rota: GET /fgts/proposal
   // ════════════════════════════════════════════════════════════
   const OperacoesTab = () => {
     const [search, setSearch]   = useState("");
@@ -12170,7 +12031,6 @@ function V8DigitalTab({ currentUser, contacts }) {
   const TABS = [
     { id:"individual", label:"🔍 Individual" },
     { id:"lote",       label:"⚡ Lote" },
-    { id:"digitacao",  label:"📝 Digitar Proposta" },
     { id:"operacoes",  label:"📋 Contratos" },
   ];
 
@@ -12222,7 +12082,6 @@ function V8DigitalTab({ currentUser, contacts }) {
 
       {isTokenValid && aba === "individual" && <IndividualTab />}
       {isTokenValid && aba === "lote"       && <LoteTab />}
-      {isTokenValid && aba === "digitacao"  && <DigitacaoTab />}
       {isTokenValid && aba === "operacoes"  && <OperacoesTab />}
     </div>
   );
@@ -12252,12 +12111,12 @@ function ApisBancosPage({ currentUser, contacts }) {
 
   return (
     <div style={{ padding:"24px 30px", maxWidth:900 }}>
-      <h1 style={{ color:C.tp, fontSize:20, fontWeight:700, margin:"0 0 4px" }}>⬧ APIs Bancos</h1>
-      <p style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Conecte APIs bancárias e integre com o V8 Digital.</p>
+      <h1 style={{ color:C.tp, fontSize:20, fontWeight:700, margin:"0 0 4px" }}>🏦 Bancos</h1>
+      <p style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Integração V8 Digital e APIs bancárias.</p>
 
       {/* Tabs */}
       <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:24 }}>
-        {[{v:"geral",l:"⬧ APIs Gerais"},{v:"v8",l:"⚡ V8 Digital"}].map(t=>(
+        {[{v:"v8",l:"⚡ V8 Digital"}].map(t=>(
           <button key={t.v} onClick={()=>setAba(t.v)}
             style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, fontWeight:aba===t.v?700:400, color:aba===t.v?C.atxt:C.tm, borderBottom:aba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
             {t.l}
@@ -12265,49 +12124,8 @@ function ApisBancosPage({ currentUser, contacts }) {
         ))}
       </div>
 
-      {/* ABA GERAL */}
-      {aba === "geral" && (
-        <div>
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>🔑 APIs configuradas ({apis.length})</div>
-              {isMestre && (
-                <button onClick={()=>setShowAdd(p=>!p)} style={{ background:showAdd?C.deep:C.acc, color:showAdd?C.tm:"#fff", border:showAdd?`1px solid ${C.b2}`:"none", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>
-                  {showAdd ? "✕ Cancelar" : "＋ Nova API"}
-                </button>
-              )}
-            </div>
-            {showAdd && isMestre && (
-              <div style={{ background:C.deep, borderRadius:11, padding:"16px", marginBottom:14, border:`1px solid ${C.b1}` }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Nome *</label><input value={form.banco} onChange={e=>setForm(f=>({...f,banco:e.target.value}))} placeholder="Ex: Banco do Brasil" style={{ ...S.input }} /></div>
-                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave API *</label><input value={form.apiKey} onChange={e=>setForm(f=>({...f,apiKey:e.target.value}))} placeholder="Chave secreta" style={{ ...S.input }} type="password" /></div>
-                  <div style={{ gridColumn:"1/-1" }}><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Endpoint</label><input value={form.endpoint} onChange={e=>setForm(f=>({...f,endpoint:e.target.value}))} placeholder="https://api.banco.com/consulta?cpf={cpf}&key={apiKey}" style={{ ...S.input }} /><div style={{ color:C.td, fontSize:10, marginTop:3 }}>Use {"{cpf}"} e {"{apiKey}"} como variáveis dinâmicas</div></div>
-                  <div style={{ gridColumn:"1/-1" }}><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição</label><input value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} placeholder="Ex: Crédito consignado" style={{ ...S.input }} /></div>
-                </div>
-                <button onClick={addApi} disabled={!form.banco.trim()||!form.apiKey.trim()} style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", opacity:!form.banco.trim()||!form.apiKey.trim()?0.5:1 }}>Salvar API</button>
-              </div>
-            )}
-            {apis.length === 0 && !showAdd && <div style={{ textAlign:"center", padding:"28px 0", color:C.tm }}>{isMestre?"Clique em ＋ Nova API para adicionar":"Solicite ao mestre configurar as APIs"}</div>}
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {apis.map(a=>(
-                <div key={a.id} onClick={()=>setSelectedApi(selectedApi===a.id?null:a.id)} style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:C.deep, borderRadius:10, border:`1px solid ${selectedApi===a.id?C.atxt+"55":C.b2}`, cursor:"pointer" }}>
-                  <div style={{ width:36, height:36, borderRadius:9, background:C.abg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>🏦</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{a.banco}</div>
-                    <div style={{ color:C.td, fontSize:11 }}>{a.descricao||"API configurada"}{a.endpoint?" · Endpoint ✓":" · ⚠ Sem endpoint"}</div>
-                  </div>
-                  {selectedApi===a.id&&<span style={{ color:C.atxt, fontSize:10, fontWeight:700, background:C.abg, borderRadius:7, padding:"2px 8px" }}>✓</span>}
-                  {isMestre&&<button onClick={e=>{e.stopPropagation();removeApi(a.id);}} style={{ background:"#2D1515", border:"1px solid #EF444422", borderRadius:7, width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}><svg width="11" height="12" viewBox="0 0 12 13" fill="none"><path d="M1 3h10M4 3V2h4v1M2 3l.7 8h6.6L10 3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 6v3M7 6v3" stroke="#F87171" strokeWidth="1.3" strokeLinecap="round"/></svg></button>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ABA V8 DIGITAL */}
-      {aba === "v8" && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
+      {<V8DigitalTab currentUser={currentUser} contacts={contacts} />}
     </div>
   );
 }
