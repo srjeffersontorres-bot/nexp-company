@@ -13449,7 +13449,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const search   = acompSearch;   const setSearch   = setAcompSearch;
     const status   = acompStatus;   const setStatus   = setAcompStatus;
     const provider = acompProvider; const setProvider = setAcompProvider;
-    const page     = acompPage;     const setPage     = setAcompPage;
+    // page/setPage mantidos para paginação futura
     const data     = acompData;     const setData     = setAcompData;
     const loading  = acompLoading;  const setLoading  = setAcompLoading;
     const err      = acompErr;      const setErr      = setAcompErr;
@@ -13625,9 +13625,6 @@ function V8DigitalTab({ currentUser, contacts }) {
       }
       setLoading(false);
     };
-
-    // Paginação client-side sem re-buscar
-    const paginar = (pg) => buscar(pg);
 
     // Auto-carrega ao entrar na aba
     useEffect(() => {
