@@ -1,11 +1,10 @@
 // api/v8proxy.js — Proxy Vercel para API V8 Digital (resolve CORS)
-const AUTH_URL = "https://auth.v8sistema.com/oauth/token";
-const BFF_URL  = "https://bff.v8sistema.com";
+const AUTH_URL  = "https://auth.v8sistema.com/oauth/token";
+const BFF_URL   = "https://bff.v8sistema.com";
 const CLIENT_ID = "DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn";
 const AUDIENCE  = "https://bff.v8sistema.com";
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -16,10 +15,9 @@ export default async function handler(req, res) {
   const { action, payload } = req.body || {};
 
   try {
-    // ── AUTH: troca email+senha por access_token ──────────────
+    // ── AUTH ─────────────────────────────────────────────────────
     if (action === "auth") {
       const { username, password } = payload;
-
       const body = new URLSearchParams({
         grant_type: "password",
         client_id:  CLIENT_ID,
@@ -28,26 +26,22 @@ export default async function handler(req, res) {
         username,
         password,
       });
-
-      const r = await fetch(AUTH_URL, {
+      const r    = await fetch(AUTH_URL, {
         method:  "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body:    body.toString(),
       });
-
       const data = await r.json();
-
       if (!r.ok) {
         return res.status(r.status).json({
           error: data.error || "auth_error",
           error_description: data.error_description || data.message || "Falha na autenticação",
         });
       }
-
       return res.status(200).json(data);
     }
 
-    // ── BFF: repassa chamadas autenticadas para a API V8 ─────
+    // ── BFF ──────────────────────────────────────────────────────
     if (action === "bff") {
       const { path, method = "GET", token, body: reqBody } = payload;
 
@@ -69,18 +63,35 @@ export default async function handler(req, res) {
         fetchOpts.body = JSON.stringify(reqBody);
       }
 
-      const r = await fetch(url, fetchOpts);
+      const r    = await fetch(url, fetchOpts);
       const text = await r.text();
 
       let data;
-      try { data = JSON.parse(text); }
+      try   { data = JSON.parse(text); }
       catch { data = { raw: text }; }
 
-      // Log para debug (aparece nos logs do Vercel)
-      console.log(`[V8 BFF] ${method} ${url} → ${r.status}`);
-      if (!r.ok) console.error(`[V8 BFF] Error:`, JSON.stringify(data));
+      // Log completo no Vercel para debug
+      console.log(`[V8 BFF] ${method.toUpperCase()} ${url} → ${r.status}`);
+      if (!r.ok) {
+        console.error(`[V8 BFF] ERRO ${r.status}:`, JSON.stringify(data).slice(0, 500));
+      }
 
-      return res.status(r.ok ? 200 : r.status).json(data);
+      // Sempre devolve o status real da V8 + corpo completo normalizado
+      return res.status(r.ok ? 200 : r.status).json(
+        r.ok ? data : {
+          ...data,
+          message: data.message
+            || data.error_description
+            || data.error
+            || (Array.isArray(data.errors) ? data.errors.map(e => e.message || e).join("; ") : null)
+            || data.statusInfo
+            || data.errorMessage
+            || (typeof data.raw === "string" ? data.raw : null)
+            || `Erro ${r.status} — ${url}`,
+          _v8status: r.status,
+          _v8raw: data,
+        }
+      );
     }
 
     return res.status(400).json({ error: "Action inválida. Use 'auth' ou 'bff'." });

@@ -11129,7 +11129,19 @@ function V8DigitalTab({ currentUser, contacts }) {
         const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ action:"bff", payload:{ path, method, token, body } }) });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}`);
+        if (!res.ok) {
+          // Extrai mensagem de erro de vários formatos que a V8 pode retornar
+          const msg = data.message
+            || data.error_description
+            || data.error
+            || (Array.isArray(data.errors) ? data.errors.map(e=>e.message||e).join("; ") : null)
+            || data.errors?.message
+            || data.detail
+            || data.details
+            || (typeof data === "string" ? data : null)
+            || `Erro ${res.status}`;
+          throw new Error(msg);
+        }
         return data;
       } catch(e) {
         if (attempt === retries) throw e;
