@@ -12256,7 +12256,6 @@ function V8DigitalTab({ currentUser, contacts }) {
               btn.disabled = false;
               btn.textContent = "📝 Digitar esta proposta";
             }}
-            }}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
               📝 Digitar esta proposta
             </button>
