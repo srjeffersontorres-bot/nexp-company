@@ -10749,7 +10749,7 @@ function SimuladorPage() {
 
 // ── V8 Digital — aba integrada ────────────────────────────────
 // ── Modal Digitação Rápida (V8) — com revisão e edição ───────────
-function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts, currentUser, clientePreFill,
+function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, onSuccess, contacts, currentUser, clientePreFill,
   // Elevated states — passed from V8DigitalTab to prevent remount
   step, setStep, banks, setBanks, payType, setPayType, loading, setLoading,
   result, setResult, err, setErr, cepLoading, setCepLoading, bankSearch, setBankSearch, form, setForm,
@@ -10855,7 +10855,14 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
       };
       const res = await apiFetch("/fgts/proposal","POST",body);
       setResult(res);
-      // Salvar cópia no Firestore para aparecer em Propostas e poder anexar documentos
+
+      // Limpa cache do acompanhamento para forçar reload na próxima visita
+      setAcompData(null);
+
+      // Notifica o pai para navegar para acompanhamento
+      if (onSuccess) onSuccess(res);
+
+      // Salvar cópia no Firestore
       try {
         const { addDoc, collection: fbCol } = await import("firebase/firestore");
         const { db: fbDb } = await import("./firebase");
@@ -10936,7 +10943,16 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                   </div>
                 ))}
               </div>
-              <button onClick={onClose} style={{ width:"100%", background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"12px", fontSize:13, fontWeight:700, cursor:"pointer" }}>Fechar</button>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>{ if(onSuccess) onSuccess(result); onClose(); }}
+                  style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                  📡 Ver em Acompanhamento
+                </button>
+                <button onClick={onClose}
+                  style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"12px 18px", fontSize:13, cursor:"pointer" }}>
+                  Fechar
+                </button>
+              </div>
             </div>
           ) : step === "review" ? (
             <div>
@@ -12148,6 +12164,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
             form={modalForm} setForm={setModalForm}
             onClose={()=>{ setIndDigModal(null); }}
+            onSuccess={()=>{ setIndDigModal(null); setAcompData(null); setAba("acompanhamento"); }}
           />
         )}
 
@@ -13255,6 +13272,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
             form={modalForm} setForm={setModalForm}
             onClose={()=>{ setLoteDigModal(null); }}
+            onSuccess={()=>{ setLoteDigModal(null); setAcompData(null); setAba("acompanhamento"); }}
           />
         )}
       </div>
@@ -13392,8 +13410,11 @@ function V8DigitalTab({ currentUser, contacts }) {
       }));
     };
 
-    // NÃO auto-carrega — usuário clica em Buscar ou filtro rápido
-    // (auto-load causava loop infinito pois AcompanhamentoTab é função interna e re-monta a cada render)
+    // Auto-carrega quando acompData é null (primeira visita ou após criar proposta)
+    // Seguro pois acompData é estado elevado (não reseta no re-mount)
+    useEffect(() => {
+      if (acompData === null && !acompLoading) buscar(1);
+    }, [acompData]); // eslint-disable-line
 
     const gerarNovoLink = async (id) => {
       setAcompLinkLoading(true);
