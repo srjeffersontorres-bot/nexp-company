@@ -10743,7 +10743,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     const [simStep, setSimStep]   = useState("idle"); // idle | saldo | fees | simulando | contratos | done
 
     // Tabelas da V8 — labels conforme documentação + as 8 do usuário
-    const LABELS_V8 = ["milhas","normal","cometa","turbo","pitstop","acelera","podium","grid iphone"];
 
     const addLog = (msg, ok=true) => setLogs(p => {
       const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
@@ -10974,8 +10973,8 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
 
               {/* Header da grade */}
-              <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1.2fr 1fr 0.9fr", gap:0, background:C.deep, padding:"10px 18px", borderBottom:`1px solid ${C.b1}` }}>
-                {["Tabela","Saldo Liberado","Valor Emissão","Anos / Parcelas","CET a.m."].map(h=>(
+              <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1fr 0.9fr 1.2fr", gap:0, background:C.deep, padding:"10px 18px", borderBottom:`1px solid ${C.b1}` }}>
+                {["Tabela","Saldo Liberado","Anos / Parcelas","CET a.m.","Valor Emissão"].map(h=>(
                   <div key={h} style={{ color:C.tm, fontSize:10.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
                 ))}
               </div>
@@ -10996,7 +10995,7 @@ function V8DigitalTab({ currentUser, contacts }) {
 
                 return (
                   <div key={i} style={{
-                    display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1.2fr 1fr 0.9fr",
+                    display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1fr 0.9fr 1.2fr",
                     gap:0, padding:"13px 18px",
                     background: isBest ? `${C.acc}12` : i%2===0 ? C.card : C.deep,
                     borderBottom:`1px solid ${C.b1}`,
@@ -11023,15 +11022,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         : <span style={{ color:"#F87171", fontSize:12 }}>✘ Erro</span>}
                     </div>
 
-                    {/* Emissão */}
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <div>
-                        <div style={{ color:C.ts, fontWeight:600, fontSize:13 }}>{fmtBRL(emissao)}</div>
-                        <div style={{ color:C.td, fontSize:10 }}>valor emissão</div>
-                      </div>}
-                    </div>
-
-                    {/* Anos */}
+                    {/* Anos / Parcelas */}
                     <div style={{ display:"flex", alignItems:"center" }}>
                       {t.ok && <div style={{ color:C.tm, fontSize:13, fontWeight:600 }}>{anos}</div>}
                     </div>
@@ -11041,6 +11032,14 @@ function V8DigitalTab({ currentUser, contacts }) {
                       {t.ok && cet && <div>
                         <div style={{ color:C.tm, fontSize:12.5, fontWeight:600 }}>{fmtPct(cet)}</div>
                         <div style={{ color:C.td, fontSize:10 }}>ao mês</div>
+                      </div>}
+                    </div>
+
+                    {/* Emissão */}
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      {t.ok && <div>
+                        <div style={{ color:C.ts, fontWeight:600, fontSize:13 }}>{fmtBRL(emissao)}</div>
+                        <div style={{ color:C.td, fontSize:10 }}>valor emissão</div>
                       </div>}
                     </div>
                   </div>
