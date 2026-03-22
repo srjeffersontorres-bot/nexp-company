@@ -10966,7 +10966,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                       e.preventDefault();
                       const raw=(e.clipboardData||window.clipboardData).getData("text");
                       // Normaliza DD/MM/AAAA → AAAA-MM-DD
-                      const m=raw.trim().match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+                      const m=raw.trim().match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/);
                       if(m) setF("birthDate",`${m[3]}-${m[2]}-${m[1]}`);
                       else setF("birthDate",raw.trim());
                     }}
@@ -12305,7 +12305,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const filterStatus = loteFilterStatus;const setFilterStatus = setLoteFilterStatus;
     const logs         = loteLogs;        const setLogs         = setLoteLogs;
     const page         = lotePage;        const setPage         = setLotePage;
-    const cpfBox       = loteCpfBox;      const setCpfBox       = setLoteCpfBox;
+    const cpfBox       = loteCpfBox;      // setCpfBox via setCpfBoxPersist
     const showCpfBox   = loteShowCpfBox;  const setShowCpfBox   = setLoteShowCpfBox;
     const provider     = loteProvider;
     const fees         = loteFees;        const setFees         = setLoteFees;
@@ -12646,6 +12646,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                             balance:{ ...detalheItem.balance, id:detalheItem.sim?.balanceId },
                             cpf:detalheItem.cpf,
                             provider:loteProvider,
+                            clientePreFill:detalheItem,
                           })}
                           style={{
                             background: isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
@@ -12668,8 +12669,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                           {s.ok ? (
                             <>
                               <div style={{ color:isBest?"#34D399":"#fff", fontWeight:900, fontSize:20, lineHeight:1, letterSpacing:"-0.5px" }}>{fmtBRL(vlr)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5 }}>{anos}</div>
+                              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:3 }}>Valor liberado via PIX</div>
+                              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:6, padding:"2px 8px", display:"inline-block", fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
+                              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10, marginTop:3 }}>{anos}</div>
                               <div style={{ marginTop:10, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"5px 0", textAlign:"center", fontSize:11, fontWeight:800, color:"#fff", letterSpacing:"0.5px" }}>
                                 📝 DIGITAR
                               </div>
@@ -12785,7 +12787,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
                         {it.status==="ok" && it.sim?.melhor?.sim ? (
                           <button
-                            onClick={()=>setLoteDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider })}
+                            onClick={()=>setLoteDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it })}
                             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.3px" }}>
                             DIGITAR
                           </button>
@@ -12842,6 +12844,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             fmtBRL={fmtBRL}
             contacts={contacts}
             currentUser={currentUser}
+            clientePreFill={loteDigModal.clientePreFill}
             onClose={()=>setLoteDigModal(null)}
           />
         )}
