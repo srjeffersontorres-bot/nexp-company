@@ -13302,15 +13302,10 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const dateFrom = acompDateFrom; const setDateFrom = setAcompDateFrom;
     const dateTo   = acompDateTo;   const setDateTo   = setAcompDateTo;
-    const statusBrutos   = acompStatusBrutos;
     const setStatusBrutos = setAcompStatusBrutos;
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"Pago", canceled:"Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
-
-    // Status que a API V8 realmente retorna na listagem (confirmado via diagnóstico)
-    // Outros status (formalization, analysis, etc.) só aparecem via busca por CPF/ID
-    const API_KNOWN_STATUS = ["paid","canceled","processing","pending","analysis","manual_analysis","refounded","refunded","cancelled"];
 
     const STATUS_VARIANTS = {
       formalization:  ["formalization","aguardando_form","awaiting_formalization","pending_formalization","in_formalization","formalizacao"],
