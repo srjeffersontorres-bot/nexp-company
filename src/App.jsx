@@ -10752,8 +10752,12 @@ function SimuladorPage() {
 function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, onSuccess, setAcompData, contacts, currentUser, clientePreFill,
   // Elevated states — passed from V8DigitalTab to prevent remount
   step, setStep, banks, setBanks, payType, setPayType, loading, setLoading,
-  result, setResult, err, setErr, cepLoading, setCepLoading, bankSearch, setBankSearch, form, setForm,
+  result, setResult, err, setErr, cepLoading, setCepLoading, bankSearch, setBankSearch,
+  // initialForm passed once — form state lives INSIDE modal to prevent re-render typing bug
+  initialForm,
 }) {
+  // ✅ Form state local — evita re-render do pai ao digitar (bug 1 caractere)
+  const [form, setForm] = useState(() => initialForm || {});
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
   const simId = tabela?.sim?.id || "";
   const balId = balance?.id || "";
@@ -10835,9 +10839,9 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
         birthDate:                    form.birthDate,
         maritalStatus:                form.maritalStatus,
         personType:                   "natural",
-        phone:                        form.phone.slice(2),
+        phone:                        form.phone.replace(/\D/g,"").slice(2),
         phoneCountryCode:             "55",
-        phoneRegionCode:              form.phone.slice(0,2),
+        phoneRegionCode:              form.phone.replace(/\D/g,"").slice(0,2),
         postalCode:                   form.postalCode,
         state:                        form.state,
         neighborhood:                 form.neighborhood,
@@ -11922,38 +11926,23 @@ function V8DigitalTab({ currentUser, contacts }) {
 
                 {/* Lado direito: melhor oferta */}
                 {bestSim && (
-                  <div style={{ background:"linear-gradient(135deg,rgba(79,142,247,0.2),rgba(124,58,237,0.2))", border:"1px solid rgba(79,142,247,0.3)", borderRadius:14, padding:"18px 22px", minWidth:200, textAlign:"center" }}>
-                    <div style={{ color:"#34D399", fontSize:14, fontWeight:800, letterSpacing:"0.5px", marginBottom:6 }}>✅ MELHOR OFERTA</div>
-                    <div style={{ color:"#fff", fontSize:28, fontWeight:900, lineHeight:1, letterSpacing:"-1px", marginBottom:4 }}>
+                  <div style={{ background:"linear-gradient(135deg,rgba(52,211,153,0.18),rgba(79,142,247,0.18))", border:"2px solid rgba(52,211,153,0.4)", borderRadius:18, padding:"28px 32px", minWidth:260, textAlign:"center", boxShadow:"0 4px 32px rgba(52,211,153,0.15)" }}>
+                    <div style={{ color:"#34D399", fontSize:13, fontWeight:800, letterSpacing:"1px", marginBottom:10, textTransform:"uppercase" }}>✅ Melhor Oferta</div>
+                    <div style={{ color:"#fff", fontSize:40, fontWeight:900, lineHeight:1, letterSpacing:"-1px", marginBottom:6 }}>
                       {fmtBRL(bestSim.sim?.availableBalance||0)}
                     </div>
-                    <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, marginBottom:8 }}>
+                    <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12.5, marginBottom:12 }}>
                       Valor liberado via PIX
                     </div>
-                    <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:8, padding:"4px 10px", display:"inline-block", fontSize:11, color:"rgba(255,255,255,0.6)", marginBottom:6 }}>
-                      Emissão: {fmtBRL(bestSim.sim?.emissionAmount||0)}
-                    </div>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, paddingTop:6, borderTop:"1px solid rgba(255,255,255,0.1)" }}>
+                    <div style={{ color:"rgba(255,255,255,0.45)", fontSize:12, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.12)" }}>
                       {calcAnos(bestSim.sim)} de antecipação
                     </div>
-                    <button
-                      onClick={()=>{
-                        const el=document.getElementById("ind_best_print");
-                        if(!el)return;
-                        const w=window.open("","_blank","width=500,height=400");
-                        w.document.write(`<html><head><title>Melhor Oferta FGTS</title><style>body{font-family:sans-serif;background:#fff;color:#000;padding:32px;text-align:center}h2{color:#1a6bb5}p{font-size:14px;margin:6px 0}.val{font-size:32px;font-weight:900;color:#1a6bb5}</style></head><body>${el.innerHTML}</body></html>`);
-                        w.document.close();w.focus();w.print();w.close();
-                      }}
-                      style={{ marginTop:10, background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", color:"#fff", borderRadius:7, padding:"5px 14px", fontSize:11, cursor:"pointer", width:"100%" }}>
-                      🖨 Print desta oferta
-                    </button>
                     <div id="ind_best_print" style={{ display:"none" }}>
                       <h2>✅ Melhor Oferta FGTS</h2>
                       <p>CPF: <b>{cpfSim}</b></p>
                       <p>Tabela: <b style={{ textTransform:"capitalize" }}>{bestSim.label}</b></p>
                       <p class="val">{fmtBRL(bestSim.sim?.availableBalance||0)}</p>
                       <p>Valor liberado via PIX</p>
-                      <p>Emissão: <b>{fmtBRL(bestSim.sim?.emissionAmount||0)}</b></p>
                       <p>{calcAnos(bestSim.sim)} de antecipação · {provider?.toUpperCase()}</p>
                       <p style={{ fontSize:11, color:"#888" }}>{new Date().toLocaleString("pt-BR")}</p>
                     </div>
@@ -12131,7 +12120,43 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ))}
               </div>
             </div>
-            <button onClick={()=>{openDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider }); setIndDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider });}}
+            <button onClick={async ()=>{
+              // Cruzamento de dados igual ao lote — busca contrato anterior do V8
+              let clienteV8 = null;
+              try {
+                const ops = await apiFetch(`/fgts/proposal?search=${(indCpfSim||"").replace(/\D/g,"")}&page=1&limit=1`);
+                const primeiro = (ops?.data||ops||[])[0];
+                if (primeiro?.id) {
+                  const det = await apiFetch(`/fgts/proposal/${primeiro.id}`);
+                  clienteV8 = det;
+                }
+              } catch {}
+              // Cruza com contatos Nexp
+              const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === (indCpfSim||"").replace(/\D/g,"")) || {};
+              const preData = {
+                clienteV8,
+                nome:         clienteV8?.name || clienteV8?.clientName || nexp.name || "",
+                email:        clienteV8?.email || nexp.email || "",
+                phone:        clienteV8?.phone ? (clienteV8.phoneRegionCode||"")+(clienteV8.phone||"") : (nexp.phone||"").replace(/\D/g,""),
+                phoneDdd:     clienteV8?.phoneRegionCode || (nexp.phone||"").replace(/\D/g,"").slice(0,2),
+                rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
+                nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
+                nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
+                cep:          clienteV8?.postalCode || (nexp.cep||"").replace(/\D/g,""),
+                rua:          clienteV8?.street || nexp.rua || "",
+                numero:       clienteV8?.addressNumber || nexp.numero || "",
+                complemento:  clienteV8?.complement || nexp.complemento || "",
+                bairro:       clienteV8?.neighborhood || nexp.bairro || "",
+                cidade:       clienteV8?.city || nexp.cidade || "",
+                uf:           clienteV8?.state || nexp.ufEnd || nexp.estado || "",
+                estadoCivil:  clienteV8?.maritalStatus || "single",
+                nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
+                isPEP:        clienteV8?.isPEP || false,
+              };
+              const d = { tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData };
+              openDigModal(d);
+              setIndDigModal(d);
+            }}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
               📝 Digitar esta proposta
             </button>
@@ -12189,7 +12214,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             err={modalErr} setErr={setModalErr}
             cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
-            form={modalForm} setForm={setModalForm}
+            initialForm={modalForm}
             setAcompData={setAcompData}
             onClose={()=>{ setIndDigModal(null); }}
             onSuccess={(res)=>{ 
@@ -13308,7 +13333,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             err={modalErr} setErr={setModalErr}
             cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
-            form={modalForm} setForm={setModalForm}
+            initialForm={modalForm}
             setAcompData={setAcompData}
             onClose={()=>{ setLoteDigModal(null); }}
             onSuccess={(res)=>{ 
