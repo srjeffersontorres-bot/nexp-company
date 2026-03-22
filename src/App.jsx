@@ -10809,14 +10809,16 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
 
       const pixKey = normalizePix(form.pix);
 
+      // V8 payment format: { type, data: { ... } }
+      // type must match exactly what V8 expects — "PIX" or "TED"
       const paymentData = payType === "pix"
-        ? { type: "PIX",      data: { pix: pixKey } }
-        : { type: "TED",      data: {
-              bankId:            form.bankId,
-              bankAccountNumber: form.bankAccountNumber,
-              bankAccountBranch: form.bankAccountBranch,
-              bankAccountDigit:  form.bankAccountDigit,
-              bankAccountType:   form.bankAccountType,
+        ? { type: "PIX", data: { pix: pixKey } }
+        : { type: "TED", data: {
+              bankId:             form.bankId,
+              bankAccountNumber:  form.bankAccountNumber,
+              bankAccountBranch:  form.bankAccountBranch,
+              bankAccountDigit:   form.bankAccountDigit,
+              bankAccountType:    form.bankAccountType,
             }};
 
       const body = {
@@ -11451,6 +11453,21 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [loteSearch,       setLoteSearch]        = useState("");
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
+
+  // ── Estados OperacoesTab elevados ──
+  const [opsSearch,   setOpsSearch]   = useState("");
+  const [opsStatus,   setOpsStatus]   = useState("");
+  const [opsProvider, setOpsProvider] = useState("");
+  const [opsPage,     setOpsPage]     = useState(1);
+  const [opsData,     setOpsData]     = useState(null);
+  const [opsLoading,  setOpsLoading]  = useState(false);
+  const [opsErr,      setOpsErr]      = useState("");
+  const [opsCancelId, setOpsCancelId] = useState(null);
+  const [opsCancelReason, setOpsCancelReason] = useState("invalid_data:other");
+  const [opsCancelDesc,   setOpsCancelDesc]   = useState("");
+  const [opsCancelLoading,setOpsCancelLoading]= useState(false);
+  const [opsDetalhe,  setOpsDetalhe]  = useState(null); // contrato selecionado
+  const [opsSimModal, setOpsSimModal] = useState(null); // simulação popup
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -12272,35 +12289,21 @@ function V8DigitalTab({ currentUser, contacts }) {
               <button onClick={(e)=>{e.preventDefault();setLogs([]);localStorage.removeItem("nexp_v8_ind_logs");}} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar</button>
             </summary>
             <div style={{ padding:"0 16px 12px", maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
-              {logs.map((l,i)=>(
-                <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
-                  <span style={{ color:C.td, flexShrink:0, fontFamily:"monospace" }}>{l.ts}</span>
-                  <span style={{ color:l.ok?"#34D399":"#F87171", wordBreak:"break-word" }}>{l.msg}</span>
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
-      </div>
-    );
-  };
 
-  // ════════════════════════════════════════════════════════════
-  // ABA: DIGITAÇÃO DE PROPOSTA
-  // Rota: GET /banks, POST /fgts/proposal
-  // ════════════════════════════════════════════════════════════
   const OperacoesTab = () => {
-    const [search, setSearch]   = useState("");
-    const [status, setStatus]   = useState("");
-    const [provider, setProvider] = useState("");
-    const [page, setPage]       = useState(1);
-    const [data, setData]       = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [err, setErr]         = useState("");
-    const [cancelId, setCancelId] = useState(null);
-    const [cancelReason, setCancelReason] = useState("invalid_data:other");
-    const [cancelDesc, setCancelDesc] = useState("");
-    const [cancelLoading, setCancelLoading] = useState(false);
+    const search   = opsSearch;   const setSearch   = setOpsSearch;
+    const status   = opsStatus;   const setStatus   = setOpsStatus;
+    const provider = opsProvider; const setProvider = setOpsProvider;
+    const page     = opsPage;     const setPage     = setOpsPage;
+    const data     = opsData;     const setData     = setOpsData;
+    const loading  = opsLoading;  const setLoading  = setOpsLoading;
+    const err      = opsErr;      const setErr      = setOpsErr;
+    const cancelId        = opsCancelId;        const setCancelId        = setOpsCancelId;
+    const cancelReason    = opsCancelReason;    const setCancelReason    = setOpsCancelReason;
+    const cancelDesc      = opsCancelDesc;      const setCancelDesc      = setOpsCancelDesc;
+    const cancelLoading   = opsCancelLoading;   const setCancelLoading   = setOpsCancelLoading;
+    const detalhe  = opsDetalhe;  const setDetalhe  = setOpsDetalhe;
+    const simModal = opsSimModal; const setSimModal = setOpsSimModal;
 
     const buscar = async (pg=1) => {
       setLoading(true); setErr(""); setPage(pg);
@@ -12310,6 +12313,8 @@ function V8DigitalTab({ currentUser, contacts }) {
         if (status) params.append("status", status);
         if (provider) params.append("provider", provider);
         const res = await apiFetch(`/fgts/proposal?${params}`);
+        // Sort by most recent
+        if (res?.data) res.data.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
         setData(res);
       } catch(e) { setErr(e.message); }
       setLoading(false);
@@ -12336,8 +12341,9 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:14 }}>📋 Contratos FGTS</div>
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:160 }}>
-              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (CPF ou contrato)</label>
-              <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)} placeholder="12345678900" style={{ ...S.input }} />
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (CPF, nome ou contrato)</label>
+              <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
+                placeholder="CPF, nome ou nº contrato" autoComplete="off" style={{ ...S.input }} />
             </div>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Status</label>
@@ -12360,68 +12366,276 @@ function V8DigitalTab({ currentUser, contacts }) {
           {err && <div style={{ color:"#F87171", marginTop:10, fontSize:12 }}>⚠ {err}</div>}
         </div>
 
-        {/* Tabela */}
+        {/* Detalhe do contrato selecionado */}
+        {detalhe && (
+          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"22px 26px", marginBottom:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>
+                🔍 {detalhe.clientName||"Contrato"} · <span style={{ fontFamily:"monospace", fontSize:12, color:"rgba(255,255,255,0.6)" }}>{detalhe.contractNumber||"—"}</span>
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                {/* Botão Simular */}
+                <button
+                  onClick={async ()=>{
+                    setSimModal({ loading:true, cpf:detalhe.documentNumber||detalhe.individualDocumentNumber||"", nome:detalhe.clientName||"", contrato:detalhe });
+                    try {
+                      const cpfv = (detalhe.documentNumber||detalhe.individualDocumentNumber||"").replace(/\D/g,"");
+                      await apiFetch("/fgts/balance","POST",{ documentNumber:cpfv, provider: detalhe.provider||"cartos" });
+                      let bal = null;
+                      for (let i=0;i<18;i++) {
+                        await new Promise(r=>setTimeout(r,2500));
+                        const res = await apiFetch(`/fgts/balance?search=${cpfv}`);
+                        const regs = res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
+                        const ok = regs.find(r=>r&&(r.status==="success"||r.amount!=null));
+                        if(ok){bal=ok;break;}
+                        const fail=regs.find(r=>r&&(r.status==="fail"||r.status==="error"));
+                        if(fail){setSimModal(p=>({...p,loading:false,err:fail.statusInfo||fail.message||"Falha"}));return;}
+                      }
+                      if(!bal){setSimModal(p=>({...p,loading:false,err:"Timeout"}));return;}
+                      const feesR = await apiFetch("/fgts/simulations/fees");
+                      const fees = Array.isArray(feesR)?feesR.filter(f=>f.active):[];
+                      const saldoVal=parseFloat(bal.amount||0);
+                      const installments=(bal.periods||bal.installments||[]).length
+                        ?(bal.periods||bal.installments).map(p=>({totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal),dueDate:p.dueDate||p.date}))
+                        :[{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0]}];
+                      const sims = await Promise.all(fees.map(async fee=>{
+                        try{const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfv,desiredInstallments:installments,provider:detalhe.provider||"cartos"});return{label:fee.simulation_fees?.label||"",sim,ok:true};}
+                        catch(e){return{label:fee.simulation_fees?.label||"",err:e.message,ok:false};}
+                      }));
+                      const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+                      setSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
+                    } catch(e){setSimModal(p=>({...p,loading:false,err:e.message}));}
+                  }}
+                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  ⚡ Nova Simulação
+                </button>
+                <button onClick={()=>setDetalhe(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
+              </div>
+            </div>
+
+            {/* Grid de dados */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:10, marginBottom:16 }}>
+              {[
+                ["Cliente",          detalhe.clientName||"—"],
+                ["CPF",              detalhe.documentNumber||detalhe.individualDocumentNumber||"—"],
+                ["E-mail",           detalhe.email||"—"],
+                ["Telefone",         detalhe.phone?(detalhe.phoneRegionCode||"")+detalhe.phone:"—"],
+                ["Contrato",         detalhe.contractNumber||"—"],
+                ["Status",           STATUS_LABEL[detalhe.status]||detalhe.status||"—"],
+                ["Valor Liberado",   fmtBRL(detalhe.disbursedIssueAmount)],
+                ["Provider",         (detalhe.provider||"—").toUpperCase()],
+                ["Parceiro",         detalhe.partnerId||"—"],
+                ["Tabela",           detalhe.simulationFeesLabel||detalhe.feesLabel||"—"],
+              ].map(([l,v])=>(
+                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                  <div style={{ color:"#fff", fontWeight:600, fontSize:12.5, marginTop:2, wordBreak:"break-word" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Dados bancários */}
+            {(detalhe.payment||detalhe.bankAccountNumber) && (
+              <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:10, padding:"12px 14px" }}>
+                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8 }}>Dados de Pagamento</div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8 }}>
+                  {detalhe.payment?.type==="PIX"||detalhe.payment?.type==="pix" ? (
+                    <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:7, padding:"6px 10px" }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>Chave PIX</div>
+                      <div style={{ color:"#34D399", fontSize:12, fontWeight:600, marginTop:2, fontFamily:"monospace" }}>{detalhe.payment?.data?.pix||detalhe.payment?.data?.pixKey||"—"}</div>
+                    </div>
+                  ) : [
+                    ["Banco", detalhe.payment?.data?.bankId||detalhe.bankId||"—"],
+                    ["Agência", detalhe.payment?.data?.bankAccountBranch||detalhe.bankAccountBranch||"—"],
+                    ["Conta", detalhe.payment?.data?.bankAccountNumber||detalhe.bankAccountNumber||"—"],
+                    ["Tipo", detalhe.payment?.data?.bankAccountType==="saving_account"?"Poupança":"Corrente"],
+                  ].map(([l,v])=>(
+                    <div key={l} style={{ background:"rgba(255,255,255,0.05)", borderRadius:7, padding:"6px 10px" }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                      <div style={{ color:"#fff", fontSize:12, fontWeight:600, marginTop:2 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Botão cancelar */}
+            {detalhe.status!=="paid"&&detalhe.status!=="canceled"&&(
+              <button onClick={()=>setCancelId(detalhe.id)}
+                style={{ marginTop:12, background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer" }}>
+                ✕ Cancelar Contrato
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Modal de simulação popup */}
+        {simModal && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+            <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:18, padding:"24px", width:"100%", maxWidth:660, maxHeight:"90vh", overflowY:"auto" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <div>
+                  <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>⚡ Simulação — {simModal.nome||simModal.cpf}</div>
+                  <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:2 }}>CPF: {simModal.cpf}</div>
+                </div>
+                <button onClick={()=>setSimModal(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
+              </div>
+
+              {simModal.loading ? (
+                <div style={{ textAlign:"center", padding:"40px 0" }}>
+                  <div style={{ color:"#60A5FA", fontSize:28, marginBottom:12 }}>⏳</div>
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13 }}>Consultando saldo e simulando tabelas...</div>
+                </div>
+              ) : simModal.err ? (
+                <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:10, padding:"14px", color:"#F87171" }}>{simModal.err}</div>
+              ) : simModal.sims ? (
+                <div>
+                  {/* Saldo */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                    <div style={{ background:"rgba(255,255,255,0.07)", borderRadius:10, padding:"12px 16px" }}>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>Saldo FGTS</div>
+                      <div style={{ color:"#fff", fontSize:22, fontWeight:900 }}>{fmtBRL(simModal.saldo||0)}</div>
+                    </div>
+                    {simModal.best && (
+                      <div style={{ background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:10, padding:"12px 16px" }}>
+                        <div style={{ color:"#34D399", fontSize:11, fontWeight:700 }}>✅ MELHOR OFERTA — {simModal.best.label}</div>
+                        <div style={{ color:"#34D399", fontSize:22, fontWeight:900 }}>{fmtBRL(simModal.best.sim?.availableBalance||0)}</div>
+                        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>via PIX · {calcAnos(simModal.best.sim)}</div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Tabelas */}
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10 }}>Clique para digitar proposta</div>
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                      {[...(simModal.sims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
+                        const isBest = s.label===simModal.best?.label;
+                        return (
+                          <div key={i}
+                            onClick={()=>{
+                              if(!s.ok)return;
+                              const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
+                              openDigModal(d); setIndDigModal(d); setSimModal(null);
+                            }}
+                            style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+                            onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
+                            onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                            {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
+                            <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"capitalize",marginTop:isBest?4:0}}>{s.label}</div>
+                            {s.ok?<>
+                              <div style={{color:isBest?"#34D399":"#fff",fontWeight:800,fontSize:16,lineHeight:1,marginTop:2}}>{fmtBRL(s.sim?.availableBalance||0)}</div>
+                              <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginTop:2}}>{calcAnos(s.sim)}</div>
+                              <div style={{marginTop:8,background:"rgba(255,255,255,0.12)",borderRadius:6,padding:"3px 0",textAlign:"center",fontSize:10,fontWeight:700,color:"#fff"}}>📝 DIGITAR</div>
+                            </>:<div style={{color:"#F87171",fontSize:11,marginTop:4}}>✘</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Tabela de contratos */}
         {data && (
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden" }}>
             <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
                   <tr style={{ background:C.deep }}>
-                    {["Cliente","Contrato","Status","Valor","Parceiro","Ações"].map(h=>(
-                      <th key={h} style={{ color:C.tm, fontWeight:700, padding:"10px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{h}</th>
+                    {["Cliente","CPF","Contrato","Status","Valor","Parceiro","Ações","Nova Simulação"].map(h=>(
+                      <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {(data.data||[]).map((op,i)=>{
                     const stCol = STATUS_COLOR[op.status] || "#94A3B8";
+                    const isSelected = detalhe?.id === op.id;
                     return (
-                      <tr key={op.id} style={{ background:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}` }}>
-                        <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px" }}>{op.clientName||"—"}</td>
-                        <td style={{ color:C.tm, padding:"9px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
+                      <tr key={op.id}
+                        onClick={()=>setDetalhe(isSelected?null:op)}
+                        style={{ background:isSelected?`${C.acc}15`:i%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+                        onMouseEnter={e=>!isSelected&&(e.currentTarget.style.background=`${C.acc}08`)}
+                        onMouseLeave={e=>(e.currentTarget.style.background=isSelected?`${C.acc}15`:i%2===0?C.card:C.deep)}>
+                        <td style={{ color:C.tp, fontWeight:600, padding:"9px 10px", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{op.clientName||"—"}</td>
+                        <td style={{ color:C.tm, padding:"9px 10px", fontFamily:"monospace", fontSize:11 }}>{(op.documentNumber||op.individualDocumentNumber||"—").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}</td>
+                        <td style={{ color:C.td, padding:"9px 10px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
                         <td style={{ padding:"9px 10px" }}>
-                          <span style={{ background:stCol+"18", color:stCol, fontSize:10.5, padding:"2px 9px", borderRadius:20, fontWeight:600 }}>
+                          <span style={{ background:stCol+"18", color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>
                             {STATUS_LABEL[op.status]||op.status}
                           </span>
                         </td>
-                        <td style={{ color:C.atxt, fontWeight:700, padding:"9px 10px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
+                        <td style={{ color:C.atxt, fontWeight:700, padding:"9px 10px", fontSize:12.5 }}>{fmtBRL(op.disbursedIssueAmount)}</td>
                         <td style={{ color:C.td, padding:"9px 10px", fontSize:11 }}>{op.partnerId||"—"}</td>
-                        <td style={{ padding:"9px 10px" }}>
-                          {op.status !== "paid" && op.status !== "canceled" && (
+                        <td style={{ padding:"9px 10px" }} onClick={e=>e.stopPropagation()}>
+                          {op.status!=="paid"&&op.status!=="canceled"&&(
                             <button onClick={()=>setCancelId(op.id)}
                               style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:7, padding:"3px 9px", fontSize:11, cursor:"pointer" }}>
                               Cancelar
                             </button>
                           )}
                         </td>
+                        <td style={{ padding:"9px 10px" }} onClick={e=>e.stopPropagation()}>
+                          <button onClick={async ()=>{
+                            const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                            setSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
+                            try{
+                              await apiFetch("/fgts/balance","POST",{documentNumber:cpfv,provider:op.provider||"cartos"});
+                              let bal=null;
+                              for(let ii=0;ii<18;ii++){
+                                await new Promise(r=>setTimeout(r,2500));
+                                const res=await apiFetch(`/fgts/balance?search=${cpfv}`);
+                                const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
+                                const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
+                                if(ok){bal=ok;break;}
+                                const fail=regs.find(r=>r&&(r.status==="fail"||r.status==="error"));
+                                if(fail){setSimModal(p=>({...p,loading:false,err:fail.statusInfo||fail.message||"Falha"}));return;}
+                              }
+                              if(!bal){setSimModal(p=>({...p,loading:false,err:"Timeout"}));return;}
+                              const feesR=await apiFetch("/fgts/simulations/fees");
+                              const fees=Array.isArray(feesR)?feesR.filter(f=>f.active):[];
+                              const saldoVal=parseFloat(bal.amount||0);
+                              const installments=(bal.periods||bal.installments||[]).length
+                                ?(bal.periods||bal.installments).map(p=>({totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal),dueDate:p.dueDate||p.date}))
+                                :[{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0]}];
+                              const sims=await Promise.all(fees.map(async fee=>{
+                                try{const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfv,desiredInstallments:installments,provider:op.provider||"cartos"});return{label:fee.simulation_fees?.label||"",sim,ok:true};}
+                                catch(e){return{label:fee.simulation_fees?.label||"",err:e.message,ok:false};}
+                              }));
+                              const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
+                              setSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
+                            }catch(e){setSimModal(p=>({...p,loading:false,err:e.message}));}
+                          }}
+                            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                            ⚡ Simular
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
-                  {(data.data||[]).length===0 && (
-                    <tr><td colSpan={6} style={{ color:C.td, textAlign:"center", padding:"28px" }}>Nenhum resultado.</td></tr>
+                  {(data.data||[]).length===0&&(
+                    <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"28px" }}>Nenhum contrato. Use o campo de busca acima.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            {/* Paginação */}
-            {data.pages && (
+            {data.pages&&(
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
                 <button onClick={()=>buscar(page-1)} disabled={!data.pages.hasPrev||loading}
-                  style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
-                  ← Anterior
-                </button>
-                <span style={{ color:C.tm, fontSize:12 }}>Página {data.pages.current} de {data.pages.totalPages} · Total: {data.pages.total}</span>
+                  style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>← Anterior</button>
+                <span style={{ color:C.tm, fontSize:12 }}>Página {data.pages.current||page} de {data.pages.totalPages||1} · {data.pages.total||0} contratos</span>
                 <button onClick={()=>buscar(page+1)} disabled={!data.pages.hasNext||loading}
-                  style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
-                  Próxima →
-                </button>
+                  style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>Próxima →</button>
               </div>
             )}
           </div>
         )}
 
         {/* Modal cancelamento */}
-        {cancelId && (
+        {cancelId&&(
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"24px", width:420 }}>
               <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>⚠ Cancelar Proposta</div>
@@ -12436,6 +12650,22 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
               <div style={{ marginBottom:16 }}>
                 <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Descrição (recomendado)</label>
+                <textarea value={cancelDesc} onChange={e=>setCancelDesc(e.target.value)} rows={3} placeholder="Descreva o motivo..." style={{ ...S.input, resize:"vertical" }} />
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>cancelar(cancelId)} disabled={cancelLoading}
+                  style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:9, padding:"10px 0", fontSize:13, fontWeight:700, cursor:"pointer", opacity:cancelLoading?0.7:1 }}>
+                  {cancelLoading?"Cancelando...":"Confirmar Cancelamento"}
+                </button>
+                <button onClick={()=>setCancelId(null)} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"10px 16px", fontSize:13, cursor:"pointer" }}>Voltar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
                 <textarea value={cancelDesc} onChange={e=>setCancelDesc(e.target.value)} rows={3} placeholder="Descreva o motivo do cancelamento..." style={{ ...S.input, resize:"vertical" }} />
               </div>
               <div style={{ display:"flex", gap:8 }}>
