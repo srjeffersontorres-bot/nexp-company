@@ -13280,12 +13280,13 @@ function V8DigitalTab({ currentUser, contacts }) {
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
     const STATUS_LIST  = ["","formalization","analysis","manual_analysis","pending","processing","paid","canceled","refounded"];
 
-    const buscar = async (pg=1) => {
+    const buscar = async (pg=1, statusOverride) => {
       setLoading(true); setErr(""); setPage(pg);
+      const s = statusOverride !== undefined ? statusOverride : status;
       try {
         const params = new URLSearchParams({ page:pg, limit:20 });
         if (search) params.append("search", search.replace(/\D/g,"")||search);
-        if (status) params.append("status", status);
+        if (s) params.append("status", s);
         if (provider) params.append("provider", provider);
         const res = await apiFetch(`/fgts/proposal?${params}`);
         if (res?.data) res.data.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
@@ -13293,6 +13294,9 @@ function V8DigitalTab({ currentUser, contacts }) {
       } catch(e) { setErr(e.message); }
       setLoading(false);
     };
+
+    // Carrega propostas em formalização automaticamente na primeira vez
+    useEffect(() => { if (!data) buscar(1); }, []); // eslint-disable-line
 
     const gerarNovoLink = async (id) => {
       setAcompLinkLoading(true);
@@ -13314,11 +13318,14 @@ function V8DigitalTab({ currentUser, contacts }) {
       });
     };
 
+    // Proposta paga ou cancelada não pode gerar/atualizar link
+    const canGenerateLink = (op) => op?.status !== "paid" && op?.status !== "canceled";
+
     return (
       <div>
         {/* Header */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"18px 20px", marginBottom:16 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14, flexWrap:"wrap", gap:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12, flexWrap:"wrap", gap:10 }}>
             <div>
               <div style={{ color:C.ts, fontSize:14, fontWeight:700 }}>📡 Acompanhamento de Propostas V8</div>
               <div style={{ color:C.tm, fontSize:12, marginTop:3 }}>Propostas digitadas, status em tempo real, links de formalização.</div>
@@ -13327,6 +13334,23 @@ function V8DigitalTab({ currentUser, contacts }) {
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
               {loading?"⏳":"🔄"} {loading?"Buscando...":"Atualizar"}
             </button>
+          </div>
+
+          {/* Filtros rápidos */}
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+            {[
+              { label:"Todos", value:"", color:C.atxt, bg:C.abg },
+              { label:"⏳ Aguardando Formalização", value:"formalization", color:"#C084FC", bg:"rgba(192,132,252,0.12)" },
+              { label:"🔍 Em Análise", value:"analysis", color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
+              { label:"⚙ Processando", value:"processing", color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
+              { label:"✅ Pago", value:"paid", color:"#34D399", bg:"rgba(52,211,153,0.12)" },
+              { label:"❌ Cancelado", value:"canceled", color:"#F87171", bg:"rgba(239,68,68,0.12)" },
+            ].map(f=>(
+              <button key={f.value} onClick={()=>{ setStatus(f.value); buscar(1, f.value); }}
+                style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"44":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:11.5, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
+                {f.label}
+              </button>
+            ))}
           </div>
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:180 }}>
@@ -13422,32 +13446,45 @@ function V8DigitalTab({ currentUser, contacts }) {
               <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Link de Formalização</div>
               {detalhe.formalizationLink ? (
                 <div>
-                  <div style={{ wordBreak:"break-all", marginBottom:10 }}>
+                  <div style={{ wordBreak:"break-all", marginBottom:10, background:"rgba(0,0,0,0.2)", borderRadius:8, padding:"8px 12px" }}>
                     <a href={detalhe.formalizationLink} target="_blank" rel="noreferrer"
                       style={{ color:C.atxt, fontSize:12, fontFamily:"monospace" }}>{detalhe.formalizationLink}</a>
                   </div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
                     <button onClick={()=>copiarLink(detalhe.id, detalhe.formalizationLink)}
-                      style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      style={{ background:C.abg, color:copied===detalhe.id?"#34D399":C.atxt, border:`1px solid ${copied===detalhe.id?"#34D39933":C.atxt+"33"}`, borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                       {copied===detalhe.id?"✅ Copiado!":"📋 Copiar Link"}
                     </button>
                     <button onClick={()=>window.open(detalhe.formalizationLink,"_blank")}
                       style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, padding:"7px 16px", fontSize:12, cursor:"pointer" }}>
                       🔗 Abrir
                     </button>
-                    <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
-                      style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                      {acompLinkLoading?"⏳":"🔄"} Gerar Novo Link
-                    </button>
+                    {canGenerateLink(detalhe) ? (
+                      <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
+                        style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                        {acompLinkLoading?"⏳ Atualizando...":"🔄 Atualizar Link"}
+                      </button>
+                    ) : (
+                      <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
+                        🔒 {detalhe.status==="paid"?"Proposta paga":"Proposta cancelada"} — link não pode ser atualizado
+                      </span>
+                    )}
                   </div>
                 </div>
-              ) : (
+              ) : canGenerateLink(detalhe) ? (
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Nenhum link gerado ainda</span>
                   <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
                     style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                     {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
                   </button>
+                </div>
+              ) : (
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>Sem link — </span>
+                  <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
+                    🔒 {detalhe.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
+                  </span>
                 </div>
               )}
             </div>
@@ -13512,16 +13549,20 @@ function V8DigitalTab({ currentUser, contacts }) {
                         </td>
                         <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
                           <div style={{ display:"flex", gap:6 }}>
-                            {!hasLink ? (
-                              <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
-                                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                ✨ Gerar Link
-                              </button>
+                            {canGenerateLink(op) ? (
+                              !hasLink ? (
+                                <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                  ✨ Gerar Link
+                                </button>
+                              ) : (
+                                <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                  style={{ background:"rgba(251,191,36,0.12)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                  🔄 Atualizar Link
+                                </button>
+                              )
                             ) : (
-                              <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
-                                style={{ background:"rgba(251,191,36,0.12)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
-                                🔄 Novo Link
-                              </button>
+                              <span style={{ color:C.td, fontSize:10 }} title={op.status==="paid"?"Proposta paga":"Proposta cancelada"}>🔒</span>
                             )}
                             {hasLink && (
                               <button onClick={()=>setAcompLinkModal({id:op.id,link:op.formalizationLink})}
