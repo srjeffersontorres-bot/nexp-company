@@ -12678,28 +12678,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     );
   };
 
-                <textarea value={cancelDesc} onChange={e=>setCancelDesc(e.target.value)} rows={3} placeholder="Descreva o motivo do cancelamento..." style={{ ...S.input, resize:"vertical" }} />
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>cancelar(cancelId)} disabled={cancelLoading}
-                  style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:9, padding:"10px 0", fontSize:13, fontWeight:700, cursor:"pointer", opacity:cancelLoading?0.7:1 }}>
-                  {cancelLoading?"Cancelando...":"Confirmar Cancelamento"}
-                </button>
-                <button onClick={()=>setCancelId(null)} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"10px 16px", fontSize:13, cursor:"pointer" }}>
-                  Voltar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ════════════════════════════════════════════════════════════
-  // ABA: SIMULAÇÃO EM LOTE
-  // ════════════════════════════════════════════════════════════
-
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO EM LOTE — completa com polling real
   // ════════════════════════════════════════════════════════════
