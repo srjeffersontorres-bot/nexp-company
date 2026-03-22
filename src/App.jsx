@@ -13310,33 +13310,48 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(true); setErr(""); setPage(pg);
       const s = statusOverride !== undefined ? statusOverride : status;
       try {
-        // Busca SEM filtro de status na API — filtra client-side para não depender dos valores exatos
-        const params = new URLSearchParams({ page:1, limit:100 });
         const q = search.trim();
-        if (q) {
-          const digits = q.replace(/\D/g,"");
-          params.append("search", digits.length >= 6 ? digits : q);
-        }
-        if (provider) params.append("provider", provider);
-        const res = await apiFetch(`/fgts/proposal?${params}`);
-        let rows = res?.data || [];
+        let allRows = [];
+        let currentPage = 1;
+        let hasMore = true;
 
-        // Log para debug — mostra os status reais retornados pela V8
-        if (rows.length > 0) {
-          const statusFound = [...new Set(rows.map(r=>r.status))];
-          console.log("[V8 Acompanhamento] Status encontrados:", statusFound);
+        // Busca todas as páginas (max 10 páginas = 500 registros)
+        while (hasMore && currentPage <= 10) {
+          const params = new URLSearchParams({ page:currentPage, limit:50 });
+          if (q) {
+            const digits = q.replace(/\D/g,"");
+            params.append("search", digits.length >= 6 ? digits : q);
+          }
+          if (provider) params.append("provider", provider);
+
+          const res = await apiFetch(`/fgts/proposal?${params}`);
+          const rows = res?.data || [];
+          allRows = [...allRows, ...rows];
+
+          // Para se não há mais páginas ou retornou menos que o limite
+          hasMore = rows.length === 50 && res?.pages?.hasNext;
+          currentPage++;
+
+          // Se estamos buscando com filtro de texto, uma página é suficiente
+          if (q) break;
         }
 
-        // Filtro client-side por status (aceita todas as variações)
-        if (s) rows = rows.filter(r => matchStatus(r.status, s));
+        // Log status reais retornados pela V8
+        if (allRows.length > 0) {
+          const statusFound = [...new Set(allRows.map(r=>r.status))];
+          console.log("[V8] Status encontrados:", statusFound);
+        }
+
+        // Filtro client-side por status
+        if (s) allRows = allRows.filter(r => matchStatus(r.status, s));
 
         // Filtro client-side por data
-        if (dateFrom) rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
-        if (dateTo)   rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
+        if (dateFrom) allRows = allRows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
+        if (dateTo)   allRows = allRows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
 
         // Ordena mais recente primeiro
-        rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
-        setData({ ...res, data: rows, _total: rows.length });
+        allRows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
+        setData({ data: allRows, _total: allRows.length });
       } catch(e) { setErr(e.message); }
       setLoading(false);
     };
