@@ -10671,6 +10671,140 @@ function SimuladorPage() {
 }
 
 // ── V8 Digital — aba integrada ────────────────────────────────
+// ── Modal Digitação Rápida (V8) ────────────────────────────────
+function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose }) {
+  const [banks, setBanks]     = useState([]);
+  const [payType, setPayType] = useState("pix");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+  const [err, setErr]         = useState("");
+  const [form, setForm]       = useState({
+    pix:"", bankId:"", bankAccountNumber:"", bankAccountBranch:"", bankAccountDigit:"", bankAccountType:"checking_account",
+  });
+  const setF = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const vlr = tabela?.sim?.availableBalance || 0;
+  const simId = tabela?.sim?.id || "";
+  const balId = balance?.id || "";
+
+  useEffect(() => {
+    apiFetch("/banks").then(d=>setBanks(d?.data||[])).catch(()=>{});
+  }, []); // eslint-disable-line
+
+  const digitar = async () => {
+    setLoading(true); setErr(""); setResult(null);
+    try {
+      const cpfClean = cpf.replace(/\D/g,"");
+      const paymentData = payType === "pix"
+        ? { type:"pix", pix:form.pix }
+        : { type:"transfer", bankId:form.bankId, bankAccountNumber:form.bankAccountNumber, bankAccountBranch:form.bankAccountBranch, bankAccountDigit:form.bankAccountDigit, bankAccountType:form.bankAccountType };
+      const body = {
+        simulationId: simId,
+        balanceId:    balId,
+        documentNumber: cpfClean,
+        targetAmount: 0,
+        provider,
+        payment: paymentData,
+      };
+      const res = await apiFetch("/fgts/proposal","POST",body);
+      setResult(res);
+    } catch(e) { setErr("❌ " + e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:18, padding:"24px", width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto", position:"relative" }}>
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:18 }}>
+          <div>
+            <div style={{ color:C.ts, fontSize:14, fontWeight:700 }}>📝 Digitar Proposta</div>
+            <div style={{ color:C.tm, fontSize:12, marginTop:3 }}>
+              Tabela: <b style={{ color:C.atxt, textTransform:"capitalize" }}>{tabela?.label}</b> · CPF: <b style={{ color:C.tp }}>{cpf}</b>
+            </div>
+            <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginTop:6 }}>{fmtBRL(vlr)}</div>
+          </div>
+          <button onClick={onClose} style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:13, flexShrink:0 }}>✕</button>
+        </div>
+
+        {result ? (
+          <div>
+            <div style={{ background:"rgba(52,211,153,0.1)", border:"1px solid #34D39933", borderRadius:12, padding:"16px", marginBottom:14 }}>
+              <div style={{ color:"#34D399", fontSize:13, fontWeight:700, marginBottom:10 }}>✅ Proposta Criada!</div>
+              {[["ID",result.id],["Contrato",result.contractNumber],["Status",result.status],["Valor",fmtBRL(result.disbursedIssueAmount||result.availableBalance)]].filter(([,v])=>v).map(([l,v])=>(
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid rgba(52,211,153,0.15)` }}>
+                  <span style={{ color:C.tm, fontSize:12 }}>{l}</span>
+                  <span style={{ color:C.tp, fontSize:12, fontWeight:600, fontFamily:l==="ID"||l==="Contrato"?"monospace":"inherit" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={onClose} style={{ width:"100%", background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"11px 0", fontSize:13, fontWeight:700, cursor:"pointer" }}>Fechar</button>
+          </div>
+        ) : (
+          <div>
+            {/* Forma de pagamento */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:6 }}>Forma de Pagamento *</label>
+              <div style={{ display:"flex", gap:8 }}>
+                {[["pix","💠 PIX"],["transfer","🏦 Transferência"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>setPayType(v)}
+                    style={{ flex:1, background:payType===v?C.abg:C.deep, color:payType===v?C.atxt:C.tm, border:payType===v?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 0", fontSize:12.5, cursor:"pointer", fontWeight:payType===v?700:400 }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {payType === "pix" && (
+              <div style={{ marginBottom:14 }}>
+                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Chave PIX *</label>
+                <input value={form.pix} onChange={e=>setF("pix",e.target.value)} placeholder="CPF, telefone, e-mail ou chave aleatória" style={{ ...S.input }} />
+                <div style={{ color:C.td, fontSize:10, marginTop:3 }}>CPF sem pontuação · Tel: +5511999999999 · Chave aleatória: UUID</div>
+              </div>
+            )}
+
+            {payType === "transfer" && (
+              <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+                <div>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco *</label>
+                  <select value={form.bankId} onChange={e=>setF("bankId",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                    <option value="">Selecione...</option>
+                    {banks.map(b=><option key={b.id} value={b.id}>{b.name} ({b.code}){b.isTurbo?" ⚡":""}</option>)}
+                  </select>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 72px", gap:8 }}>
+                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Agência</label><input value={form.bankAccountBranch} onChange={e=>setF("bankAccountBranch",e.target.value)} placeholder="0001" style={{ ...S.input }} /></div>
+                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Conta</label><input value={form.bankAccountNumber} onChange={e=>setF("bankAccountNumber",e.target.value)} placeholder="123456" style={{ ...S.input }} /></div>
+                  <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Dígito</label><input value={form.bankAccountDigit} onChange={e=>setF("bankAccountDigit",e.target.value)} placeholder="2" style={{ ...S.input }} /></div>
+                </div>
+                <div>
+                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta</label>
+                  <select value={form.bankAccountType} onChange={e=>setF("bankAccountType",e.target.value)} style={{ ...S.input, cursor:"pointer" }}>
+                    <option value="checking_account">Conta Corrente</option>
+                    <option value="saving_account">Conta Poupança</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>{err}</div>}
+
+            <div style={{ background:C.deep, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:11 }}>
+              <div style={{ color:C.td }}>Tabela: <b style={{ color:C.atxt }}>{tabela?.label}</b> · Simulation ID: <span style={{ fontFamily:"monospace", color:C.tm }}>{simId||"—"}</span></div>
+              <div style={{ color:C.td }}>Balance ID: <span style={{ fontFamily:"monospace", color:C.tm }}>{balId||"—"}</span></div>
+            </div>
+
+            <button onClick={digitar} disabled={loading||(!form.pix&&payType==="pix")||(!form.bankId&&payType==="transfer")}
+              style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px 0", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading||(!form.pix&&payType==="pix")||(!form.bankId&&payType==="transfer")?0.6:1 }}>
+              {loading?"⏳ Enviando...":"📤 Criar Proposta"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function V8DigitalTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); };
@@ -10725,24 +10859,40 @@ function V8DigitalTab({ currentUser, contacts }) {
     }
   };
 
+  // ── Estados da aba Individual — elevados para evitar re-mount ──
+  const [indCpf,       setIndCpf]       = useState(() => localStorage.getItem("nexp_v8_ind_cpf") || "");
+  const [indProvider,  setIndProvider]  = useState(() => localStorage.getItem("nexp_v8_ind_provider") || "cartos");
+  const [indLoading,   setIndLoading]   = useState(false);
+  const [indErr,       setIndErr]       = useState("");
+  const [indFutureDate,setIndFutureDate]= useState(null);
+  const [indBalance,   setIndBalance]   = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_balance")||"null"); } catch { return null; } });
+  const [indTableSims, setIndTableSims] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_sims")||"[]"); } catch { return []; } });
+  const [indOperacoes, setIndOperacoes] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_ops")||"null"); } catch { return null; } });
+  const [indCpfSim,    setIndCpfSim]   = useState(() => localStorage.getItem("nexp_v8_ind_cpfsim") || "");
+  const [indLogs,      setIndLogs]      = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; } });
+  const [indFees,      setIndFees]      = useState([]);
+  const [indSimStep,   setIndSimStep]   = useState("idle");
+  const [indDigModal,  setIndDigModal]  = useState(null);
+
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
   // ════════════════════════════════════════════════════════════
   const IndividualTab = () => {
-    const [cpf, setCpf]           = useState("");
-    const [provider, setProvider] = useState("cartos");
-    const [loading, setLoading]   = useState(false);
-    const [err, setErr]           = useState("");
-    const [futureDate, setFutureDate] = useState(null);
-    const [balance, setBalance]   = useState(null);   // saldo retornado
-    const [tableSims, setTableSims] = useState([]);   // resultados de cada tabela
-    const [operacoes, setOperacoes] = useState(null);
-    const [cpfSim, setCpfSim]     = useState("");     // CPF que foi simulado
-    const [logs, setLogs]         = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; } });
-    const [fees, setFees]         = useState([]);
-    const [simStep, setSimStep]   = useState("idle"); // idle | saldo | fees | simulando | contratos | done
-
-    // Tabelas da V8 — labels conforme documentação + as 8 do usuário
+    const cpf         = indCpf;
+    const setCpf      = (v) => { setIndCpf(v); localStorage.setItem("nexp_v8_ind_cpf", v); };
+    const provider    = indProvider;
+    const setProvider = (v) => { setIndProvider(v); localStorage.setItem("nexp_v8_ind_provider", v); };
+    const loading     = indLoading;    const setLoading     = setIndLoading;
+    const err         = indErr;        const setErr         = setIndErr;
+    const futureDate  = indFutureDate; const setFutureDate  = setIndFutureDate;
+    const balance     = indBalance;    const setBalance     = setIndBalance;
+    const tableSims   = indTableSims;  const setTableSims   = setIndTableSims;
+    const operacoes   = indOperacoes;  const setOperacoes   = setIndOperacoes;
+    const cpfSim      = indCpfSim;
+    const setCpfSim   = (v) => { setIndCpfSim(v); localStorage.setItem("nexp_v8_ind_cpfsim", v); };
+    const logs        = indLogs;       const setLogs        = setIndLogs;
+    const fees        = indFees;       const setFees        = setIndFees;
+    const simStep     = indSimStep;    const setSimStep     = setIndSimStep;
 
     const addLog = (msg, ok=true) => setLogs(p => {
       const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
@@ -10783,44 +10933,72 @@ function V8DigitalTab({ currentUser, contacts }) {
         await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
         addLog("✅ Consulta disparada. Aguardando processamento...");
 
-        // PASSO 2: Polling — GET /fgts/balance?search=CPF até ter resultado (max 30s)
+        // PASSO 2: Polling — GET /fgts/balance?search=CPF até ter resultado (max 45s)
         let bal = null;
-        const maxTentativas = 15; // 15 tentativas × 2s = 30s
+        const maxTentativas = 18; // 18 × 2.5s = 45s
         for (let i = 0; i < maxTentativas; i++) {
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 2500));
           addLog(`🔄 Verificando resultado (${i+1}/${maxTentativas})...`);
           try {
             const res = await apiFetch(`/fgts/balance?search=${c}`);
-            // A resposta é { data: [...], pages: {...} }
-            const registros = res?.data || (Array.isArray(res) ? res : []);
-            // Pega o mais recente com status success
-            const sucesso = registros.find(r => r.status === "success" || r.amount != null);
-            if (sucesso) {
-              bal = sucesso;
-              addLog(`✅ Saldo: ${fmtBRL(sucesso.amount || 0)} | ID: ${sucesso.id}`);
-              addLog(`📦 ${JSON.stringify(sucesso).slice(0,200)}`);
+            addLog(`📦 GET balance: ${JSON.stringify(res).slice(0,150)}`);
+
+            // Normaliza resposta: pode ser array direto ou { data: [...] }
+            const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
+
+            // Procura registro com saldo disponível
+            const sucesso = registros.find(r =>
+              r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0
+            );
+
+            // Aceita também registro sem amount mas com status success (saldo zero é válido)
+            const qualquer = registros.find(r => r && r.status === "success");
+
+            const encontrado = sucesso || qualquer;
+
+            if (encontrado) {
+              bal = encontrado;
+              const saldoVal = parseFloat(bal.amount || 0);
+              addLog(`✅ Saldo: ${fmtBRL(saldoVal)} | ID: ${bal.id||"—"} | Status: ${bal.status}`);
+              // Persiste imediatamente para não desaparecer
+              setBalance(bal);
+              localStorage.setItem("nexp_v8_ind_balance", JSON.stringify(bal));
               break;
             }
-            // Se tem registro com falha
-            const falha = registros.find(r => r.status === "fail" || r.status === "error");
+
+            // Falha definitiva
+            const falha = registros.find(r => r && (r.status === "fail" || r.status === "error" || r.status === "failed"));
             if (falha) {
-              const errMsg = falha.statusInfo || falha.errorMessage || "Falha na consulta";
-              addLog(`❌ Saldo: ${errMsg}`, false);
+              const errMsg = falha.statusInfo || falha.errorMessage || falha.message || "Falha na consulta";
+              addLog(`❌ Saldo falhou: ${errMsg}`, false);
               const fd = parseFutureDate(errMsg);
               if (fd) setFutureDate(fd);
               setErr("❌ " + errMsg);
               setSimStep("done"); setLoading(false);
               return;
             }
-            addLog(`⏳ Processando... (aguardando resposta)`);
+
+            addLog(`⏳ Ainda processando... (${registros.length} registro(s))`);
           } catch(e) {
-            addLog(`⚠ Polling ${i+1}: ${e.message}`, false);
+            addLog(`⚠ Tentativa ${i+1}: ${e.message}`, false);
           }
         }
 
         if (!bal) {
-          setErr("⏳ Timeout — saldo não retornou em 30s. Tente novamente.");
-          addLog("❌ Timeout: saldo não disponível ainda. Tente novamente em alguns segundos.", false);
+          // Tenta recuperar do localStorage como fallback
+          try {
+            const cached = JSON.parse(localStorage.getItem("nexp_v8_ind_balance")||"null");
+            if (cached && padCPF(cached.documentNumber||"") === c) {
+              bal = cached;
+              addLog("⚠ Usando cache local do saldo anterior.", false);
+              setBalance(bal);
+            }
+          } catch {}
+        }
+
+        if (!bal) {
+          setErr("⏳ Timeout — saldo não retornou em 45s. Verifique se o CPF tem autorização para Saque Aniversário e tente novamente.");
+          addLog("❌ Timeout: tente novamente em alguns segundos.", false);
           setSimStep("done"); setLoading(false);
           return;
         }
@@ -10886,6 +11064,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       }));
 
       setTableSims(resultados);
+      localStorage.setItem("nexp_v8_ind_sims", JSON.stringify(resultados));
 
       // Persiste
       const res = { balance:bal, tableSims:resultados, cpf:fmtCPF(c), cpfRaw:c, provider, ts:new Date().toLocaleString("pt-BR") };
@@ -10896,8 +11075,10 @@ function V8DigitalTab({ currentUser, contacts }) {
       addLog("📡 Buscando contratos...");
       try {
         const ops = await apiFetch(`/fgts/proposal?search=${c}&page=1&limit=10`);
-        setOperacoes(ops?.data||ops);
-        addLog(`✅ ${Array.isArray(ops?.data||ops)?(ops?.data||ops).length:0} contrato(s)`);
+        const opList = ops?.data||ops;
+        setOperacoes(opList);
+        localStorage.setItem("nexp_v8_ind_ops", JSON.stringify(opList));
+        addLog(`✅ ${Array.isArray(opList)?opList.length:0} contrato(s)`);
       } catch(e) { addLog(`⚠ Contratos: ${e.message}`, false); }
 
       addLog("🏁 Concluído!");
@@ -10906,8 +11087,8 @@ function V8DigitalTab({ currentUser, contacts }) {
     const limpar = () => {
       setBalance(null); setTableSims([]); setOperacoes(null);
       setCpfSim(""); setLogs([]); setErr(""); setSimStep("idle");
-      localStorage.removeItem("nexp_v8_ind_result");
-      localStorage.removeItem("nexp_v8_ind_logs");
+      ["nexp_v8_ind_result","nexp_v8_ind_logs","nexp_v8_ind_balance",
+       "nexp_v8_ind_sims","nexp_v8_ind_ops","nexp_v8_ind_cpfsim"].forEach(k=>localStorage.removeItem(k));
     };
 
     const saldoTotal = parseFloat(balance?.amount || balance?.balance || balance?.availableBalance || 0);
@@ -11017,8 +11198,8 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
 
               {/* Header da grade */}
-              <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1fr 0.9fr 1.2fr", gap:0, background:C.deep, padding:"10px 18px", borderBottom:`1px solid ${C.b1}` }}>
-                {["Tabela","Saldo Liberado","Anos / Parcelas","CET a.m.","Valor Emissão"].map(h=>(
+              <div style={{ display:"grid", gridTemplateColumns:"1.3fr 1.1fr 0.9fr 0.8fr 1.1fr 0.8fr", gap:0, background:C.deep, padding:"10px 18px", borderBottom:`1px solid ${C.b1}` }}>
+                {["Tabela","Saldo Liberado","Anos / Parcelas","CET a.m.","Valor Emissão",""].map(h=>(
                   <div key={h} style={{ color:C.tm, fontSize:10.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
                 ))}
               </div>
@@ -11039,7 +11220,7 @@ function V8DigitalTab({ currentUser, contacts }) {
 
                 return (
                   <div key={i} style={{
-                    display:"grid", gridTemplateColumns:"1.4fr 1.2fr 1fr 0.9fr 1.2fr",
+                    display:"grid", gridTemplateColumns:"1.3fr 1.1fr 0.9fr 0.8fr 1.1fr 0.8fr",
                     gap:0, padding:"13px 18px",
                     background: isBest ? `${C.acc}12` : i%2===0 ? C.card : C.deep,
                     borderBottom:`1px solid ${C.b1}`,
@@ -11086,6 +11267,17 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <div style={{ color:C.td, fontSize:10 }}>valor emissão</div>
                       </div>}
                     </div>
+
+                    {/* Botão Digitar */}
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
+                      {t.ok && (
+                        <button
+                          onClick={() => setIndDigModal({ tabela:t, balance:indBalance, cpf:indCpfSim, provider:indProvider })}
+                          style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"5px 12px", fontSize:11.5, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                          📝 Digitar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -11114,6 +11306,19 @@ function V8DigitalTab({ currentUser, contacts }) {
               );
             })}
           </div>
+        )}
+
+        {/* ── Modal de Digitação ── */}
+        {indDigModal && (
+          <ModalDigitacaoRapida
+            tabela={indDigModal.tabela}
+            balance={indDigModal.balance}
+            cpf={indDigModal.cpf}
+            provider={indDigModal.provider}
+            apiFetch={apiFetch}
+            fmtBRL={fmtBRL}
+            onClose={() => setIndDigModal(null)}
+          />
         )}
 
         {/* ── Log colapsável ── */}
