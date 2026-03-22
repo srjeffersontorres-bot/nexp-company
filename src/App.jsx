@@ -11504,6 +11504,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [acompDateFrom,    setAcompDateFrom]    = useState("");
   const [acompDateTo,      setAcompDateTo]      = useState("");
   const [acompSimModal,    setAcompSimModal]    = useState(null);
+  const [acompStatusBrutos,setAcompStatusBrutos] = useState([]); // status reais retornados pela API
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -13301,6 +13302,8 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const dateFrom = acompDateFrom; const setDateFrom = setAcompDateFrom;
     const dateTo   = acompDateTo;   const setDateTo   = setAcompDateTo;
+    const statusBrutos   = acompStatusBrutos;
+    const setStatusBrutos = setAcompStatusBrutos;
 
     const STATUS_LABEL = { formalization:"Formalização", analysis:"Em Análise", manual_analysis:"Análise Manual", pending:"Pendente", processing:"Processando", paid:"✅ Pago", canceled:"❌ Cancelado", refounded:"Devolvido" };
     const STATUS_COLOR = { paid:"#34D399", canceled:"#F87171", pending:"#FBBF24", processing:"#60A5FA", formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FB923C", refounded:"#94A3B8" };
@@ -13407,6 +13410,8 @@ function V8DigitalTab({ currentUser, contacts }) {
           allRows.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
           console.log("[V8 Acomp] Total registros:", allRows.length, "| Filtro API:", apiStatus||"todos");
           console.log("[V8 Acomp] Status:", JSON.stringify(statusMap));
+          // Salva status brutos para exibir na tela
+          setStatusBrutos(Object.entries(statusMap).map(([k,v])=>({k,v})));
         }
 
         // Filtro client-side por status
@@ -13508,6 +13513,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               { label:"⚙ Processando",            value:"processing",     color:"#60A5FA", bg:"rgba(96,165,250,0.12)" },
               { label:"✅ Pago",                   value:"paid",           color:"#34D399", bg:"rgba(52,211,153,0.12)" },
               { label:"❌ Cancelado",              value:"canceled",       color:"#F87171", bg:"rgba(239,68,68,0.12)" },
+              { label:"↩ Devolvido",              value:"refounded",      color:"#94A3B8", bg:"rgba(148,163,184,0.12)" },
             ].map(f=>(
               <button key={f.value} onClick={()=>{ setStatus(f.value); buscar(1, f.value); }}
                 style={{ background:status===f.value?f.bg:"transparent", color:status===f.value?f.color:C.td, border:`1px solid ${status===f.value?f.color+"55":C.b2}`, borderRadius:20, padding:"5px 14px", fontSize:11.5, fontWeight:status===f.value?700:400, cursor:"pointer", whiteSpace:"nowrap" }}>
@@ -13515,6 +13521,22 @@ function V8DigitalTab({ currentUser, contacts }) {
               </button>
             ))}
           </div>
+
+          {/* Painel diagnóstico — status brutos retornados pela API */}
+          {statusBrutos.length > 0 && !status && (
+            <div style={{ background:C.deep, borderRadius:8, padding:"8px 12px", marginBottom:10, border:`1px solid ${C.b1}` }}>
+              <div style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px", marginBottom:6 }}>
+                🔬 Status brutos retornados pela API (útil para diagnóstico):
+              </div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {statusBrutos.sort((a,b)=>b.v-a.v).map(({k,v})=>(
+                  <span key={k} style={{ background:C.card, border:`1px solid ${C.b2}`, borderRadius:6, padding:"2px 8px", fontSize:11, color:C.ts, fontFamily:"monospace" }}>
+                    {k || "(vazio)"} <span style={{ color:C.atxt, fontWeight:700 }}>×{v}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Busca + Filtros + Data */}
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
