@@ -13309,47 +13309,66 @@ function V8DigitalTab({ currentUser, contacts }) {
     const PAGE_SIZE = 50;
 
     const buscar = async (pg=1, statusOverride) => {
-      setLoading(true); setErr(""); setPage(pg);
+      setLoading(true); setErr("");
       const s = statusOverride !== undefined ? statusOverride : status;
-      console.log("[V8 Acomp] buscar pg="+pg+" status="+s+" provider="+provider+" search="+search);
       try {
         const q = search.trim();
-        // Busca direto na API com paginação real
-        const params = new URLSearchParams({ page:pg, limit:PAGE_SIZE });
+
+        // Se tem filtro de texto: busca só a página pedida
+        // Se não: busca TODAS as páginas para mostrar tudo (sem filtro de status na API)
+        let allRows = [];
+
         if (q) {
+          // Busca com texto — só página pedida
+          const params = new URLSearchParams({ page:pg, limit:PAGE_SIZE });
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
+          if (provider) params.append("provider", provider);
+          const res = await apiFetch(`/fgts/proposal?${params}`);
+          allRows = res?.data || [];
+        } else {
+          // Sem texto — busca TODAS as páginas sem filtro de status
+          // A filtragem de status é feita aqui no cliente
+          let curPage = 1;
+          let keepGoing = true;
+          while (keepGoing && curPage <= 20) { // max 20 pag = 1000 contratos
+            const params = new URLSearchParams({ page:curPage, limit:PAGE_SIZE });
+            if (provider) params.append("provider", provider);
+            if (dateFrom) params.append("startDate", dateFrom);
+            if (dateTo)   params.append("endDate", dateTo);
+            const res = await apiFetch(`/fgts/proposal?${params}`);
+            const rows = res?.data || [];
+            allRows = [...allRows, ...rows];
+            console.log(`[V8] Página ${curPage}: ${rows.length} registros. Status: ${[...new Set(rows.map(r=>r.status))].join(", ")}`);
+            keepGoing = rows.length === PAGE_SIZE && (res?.pages?.hasNext !== false);
+            curPage++;
+          }
+          console.log(`[V8] Total carregado: ${allRows.length}. Todos status: ${[...new Set(allRows.map(r=>r.status))].join(", ")}`);
         }
-        if (provider) params.append("provider", provider);
-        // Tenta enviar status para a API — se não funcionar, filtramos client-side
-        if (s) params.append("status", s);
 
-        const res = await apiFetch(`/fgts/proposal?${params}`);
-        let rows = res?.data || [];
+        // Filtro client-side por status (aceita variantes)
+        let filtered = s ? allRows.filter(r => matchStatus(r.status, s)) : allRows;
 
-        // Log status reais — abre DevTools > Console para ver
-        console.log("[V8 Acomp] Status retornados pela API:", [...new Set(rows.map(r=>r.status))]);
-        console.log("[V8 Acomp] Total registros nesta página:", rows.length);
+        // Filtro por data client-side
+        if (dateFrom) filtered = filtered.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
+        if (dateTo)   filtered = filtered.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
 
-        // Filtro client-side por status (caso API não filtre corretamente)
-        if (s) {
-          const antes = rows.length;
-          rows = rows.filter(r => matchStatus(r.status, s));
-          console.log("[V8 Acomp] Após filtro client-side '"+s+"': "+rows.length+" de "+antes);
-        }
+        // Ordena mais recente primeiro
+        filtered.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
-        // Filtro por data
-        if (dateFrom) rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) >= new Date(dateFrom));
-        if (dateTo)   rows = rows.filter(r => new Date(r.createdAt||r.created_at||0) <= new Date(dateTo+"T23:59:59"));
-
-        rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
+        // Paginação client-side
+        const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+        const pageRows   = filtered.slice((pg-1)*PAGE_SIZE, pg*PAGE_SIZE);
+        setPage(pg);
         setData({
-          data: rows,
+          data:  pageRows,
+          _all:  filtered, // todos os filtrados para paginação
           pages: {
             current: pg,
-            hasNext: res?.pages?.hasNext || rows.length === PAGE_SIZE,
+            hasNext: pg < totalPages,
             hasPrev: pg > 1,
-            total:   res?.pages?.total || rows.length,
+            total:   filtered.length,
+            totalPages,
           }
         });
       } catch(e) {
@@ -13357,6 +13376,20 @@ function V8DigitalTab({ currentUser, contacts }) {
         setErr(e.message);
       }
       setLoading(false);
+    };
+
+    // Paginação client-side sem re-buscar
+    const paginar = (pg) => {
+      if (!data?._all) return;
+      const filtered = data._all;
+      const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+      const pageRows = filtered.slice((pg-1)*PAGE_SIZE, pg*PAGE_SIZE);
+      setPage(pg);
+      setData(p => ({
+        ...p,
+        data: pageRows,
+        pages: { current:pg, hasNext:pg<totalPages, hasPrev:pg>1, total:filtered.length, totalPages },
+      }));
     };
 
     // NÃO auto-carrega — usuário clica em Buscar ou filtro rápido
@@ -13735,15 +13768,14 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
             {data?.pages && (
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
-                <button onClick={()=>buscar(page-1)} disabled={!data.pages.hasPrev||loading}
+                <button onClick={()=>paginar(page-1)} disabled={!data.pages.hasPrev||loading}
                   style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
                   ← Anterior
                 </button>
                 <span style={{ color:C.tm, fontSize:12 }}>
-                  Página {page} · {(data.data||[]).length} resultado{(data.data||[]).length!==1?"s":""}
-                  {data.pages.total?" · "+data.pages.total+" total":""}
+                  Página {page}/{data.pages.totalPages||1} · {data.pages.total} resultado{data.pages.total!==1?"s":""}
                 </span>
-                <button onClick={()=>buscar(page+1)} disabled={!data.pages.hasNext||loading}
+                <button onClick={()=>paginar(page+1)} disabled={!data.pages.hasNext||loading}
                   style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
                   Próxima →
                 </button>
