@@ -11177,7 +11177,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const simStep     = indSimStep;    const setSimStep     = setIndSimStep;
     const selectedSim = indSelectedSim; const setSelectedSim = setIndSelectedSim;
     const contratosOpen = indContratosOpen; const setContratosOpen = setIndContratosOpen;
-    const errDetail = indErrDetail; const setIndErrDetailAlias = setIndErrDetail;
+    const errDetail = indErrDetail;
 
     const addLog = (msg, ok=true) => setLogs(p => {
       const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
