@@ -10830,10 +10830,14 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
     setLoading(true); setErr("");
     try {
       const paymentData = payType === "pix"
-        ? { type:"pix", pix:form.pix }
-        : { type:"transfer", bankId:form.bankId, bankAccountNumber:form.bankAccountNumber,
-            bankAccountBranch:form.bankAccountBranch, bankAccountDigit:form.bankAccountDigit,
-            bankAccountType:form.bankAccountType };
+        ? { type: "pix",      data: { pixKey: form.pix } }
+        : { type: "transfer", data: {
+              bankId:            form.bankId,
+              bankAccountNumber: form.bankAccountNumber,
+              bankAccountBranch: form.bankAccountBranch,
+              bankAccountDigit:  form.bankAccountDigit,
+              bankAccountType:   form.bankAccountType,
+            }};
 
       const body = {
         fgtsSimulationId:             simId,
@@ -10908,7 +10912,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   const fieldGroup = (label, key, type="text", placeholder="") => (
     <div>
       <label style={labelStyle}>{label}</label>
-      <input value={form[key]||""} onChange={e=>setF(key,e.target.value)} type={type} placeholder={placeholder} style={inputStyle}/>
+      <input value={form[key]||""} onChange={e=>{ const v=e.target.value; setForm(p=>({...p,[key]:v})); }} type={type} placeholder={placeholder} autoComplete="off" style={inputStyle}/>
     </div>
   );
 
@@ -11039,7 +11043,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
           ) : (
             <div>
               <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>Forma de recebimento:</div>
-              <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+              <div style={{ display:"flex", gap:8, marginBottom:16 }}>
                 {[["pix","💠 Chave PIX"],["transfer","🏦 Dados Bancários"]].map(([v,l])=>(
                   <button key={v} onClick={()=>setPayType(v)}
                     style={{ flex:1, background:payType===v?C.abg:C.deep, color:payType===v?C.atxt:C.tm, border:payType===v?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:9, padding:"9px", fontSize:13, cursor:"pointer", fontWeight:payType===v?700:400 }}>
@@ -11047,39 +11051,133 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                   </button>
                 ))}
               </div>
+
               {payType==="pix" ? (
                 <div style={{ marginBottom:14 }}>
                   <label style={labelStyle}>Chave PIX *</label>
-                  <input value={form.pix} onChange={e=>setF("pix",e.target.value)} placeholder="CPF sem pontuação, telefone, e-mail ou chave UUID" style={inputStyle}/>
-                  <div style={{ color:C.td, fontSize:10, marginTop:4 }}>CPF: sem pontuação · Tel: +5584999999999 · Aleatória: UUID válido</div>
+                  <input
+                    value={form.pix}
+                    onChange={e=>{ const v=e.target.value; setForm(p=>({...p,pix:v})); }}
+                    placeholder="CPF sem pontuação, telefone, e-mail ou chave UUID"
+                    autoComplete="off"
+                    style={inputStyle}/>
+                  <div style={{ color:C.td, fontSize:10, marginTop:4 }}>CPF sem pontos · Tel: +5584999999999 · Aleatória: UUID</div>
+
+                  {/* Sugestão de PIX do V8 */}
+                  {v8c?.payment?.data?.pixKey && !form.pix && (
+                    <div style={{ marginTop:10, background:"rgba(79,142,247,0.08)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:10, padding:"10px 14px" }}>
+                      <div style={{ color:C.atxt, fontSize:11, fontWeight:700, marginBottom:6 }}>🔑 Chave PIX cadastrada no V8:</div>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                        <span style={{ color:C.tp, fontSize:12.5, fontFamily:"monospace" }}>{v8c.payment.data.pixKey}</span>
+                        <button onClick={()=>setForm(p=>({...p,pix:v8c.payment.data.pixKey}))}
+                          style={{ background:C.acc, color:"#fff", border:"none", borderRadius:7, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                          ✓ Usar esta
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+
+                  {/* Sugestão de banco do V8 */}
+                  {v8c?.payment?.data?.bankId && !form.bankId && (
+                    <div style={{ background:"rgba(79,142,247,0.08)", border:"1px solid rgba(79,142,247,0.25)", borderRadius:10, padding:"12px 14px" }}>
+                      <div style={{ color:C.atxt, fontSize:11, fontWeight:700, marginBottom:8 }}>🏦 Dados bancários cadastrados no V8:</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:8 }}>
+                        {[
+                          ["Banco", banks.find(b=>b.id===v8c.payment.data.bankId)?.name || v8c.payment.data.bankId],
+                          ["Agência", v8c.payment.data.bankAccountBranch || "—"],
+                          ["Conta", `${v8c.payment.data.bankAccountNumber||"—"}-${v8c.payment.data.bankAccountDigit||""}`],
+                          ["Tipo", v8c.payment.data.bankAccountType==="saving_account"?"Poupança":"Corrente"],
+                        ].map(([l,val])=>(
+                          <div key={l} style={{ background:"rgba(255,255,255,0.05)", borderRadius:7, padding:"5px 8px" }}>
+                            <div style={{ color:C.td, fontSize:10 }}>{l}</div>
+                            <div style={{ color:C.tp, fontSize:12, fontWeight:600 }}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={()=>setForm(p=>({
+                        ...p,
+                        bankId:            v8c.payment.data.bankId,
+                        bankAccountNumber: v8c.payment.data.bankAccountNumber||"",
+                        bankAccountBranch: v8c.payment.data.bankAccountBranch||"",
+                        bankAccountDigit:  v8c.payment.data.bankAccountDigit||"",
+                        bankAccountType:   v8c.payment.data.bankAccountType||"checking_account",
+                      }))}
+                        style={{ background:C.acc, color:"#fff", border:"none", borderRadius:7, padding:"6px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        ✓ Usar estes dados
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Banco */}
                   <div>
                     <label style={labelStyle}>Banco *</label>
-                    <select value={form.bankId} onChange={e=>setF("bankId",e.target.value)} style={inputStyle}>
-                      <option value="">Selecione...</option>
+                    <select value={form.bankId}
+                      onChange={e=>{ const v=e.target.value; setForm(p=>({...p,bankId:v})); }}
+                      style={inputStyle}>
+                      <option value="">Selecione o banco...</option>
                       {banks.map(b=><option key={b.id} value={b.id}>{b.name} ({b.code}){b.isTurbo?" ⚡":""}</option>)}
                     </select>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 72px", gap:8 }}>
-                    <div>{fieldGroup("Agência","bankAccountBranch","text","0001")}</div>
-                    <div>{fieldGroup("Conta","bankAccountNumber","text","123456")}</div>
-                    <div>{fieldGroup("Dígito","bankAccountDigit","text","2")}</div>
+
+                  {/* Agência / Conta / Dígito — inputs separados sem fieldGroup */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 80px", gap:8 }}>
+                    <div>
+                      <label style={labelStyle}>Agência *</label>
+                      <input
+                        value={form.bankAccountBranch}
+                        onChange={e=>{ const v=e.target.value; setForm(p=>({...p,bankAccountBranch:v})); }}
+                        placeholder="0001"
+                        autoComplete="off"
+                        style={inputStyle}/>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Conta *</label>
+                      <input
+                        value={form.bankAccountNumber}
+                        onChange={e=>{ const v=e.target.value; setForm(p=>({...p,bankAccountNumber:v})); }}
+                        placeholder="123456"
+                        autoComplete="off"
+                        style={inputStyle}/>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Dígito</label>
+                      <input
+                        value={form.bankAccountDigit}
+                        onChange={e=>{ const v=e.target.value; setForm(p=>({...p,bankAccountDigit:v})); }}
+                        placeholder="2"
+                        autoComplete="off"
+                        maxLength={2}
+                        style={inputStyle}/>
+                    </div>
                   </div>
+
+                  {/* Tipo de conta */}
                   <div>
                     <label style={labelStyle}>Tipo de Conta *</label>
-                    <select value={form.bankAccountType} onChange={e=>setF("bankAccountType",e.target.value)} style={inputStyle}>
-                      <option value="checking_account">Conta Corrente</option>
-                      <option value="saving_account">Conta Poupança</option>
-                    </select>
+                    <div style={{ display:"flex", gap:8 }}>
+                      {[["checking_account","Corrente"],["saving_account","Poupança"]].map(([v,l])=>(
+                        <button key={v} onClick={()=>setForm(p=>({...p,bankAccountType:v}))}
+                          style={{ flex:1, background:form.bankAccountType===v?C.abg:C.deep, color:form.bankAccountType===v?C.atxt:C.tm, border:form.bankAccountType===v?`1px solid ${C.atxt}44`:`1px solid ${C.b2}`, borderRadius:8, padding:"8px", fontSize:12.5, cursor:"pointer", fontWeight:form.bankAccountType===v?700:400 }}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
+
               {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>{err}</div>}
+
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={()=>setStep("review")} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"12px 18px", fontSize:13, cursor:"pointer" }}>← Voltar</button>
-                <button onClick={digitar} disabled={loading||(payType==="pix"&&!form.pix)||(payType==="transfer"&&!form.bankId)}
+                <button onClick={()=>setStep("review")}
+                  style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"12px 18px", fontSize:13, cursor:"pointer" }}>
+                  ← Voltar
+                </button>
+                <button onClick={digitar}
+                  disabled={loading||(payType==="pix"&&!form.pix)||(payType==="transfer"&&!form.bankId)}
                   style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"12px", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading||(payType==="pix"&&!form.pix)||(payType==="transfer"&&!form.bankId)?0.6:1 }}>
                   {loading?"⏳ Enviando...":"📤 Criar Proposta"}
                 </button>
