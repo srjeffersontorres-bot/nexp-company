@@ -10749,54 +10749,19 @@ function SimuladorPage() {
 
 // ── V8 Digital — aba integrada ────────────────────────────────
 // ── Modal Digitação Rápida (V8) — com revisão e edição ───────────
-function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts, currentUser, clientePreFill }) {
+function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL, onClose, contacts, currentUser, clientePreFill,
+  // Elevated states — passed from V8DigitalTab to prevent remount
+  step, setStep, banks, setBanks, payType, setPayType, loading, setLoading,
+  result, setResult, err, setErr, cepLoading, setCepLoading, bankSearch, setBankSearch, form, setForm,
+}) {
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
   const simId = tabela?.sim?.id || "";
   const balId = balance?.id || "";
   const cpfClean = (cpf||"").replace(/\D/g,"");
 
-  // Prioridade: clientePreFill (V8) > Nexp contacts > vazio
-  const nexpContact = (contacts||[]).find(c => (c.cpf||"").replace(/\D/g,"") === cpfClean) || {};
+  // v8c for payment suggestions display
   const pre = clientePreFill || {};
   const v8c = pre.clienteV8 || {};
-
-  const [step, setStep]     = useState("review");
-  const [banks, setBanks]   = useState([]);
-  const [payType,setPayType]= useState("pix");
-  const [loading,setLoading]= useState(false);
-  const [result, setResult] = useState(null);
-  const [err,    setErr]    = useState("");
-  const [cepLoading, setCepLoading] = useState(false);
-
-  const pick = (...vals) => vals.find(v=>v&&String(v).trim()) || "";
-
-  const [form, setForm] = useState({
-    name:            pick(pre.nome, v8c.name, v8c.clientName, nexpContact.name),
-    cpf:             cpf || "",
-    rg:              pick(v8c.documentIdentificationNumber, nexpContact.rg),
-    motherName:      pick(pre.nomeMae, v8c.motherName, nexpContact.nomeMae),
-    birthDate:       pick(pre.nascimento, v8c.birthDate, nexpContact.dataNascimento),
-    email:           pick(pre.email, v8c.email, nexpContact.email, nexpContact.email2),
-    phone:           pick(pre.phone?`${pre.phoneDdd||""}${pre.phone}`:null, v8c.phone?(v8c.phoneRegionCode||"")+v8c.phone:null, (nexpContact.phone||"").replace(/\D/g,"")),
-    phoneRegionCode: pick(pre.phoneDdd, v8c.phoneRegionCode, (nexpContact.phone||"").replace(/\D/g,"").slice(0,2)),
-    nationality:     pick(pre.nacionalidade, v8c.nationality, "Brasileiro(a)"),
-    maritalStatus:   pick(pre.estadoCivil, v8c.maritalStatus, "single"),
-    isPEP:           pre.isPEP || v8c.isPEP || false,
-    postalCode:      pick(pre.cep, v8c.postalCode, (nexpContact.cep||"").replace(/\D/g,"")),
-    street:          pick(pre.rua, v8c.street, nexpContact.rua),
-    addressNumber:   pick(pre.numero, v8c.addressNumber, nexpContact.numero),
-    complement:      pick(pre.complemento, v8c.complement, nexpContact.complemento),
-    neighborhood:    pick(pre.bairro, v8c.neighborhood, nexpContact.bairro),
-    city:            pick(pre.cidade, v8c.city, nexpContact.cidade),
-    state:           pick(pre.uf, v8c.state, nexpContact.ufEnd, nexpContact.estado),
-    pix:             "",
-    bankId:          "",
-    bankAccountNumber:"",
-    bankAccountBranch:"",
-    bankAccountDigit:"",
-    bankAccountType: "checking_account",
-  });
-  const setF = (k,v) => setForm(p=>({...p,[k]:v}));
 
   // Buscar endereço pelo CEP (ViaCEP)
   const buscarCEP = async (cep) => {
@@ -10821,8 +10786,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   };
 
   useEffect(() => {
-    apiFetch("/banks").then(d=>setBanks(d?.data||[])).catch(()=>{});
-    // Se tiver CEP pré-preenchido e endereço incompleto, busca
+    if (!banks.length) apiFetch("/banks").then(d=>setBanks(d?.data||[])).catch(()=>{});
     if (form.postalCode && !form.street) buscarCEP(form.postalCode);
   }, []); // eslint-disable-line
 
@@ -11111,15 +11075,29 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
                     </div>
                   )}
 
-                  {/* Banco */}
+                  {/* Banco com pesquisa */}
                   <div>
                     <label style={labelStyle}>Banco *</label>
+                    <input
+                      value={bankSearch}
+                      onChange={e=>setBankSearch(e.target.value)}
+                      placeholder="🔍 Digite nome ou número do banco..."
+                      autoComplete="off"
+                      style={{ ...inputStyle, marginBottom:4 }}/>
                     <select value={form.bankId}
-                      onChange={e=>{ const v=e.target.value; setForm(p=>({...p,bankId:v})); }}
-                      style={inputStyle}>
+                      onChange={e=>{ const v=e.target.value; setForm(p=>({...p,bankId:v})); setBankSearch(""); }}
+                      size={Math.min(6, banks.filter(b=>!bankSearch||b.name.toLowerCase().includes(bankSearch.toLowerCase())||b.code?.includes(bankSearch)).length+1)}
+                      style={{ ...inputStyle, cursor:"pointer", height:"auto", overflowY:"auto" }}>
                       <option value="">Selecione o banco...</option>
-                      {banks.map(b=><option key={b.id} value={b.id}>{b.name} ({b.code}){b.isTurbo?" ⚡":""}</option>)}
+                      {banks
+                        .filter(b=>!bankSearch||b.name.toLowerCase().includes(bankSearch.toLowerCase())||String(b.code||"").includes(bankSearch))
+                        .map(b=><option key={b.id} value={b.id}>{b.code ? `${b.code} — ` : ""}{b.name}{b.isTurbo?" ⚡":""}</option>)}
                     </select>
+                    {form.bankId && (
+                      <div style={{ color:C.atxt, fontSize:11, marginTop:3 }}>
+                        ✓ {banks.find(b=>b.id===form.bankId)?.name || form.bankId}
+                      </div>
+                    )}
                   </div>
 
                   {/* Agência / Conta / Dígito — inputs separados sem fieldGroup */}
@@ -11357,6 +11335,58 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indFees,      setIndFees]      = useState([]);
   const [indSimStep,   setIndSimStep]   = useState("idle");
   const [indDigModal,  setIndDigModal]  = useState(null);
+  // ── Estados internos do ModalDigitacaoRapida — elevados para evitar remount ──
+  const [modalStep,       setModalStep]       = useState("review");
+  const [modalBanks,      setModalBanks]      = useState([]);
+  const [modalPayType,    setModalPayType]    = useState("pix");
+  const [modalLoading,    setModalLoading]    = useState(false);
+  const [modalResult,     setModalResult]     = useState(null);
+  const [modalErr,        setModalErr]        = useState("");
+  const [modalCepLoading, setModalCepLoading] = useState(false);
+  const [modalBankSearch, setModalBankSearch] = useState("");
+  const [modalForm,       setModalForm]       = useState({});
+
+  // Helper: abre modal e inicializa form com dados do cliente
+  const openDigModal = (modalData) => {
+    if (!modalData) { setIndDigModal(null); setLoteDigModal(null); return; }
+    const pre = modalData.clientePreFill || {};
+    const v8c = pre.clienteV8 || {};
+    const contacts_ = contacts || [];
+    const cpfClean = (modalData.cpf||"").replace(/\D/g,"");
+    const nexp = contacts_.find(c=>(c.cpf||"").replace(/\D/g,"")=== cpfClean) || {};
+    const pk = (...vals) => vals.find(v=>v&&String(v).trim()) || "";
+    setModalForm({
+      name:             pk(pre.nome,v8c.name,v8c.clientName,nexp.name),
+      cpf:              modalData.cpf||"",
+      rg:               pk(v8c.documentIdentificationNumber,nexp.rg),
+      motherName:       pk(pre.nomeMae,v8c.motherName,nexp.nomeMae),
+      birthDate:        pk(pre.nascimento,v8c.birthDate,nexp.dataNascimento),
+      email:            pk(pre.email,v8c.email,nexp.email,nexp.email2),
+      phone:            pk(pre.phone?`${pre.phoneDdd||""}${pre.phone}`:null,v8c.phone?(v8c.phoneRegionCode||"")+v8c.phone:null,(nexp.phone||"").replace(/\D/g,"")),
+      phoneRegionCode:  pk(pre.phoneDdd,v8c.phoneRegionCode,(nexp.phone||"").replace(/\D/g,"").slice(0,2)),
+      nationality:      pk(pre.nacionalidade,v8c.nationality,"Brasileiro(a)"),
+      maritalStatus:    pk(pre.estadoCivil,v8c.maritalStatus,"single"),
+      isPEP:            pre.isPEP||v8c.isPEP||false,
+      postalCode:       pk(pre.cep,v8c.postalCode,(nexp.cep||"").replace(/\D/g,"")),
+      street:           pk(pre.rua,v8c.street,nexp.rua),
+      addressNumber:    pk(pre.numero,v8c.addressNumber,nexp.numero),
+      complement:       pk(pre.complemento,v8c.complement,nexp.complemento),
+      neighborhood:     pk(pre.bairro,v8c.neighborhood,nexp.bairro),
+      city:             pk(pre.cidade,v8c.city,nexp.cidade),
+      state:            pk(pre.uf,v8c.state,nexp.ufEnd,nexp.estado),
+      pix:              "",
+      bankId:           "",
+      bankAccountNumber:"",
+      bankAccountBranch:"",
+      bankAccountDigit: "",
+      bankAccountType:  "checking_account",
+    });
+    setModalStep("review");
+    setModalPayType("pix");
+    setModalResult(null);
+    setModalErr("");
+    setModalBankSearch("");
+  };
   const [indSelectedSim, setIndSelectedSim] = useState(null);
   const [indContratosOpen, setIndContratosOpen] = useState(false);
   const [indErrDetail, setIndErrDetail] = useState(null);
@@ -11931,7 +11961,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                     </div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
                       {t.ok && (
-                        <button onClick={e=>{e.stopPropagation();setIndDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider});}}
+                        <button onClick={e=>{e.stopPropagation();openDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider}); setIndDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider});}}
                           style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
                           DIGITAR
                         </button>
@@ -11987,7 +12017,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 ))}
               </div>
             </div>
-            <button onClick={()=>setIndDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider })}
+            <button onClick={()=>{openDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider }); setIndDigModal({ tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider });}}
               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
               📝 Digitar esta proposta
             </button>
@@ -12037,7 +12067,16 @@ function V8DigitalTab({ currentUser, contacts }) {
             contacts={contacts}
             currentUser={currentUser}
             clientePreFill={indDigModal.clientePreFill}
-            onClose={() => setIndDigModal(null)}
+            step={modalStep} setStep={setModalStep}
+            banks={modalBanks} setBanks={setModalBanks}
+            payType={modalPayType} setPayType={setModalPayType}
+            loading={modalLoading} setLoading={setModalLoading}
+            result={modalResult} setResult={setModalResult}
+            err={modalErr} setErr={setModalErr}
+            cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
+            bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
+            form={modalForm} setForm={setModalForm}
+            onClose={()=>{ setIndDigModal(null); }}
           />
         )}
 
@@ -12104,12 +12143,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         const vlr = parseFloat(s.sim?.availableBalance||0);
                         return (
                           <div key={i}
-                            onClick={()=> s.ok && setIndDigModal({
-                              tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" },
-                              balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId },
-                              cpf:histDetalhe.cpf, provider:histDetalhe.provider,
-                              clientePreFill: histDetalhe, // dados do cliente para auto-fill
-                            })}
+                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
                             style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.1)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
                             onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";} }}
                             onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
@@ -12739,13 +12773,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       const anos   = calcAnos(s.sim);
                       return (
                         <div key={i}
-                          onClick={()=> s.ok && setLoteDigModal({
-                            tabela:{ label:s.label, sim:s.sim, feeId:s.sim?.id||"" },
-                            balance:{ ...detalheItem.balance, id:detalheItem.sim?.balanceId },
-                            cpf:detalheItem.cpf,
-                            provider:loteProvider,
-                            clientePreFill:detalheItem,
-                          })}
+                          onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:s.sim?.id||"" }, balance:{ ...detalheItem.balance, id:detalheItem.sim?.balanceId }, cpf:detalheItem.cpf, provider:loteProvider, clientePreFill:detalheItem }; openDigModal(d); setLoteDigModal(d); }}
                           style={{
                             background: isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
                             border:`2px solid ${isBest?"rgba(52,211,153,0.5)":s.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
@@ -12885,7 +12913,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
                         {it.status==="ok" && it.sim?.melhor?.sim ? (
                           <button
-                            onClick={()=>setLoteDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it })}
+                            onClick={()=>openDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it }); setLoteDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it })}
                             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.3px" }}>
                             DIGITAR
                           </button>
@@ -12943,7 +12971,16 @@ function V8DigitalTab({ currentUser, contacts }) {
             contacts={contacts}
             currentUser={currentUser}
             clientePreFill={loteDigModal.clientePreFill}
-            onClose={()=>setLoteDigModal(null)}
+            step={modalStep} setStep={setModalStep}
+            banks={modalBanks} setBanks={setModalBanks}
+            payType={modalPayType} setPayType={setModalPayType}
+            loading={modalLoading} setLoading={setModalLoading}
+            result={modalResult} setResult={setModalResult}
+            err={modalErr} setErr={setModalErr}
+            cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
+            bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
+            form={modalForm} setForm={setModalForm}
+            onClose={()=>{ setLoteDigModal(null); }}
           />
         )}
       </div>
