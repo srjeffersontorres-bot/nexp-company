@@ -12913,7 +12913,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
                         {it.status==="ok" && it.sim?.melhor?.sim ? (
                           <button
-                            onClick={()=>openDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it }); setLoteDigModal({ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it })}
+                            onClick={()=>{ const d={ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it }; openDigModal(d); setLoteDigModal(d); }}
                             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.3px" }}>
                             DIGITAR
                           </button>
@@ -13053,14 +13053,71 @@ function V8DigitalTab({ currentUser, contacts }) {
 
 
 // ── APIs Bancos ────────────────────────────────────────────────
-function ApisBancosPage({ currentUser, contacts }) {
+function BancoC6Tab() {
   return (
-    <div style={{ padding:"24px 30px", maxWidth:900 }}>
-      <h1 style={{ color:C.tp, fontSize:20, fontWeight:700, margin:"0 0 4px" }}>🏦 Bancos</h1>
-      <p style={{ color:C.tm, fontSize:12.5, marginBottom:20 }}>Integração V8 Digital e APIs bancárias.</p>
+    <div style={{ padding:"32px 0", textAlign:"center" }}>
+      <div style={{ fontSize:48, marginBottom:16 }}>🏦</div>
+      <div style={{ color:C.tp, fontSize:16, fontWeight:700, marginBottom:8 }}>Banco C6</div>
+      <div style={{ color:C.tm, fontSize:13, maxWidth:400, margin:"0 auto" }}>
+        Integração com o Banco C6 em breve.<br/>
+        Configure as credenciais em <b>Configurações → Configurar API</b>.
+      </div>
+    </div>
+  );
+}
 
-      {/* V8 Digital direto */}
-      {<V8DigitalTab currentUser={currentUser} contacts={contacts} />}
+function CreditoTrabalhadorTab() {
+  return (
+    <div style={{ padding:"32px 0", textAlign:"center" }}>
+      <div style={{ fontSize:48, marginBottom:16 }}>💼</div>
+      <div style={{ color:C.tp, fontSize:16, fontWeight:700, marginBottom:8 }}>Crédito do Trabalhador</div>
+      <div style={{ color:C.tm, fontSize:13, maxWidth:400, margin:"0 auto" }}>
+        Módulo de Crédito do Trabalhador em breve.<br/>
+        Esta modalidade usará a API V8 Digital para operações de crédito.
+      </div>
+    </div>
+  );
+}
+
+function ApisBancosPage({ currentUser, contacts }) {
+  const [abaBanco, setAbaBanco] = useState("v8");
+  const [abaV8,    setAbaV8]    = useState("fgts");
+
+  const tabBtn = (ativa, label, onClick, accent=false) => (
+    <button onClick={onClick}
+      style={{ background:"transparent", border:"none", cursor:"pointer", padding:"10px 22px", fontSize:13.5,
+        fontWeight:ativa?700:400, color:ativa?(accent?"#34D399":C.atxt):C.tm,
+        borderBottom:ativa?`2px solid ${accent?"#34D399":C.atxt}`:"2px solid transparent",
+        marginBottom:"-1px", transition:"all 0.12s", whiteSpace:"nowrap" }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{ padding:"0", maxWidth:"100%" }}>
+      {/* Nível 1 — Banco */}
+      <div style={{ padding:"20px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
+        <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
+        <div style={{ display:"flex", gap:0 }}>
+          {tabBtn(abaBanco==="v8",    "⚡ V8 Digital",  ()=>setAbaBanco("v8"))}
+          {tabBtn(abaBanco==="c6",    "🏦 Banco C6",    ()=>setAbaBanco("c6"))}
+        </div>
+      </div>
+
+      {/* Nível 2 — Sub-abas da V8 */}
+      {abaBanco==="v8" && (
+        <div style={{ background:C.deep, borderBottom:`1px solid ${C.b1}`, padding:"0 30px", display:"flex", gap:0 }}>
+          {tabBtn(abaV8==="fgts",    "📋 FGTS",                  ()=>setAbaV8("fgts"),    true)}
+          {tabBtn(abaV8==="credito", "💼 Crédito do Trabalhador", ()=>setAbaV8("credito"), true)}
+        </div>
+      )}
+
+      {/* Conteúdo */}
+      <div style={{ padding:"0 30px" }}>
+        {abaBanco==="v8" && abaV8==="fgts"    && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
+        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
+        {abaBanco==="c6"                      && <BancoC6Tab />}
+      </div>
     </div>
   );
 }
