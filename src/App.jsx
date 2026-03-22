@@ -13343,7 +13343,6 @@ function V8DigitalTab({ currentUser, contacts }) {
         let allRows = [];
 
         if (q) {
-          // Busca com texto — API cuida do filtro
           const params = new URLSearchParams({ page:pg, limit:PAGE_SIZE });
           const digits = q.replace(/\D/g,"");
           params.append("search", digits.length >= 6 ? digits : q);
@@ -13351,32 +13350,37 @@ function V8DigitalTab({ currentUser, contacts }) {
           const res = await apiFetch(`/fgts/proposal?${params}`);
           allRows = res?.data || [];
         } else {
-          // Busca todas as páginas sem filtro de status
+          // Busca TODAS as páginas sem exceção
           let curPage = 1;
           let keepGoing = true;
-          while (keepGoing && curPage <= 20) {
+          while (keepGoing && curPage <= 40) { // até 2000 registros
             const params = new URLSearchParams({ page:curPage, limit:PAGE_SIZE });
             if (provider) params.append("provider", provider);
             const res = await apiFetch(`/fgts/proposal?${params}`);
             const rows = res?.data || [];
             allRows = [...allRows, ...rows];
-            keepGoing = rows.length === PAGE_SIZE && (res?.pages?.hasNext !== false);
+            // Para quando retorna menos que o limite (última página)
+            keepGoing = rows.length === PAGE_SIZE;
             curPage++;
           }
+          // Log completo dos status encontrados
+          const statusMap = {};
+          allRows.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
+          console.log("[V8 Acomp] Total registros:", allRows.length);
+          console.log("[V8 Acomp] Status:", JSON.stringify(statusMap));
         }
 
         // Filtro client-side por status
         let filtered = s ? allRows.filter(r => matchStatus(r.status, s)) : allRows;
 
-        // Filtro por data — só aplica se o usuário definiu datas manualmente
+        // Filtro por data — só aplica se definido manualmente
         if (df || dt) {
           const from = df ? new Date(df) : new Date("2000-01-01");
           const to   = dt ? new Date(dt+"T23:59:59") : new Date("2099-12-31");
           filtered = filtered.filter(r => {
-            // Tenta todos os campos de data possíveis que a V8 pode usar
-            const raw = r.createdAt || r.created_at || r.proposalDate || r.date || r.updatedAt || r.updated_at;
-            if (!raw) return true; // sem data = não filtra
-            const d = new Date(typeof raw === "number" ? raw : raw);
+            const raw = r.createdAt||r.created_at||r.proposalDate||r.date||r.updatedAt||r.updated_at;
+            if (!raw) return true;
+            const d = new Date(raw);
             return !isNaN(d) && d >= from && d <= to;
           });
         }
