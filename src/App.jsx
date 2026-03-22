@@ -179,6 +179,14 @@ function canSeePassword(myRole, targetRole) {
   return myLvl <= 1 && myLvl < tgLvl;
 }
 // Pode editar um usuário
+// Presença real: online:true E lastSeen < 3 minutos atrás
+function isReallyOnline(presenceEntry) {
+  if (!presenceEntry?.online) return false;
+  const lastSeen = presenceEntry.lastSeen?.seconds;
+  if (!lastSeen) return false;
+  return (Date.now() / 1000 - lastSeen) < 180; // 3 minutos
+}
+
 const EMOJIS = [
   "👍",
   "🔥",
@@ -1683,13 +1691,13 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                       </div>
                     );
                   })()}
-                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: presence[(uObj.uid||uObj.id)]?.online ? "#16A34A" : "#FBBF24", border: `1.5px solid ${C.sb}` }} />
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: isReallyOnline(presence[(uObj.uid||uObj.id)]) ? "#16A34A" : "#FBBF24", border: `1.5px solid ${C.sb}` }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
                   <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4, flexWrap:"wrap" }}>
                     {roleLabel[user.role]}
-                    {presence[(uObj.uid || uObj.id)]?.online
+                    {isReallyOnline(presence[(uObj.uid || uObj.id)])
                       ? <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />🟢 online</span>
                       : <span style={{ color:"#FBBF24", fontSize:9 }}>🟡 offline</span>
                     }
@@ -3099,26 +3107,24 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null }) {
   const list = filtered || contacts;
 
-  // curId como ref E state — ref é a fonte de verdade, state só dispara re-render
-  const curIdRef = useRef(list[0]?.id || null);
-  const [curId, setCurIdState] = useState(() => list[0]?.id || null);
-  const setCurId = (id) => { curIdRef.current = id; setCurIdState(id); };
+  // ── NAVEGAÇÃO 100% estável: ref é fonte de verdade, tick força re-render ──
+  const curIdRef  = useRef(list[0]?.id || null);
+  const [, setTick] = useState(0); // só serve para forçar re-render
+  const navigate = (id) => { curIdRef.current = id; setTick(t => t + 1); };
 
-  const [sc, setSc] = useState(false);
+  const [sc, setSc]   = useState(false);
   const [done, setDone] = useState(false);
   const [modalDigitar, setModalDigitar] = useState(false);
 
-  // Encontrar o cliente atual pelo ID (nunca pelo índice)
   const cur = list.find(c => c.id === curIdRef.current) || list[0] || {};
   const si  = list.findIndex(c => c.id === curIdRef.current);
 
-  // Estado local isolado por cliente — usa refs para valores correntes
-  const [reactions, setReactions]    = useState(cur.reactions   || []);
-  const [leadType,  setLeadType]     = useState(cur.leadType    || "FGTS");
-  const [extraLeads, setExtraLeads]  = useState(cur.extraLeads  || []);
-  const [extraStatus,setExtraStatus] = useState(cur.extraStatus || []);
+  // ── Estados locais por cliente — refs para valores correntes ──
+  const [reactions,   setReactions]   = useState(cur.reactions   || []);
+  const [leadType,    setLeadType]    = useState(cur.leadType    || "FGTS");
+  const [extraLeads,  setExtraLeads]  = useState(cur.extraLeads  || []);
+  const [extraStatus, setExtraStatus] = useState(cur.extraStatus || []);
 
-  // Refs para valores mais recentes (evita closures stale)
   const reactionsRef   = useRef(reactions);
   const leadTypeRef    = useRef(leadType);
   const extraLeadsRef  = useRef(extraLeads);
@@ -3128,23 +3134,21 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
   useEffect(() => { extraLeadsRef.current  = extraLeads;  }, [extraLeads]);
   useEffect(() => { extraStatusRef.current = extraStatus; }, [extraStatus]);
 
-  // Bloquear re-sync durante saves
+  // Sincronizar estados quando muda de cliente
+  const prevClientId = useRef(cur.id);
   const savingRef    = useRef(false);
-  const prevSyncId   = useRef(cur.id);
-
-  // Sincronizar APENAS quando o cliente muda (ID diferente) e não é durante save
   useEffect(() => {
     if (savingRef.current) return;
-    const newId = curIdRef.current;
-    if (newId === prevSyncId.current) return;
-    prevSyncId.current = newId;
-    const c = list.find(x => x.id === newId) || {};
+    if (cur.id === prevClientId.current) return;
+    prevClientId.current = cur.id;
+    const c = list.find(x => x.id === curIdRef.current) || {};
     setReactions(c.reactions   || []);
     setLeadType(c.leadType    || "FGTS");
     setExtraLeads(c.extraLeads  || []);
     setExtraStatus(c.extraStatus || []);
     setDone(false);
-  }, [curId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSc(false);
+  }); // sem dependências — roda a cada render mas usa guard prevClientId
 
   if (!list.length)
     return (
@@ -3198,7 +3202,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
     setDone(true);
     setTimeout(() => {
       const nextIdx = si + 1;
-      if (nextIdx < list.length) setCurId(list[nextIdx].id);
+      if (nextIdx < list.length) navigate(list[nextIdx].id);
     }, 800);
   };
 
@@ -3216,12 +3220,12 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            onClick={() => { if (si > 0) setCurId(list[si - 1].id); }}
+            onClick={() => { if (si > 0) navigate(list[si - 1].id); }}
             disabled={si === 0}
             style={{ ...S.btn(si === 0 ? C.deep : C.abg, si === 0 ? C.td : C.atxt), border: `1px solid ${C.b2}`, padding: "7px 14px", fontSize: 13 }}
           >← Anterior</button>
           <button
-            onClick={() => { if (si < list.length - 1) setCurId(list[si + 1].id); }}
+            onClick={() => { if (si < list.length - 1) navigate(list[si + 1].id); }}
             disabled={si === list.length - 1}
             style={{ ...S.btn(si === list.length - 1 ? C.deep : C.acc, si === list.length - 1 ? C.td : "#fff"), padding: "7px 14px", fontSize: 13 }}
           >Próximo →</button>
@@ -3260,6 +3264,39 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 500 }}>{v}</div>
             </div>
           ))}
+        </div>
+
+        {/* Tipo de Lead */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Tipo de Lead
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {LEAD_TYPES.filter(t => t !== "Outro").map((t) => {
+              const col = LEAD_COLOR[t] || "#9CA3AF";
+              const isSel = leadTypeRef.current === t || extraLeadsRef.current.includes(t);
+              const isPrimary = leadTypeRef.current === t;
+              return (
+                <button key={t}
+                  onClick={() => {
+                    if (!isPrimary) {
+                      const oldPrimary = leadTypeRef.current;
+                      const wasExtra = extraLeadsRef.current.includes(t);
+                      const newExtra = wasExtra
+                        ? extraLeadsRef.current.filter(x => x !== t)
+                        : [oldPrimary, ...extraLeadsRef.current.filter(x => x !== t)];
+                      setLeadType(t);
+                      setExtraLeads(newExtra);
+                      upd({ ...cur, leadType: t, extraLeads: newExtra, reactions: reactionsRef.current, extraStatus: extraStatusRef.current });
+                    }
+                  }}
+                  style={{ background: isSel ? col+"18" : C.deep, color: isSel ? col : C.tm, border: isSel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: isSel ? 600 : 400, transition: "all 0.12s" }}>
+                  {isPrimary ? "★ " : isSel ? "✓ " : ""}{t}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ color: C.td, fontSize: 9.5, marginTop: 4 }}>★ = principal · clique para definir como principal</div>
         </div>
 
         {/* Status — multi-seleção */}
@@ -3408,7 +3445,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               const lc2 = LEAD_COLOR[c.leadType] || "#9CA3AF";
               const ss2 = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
               return (
-                <div key={c.id} onClick={() => setCurId(c.id)}
+                <div key={c.id} onClick={() => navigate(c.id)}
                   style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = C.card)}
                   onMouseLeave={(e) => (e.currentTarget.style.background = C.deep)}
@@ -8175,20 +8212,20 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             <div style={{ color:C.tm, fontSize:10, marginTop:1 }}>
               {activeGroup ? (() => {
                 const members = activeGroup.members || [];
-                const onlineCount = members.filter(uid => presence[uid]?.online).length;
+                const onlineCount = members.filter(uid => isReallyOnline(presence[uid])).length;
                 return `👥 ${members.length} membros · 🟢 ${onlineCount} online${isGroupAdm ? " · Você é adm" : ""}`;
               })()
               : activeTab === "geral"
               ? (() => {
-                  const onlineCount = users.filter(u => presence[u.uid||u.id]?.online).length;
+                  const onlineCount = users.filter(u => isReallyOnline(presence[u.uid||u.id])).length;
                   return `${users.length} membros · 🟢 ${onlineCount} online agora`;
                 })()
               : tabUser
               ? (
                 <span style={{ display:"flex", alignItems:"center", gap:4 }}>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background: presence[activeTab]?.online ? "#16A34A" : "#FBBF24", display:"inline-block", flexShrink:0, boxShadow: presence[activeTab]?.online?"0 0 5px #16A34A88":"0 0 5px #FBBF2488" }} />
-                  <span style={{ color: presence[activeTab]?.online ? "#16A34A" : "#FBBF24" }}>
-                    {presence[activeTab]?.online ? "online agora" : "offline"}
+                  <span style={{ width:7, height:7, borderRadius:"50%", background: isReallyOnline(presence[activeTab]) ? "#16A34A" : "#FBBF24", display:"inline-block", flexShrink:0, boxShadow: isReallyOnline(presence[activeTab])?"0 0 5px #16A34A88":"0 0 5px #FBBF2488" }} />
+                  <span style={{ color: isReallyOnline(presence[activeTab]) ? "#16A34A" : "#FBBF24" }}>
+                    {isReallyOnline(presence[activeTab]) ? "online agora" : "offline"}
                   </span>
                 </span>
               )
@@ -8449,7 +8486,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             const uid = u.uid || u.id;
             const rc = roleColor[u.role] || C.atxt;
             const unread = unreadDM(uid);
-            const isOnline = presence[uid]?.online;
+            const isOnline = isReallyOnline(presence[uid]);
             const userHasStory = hasStory(uid);
             const muted = isMuted(uid);
             const isMestre = u.role === "mestre";
@@ -8557,8 +8594,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       </div>
                       <div>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
-                        <div style={{ color: presence[activeTab]?.online ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
-                          {presence[activeTab]?.online ? "🟢 Online agora" : lastMsgTime(activeTab) ? `👁 Visto por último às ${lastMsgTime(activeTab)}` : "Nunca visto"}
+                        <div style={{ color: isReallyOnline(presence[activeTab]) ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
+                          {isReallyOnline(presence[activeTab]) ? "🟢 Online agora" : lastMsgTime(activeTab) ? `👁 Visto por último às ${lastMsgTime(activeTab)}` : "Nunca visto"}
                         </div>
                       </div>
                     </div>
@@ -8838,7 +8875,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                 const u = users.find(x=>(x.uid||x.id)===uid);
                 if (!u) return null;
                 const rc2 = roleColor[u.role]||C.atxt;
-                const online = presence[uid]?.online;
+                const online = isReallyOnline(presence[uid]);
                 return (
                   <div key={uid} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3, cursor:"pointer", flexShrink:0 }}
                     onClick={()=>setViewingProfile(uid)}>
@@ -9324,7 +9361,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               if (!vUser) return null;
               const vId = vUser.uid||vUser.id;
               const rc2 = roleColor[vUser.role]||C.atxt;
-              const isOnlineV = presence[vId]?.online;
+              const isOnlineV = isReallyOnline(presence[vId]);
               const isMe = vId === myId;
 
               // 50 reactions for profile
@@ -10634,623 +10671,418 @@ function SimuladorPage() {
 }
 
 // ── V8 Digital — aba integrada ────────────────────────────────
-function V8DigitalTab({ currentUser }) {
+function V8DigitalTab({ currentUser, contacts }) {
   const [aba, setAba] = useState("config");
-
-  // Credenciais — client_id e audience são fixos conforme documentação V8
-  // (usadas no proxy /api/v8proxy.js — não expostas no frontend)
-
   const [savedUser, setSavedUser] = useState(() => localStorage.getItem("nexp_v8_user") || "");
   const [credForm,  setCredForm]  = useState({ username: savedUser, password: "" });
   const [token,     setToken]     = useState(null);
   const [tokenExp,  setTokenExp]  = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authErr,   setAuthErr]   = useState("");
-
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
-
-  // Todas as chamadas passam pelo proxy Vercel para resolver CORS
   const PROXY = "/api/v8proxy";
 
   const autenticar = async () => {
-    if (!credForm.username || !credForm.password) {
-      setAuthErr("Preencha e-mail e senha."); return;
-    }
+    if (!credForm.username || !credForm.password) { setAuthErr("Preencha e-mail e senha."); return; }
     setAuthLoading(true); setAuthErr("");
     try {
       localStorage.setItem("nexp_v8_user", credForm.username);
       setSavedUser(credForm.username);
-
-      const res  = await fetch(PROXY, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          action:  "auth",
-          payload: { username: credForm.username, password: credForm.password },
-        }),
-      });
+      const res  = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"auth", payload:{ username:credForm.username, password:credForm.password } }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_description || data.message || data.error || `Erro ${res.status}`);
       setToken(data.access_token);
       setTokenExp(Date.now() + ((data.expires_in || 3600) - 60) * 1000);
-      setAba("fgts");
+      setAba("individual");
     } catch(e) { setAuthErr(e.message); }
     setAuthLoading(false);
   };
 
-  const apiFetch = async (path, method="GET", body=null) => {
+  const apiFetch = async (path, method="GET", body=null, retries=2) => {
     if (!isTokenValid) throw new Error("Token expirado. Reautentique.");
-    const res  = await fetch(PROXY, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({
-        action:  "bff",
-        payload: { path, method, token, body },
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}`);
-    return data;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"bff", payload:{ path, method, token, body } }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}`);
+        return data;
+      } catch(e) {
+        if (attempt === retries) throw e;
+        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+      }
+    }
   };
 
-  // ── FGTS tab ───────────────────────────────────────────────
-  const FGTSTab = () => {
-    const [subAba, setSubAba] = useState("simular");
+  const fmtBRL = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+  const fmtCPF = v => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
+
+  // ─────────────────────────────────────────────────────────────
+  // ABA: SIMULAÇÃO INDIVIDUAL
+  // ─────────────────────────────────────────────────────────────
+  const IndividualTab = () => {
     const [cpf, setCpf]       = useState("");
-    const [seguro, setSeguro]  = useState(false);
-    const [simRes, setSimRes]  = useState(null);   // { saldo, tableSims }
     const [loading, setLoading] = useState(false);
     const [err, setErr]         = useState("");
-    // Proposta
-    const [propForm, setPropForm] = useState({
-      cpf:"", tableId:"", bankId:"", conta:"", agencia:"",
-      tipoConta:"corrente", seguro:false,
-    });
-    const [propRes, setPropRes] = useState(null);
-    // Operações
-    const [ops, setOps]           = useState(null);
-    const [opsLoading, setOpsLoading] = useState(false);
+    const [result, setResult]   = useState(null);
+    const [logs, setLogs]       = useState([]);
 
-    const fmtCpf = v => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
-    const fmtBr  = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+    const addLog = (msg, ok=true) => setLogs(p => [{ ts: new Date().toLocaleTimeString("pt-BR"), msg, ok }, ...p.slice(0,49)]);
 
-    // Tabelas disponíveis V8
-    const TABELAS = [
-      { id:"cometa",    label:"Cometa"     },
-      { id:"turbo",     label:"Turbo"      },
-      { id:"grid",      label:"Grid"       },
-      { id:"normal",    label:"Normal"     },
-      { id:"pitstop",   label:"Pitstop"    },
-      { id:"acelera20", label:"Acelera 2.0" },
-    ];
-
-    // ── Simular: consulta saldo + simula em todas as tabelas ────
     const simular = async () => {
       const c = cpf.replace(/\D/g,"");
-      if (c.length !== 11) { setErr("CPF inválido."); return; }
-      setLoading(true); setErr(""); setSimRes(null);
-
-      const fetchWithRetry = async (fn, retries=2) => {
-        for (let i=0; i<=retries; i++) {
-          try { return await fn(); }
-          catch(e) {
-            if (i === retries) throw e;
-            await new Promise(r=>setTimeout(r,1200*(i+1)));
-          }
-        }
-      };
-
+      if (c.length !== 11) { setErr("CPF inválido — digite 11 dígitos."); return; }
+      setLoading(true); setErr(""); setResult(null);
+      addLog(`Iniciando simulação CPF ${fmtCPF(c)}...`);
       try {
+        // 1. Saldo
         let saldo = null;
-        try { saldo = await fetchWithRetry(()=>apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`)); }
-        catch(e) { /* saldo opcional — continua sem ele */ }
+        try {
+          saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`);
+          addLog(`Saldo obtido: ${fmtBRL(saldo?.saldoDisponivel || 0)}`);
+        } catch(e) { addLog(`Saldo: ${e.message}`, false); }
 
-        const tableSims = await Promise.all(
-          TABELAS.map(async (tab) => {
-            try {
-              const sim = await fetchWithRetry(()=>apiFetch("/saque-aniversario/simulacao","POST",{
-                cpf:c, tabelaId:tab.id, seguro,
-              }));
-              return { ...tab, sim, ok:true };
-            } catch(e) {
-              return { ...tab, err: e.message || "Erro na simulação", ok:false };
-            }
-          })
-        );
-        const anyOk = tableSims.some(t=>t.ok);
-        if (!anyOk && !saldo) throw new Error(tableSims[0]?.err || "Nenhuma tabela respondeu. Verifique o CPF ou tente novamente.");
-        setSimRes({ saldo, tableSims });
+        // 2. Simular todas as tabelas
+        const TABELAS = ["cometa","turbo","grid","normal","pitstop","acelera20"];
+        const tableSims = await Promise.all(TABELAS.map(async tbl => {
+          try {
+            const sim = await apiFetch("/saque-aniversario/simulacao","POST",{ cpf:c, tabelaId:tbl, seguro:false });
+            addLog(`Tabela ${tbl}: ${fmtBRL(sim?.valorLiquido || sim?.vlrLiquido || 0)}`);
+            return { tbl, sim, ok:true };
+          } catch(e) {
+            addLog(`Tabela ${tbl}: ${e.message}`, false);
+            return { tbl, err:e.message, ok:false };
+          }
+        }));
+
+        // 3. Operações/contratos ativos
+        let operacoes = null;
+        try { operacoes = await apiFetch(`/saque-aniversario/operacoes?cpf=${c}`); addLog("Operações carregadas."); }
+        catch(e) { addLog(`Operações: ${e.message}`, false); }
+
+        setResult({ saldo, tableSims, operacoes, cpf: fmtCPF(c), ts: new Date().toLocaleString("pt-BR") });
+        addLog("✅ Simulação concluída!");
       } catch(e) {
-        setErr("❌ " + (e.message || "Erro ao simular. Tente novamente."));
+        setErr("❌ " + e.message);
+        addLog(e.message, false);
       }
       setLoading(false);
     };
 
-    const criarProposta = async () => {
-      const c = propForm.cpf.replace(/\D/g,"");
-      if (c.length !== 11) { setErr("CPF inválido."); return; }
-      setLoading(true); setErr(""); setPropRes(null);
-      try {
-        const res = await apiFetch("/saque-aniversario/proposta", "POST", {
-          cpf: c,
-          tabelaId: propForm.tableId,
-          bankId: propForm.bankId,
-          conta: propForm.conta,
-          agencia: propForm.agencia,
-          tipoConta: propForm.tipoConta,
-          seguro: propForm.seguro,
-        });
-        setPropRes(res);
-      } catch(e) { setErr(e.message); }
-      setLoading(false);
-    };
-
-    const listarOps = async () => {
-      setOpsLoading(true); setErr("");
-      try { const res = await apiFetch("/saque-aniversario/operacoes"); setOps(res); }
-      catch(e) { setErr(e.message); }
-      setOpsLoading(false);
-    };
-
-    const statusColor = s => ({
-      APROVADO:"#34D399", APROVADA:"#34D399",
-      PENDENTE:"#FBBF24", AGUARDANDO:"#60A5FA",
-      CANCELADO:"#F87171", CANCELADA:"#F87171",
-      ERRO:"#F87171",
-    }[s?.toUpperCase()] || C.tm);
-
-    // Extrai valor do cliente da resposta (pode vir em campos variados)
-    const extractValor = (sim) => {
-      if (!sim) return null;
-      return sim.valorLiquido ?? sim.valorCliente ?? sim.valorFinanciado ?? sim.valor ?? null;
-    };
-    const extractParcelas = (sim) => {
-      if (!sim) return null;
-      return sim.quantidadeParcelas ?? sim.parcelas ?? sim.prazo ?? null;
-    };
-    const extractTaxa = (sim) => {
-      if (!sim) return null;
-      const t = sim.taxaMensal ?? sim.taxa ?? sim.taxaJuros ?? null;
-      return t !== null ? (typeof t === "number" ? t.toFixed(2) + "%" : String(t)) : null;
-    };
-    const extractParcela = (sim) => {
-      if (!sim) return null;
-      return sim.valorParcela ?? sim.valorMensalidade ?? null;
-    };
+    const anyOkSim = result?.tableSims?.filter(t=>t.ok) || [];
+    const bestSim  = anyOkSim.sort((a,b)=>(b.sim?.valorLiquido||0)-(a.sim?.valorLiquido||0))[0];
 
     return (
-      <div>
-        {/* Sub-tabs */}
-        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${C.b1}` }}>
-          {[{v:"simular",l:"🔍 Simular FGTS"},{v:"proposta",l:"📄 Digitar Proposta"},{v:"operacoes",l:"📋 Acompanhamento"}].map(t=>(
-            <button key={t.v} onClick={()=>setSubAba(t.v)}
-              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"8px 16px", fontSize:12.5,
-                fontWeight:subAba===t.v?700:400, color:subAba===t.v?C.atxt:C.tm,
-                borderBottom:subAba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
-              {t.l}
-            </button>
-          ))}
-        </div>
-
-        {err && (
-          <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>
-            ⚠ {err}
-          </div>
-        )}
-
-        {/* ── SIMULAR ── */}
-        {subAba === "simular" && (
-          <div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>
-              Consulte o saldo FGTS e simule os valores em todas as tabelas disponíveis.
-            </div>
-
-            {/* Inputs */}
-            <div style={{ display:"flex", gap:12, alignItems:"flex-end", flexWrap:"wrap", marginBottom:16 }}>
-              <div style={{ flex:"0 0 220px" }}>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
-                <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))}
-                  placeholder="000.000.000-00" style={{ ...S.input }}
-                  onKeyDown={e=>e.key==="Enter"&&simular()} />
-              </div>
-
-              {/* Seguro */}
-              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                <label style={{ color:C.tm, fontSize:11 }}>Seguro</label>
-                <div style={{ display:"flex", gap:6 }}>
-                  {[{v:false,l:"Não"},{v:true,l:"Sim"}].map(opt=>(
-                    <button key={String(opt.v)} onClick={()=>setSeguro(opt.v)}
-                      style={{ background:seguro===opt.v?C.abg:C.deep, color:seguro===opt.v?C.atxt:C.tm,
-                        border:seguro===opt.v?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`,
-                        borderRadius:8, padding:"9px 18px", fontSize:12.5, cursor:"pointer", fontWeight:seguro===opt.v?700:400 }}>
-                      {opt.l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
+        {/* Painel de entrada */}
+        <div>
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"22px", marginBottom:16 }}>
+            <div style={{ color:C.ts, fontSize:14, fontWeight:700, marginBottom:4 }}>🔍 Simulação Individual FGTS</div>
+            <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Simula saldo, todas as tabelas e contratos ativos.</div>
+            <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>CPF do cliente</label>
+            <input value={cpf} onChange={e=>setCpf(fmtCPF(e.target.value))} placeholder="000.000.000-00"
+              onKeyDown={e=>e.key==="Enter"&&simular()}
+              style={{ ...S.input, fontSize:15, fontWeight:600, marginBottom:14 }} />
+            {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginBottom:12, fontSize:12 }}>⚠ {err}</div>}
+            <div style={{ display:"flex", gap:8 }}>
               <button onClick={simular} disabled={loading||cpf.replace(/\D/g,"").length!==11}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none",
-                  borderRadius:9, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer",
-                  opacity:loading||cpf.replace(/\D/g,"").length!==11?0.5:1, height:40 }}>
-                {loading?"⏳ Consultando...":"Simular →"}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13.5, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading||cpf.replace(/\D/g,"").length!==11?0.6:1, flex:1 }}>
+                {loading ? <span>⏳ Simulando...</span> : "▶ Simular"}
               </button>
+              {result && <button onClick={simular} disabled={loading}
+                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"11px 14px", fontSize:13, cursor:"pointer" }}>
+                🔄
+              </button>}
             </div>
-
-            {/* Resultado */}
-            {simRes && (
-              <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-
-                {/* Saldo */}
-                {simRes.saldo && (
-                  <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"16px 20px" }}>
-                    <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:12 }}>💰 Saldo FGTS</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:10 }}>
-                      {Object.entries(simRes.saldo).filter(([,v])=>v!==null&&v!==""&&typeof v!=="object").map(([k,v])=>(
-                        <div key={k} style={{ background:C.deep, borderRadius:8, padding:"9px 12px" }}>
-                          <div style={{ color:C.td, fontSize:9.5, textTransform:"uppercase", marginBottom:3 }}>{k.replace(/_/g," ")}</div>
-                          <div style={{ color:C.tp, fontSize:12.5, fontWeight:600 }}>
-                            {typeof v==="number"&&(k.toLowerCase().includes("valor")||k.toLowerCase().includes("saldo"))?fmtBr(v):String(v)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Tabela de simulações */}
-                {simRes.tableSims && (
-                  <div style={{ background:C.card, border:`1px solid ${C.atxt}22`, borderRadius:12, overflow:"hidden" }}>
-                    <div style={{ padding:"14px 20px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                      <div style={{ color:C.atxt, fontSize:13, fontWeight:700 }}>📊 Simulação por Tabela</div>
-                      <div style={{ color:C.td, fontSize:11 }}>Seguro: <span style={{ color:seguro?"#34D399":C.tm, fontWeight:600 }}>{seguro?"Sim":"Não"}</span></div>
-                    </div>
-                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                      <thead>
-                        <tr style={{ background:C.deep }}>
-                          {["Tabela","Valor Líquido","Parcelas","Taxa Mensal","Parcela","Status"].map(h=>(
-                            <th key={h} style={{ color:C.td, fontSize:10.5, fontWeight:700, padding:"10px 14px", textAlign:"left", textTransform:"uppercase", letterSpacing:"0.3px", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {simRes.tableSims.map((tab, i)=>{
-                          const vl = extractValor(tab.sim);
-                          const p  = extractParcelas(tab.sim);
-                          const tx = extractTaxa(tab.sim);
-                          const pv = extractParcela(tab.sim);
-                          return (
-                            <tr key={tab.id} style={{ borderBottom:`1px solid ${C.b1}`, background:i%2===0?"transparent":C.deep+"44", transition:"background 0.15s" }}
-                              onMouseEnter={e=>e.currentTarget.style.background=C.abg}
-                              onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"transparent":C.deep+"44"}>
-                              <td style={{ padding:"11px 14px", color:C.tp, fontWeight:700, fontSize:13 }}>{tab.label}</td>
-                              <td style={{ padding:"11px 14px", color:"#34D399", fontWeight:800, fontSize:13.5 }}>{vl!==null?fmtBr(vl):"—"}</td>
-                              <td style={{ padding:"11px 14px", color:C.ts, fontSize:12.5 }}>{p!==null?`${p}x`:"—"}</td>
-                              <td style={{ padding:"11px 14px", color:C.atxt, fontSize:12.5 }}>{tx||"—"}</td>
-                              <td style={{ padding:"11px 14px", color:"#FBBF24", fontSize:12.5 }}>{pv!==null?fmtBr(pv):"—"}</td>
-                              <td style={{ padding:"11px 14px" }}>
-                                {tab.ok
-                                  ? <span style={{ background:"#091E12", color:"#34D399", fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 9px", border:"1px solid #34D39933" }}>✓ OK</span>
-                                  : <span style={{ background:"#2D1515", color:"#F87171", fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 9px", border:"1px solid #F8717133" }} title={tab.err}>✗ Erro</span>
-                                }
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {/* Raw JSON debug (collapsible) */}
-                    {simRes.tableSims.find(t=>t.ok) && (
-                      <details style={{ padding:"10px 20px", borderTop:`1px solid ${C.b1}` }}>
-                        <summary style={{ color:C.td, fontSize:11, cursor:"pointer" }}>Ver resposta completa da API</summary>
-                        <pre style={{ color:C.ts, fontSize:10.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:"8px 0 0", lineHeight:1.6 }}>
-                          {JSON.stringify(simRes.tableSims.filter(t=>t.ok).map(t=>({tabela:t.label,...t.sim})), null, 2)}
-                        </pre>
-                      </details>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
-        )}
 
-        {/* ── PROPOSTA ── */}
-        {subAba === "proposta" && (
-          <div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Preencha os dados para digitar uma nova proposta de FGTS Saque Aniversário.</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:16 }}>
-              {/* CPF */}
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF *</label>
-                <input value={propForm.cpf} onChange={e=>setPropForm(p=>({...p,cpf:fmtCpf(e.target.value)}))} placeholder="000.000.000-00" style={{ ...S.input }} />
-              </div>
-              {/* Tabela */}
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tabela *</label>
-                <select value={propForm.tableId} onChange={e=>setPropForm(p=>({...p,tableId:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
-                  <option value="">Selecione a tabela</option>
-                  {[{id:"cometa",l:"Cometa"},{id:"turbo",l:"Turbo"},{id:"grid",l:"Grid"},{id:"normal",l:"Normal"},{id:"pitstop",l:"Pitstop"},{id:"acelera20",l:"Acelera 2.0"}].map(t=>(
-                    <option key={t.id} value={t.id}>{t.l}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>ID do Banco *</label>
-                <input value={propForm.bankId} onChange={e=>setPropForm(p=>({...p,bankId:e.target.value}))} placeholder="Ex: 033" style={{ ...S.input }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Agência *</label>
-                <input value={propForm.agencia} onChange={e=>setPropForm(p=>({...p,agencia:e.target.value}))} placeholder="Ex: 0001" style={{ ...S.input }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Conta *</label>
-                <input value={propForm.conta} onChange={e=>setPropForm(p=>({...p,conta:e.target.value}))} placeholder="Número da conta" style={{ ...S.input }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta *</label>
-                <select value={propForm.tipoConta} onChange={e=>setPropForm(p=>({...p,tipoConta:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
-                  <option value="corrente">Corrente</option>
-                  <option value="poupanca">Poupança</option>
-                </select>
-              </div>
-              {/* Seguro */}
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Seguro</label>
-                <div style={{ display:"flex", gap:6 }}>
-                  {[{v:false,l:"Não"},{v:true,l:"Sim"}].map(opt=>(
-                    <button key={String(opt.v)} onClick={()=>setPropForm(p=>({...p,seguro:opt.v}))}
-                      style={{ background:propForm.seguro===opt.v?C.abg:C.deep, color:propForm.seguro===opt.v?C.atxt:C.tm,
-                        border:propForm.seguro===opt.v?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`,
-                        borderRadius:8, padding:"9px 18px", fontSize:12.5, cursor:"pointer", fontWeight:propForm.seguro===opt.v?700:400 }}>
-                      {opt.l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <button onClick={criarProposta} disabled={loading}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
-              {loading?"⏳ Enviando...":"📤 Enviar Proposta"}
-            </button>
-            {propRes && (
-              <div style={{ background:C.card, border:`1px solid #34D39933`, borderRadius:12, padding:"16px 20px", marginTop:16 }}>
-                <div style={{ color:"#34D399", fontSize:13, fontWeight:700, marginBottom:8 }}>✅ Proposta enviada!</div>
-                <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(propRes, null, 2)}</pre>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── OPERAÇÕES ── */}
-        {subAba === "operacoes" && (
-          <div>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-              <div style={{ color:C.tm, fontSize:12.5 }}>Acompanhe todas as operações de FGTS Saque Aniversário.</div>
-              <button onClick={listarOps} disabled={opsLoading}
-                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                {opsLoading?"⏳ Carregando...":"↻ Atualizar"}
-              </button>
-            </div>
-            {!ops && !opsLoading && (
-              <div style={{ textAlign:"center", padding:"30px 0", color:C.tm }}>
-                <div style={{ fontSize:28, marginBottom:8, opacity:0.4 }}>📋</div>
-                <div>Clique em Atualizar para carregar as operações</div>
-              </div>
-            )}
-            {ops && (
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {(Array.isArray(ops)?ops:ops.data||ops.items||[]).length===0 && (
-                  <div style={{ color:C.tm, textAlign:"center", padding:"20px 0" }}>Nenhuma operação encontrada.</div>
-                )}
-                {(Array.isArray(ops)?ops:ops.data||ops.items||[]).map((op,i)=>(
-                  <div key={i} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:11, padding:"12px 16px", display:"flex", gap:14, alignItems:"center" }}>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:4 }}>
-                        <span style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{op.cpf||op.nome||op.cliente||`Op. ${i+1}`}</span>
-                        {op.status && <span style={{ background:statusColor(op.status)+"22", color:statusColor(op.status), fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 8px" }}>{op.status}</span>}
-                        {op.tabela && <span style={{ background:C.abg, color:C.atxt, fontSize:10, borderRadius:20, padding:"2px 8px" }}>{op.tabela}</span>}
-                      </div>
-                      <div style={{ color:C.td, fontSize:11 }}>
-                        {op.id?`ID: ${op.id}`:""} {op.createdAt?`· ${new Date(op.createdAt).toLocaleDateString("pt-BR")}`:""}
-                      </div>
-                    </div>
-                    {(op.valor||op.valorLiquido) && (
-                      <div style={{ color:"#34D399", fontSize:15, fontWeight:800, flexShrink:0 }}>
-                        {fmtBr(op.valor||op.valorLiquido)}
-                      </div>
-                    )}
+          {/* Logs */}
+          {logs.length > 0 && (
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"14px 16px" }}>
+              <div style={{ color:C.ts, fontSize:12, fontWeight:700, marginBottom:10 }}>📋 Log da Simulação</div>
+              <div style={{ maxHeight:200, overflowY:"auto", display:"flex", flexDirection:"column", gap:4 }}>
+                {logs.map((l,i)=>(
+                  <div key={i} style={{ display:"flex", gap:8, fontSize:11 }}>
+                    <span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span>
+                    <span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
+
+        {/* Resultados */}
+        <div>
+          {result ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              {/* Header resultado */}
+              <div style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, borderRadius:14, padding:"18px 20px", color:"#fff" }}>
+                <div style={{ fontSize:11, opacity:0.7, marginBottom:4 }}>CPF · {result.cpf}</div>
+                <div style={{ fontSize:22, fontWeight:900, lineHeight:1 }}>
+                  {fmtBRL(result.saldo?.saldoDisponivel || 0)}
+                </div>
+                <div style={{ fontSize:11, opacity:0.7, marginTop:4 }}>Saldo disponível · {result.ts}</div>
+                {bestSim && (
+                  <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:9, padding:"8px 12px" }}>
+                    <div style={{ fontSize:11, opacity:0.8 }}>Melhor oferta — Tabela {bestSim.tbl}</div>
+                    <div style={{ fontSize:18, fontWeight:800 }}>{fmtBRL(bestSim.sim?.valorLiquido || bestSim.sim?.vlrLiquido || 0)}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabelas */}
+              <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px", overflow:"hidden" }}>
+                <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:12 }}>📊 Resultado por Tabela</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                  {(result.tableSims||[]).map((t,i)=>{
+                    const vl = t.sim?.valorLiquido || t.sim?.vlrLiquido || 0;
+                    const parcelas = t.sim?.quantidadeParcelas || t.sim?.parcelas || "—";
+                    const taxa = t.sim?.taxaMensal || t.sim?.taxa || null;
+                    return (
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:t.ok?C.deep:"rgba(239,68,68,0.06)", borderRadius:9, border:`1px solid ${t.ok?C.b1:"#EF444422"}` }}>
+                        <div style={{ flex:1 }}>
+                          <span style={{ color:C.tp, fontWeight:600, fontSize:12.5, textTransform:"capitalize" }}>{t.tbl}</span>
+                          {taxa && <span style={{ color:C.td, fontSize:10.5, marginLeft:8 }}>taxa {typeof taxa==="number"?(taxa*100).toFixed(2):taxa}%</span>}
+                          {!t.ok && <span style={{ color:"#F87171", fontSize:10.5, marginLeft:6 }}>— {t.err}</span>}
+                        </div>
+                        {t.ok && <div style={{ textAlign:"right" }}>
+                          <div style={{ color:C.atxt, fontWeight:800, fontSize:13 }}>{fmtBRL(vl)}</div>
+                          {parcelas !== "—" && <div style={{ color:C.td, fontSize:10 }}>{parcelas}x</div>}
+                        </div>}
+                        {!t.ok && <span style={{ color:"#F87171", fontSize:11 }}>✘</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Operações/Contratos */}
+              {result.operacoes && (
+                <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"16px" }}>
+                  <div style={{ color:C.ts, fontSize:12.5, fontWeight:700, marginBottom:10 }}>📄 Contratos Ativos</div>
+                  {Array.isArray(result.operacoes) && result.operacoes.length > 0 ? (
+                    result.operacoes.slice(0,5).map((op,i)=>(
+                      <div key={i} style={{ padding:"7px 10px", background:C.deep, borderRadius:8, marginBottom:5, fontSize:11.5 }}>
+                        <div style={{ color:C.tp, fontWeight:600 }}>{op.banco||op.nomeBanco||"Banco"} · {op.tabelaDescricao||op.tabela||"—"}</div>
+                        <div style={{ color:C.tm, marginTop:2 }}>
+                          Parcelas: {op.quantidadeParcelas||"—"} · Valor: {fmtBRL(op.valorParcela||0)} · Status: {op.status||"—"}
+                        </div>
+                      </div>
+                    ))
+                  ) : <div style={{ color:C.td, fontSize:12 }}>Nenhum contrato encontrado.</div>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"48px 24px", textAlign:"center" }}>
+              <div style={{ fontSize:40, marginBottom:14, opacity:0.25 }}>🔍</div>
+              <div style={{ color:C.tm, fontSize:13 }}>Digite um CPF e clique em Simular para ver os resultados.</div>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
-  // ── CLT tab ────────────────────────────────────────────────
-  const CLTTab = () => {
-    const [subAba, setSubAba] = useState("simular");
-    const [err, setErr]   = useState("");
-    const [loading, setLoading] = useState(false);
-    // Simular
-    const [simForm, setSimForm] = useState({ cpf:"", salario:"", prazo:"24" });
-    const [simRes, setSimRes]   = useState(null);
-    // Proposta
-    const [propForm, setPropForm] = useState({ cpf:"", nome:"", salario:"", prazo:"24", banco:"", agencia:"", conta:"", tipoConta:"corrente", valorSolicitado:"" });
-    const [propRes,  setPropRes]  = useState(null);
-    // Operações
-    const [ops, setOps]         = useState(null);
-    const [opsLoading, setOpsLoading] = useState(false);
+  // ─────────────────────────────────────────────────────────────
+  // ABA: SIMULAÇÃO EM LOTE
+  // ─────────────────────────────────────────────────────────────
+  const LoteTab = () => {
+    const allContacts = contacts || [];
+    const [items, setItems]         = useState(() => allContacts.slice(0,1000).map(c=>({ id:c.id, nome:c.name||"—", cpf:c.cpf||"", saldo:null, margem:null, status:"pendente", erro:null, sim:null })));
+    const [running, setRunning]     = useState(false);
+    const [progress, setProgress]   = useState(0);
+    const [filterSaldo, setFilterSaldo]   = useState("");
+    const [filterMargem, setFilterMargem] = useState("");
+    const [filterStatus, setFilterStatus] = useState("Todos");
+    const [logs, setLogs]           = useState([]);
+    const abortRef                  = useRef(false);
+    const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)]);
 
-    const fmtCpf = v => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
-    const fmtBr  = v => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
-
-    const simular = async () => {
-      const c = simForm.cpf.replace(/\D/g,"");
-      if (c.length !== 11) { setErr("CPF inválido."); return; }
-      setLoading(true); setErr(""); setSimRes(null);
+    const simularUm = async (item) => {
+      const c = item.cpf.replace(/\D/g,"");
+      if (c.length !== 11) return { ...item, status:"erro", erro:"CPF inválido" };
       try {
-        const res = await apiFetch("/clt/simular", "POST", { cpf:c, salario:parseFloat(simForm.salario)||0, prazo:parseInt(simForm.prazo)||24 });
-        setSimRes(res);
-      } catch(e) { setErr(e.message); }
-      setLoading(false);
+        const saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`).catch(()=>null);
+        const TABELAS = ["cometa","turbo","grid","normal"];
+        const tableSims = await Promise.all(TABELAS.map(async tbl=>{
+          try { return { tbl, sim: await apiFetch("/saque-aniversario/simulacao","POST",{cpf:c,tabelaId:tbl,seguro:false}), ok:true }; }
+          catch(e) { return { tbl, err:e.message, ok:false }; }
+        }));
+        const melhor = tableSims.filter(t=>t.ok).sort((a,b)=>(b.sim?.valorLiquido||0)-(a.sim?.valorLiquido||0))[0];
+        addLog(`✅ ${item.nome} (${fmtCPF(c)}) — ${fmtBRL(saldo?.saldoDisponivel||0)}`);
+        return { ...item, saldo: saldo?.saldoDisponivel||0, margem: melhor?.sim?.valorLiquido||0, status:"ok", sim:{ tableSims, melhor }, erro:null };
+      } catch(e) {
+        addLog(`❌ ${item.nome}: ${e.message}`, false);
+        return { ...item, status:"erro", erro:e.message };
+      }
     };
 
-    const criarProposta = async () => {
-      const c = propForm.cpf.replace(/\D/g,"");
-      if (c.length !== 11) { setErr("CPF inválido."); return; }
-      setLoading(true); setErr(""); setPropRes(null);
-      try {
-        const res = await apiFetch("/clt/proposta", "POST", { cpf:c, nome:propForm.nome, salario:parseFloat(propForm.salario)||0, prazo:parseInt(propForm.prazo)||24, banco:propForm.banco, agencia:propForm.agencia, conta:propForm.conta, tipoConta:propForm.tipoConta, valorSolicitado:parseFloat(propForm.valorSolicitado)||0 });
-        setPropRes(res);
-      } catch(e) { setErr(e.message); }
-      setLoading(false);
+    const simularLote = async () => {
+      setRunning(true); abortRef.current = false;
+      const lista = [...items];
+      for (let i=0; i<lista.length; i++) {
+        if (abortRef.current) break;
+        if (lista[i].status === "ok") continue;
+        const updated = await simularUm(lista[i]);
+        lista[i] = updated;
+        setItems([...lista]);
+        setProgress(Math.round((i+1)/lista.length*100));
+        await new Promise(r=>setTimeout(r,300)); // rate limit
+      }
+      setRunning(false);
     };
 
-    const listarOps = async () => {
-      setOpsLoading(true); setErr("");
-      try { const res = await apiFetch("/clt/operacoes"); setOps(res); }
-      catch(e) { setErr(e.message); }
-      setOpsLoading(false);
+    const simularItem = async (idx) => {
+      const updated = await simularUm(items[idx]);
+      setItems(p=>p.map((x,i)=>i===idx?updated:x));
     };
 
-    const statusColor = s => ({ APROVADO:"#34D399", PENDENTE:"#FBBF24", CANCELADO:"#F87171", AGUARDANDO:"#60A5FA" }[s?.toUpperCase()] || C.tm);
+    const exportar = () => {
+      const rows = [["Nome","CPF","Saldo","Melhor Oferta","Status","Erro"]];
+      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.saldo||"",it.margem||"",it.status,it.erro||""]));
+      const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const a = document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);
+      a.download="simulacao_lote.csv"; a.click();
+    };
+
+    const filtered = items.filter(it=>{
+      if (filterStatus !== "Todos" && it.status !== filterStatus) return false;
+      if (filterSaldo && it.saldo !== null && it.saldo < parseFloat(filterSaldo)||0) return false;
+      if (filterMargem && it.margem !== null && it.margem < parseFloat(filterMargem)||0) return false;
+      return true;
+    });
+
+    const countOk  = items.filter(x=>x.status==="ok").length;
+    const countErr = items.filter(x=>x.status==="erro").length;
 
     return (
       <div>
-        <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${C.b1}`, paddingBottom:"-1px" }}>
-          {[{v:"simular",l:"🔍 Simular CLT"},{v:"proposta",l:"📄 Digitar Proposta"},{v:"operacoes",l:"📋 Acompanhamento"}].map(t=>(
-            <button key={t.v} onClick={()=>setSubAba(t.v)}
-              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"8px 16px", fontSize:12.5, fontWeight:subAba===t.v?700:400, color:subAba===t.v?C.atxt:C.tm, borderBottom:subAba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
-              {t.l}
-            </button>
-          ))}
+        {/* Header e controles */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"18px 20px", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
+            <div>
+              <div style={{ color:C.ts, fontSize:14, fontWeight:700 }}>⚡ Simulação em Lote</div>
+              <div style={{ color:C.tm, fontSize:12, marginTop:2 }}>{items.length} clientes · {countOk} simulados · {countErr} erros</div>
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={simularLote} disabled={running}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:running?"not-allowed":"pointer", opacity:running?0.7:1 }}>
+                {running?"⏳ Simulando...":"▶ Simular Todos"}
+              </button>
+              {running && <button onClick={()=>abortRef.current=true}
+                style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
+                ⏹ Parar
+              </button>}
+              <button onClick={exportar}
+                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>
+                📥 Exportar CSV
+              </button>
+            </div>
+          </div>
+          {/* Barra de progresso */}
+          {running && (
+            <div style={{ background:C.deep, borderRadius:99, height:6, overflow:"hidden", marginBottom:10 }}>
+              <div style={{ background:`linear-gradient(90deg,${C.acc},${C.lg2})`, height:"100%", width:`${progress}%`, borderRadius:99, transition:"width 0.3s" }}/>
+            </div>
+          )}
+          {/* Filtros */}
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            <div>
+              <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Saldo mín (R$)</label>
+              <input value={filterSaldo} onChange={e=>setFilterSaldo(e.target.value)} placeholder="Ex: 1000" style={{ ...S.input, width:110, fontSize:12, padding:"5px 9px" }}/>
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Oferta mín (R$)</label>
+              <input value={filterMargem} onChange={e=>setFilterMargem(e.target.value)} placeholder="Ex: 500" style={{ ...S.input, width:110, fontSize:12, padding:"5px 9px" }}/>
+            </div>
+            <div>
+              <label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label>
+              <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{ ...S.input, width:110, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
+                {["Todos","pendente","ok","erro"].map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div style={{ alignSelf:"flex-end" }}>
+              <div style={{ color:C.td, fontSize:11, paddingBottom:4 }}>{filtered.length} exibidos</div>
+            </div>
+          </div>
         </div>
 
-        {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {err}</div>}
-
-        {/* SIMULAR */}
-        {subAba === "simular" && (
-          <div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Simule crédito CLT informando CPF, salário e prazo desejado.</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr auto", gap:12, alignItems:"flex-end", marginBottom:20 }}>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF *</label>
-                <input value={simForm.cpf} onChange={e=>setSimForm(p=>({...p,cpf:fmtCpf(e.target.value)}))} placeholder="000.000.000-00" style={{ ...S.input }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Salário (R$)</label>
-                <input value={simForm.salario} onChange={e=>setSimForm(p=>({...p,salario:e.target.value}))} placeholder="Ex: 3.500,00" style={{ ...S.input }} />
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Prazo</label>
-                <select value={simForm.prazo} onChange={e=>setSimForm(p=>({...p,prazo:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
-                  {[6,8,12,18,24,36,48].map(n=><option key={n} value={n}>{n}x</option>)}
-                </select>
-              </div>
-              <button onClick={simular} disabled={loading}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1, whiteSpace:"nowrap" }}>
-                {loading?"⏳":"Simular →"}
-              </button>
-            </div>
-            {simRes && (
-              <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px" }}>
-                <div style={{ color:C.atxt, fontSize:13, fontWeight:700, marginBottom:10 }}>📊 Resultado da Simulação CLT</div>
-                {simRes.valorLiberado && (
-                  <div style={{ background:C.abg, borderRadius:10, padding:"14px 18px", marginBottom:12, textAlign:"center" }}>
-                    <div style={{ color:C.tm, fontSize:11, marginBottom:4 }}>Valor Liberado</div>
-                    <div style={{ color:C.atxt, fontSize:32, fontWeight:900 }}>{fmtBr(simRes.valorLiberado)}</div>
-                    {simRes.parcela && <div style={{ color:C.td, fontSize:12, marginTop:4 }}>{simForm.prazo}x de {fmtBr(simRes.parcela)}</div>}
-                  </div>
-                )}
-                <pre style={{ color:C.ts, fontSize:11, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simRes, null, 2)}</pre>
-              </div>
-            )}
+        {/* Tabela */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden" }}>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12.5 }}>
+              <thead>
+                <tr style={{ background:C.deep }}>
+                  {["#","Nome","CPF","Saldo","Melhor Oferta","Tabela","Status","Ação"].map(h=>(
+                    <th key={h} style={{ color:C.tm, fontWeight:700, padding:"10px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice(0,200).map((it, idx)=>{
+                  const realIdx = items.findIndex(x=>x.id===it.id);
+                  const stCol = it.status==="ok"?"#34D399":it.status==="erro"?"#F87171":"#FBBF24";
+                  const stBg  = it.status==="ok"?"#091E12":it.status==="erro"?"#2D1515":"#2B2310";
+                  return (
+                    <tr key={it.id} style={{ background:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}` }}>
+                      <td style={{ color:C.td, padding:"9px 12px", fontSize:11 }}>{realIdx+1}</td>
+                      <td style={{ color:C.tp, fontWeight:600, padding:"9px 12px", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.nome}</td>
+                      <td style={{ color:C.tm, padding:"9px 12px", fontFamily:"monospace", fontSize:11.5 }}>{it.cpf||"—"}</td>
+                      {/* Saldo clicável */}
+                      <td style={{ padding:"9px 10px", textAlign:"center" }}>
+                        {it.saldo !== null
+                          ? <span onClick={()=>simularItem(realIdx)} style={{ color:C.atxt, fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block", background:C.abg }}
+                              title="Clique para re-simular">
+                              {fmtBRL(it.saldo)}
+                            </span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                      {/* Melhor oferta clicável */}
+                      <td style={{ padding:"9px 10px", textAlign:"center" }}>
+                        {it.margem !== null
+                          ? <span onClick={()=>simularItem(realIdx)} style={{ color:"#34D399", fontWeight:700, cursor:"pointer", padding:"3px 8px", borderRadius:7, display:"inline-block", background:"rgba(52,211,153,0.08)" }}
+                              title="Clique para re-simular">
+                              {fmtBRL(it.margem)}
+                            </span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                      <td style={{ color:C.td, padding:"9px 10px", fontSize:11 }}>{it.sim?.melhor?.tbl||"—"}</td>
+                      <td style={{ padding:"9px 10px" }}>
+                        <span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600 }}>
+                          {it.status==="ok"?"✅ OK":it.status==="erro"?"❌ Erro":"⏳ Pendente"}
+                        </span>
+                        {it.erro && <div style={{ color:"#F87171", fontSize:9.5, marginTop:2 }}>{it.erro.slice(0,40)}</div>}
+                      </td>
+                      <td style={{ padding:"9px 10px" }}>
+                        <button onClick={()=>simularItem(realIdx)} disabled={running}
+                          style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>
+                          {it.status==="ok"?"🔄":"▶"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
+          {filtered.length > 200 && <div style={{ color:C.td, fontSize:12, padding:"10px 16px", textAlign:"center" }}>Mostrando 200 de {filtered.length} · Use os filtros para refinar</div>}
+        </div>
 
-        {/* PROPOSTA */}
-        {subAba === "proposta" && (
-          <div>
-            <div style={{ color:C.tm, fontSize:12.5, marginBottom:16 }}>Preencha todos os dados para digitação da proposta CLT.</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:16 }}>
-              {[
-                {f:"cpf",l:"CPF *",ph:"000.000.000-00"},
-                {f:"nome",l:"Nome completo *",ph:"Ex: João da Silva"},
-                {f:"salario",l:"Salário (R$) *",ph:"Ex: 3.500,00"},
-                {f:"valorSolicitado",l:"Valor solicitado (R$) *",ph:"Ex: 10.000,00"},
-                {f:"banco",l:"Banco *",ph:"Ex: 033"},
-                {f:"agencia",l:"Agência *",ph:"Ex: 0001"},
-                {f:"conta",l:"Conta *",ph:"Número da conta"},
-              ].map(({f,l,ph})=>(
-                <div key={f}>
-                  <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{l}</label>
-                  <input value={propForm[f]} onChange={e=>setPropForm(p=>({...p,[f]:f==="cpf"?fmtCpf(e.target.value):e.target.value}))} placeholder={ph} style={{ ...S.input }} />
+        {/* Mini log */}
+        {logs.length > 0 && (
+          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"12px 16px", marginTop:14 }}>
+            <div style={{ color:C.ts, fontSize:11.5, fontWeight:700, marginBottom:8 }}>📋 Log do Lote ({logs.length})</div>
+            <div style={{ maxHeight:160, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
+              {logs.map((l,i)=>(
+                <div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}>
+                  <span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span>
+                  <span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span>
                 </div>
               ))}
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Prazo *</label>
-                <select value={propForm.prazo} onChange={e=>setPropForm(p=>({...p,prazo:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
-                  {[6,8,12,18,24,36,48].map(n=><option key={n} value={n}>{n}x</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Tipo de Conta *</label>
-                <select value={propForm.tipoConta} onChange={e=>setPropForm(p=>({...p,tipoConta:e.target.value}))} style={{ ...S.input, cursor:"pointer" }}>
-                  <option value="corrente">Corrente</option>
-                  <option value="poupanca">Poupança</option>
-                </select>
-              </div>
             </div>
-            <button onClick={criarProposta} disabled={loading}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
-              {loading?"⏳ Enviando...":"📤 Enviar Proposta CLT"}
-            </button>
-            {propRes && (
-              <div style={{ background:C.card, border:`1px solid ${C.atxt}33`, borderRadius:12, padding:"16px 20px", marginTop:16 }}>
-                <div style={{ color:"#34D399", fontSize:13, fontWeight:700, marginBottom:8 }}>✅ Proposta CLT enviada!</div>
-                <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(propRes, null, 2)}</pre>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* OPERAÇÕES */}
-        {subAba === "operacoes" && (
-          <div>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-              <div style={{ color:C.tm, fontSize:12.5 }}>Acompanhe todas as operações de crédito CLT.</div>
-              <button onClick={listarOps} disabled={opsLoading}
-                style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                {opsLoading?"⏳ Carregando...":"↻ Atualizar"}
-              </button>
-            </div>
-            {!ops && !opsLoading && (
-              <div style={{ textAlign:"center", padding:"30px 0", color:C.tm }}>
-                <div style={{ fontSize:28, marginBottom:8, opacity:0.4 }}>📋</div>
-                <div>Clique em Atualizar para carregar as operações</div>
-              </div>
-            )}
-            {ops && (
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {(Array.isArray(ops) ? ops : ops.data || []).length === 0 && <div style={{ color:C.tm, textAlign:"center", padding:"20px 0" }}>Nenhuma operação encontrada.</div>}
-                {(Array.isArray(ops) ? ops : ops.data || []).map((op, i) => (
-                  <div key={i} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:11, padding:"12px 16px", display:"flex", gap:14, alignItems:"center" }}>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:4 }}>
-                        <span style={{ color:C.tp, fontSize:13, fontWeight:600 }}>{op.nome || op.cpf || `Op. ${i+1}`}</span>
-                        {op.status && <span style={{ background:statusColor(op.status)+"22", color:statusColor(op.status), fontSize:10, fontWeight:700, borderRadius:20, padding:"2px 8px" }}>{op.status}</span>}
-                      </div>
-                      <div style={{ color:C.td, fontSize:11 }}>{op.id ? `ID: ${op.id}` : ""} {op.prazo ? `· ${op.prazo}x` : ""} {op.createdAt ? `· ${new Date(op.createdAt).toLocaleDateString("pt-BR")}` : ""}</div>
-                    </div>
-                    {op.valorLiberado && <div style={{ color:C.atxt, fontSize:15, fontWeight:800, flexShrink:0 }}>{fmtBr(op.valorLiberado)}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -11258,62 +11090,45 @@ function V8DigitalTab({ currentUser }) {
   };
 
   return (
-    <div>
-      {/* Header com status do token */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
-        <div>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#fff", fontSize:14 }}>V8</div>
-            <div>
-              <div style={{ color:C.tp, fontSize:15, fontWeight:800 }}>V8 Digital</div>
-              <div style={{ color:C.td, fontSize:10.5 }}>FGTS · CLT · API Oficial</div>
-            </div>
-          </div>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          {isTokenValid
-            ? <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:8, padding:"6px 12px" }}>
-                <div style={{ width:7, height:7, borderRadius:"50%", background:"#34D399", animation:"pulse 1.5s infinite" }} />
-                <span style={{ color:"#34D399", fontSize:11.5, fontWeight:600 }}>Autenticado</span>
-              </div>
-            : <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"6px 12px" }}>
-                <span style={{ color:"#F87171", fontSize:11.5 }}>Não autenticado</span>
-              </div>
-          }
-          <button onClick={()=>setAba("config")} style={{ background:C.deep, border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:11.5 }}>⚙ Credenciais</button>
-        </div>
-      </div>
-
-      {/* Abas principais */}
+    <div style={{ padding:"4px 0" }}>
+      {/* Header token */}
       {isTokenValid && (
-        <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:22 }}>
-          {[{v:"fgts",l:"🏦 FGTS — Saque Aniversário"},{v:"clt",l:"💼 CLT — Crédito Privato"}].map(t=>(
-            <button key={t.v} onClick={()=>setAba(t.v)}
-              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13, fontWeight:aba===t.v?700:400, color:aba===t.v?C.atxt:C.tm, borderBottom:aba===t.v?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
-              {t.l}
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"8px 14px", background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.2)", borderRadius:9 }}>
+          <span style={{ color:"#34D399", fontSize:13 }}>🟢</span>
+          <span style={{ color:"#34D399", fontSize:12, fontWeight:600 }}>Autenticado como {savedUser}</span>
+          <button onClick={()=>{setToken(null);setAba("config");}} style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>Desconectar</button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      {isTokenValid && (
+        <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:20 }}>
+          {[
+            {id:"individual", label:"🔍 Simulação Individual"},
+            {id:"lote",       label:"⚡ Simulação em Lote"},
+          ].map(t=>(
+            <button key={t.id} onClick={()=>setAba(t.id)}
+              style={{ background:"transparent", border:"none", cursor:"pointer", padding:"9px 18px", fontSize:13,
+                fontWeight:aba===t.id?700:400, color:aba===t.id?C.atxt:C.tm,
+                borderBottom:aba===t.id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px" }}>
+              {t.label}
             </button>
           ))}
         </div>
       )}
 
-      {/* Configurar credenciais */}
-      {(aba === "config" || !isTokenValid) && (
+      {/* Auth */}
+      {(!isTokenValid || aba === "config") && (
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"22px 24px" }}>
           <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
-          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>
-            Use o seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8 Digital.
-          </div>
-
-          {/* Credenciais fixas — informativo */}
+          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Use o seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8 Digital.</div>
           <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:9, padding:"10px 14px", marginBottom:16, fontSize:11 }}>
             <div style={{ color:C.td, marginBottom:3 }}>🔒 <b style={{ color:C.ts }}>Configuração automática:</b></div>
             <div style={{ color:C.td }}>Auth: <span style={{ color:C.tm }}>https://auth.v8sistema.com/oauth/token</span></div>
             <div style={{ color:C.td }}>Audience: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
             <div style={{ color:C.td }}>Client ID: <span style={{ color:C.tm }}>DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn</span></div>
           </div>
-
           {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
-
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label>
@@ -11325,23 +11140,22 @@ function V8DigitalTab({ currentUser }) {
             </div>
           </div>
           <button onClick={autenticar} disabled={authLoading}
-            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1, boxShadow:`0 4px 16px ${C.acc}44` }}>
+            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
             {authLoading ? "⏳ Autenticando..." : "🔐 Entrar na V8 Digital →"}
           </button>
-          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>
-            O e-mail é salvo para facilitar o próximo acesso. A senha nunca é armazenada.
-          </div>
+          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>O e-mail é salvo para facilitar o próximo acesso. A senha nunca é armazenada.</div>
         </div>
       )}
 
-      {isTokenValid && aba === "fgts" && <FGTSTab />}
-      {isTokenValid && aba === "clt"  && <CLTTab />}
+      {isTokenValid && aba === "individual" && <IndividualTab />}
+      {isTokenValid && aba === "lote"       && <LoteTab />}
     </div>
   );
 }
 
+
 // ── APIs Bancos ────────────────────────────────────────────────
-function ApisBancosPage({ currentUser }) {
+function ApisBancosPage({ currentUser, contacts }) {
   const [aba, setAba] = useState("geral");
   const isMestre = currentUser.role === "mestre";
   const [apis, setApis] = useState(() => {
@@ -11467,7 +11281,7 @@ function ApisBancosPage({ currentUser }) {
       )}
 
       {/* ABA V8 DIGITAL */}
-      {aba === "v8" && <V8DigitalTab currentUser={currentUser} />}
+      {aba === "v8" && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
     </div>
   );
 }
@@ -14229,7 +14043,7 @@ export default function App() {
           <CalendarPage currentUser={currentUser} />
         )}
         {page === "simulador" && <SimuladorPage />}
-        {page === "apis" && <ApisBancosPage currentUser={currentUser} />}
+        {page === "apis" && <ApisBancosPage currentUser={currentUser} contacts={contacts} />}
         {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
       </div>
 
