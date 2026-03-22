@@ -173,7 +173,10 @@ function getRolesCanCreate(myRole) {
 }
 // Pode ver senha de usuários abaixo
 function canSeePassword(myRole, targetRole) {
-  return (ROLE_HIERARCHY[myRole] ?? 99) < (ROLE_HIERARCHY[targetRole] ?? 99);
+  const myLvl = ROLE_HIERARCHY[myRole] ?? 99;
+  const tgLvl = ROLE_HIERARCHY[targetRole] ?? 99;
+  // Apenas Administrador (lvl 0) e Gerente (lvl 1) podem ver senhas de abaixo
+  return myLvl <= 1 && myLvl < tgLvl;
 }
 // Pode editar um usuário
 const EMOJIS = [
@@ -311,10 +314,9 @@ const INITIAL_USERS = [
 ];
 
 
-const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao
-João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,joao@email.com,,M001,FGTS,Saldo disponível
-Maria Santos,987.654.321-11,(21) 98888-0002,,,maria@email.com,,M002,INSS,Aposentada
-Pedro Costa,456.789.123-22,(31) 97777-0003,(31) 96666-0002,(31) 95555-0003,12.345.678/0001-90,pedro@empresa.com,M003,Empréstimo do Trabalhador,Documentação aguardando
+const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao,Rua,Numero,Bairro,CEP,Cidade,UF
+João Silva,123.456.789-00,(11) 99999-0001,(11) 98888-0001,,12.345.678/0001-90,joao@email.com,M001,FGTS,Saldo disponível,Rua das Flores,123,Centro,59000-000,Natal,RN
+Maria Santos,987.654.321-11,(21) 98888-0002,,,,,M002,INSS,Aposentada,Av. Brasil,456,Bairro Novo,20000-000,Rio de Janeiro,RJ
 `;
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -322,30 +324,28 @@ function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const sep = lines[0].includes(";") ? ";" : ",";
-  const heads = lines[0].split(sep).map((h) =>
-    h
-      .trim()
-      .replace(/^"|"$/g, "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z]/g, ""),
-  );
+  // Normaliza cabeçalho removendo acentos, espaços e caixa
+  const normalize = (s) => s.trim().replace(/^"|"$/g,"").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");
+  const heads = lines[0].split(sep).map(normalize);
+  // Mapeamento flexível — aceita variações de nome
   const fm = {
-    nome: "name",
-    cpf: "cpf",
-    telefone: "phone",
-    telefone1: "phone",
-    telefone2: "phone2",
-    telefone3: "phone3",
-    cnpj: "cnpj",
-    email: "email",
-    matricula: "matricula",
-    tipolead: "leadType",
-    tipo: "leadType",
-    lead: "leadType",
-    observacao: "observacao",
-    obs: "observacao",
+    nome:"name", name:"name",
+    cpf:"cpf",
+    telefone:"phone", telefone1:"phone", fone:"phone", fone1:"phone", celular:"phone", phone:"phone",
+    telefone2:"phone2", fone2:"phone2", celular2:"phone2", phone2:"phone2",
+    telefone3:"phone3", fone3:"phone3", celular3:"phone3", phone3:"phone3",
+    cnpj:"cnpj",
+    email:"email", email1:"email",
+    matricula:"matricula", mat:"matricula",
+    tipolead:"leadType", tipo:"leadType", lead:"leadType", tipodolead:"leadType",
+    observacao:"observacao", obs:"observacao", observacoes:"observacao",
+    rua:"rua", logradouro:"rua", endereco:"rua",
+    numero:"numero", num:"numero",
+    bairro:"bairro",
+    cep:"cep",
+    cidade:"cidade", municipio:"cidade",
+    uf:"ufEnd", estado:"ufEnd",
   };
   return lines
     .slice(1)
@@ -355,7 +355,7 @@ function parseCSV(text) {
       const o = { id: Date.now() + i, ...makeBlank() };
       heads.forEach((h, idx) => {
         const f = fm[h];
-        if (f && vals[idx] !== undefined) o[f] = vals[idx];
+        if (f && vals[idx] !== undefined && vals[idx] !== "") o[f] = vals[idx];
       });
       return o;
     })
@@ -1346,7 +1346,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"pagamentos", label:"Pagamentos",       icon:"💳", roles:["administrador","mestre"] },
+    { id:"pagamentos", label:"Pagamentos",       icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
     { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["administrador","mestre"] },
     { id:"config",     label:"Configurações",   icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
   ];
@@ -1355,6 +1355,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   const nav = all.filter(it => {
     if (!it.roles.includes(user.role)) return false;
     if (user.role === "visitante") return cfg[it.id] !== false;
+    if (it.requireConfig && sysConfig && sysConfig[it.requireConfig] === false) return false;
     return true;
   });
   const roleLabel = ROLE_LABEL;
@@ -1542,18 +1543,22 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                       </div>
                     );
                   })()}
-                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}` }} />
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: presence[(uObj.uid||uObj.id)]?.online ? "#16A34A" : "#FBBF24", border: `1.5px solid ${C.sb}` }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
-                  <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4, flexWrap:"wrap" }}>
                     {roleLabel[user.role]}
                     {presence[(uObj.uid || uObj.id)]?.online
-                      ? <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />online</span>
-                      : presence[(uObj.uid || uObj.id)]?.lastSeen?.seconds
-                        ? <span style={{ color: C.td, fontSize: 9 }}>visto {new Date(presence[(uObj.uid || uObj.id)].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>
-                        : null
+                      ? <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />🟢 online</span>
+                      : <span style={{ color:"#FBBF24", fontSize:9 }}>🟡 offline</span>
                     }
+                    {(() => {
+                      const uid2 = uObj.uid||uObj.id;
+                      const override = sysConfig?.userOverrides?.[uid2];
+                      const chatOff = override?.chat === false;
+                      return chatOff ? <span style={{ color:"#F87171", fontSize:9 }}>· Chat desativado</span> : null;
+                    })()}
                   </div>
                 </div>
                 <button onClick={() => setPage("stories")} title="Criar story" style={{ width: 20, height: 20, borderRadius: "50%", background: C.acc, color: "#fff", border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: 0 }}>+</button>
@@ -2845,11 +2850,13 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
     marginBottom: "-1px",
   });
 
-  // Tabs disponíveis
+  const isAdmin = currentUser?.role === "mestre" || currentUser?.role === "administrador";
+
+  // Tabs disponíveis — Verificação e Histórico só para Administrador
   const tabs = [
     { id: "import", label: "⬆ Importar" },
-    { id: "verify", label: "🔍 Verificação de Leds" },
-    ...(isMestre ? [{ id: "history", label: `📋 Histórico${history.length > 0 ? ` (${history.length})` : ""}` }] : []),
+    ...(isAdmin ? [{ id: "verify", label: "🔍 Verificação de Leds" }] : []),
+    ...(isAdmin ? [{ id: "history", label: `📋 Histórico${history.length > 0 ? ` (${history.length})` : ""}` }] : []),
   ];
 
   return (
@@ -2888,7 +2895,7 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
               Importe qualquer planilha CSV — o sistema reconhece automaticamente as colunas pelo cabeçalho. Campos aceitos: <span style={{ color:C.atxt }}>Nome, CPF, Telefone, Telefone2, Telefone3, CNPJ, Email, Matricula, TipoLead, Observacao, Rua, Numero, Bairro, CEP, Cidade, UF</span>.
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-              <button onClick={dlModelo} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>⬇ Baixar modelo CSV</button>
+              <button onClick={dlModelo} style={{ ...S.btn(C.abg, C.atxt), border: `1px solid ${C.atxt}33`, fontSize: 12, padding: "7px 14px" }}>⬇ Baixar modelo da planilha</button>
               <span style={{ color:C.td, fontSize:11, fontStyle:"italic" }}>Dica: baixe o modelo para ver o formato exato das colunas.</span>
             </div>
           </div>
@@ -2952,37 +2959,52 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
 function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null }) {
   const list = filtered || contacts;
 
-  // Rastrear pelo ID do cliente, não pelo índice — evita pulos quando contacts muda de ordem
-  const [curId, setCurId] = useState(() => list[0]?.id || null);
+  // curId como ref E state — ref é a fonte de verdade, state só dispara re-render
+  const curIdRef = useRef(list[0]?.id || null);
+  const [curId, setCurIdState] = useState(() => list[0]?.id || null);
+  const setCurId = (id) => { curIdRef.current = id; setCurIdState(id); };
+
   const [sc, setSc] = useState(false);
   const [done, setDone] = useState(false);
-  const [modalDigitar, setModalDigitar] = useState(false); // modal de digitação
+  const [modalDigitar, setModalDigitar] = useState(false);
 
   // Encontrar o cliente atual pelo ID (nunca pelo índice)
-  const cur = list.find(c => c.id === curId) || list[0] || {};
-  const si  = list.findIndex(c => c.id === curId);
+  const cur = list.find(c => c.id === curIdRef.current) || list[0] || {};
+  const si  = list.findIndex(c => c.id === curIdRef.current);
 
-  // Estado local isolado por cliente
-  const [reactions, setReactions]   = useState(cur.reactions  || []);
-  const [leadType,  setLeadType]    = useState(cur.leadType   || "FGTS");
-  const [extraLeads, setExtraLeads] = useState(cur.extraLeads || []);
-  const [extraStatus,setExtraStatus]= useState(cur.extraStatus|| []);
+  // Estado local isolado por cliente — usa refs para valores correntes
+  const [reactions, setReactions]    = useState(cur.reactions   || []);
+  const [leadType,  setLeadType]     = useState(cur.leadType    || "FGTS");
+  const [extraLeads, setExtraLeads]  = useState(cur.extraLeads  || []);
+  const [extraStatus,setExtraStatus] = useState(cur.extraStatus || []);
+
+  // Refs para valores mais recentes (evita closures stale)
+  const reactionsRef   = useRef(reactions);
+  const leadTypeRef    = useRef(leadType);
+  const extraLeadsRef  = useRef(extraLeads);
+  const extraStatusRef = useRef(extraStatus);
+  useEffect(() => { reactionsRef.current   = reactions;   }, [reactions]);
+  useEffect(() => { leadTypeRef.current    = leadType;    }, [leadType]);
+  useEffect(() => { extraLeadsRef.current  = extraLeads;  }, [extraLeads]);
+  useEffect(() => { extraStatusRef.current = extraStatus; }, [extraStatus]);
 
   // Bloquear re-sync durante saves
-  const savingRef = useRef(false);
-  const prevSyncId = useRef(cur.id);
+  const savingRef    = useRef(false);
+  const prevSyncId   = useRef(cur.id);
 
   // Sincronizar APENAS quando o cliente muda (ID diferente) e não é durante save
   useEffect(() => {
     if (savingRef.current) return;
-    if (cur.id === prevSyncId.current) return;
-    prevSyncId.current = cur.id;
-    setReactions(cur.reactions  || []);
-    setLeadType(cur.leadType   || "FGTS");
-    setExtraLeads(cur.extraLeads || []);
-    setExtraStatus(cur.extraStatus|| []);
+    const newId = curIdRef.current;
+    if (newId === prevSyncId.current) return;
+    prevSyncId.current = newId;
+    const c = list.find(x => x.id === newId) || {};
+    setReactions(c.reactions   || []);
+    setLeadType(c.leadType    || "FGTS");
+    setExtraLeads(c.extraLeads  || []);
+    setExtraStatus(c.extraStatus || []);
     setDone(false);
-  }, [cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [curId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!list.length)
     return (
@@ -2999,68 +3021,40 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
       </div>
     );
 
-  const lc = LEAD_COLOR[leadType] || "#9CA3AF";
-  const nexts = list.filter(c => c.id !== curId).slice(0, 10);
+  const lc = LEAD_COLOR[leadTypeRef.current] || "#9CA3AF";
+  const nexts = list.filter(c => c.id !== curIdRef.current).slice(0, 10);
 
   const upd = async (u) => {
     savingRef.current = true;
     await saveContact(u);
     setContacts((cs) => cs.map((c) => (c.id === u.id ? u : c)));
-    // Liberar depois do re-render do Firestore
     setTimeout(() => { savingRef.current = false; }, 800);
   };
 
   // Emojis — máx 3, isolados por cliente
   const tog = (e) => {
     setReactions((prev) => {
-      if (prev.includes(e)) {
-        const newR = prev.filter((x) => x !== e);
-        upd({ ...cur, reactions: newR, leadType, extraLeads, extraStatus });
-        return newR;
-      }
-      if (prev.length >= 3) return prev;
-      const newR = [...prev, e];
-      upd({ ...cur, reactions: newR, leadType, extraLeads, extraStatus });
+      const newR = prev.includes(e)
+        ? prev.filter((x) => x !== e)
+        : prev.length >= 3 ? prev : [...prev, e];
+      if (newR !== prev)
+        upd({ ...cur, reactions: newR, leadType: leadTypeRef.current, extraLeads: extraLeadsRef.current, extraStatus: extraStatusRef.current });
       return newR;
     });
   };
 
-  // Tipo de lead — ilimitado, mantém no mesmo cliente
-  const selectLead = (t) => {
-    if (t === leadType) return;
-    const isExtra = extraLeads.includes(t);
-    // Se não é extra ainda, define como principal imediatamente
-    if (!isExtra) {
-      const newExtra = [leadType, ...extraLeads.filter(x => x !== t)];
-      setLeadType(t);
-      setExtraLeads(newExtra);
-      upd({ ...cur, leadType: t, extraLeads: newExtra, reactions, extraStatus });
-      return;
-    }
-    const newExtra = extraLeads.filter(x => x !== t);
-    setExtraLeads(newExtra);
-    upd({ ...cur, leadType, extraLeads: newExtra, reactions, extraStatus });
-  };
-
-  const selectLeadPrimary = (t) => {
-    if (t === leadType) return;
-    const newExtra = [leadType, ...extraLeads.filter(x => x !== t)];
-    setLeadType(t);
-    setExtraLeads(newExtra);
-    upd({ ...cur, leadType: t, extraLeads: newExtra, reactions, extraStatus });
-  };
-
-  // Status — toggle multi-seleção, mantém no mesmo cliente
+  // Status — toggle multi-seleção, estável sem reset de paginação
   const toggleStatus = (s) => {
-    const isSelected = extraStatus.includes(s);
-    const newExtra = isSelected ? extraStatus.filter(x => x !== s) : [...extraStatus, s];
-    setExtraStatus(newExtra);
-    upd({ ...cur, leadType, extraLeads, reactions, extraStatus: newExtra });
+    setExtraStatus((prev) => {
+      const newExtra = prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s];
+      upd({ ...cur, leadType: leadTypeRef.current, extraLeads: extraLeadsRef.current, reactions: reactionsRef.current, extraStatus: newExtra });
+      return newExtra;
+    });
   };
 
   // Concluído — avança para o próximo pelo ID
   const conclude = async () => {
-    await upd({ ...cur, reactions, leadType, extraLeads, extraStatus });
+    await upd({ ...cur, reactions: reactionsRef.current, leadType: leadTypeRef.current, extraLeads: extraLeadsRef.current, extraStatus: extraStatusRef.current });
     setDone(true);
     setTimeout(() => {
       const nextIdx = si + 1;
@@ -3109,7 +3103,6 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
             </div>
             <div style={{ color: C.tm, fontSize: 12.5, marginTop: 2 }}>{cur.cpf}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-              <LeadBadge c={{ ...cur, leadType }} />
               {cur.matricula && (
                 <span style={{ color: C.tm, fontSize: 11, padding: "3px 9px", borderRadius: 20, border: `1px solid ${C.b2}` }}>
                   #{cur.matricula}
@@ -3127,31 +3120,6 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 500 }}>{v}</div>
             </div>
           ))}
-        </div>
-
-        {/* Tipo de Lead — multi-seleção */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Tipo de Lead <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>(principal + adicionais)</span>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {LEAD_TYPES.filter(t => t !== "Outro").map((t) => {
-              const col = LEAD_COLOR[t] || "#9CA3AF";
-              const isPrimary = leadType === t;
-              const isExtra = extraLeads.includes(t);
-              const sel = isPrimary || isExtra;
-              return (
-                <button key={t}
-                  onClick={() => isPrimary ? null : selectLead(t)}
-                  onContextMenu={e => { e.preventDefault(); if (!isPrimary) selectLeadPrimary(t); }}
-                  title={isPrimary ? "Lead principal (clique direito para trocar)" : "Clique para definir como principal"}
-                  style={{ background: sel ? col + "1A" : C.deep, color: sel ? col : C.tm, border: sel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
-                  {isPrimary ? "★ " : isExtra ? "✓ " : ""}{t}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ color: C.td, fontSize: 9.5, marginTop: 5 }}>★ = principal · ✓ = adicional · Clique direito para definir como principal</div>
         </div>
 
         {/* Status — multi-seleção */}
@@ -3197,7 +3165,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.5px" }}>Observações</div>
           <textarea
             value={cur.observacao || ""}
-            onChange={(e) => upd({ ...cur, observacao: e.target.value, reactions, leadType })}
+            onChange={(e) => upd({ ...cur, observacao: e.target.value, reactions: reactionsRef.current, leadType: leadTypeRef.current, extraLeads: extraLeadsRef.current, extraStatus: extraStatusRef.current })}
             rows={3}
             placeholder="Observação..."
             style={{ ...S.input, background: C.deep, border: `1px solid ${C.b2}`, color: C.ts, resize: "vertical" }}
@@ -5640,6 +5608,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
   const [ok,  setOk]    = useState("");
   const [expandId, setExpandId]     = useState(null);
   const [editForm, setEditForm]     = useState(null);
+  const [showPwId, setShowPwId]     = useState(null);
   const [resetPw, setResetPw]       = useState(""); // eslint-disable-line no-unused-vars
   const [searchUser, setSearchUser] = useState("");
   const pRef     = useRef();
@@ -5913,7 +5882,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             const canEdit  = myLvl===0 || (myLvl < tgLvl && u.createdBy===myId) || (u.uid||u.id)===myId;
             const canToggle= myLvl===0 || (myLvl < tgLvl && u.createdBy===myId);
             const canDel   = myLvl < tgLvl && (myLvl===0 || u.createdBy===myId);
-            const showPw   = canSeePassword(myRole, u.role) && u.password;
+            const showPw   = showPwId === u.id && canSeePassword(myRole, u.role);
             const isSelf   = (u.uid||u.id) === myId;
 
             return (
@@ -5938,13 +5907,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                     </div>
                     <div style={{ color:C.tm, fontSize:11.5, marginTop:2 }}>{u.email}</div>
                     {u.cpf && <div style={{ color:C.td, fontSize:10.5 }}>CPF: {u.cpf}</div>}
-                    {/* Senha visível só para quem pode ver */}
-                    {showPw && (
-                      <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
-                        <span style={{ color:C.td, fontSize:10 }}>🔑</span>
-                        <span style={{ color:C.td, fontSize:10.5, fontFamily:"monospace", background:C.deep, borderRadius:5, padding:"1px 6px" }}>{u.password}</span>
-                      </div>
-                    )}
                   </div>
                   {/* Ações */}
                   <div style={{ display:"flex", gap:6, flexShrink:0 }}>
@@ -5979,10 +5941,25 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                           <input value={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
                         </div>
                       ))}
-                      {/* Senha */}
+                      {/* Senha — Ver/Ocultar */}
                       <div>
-                        <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Nova senha</label>
-                        <input value={editForm.password||""} onChange={e=>setEF("password",e.target.value)} type="password" placeholder="••••••" style={{ ...S.input, fontSize:12 }} />
+                        <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>Senha</label>
+                        <div style={{ position:"relative" }}>
+                          <input
+                            value={editForm.password||""}
+                            onChange={e=>setEF("password",e.target.value)}
+                            type={showPw?"text":"password"}
+                            placeholder="••••••"
+                            style={{ ...S.input, fontSize:12, paddingRight:80 }}
+                          />
+                          {canSeePassword(myRole, u.role) && (
+                            <button
+                              onClick={()=>setShowPwId(showPwId===u.id?null:u.id)}
+                              style={{ position:"absolute", right:6, top:"50%", transform:"translateY(-50%)", background:C.abg, border:`1px solid ${C.b2}`, borderRadius:6, color:C.atxt, cursor:"pointer", fontSize:10.5, padding:"2px 8px", fontWeight:600 }}>
+                              {showPw?"🙈 Ocultar":"👁 Ver"}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {/* Foto */}
@@ -9383,8 +9360,34 @@ function WeatherCalcWidget() {
   const [err, setErr] = useState(null);
   const [calcVal, setCalcVal] = useState("");
   const [calcResult, setCalcResult] = useState(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [activeSection, setActiveSection] = useState("weather"); // "weather" | "calc"
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("nexp_widget_collapsed") !== "false"; }
+    catch { return true; }
+  });
+  const [activeSection, setActiveSection] = useState(() => {
+    try { return localStorage.getItem("nexp_widget_section") || "weather"; }
+    catch { return "weather"; }
+  });
+
+  const setCollapsedPersist = (v) => {
+    setCollapsed(v);
+    try { localStorage.setItem("nexp_widget_collapsed", String(v)); } catch {}
+  };
+  const setActiveSectionPersist = (v) => {
+    setActiveSection(v);
+    try { localStorage.setItem("nexp_widget_section", v); } catch {}
+  };
+
+  // Auto-fechar após 3 minutos sem interação
+  const autoCloseRef = useRef(null);
+  const resetAutoClose = () => {
+    if (autoCloseRef.current) clearTimeout(autoCloseRef.current);
+    autoCloseRef.current = setTimeout(() => setCollapsedPersist(true), 3 * 60 * 1000);
+  };
+  useEffect(() => {
+    if (!collapsed) resetAutoClose();
+    return () => { if (autoCloseRef.current) clearTimeout(autoCloseRef.current); };
+  }, [collapsed]); // eslint-disable-line
 
   useEffect(() => {
     setLoading(true);
@@ -9444,7 +9447,7 @@ function WeatherCalcWidget() {
   ];
 
   if (collapsed) return (
-    <div onClick={() => setCollapsed(false)} style={{ position:"fixed", top:10, right:10, zIndex:300, background:C.card, border:`1px solid ${C.b1}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
+    <div onClick={() => setCollapsedPersist(false)} style={{ position:"fixed", top:10, right:10, zIndex:300, background:C.card, border:`1px solid ${C.b1}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:"0 2px 12px rgba(0,0,0,0.4)" }}>
       <span style={{ fontSize:16 }}>🌤</span>
       <span style={{ color:C.ts, fontSize:11 }}>{weather?.current_weather ? `${Math.round(weather.current_weather.temperature)}°C` : "—"}</span>
       <span style={{ color:C.td, fontSize:10 }}>▼</span>
@@ -9456,10 +9459,10 @@ function WeatherCalcWidget() {
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 12px", borderBottom:`1px solid ${C.b1}` }}>
         <div style={{ display:"flex", gap:4 }}>
-          <button onClick={()=>setActiveSection("weather")} style={{ background:activeSection==="weather"?C.abg:"transparent", border:"none", color:activeSection==="weather"?C.atxt:C.tm, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer", fontWeight:activeSection==="weather"?700:400 }}>🌤 Tempo</button>
-          <button onClick={()=>setActiveSection("calc")} style={{ background:activeSection==="calc"?C.abg:"transparent", border:"none", color:activeSection==="calc"?C.atxt:C.tm, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer", fontWeight:activeSection==="calc"?700:400 }}>🧮 Calc</button>
+          <button onClick={()=>setActiveSectionPersist("weather")} style={{ background:activeSection==="weather"?C.abg:"transparent", border:"none", color:activeSection==="weather"?C.atxt:C.tm, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer", fontWeight:activeSection==="weather"?700:400 }}>🌤 Tempo</button>
+          <button onClick={()=>setActiveSectionPersist("calc")} style={{ background:activeSection==="calc"?C.abg:"transparent", border:"none", color:activeSection==="calc"?C.atxt:C.tm, borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer", fontWeight:activeSection==="calc"?700:400 }}>🧮 Calc</button>
         </div>
-        <button onClick={()=>setCollapsed(true)} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:14, lineHeight:1 }}>▲</button>
+        <button onClick={()=>setCollapsedPersist(true)} style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:14, lineHeight:1 }}>▲</button>
       </div>
 
       {/* Weather */}
@@ -10586,46 +10589,39 @@ function V8DigitalTab({ currentUser }) {
       const c = cpf.replace(/\D/g,"");
       if (c.length !== 11) { setErr("CPF inválido."); return; }
       setLoading(true); setErr(""); setSimRes(null);
+
+      const fetchWithRetry = async (fn, retries=2) => {
+        for (let i=0; i<=retries; i++) {
+          try { return await fn(); }
+          catch(e) {
+            if (i === retries) throw e;
+            await new Promise(r=>setTimeout(r,1200*(i+1)));
+          }
+        }
+      };
+
       try {
-        // 1. Consultar saldo — endpoint real V8
-        const saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`);
-        // 2. Simular em todas as tabelas paralelamente
+        let saldo = null;
+        try { saldo = await fetchWithRetry(()=>apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`)); }
+        catch(e) { /* saldo opcional — continua sem ele */ }
+
         const tableSims = await Promise.all(
           TABELAS.map(async (tab) => {
             try {
-              const sim = await apiFetch("/saque-aniversario/simulacao", "POST", {
-                cpf: c,
-                tabelaId: tab.id,
-                seguro,
-              });
-              return { ...tab, sim, ok: true };
+              const sim = await fetchWithRetry(()=>apiFetch("/saque-aniversario/simulacao","POST",{
+                cpf:c, tabelaId:tab.id, seguro,
+              }));
+              return { ...tab, sim, ok:true };
             } catch(e) {
-              return { ...tab, err: e.message, ok: false };
+              return { ...tab, err: e.message || "Erro na simulação", ok:false };
             }
           })
         );
+        const anyOk = tableSims.some(t=>t.ok);
+        if (!anyOk && !saldo) throw new Error(tableSims[0]?.err || "Nenhuma tabela respondeu. Verifique o CPF ou tente novamente.");
         setSimRes({ saldo, tableSims });
       } catch(e) {
-        // Se saldo falhar, tenta só simular
-        if (e.message.includes("saldo")) {
-          try {
-            const tableSims = await Promise.all(
-              TABELAS.map(async (tab) => {
-                try {
-                  const sim = await apiFetch("/saque-aniversario/simulacao", "POST", {
-                    cpf: c, tabelaId: tab.id, seguro,
-                  });
-                  return { ...tab, sim, ok: true };
-                } catch(e2) {
-                  return { ...tab, err: e2.message, ok: false };
-                }
-              })
-            );
-            setSimRes({ saldo: null, tableSims });
-          } catch(e2) { setErr(e2.message); }
-        } else {
-          setErr(e.message);
-        }
+        setErr("❌ " + (e.message || "Erro ao simular. Tente novamente."));
       }
       setLoading(false);
     };
@@ -13187,6 +13183,119 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
   );
 }
 
+// ── Rank de Propostas ─────────────────────────────────────────────
+function PropostasRankTab({ propostas }) {
+  const [selectedUsers, setSelectedUsers] = useState([]);
+
+  // Agrupa propostas por digitador
+  const byUser = {};
+  propostas.forEach(p => {
+    const id = p.criadoPor || "desconhecido";
+    const nome = p.nomeOperador || p.criadoPorNome || id.slice(0,8)+"…";
+    if (!byUser[id]) byUser[id] = { id, nome, total:0, ativos:0, inativos:0, status:{}, valores:[] };
+    byUser[id].total++;
+    const st = p.status || "Proposta Digitada";
+    byUser[id].status[st] = (byUser[id].status[st]||0)+1;
+    if (["Pago","Pago Aguardando Confirmação","Aprovado"].includes(st)) byUser[id].ativos++;
+    else if (["Cancelado","Recusado"].includes(st)) byUser[id].inativos++;
+    if (p.valorLiberado) byUser[id].valores.push(parseFloat(String(p.valorLiberado).replace(/\./g,"").replace(",",".")) || 0);
+  });
+
+  const allUsers = Object.values(byUser).sort((a,b)=>b.total-a.total);
+  const users = selectedUsers.length > 0
+    ? allUsers.filter(u => selectedUsers.includes(u.id))
+    : allUsers;
+
+  const fmtBRL2 = (v) => v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  const medal = (i) => i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`;
+  const medalColor = (i) => i===0?"#F59E0B":i===1?"#94A3B8":i===2?"#C2873A":C.td;
+  const maxTotal = Math.max(...users.map(u=>u.total), 1);
+
+  return (
+    <div>
+      {/* Filtros */}
+      <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"flex-end"}}>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{color:C.tm,fontSize:11,marginBottom:6,fontWeight:600}}>Selecionar usuários para comparar</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {allUsers.map(u=>{
+              const sel = selectedUsers.includes(u.id);
+              return (
+                <button key={u.id} onClick={()=>setSelectedUsers(p=>sel?p.filter(x=>x!==u.id):[...p,u.id])}
+                  style={{background:sel?C.acc+"22":C.deep,color:sel?C.atxt:C.tm,border:`1px solid ${sel?C.atxt+"44":C.b2}`,borderRadius:20,padding:"4px 10px",fontSize:11.5,cursor:"pointer",fontWeight:sel?700:400}}>
+                  {sel?"✓ ":""}{u.nome}
+                </button>
+              );
+            })}
+            {selectedUsers.length>0 && (
+              <button onClick={()=>setSelectedUsers([])} style={{background:"transparent",border:`1px solid ${C.b2}`,color:C.td,borderRadius:20,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>✕ Limpar</button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Pódio Top 3 */}
+      {users.length >= 2 && (
+        <div style={{display:"flex",gap:16,marginBottom:24,justifyContent:"center",alignItems:"flex-end",flexWrap:"wrap"}}>
+          {[users[1],users[0],users[2]].filter(Boolean).map((u,podioIdx)=>{
+            const rank = podioIdx===0?1:podioIdx===1?0:2;
+            const heights = [160,200,140];
+            const cols = ["#94A3B8","#F59E0B","#C2873A"];
+            return (
+              <div key={u.id} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                <div style={{color:C.tp,fontSize:13,fontWeight:700,textAlign:"center",maxWidth:120}}>{u.nome}</div>
+                <div style={{color:cols[rank],fontSize:24}}>{["🥈","🥇","🥉"][rank]}</div>
+                <div style={{background:`linear-gradient(180deg,${cols[rank]}44,${cols[rank]}22)`,border:`2px solid ${cols[rank]}66`,borderRadius:"10px 10px 0 0",width:90,height:heights[rank],display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"12px 8px",gap:4}}>
+                  <div style={{color:cols[rank],fontSize:26,fontWeight:900,lineHeight:1}}>{u.total}</div>
+                  <div style={{color:C.td,fontSize:10}}>propostas</div>
+                  {u.ativos>0&&<div style={{color:"#34D399",fontSize:11,fontWeight:600,marginTop:4}}>✔ {u.ativos}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Lista completa com barra de progresso */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {users.map((u,i)=>{
+          const pct = Math.round((u.total/maxTotal)*100);
+          const totalValor = u.valores.reduce((a,b)=>a+b,0);
+          return (
+            <div key={u.id} style={{background:C.card,border:`1px solid ${C.b1}`,borderRadius:14,padding:"14px 18px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
+                <div style={{fontSize:i<3?24:14,fontWeight:700,color:medalColor(i),minWidth:32,textAlign:"center"}}>{medal(i)}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:C.tp,fontSize:13.5,fontWeight:700}}>{u.nome}</div>
+                  <div style={{display:"flex",gap:10,marginTop:3,flexWrap:"wrap"}}>
+                    <span style={{color:C.atxt,fontSize:12,fontWeight:600}}>{u.total} propostas</span>
+                    {u.ativos>0&&<span style={{color:"#34D399",fontSize:11}}>✔ {u.ativos} aprovadas</span>}
+                    {u.inativos>0&&<span style={{color:"#F87171",fontSize:11}}>✘ {u.inativos} canceladas</span>}
+                    {totalValor>0&&<span style={{color:"#FBBF24",fontSize:11}}>💰 {fmtBRL2(totalValor)}</span>}
+                  </div>
+                </div>
+                {/* Estatísticas por status */}
+                <div style={{display:"flex",gap:8,flexShrink:0,flexWrap:"wrap"}}>
+                  {Object.entries(u.status).slice(0,3).map(([st,cnt])=>(
+                    <span key={st} style={{background:C.deep,color:C.td,fontSize:10,padding:"2px 8px",borderRadius:8,border:`1px solid ${C.b2}`}}>{st}: {cnt}</span>
+                  ))}
+                </div>
+              </div>
+              {/* Barra de progresso */}
+              <div style={{background:C.deep,borderRadius:99,height:6,overflow:"hidden"}}>
+                <div style={{background:`linear-gradient(90deg,${C.acc},${C.lg2})`,height:"100%",width:`${pct}%`,borderRadius:99,transition:"width 0.6s ease"}}/>
+              </div>
+            </div>
+          );
+        })}
+        {users.length===0&&(
+          <div style={{color:C.td,fontSize:13,textAlign:"center",padding:"32px 0"}}>Nenhuma proposta encontrada.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PropostasPage({ currentUser, unreadPropostas=0 }) {
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13342,7 +13451,11 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
 
       {/* Abas */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[{id:"lista",label:"📋 Propostas",badge:unreadPropostas},{id:"relatorio",label:"📊 Relatório Mensal"}].map(t=>(
+        {[
+          {id:"lista",    label:"📋 Propostas",      badge:unreadPropostas},
+          {id:"relatorio",label:"📊 Relatório Mensal"},
+          ...(canSeeAll ? [{id:"rank", label:"🏆 Rank"}] : []),
+        ].map(t=>(
           <button key={t.id} onClick={()=>setAbaProp(t.id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 18px",fontSize:13,
               fontWeight:abaProp===t.id?700:400,color:abaProp===t.id?C.atxt:C.tm,
@@ -13357,6 +13470,11 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
       {/* Relatório Mensal + Anual */}
       {abaProp==="relatorio" && (
         <RelatorioProposta propostas={propostas} canSeeAll={canSeeAll} myId={myId} />
+      )}
+
+      {/* Rank */}
+      {abaProp==="rank" && canSeeAll && (
+        <PropostasRankTab propostas={propostas} />
       )}
 
       {/* Lista de Propostas */}
@@ -13562,6 +13680,7 @@ export default function App() {
     masterChatEnabled: true,     // mestre can disable chat for masters
     indicadoChatEnabled: true,   // master can disable chat for indicados
     visitanteChatEnabled: true,
+    pagamentosEnabled: true,     // admin can toggle pagamentos tab
     visitanteTabs: { dashboard:true, contacts:true, add:false, import:false, review:true, cstatus:true, leds:false, atalhos:true, premium:false, config:false },
   });
 
@@ -13988,39 +14107,7 @@ export default function App() {
 
         return (
           <>
-            {/* FAB — bolinha flutuante sempre visível quando chat permitido */}
-            {chatAllowed && !chatOpen && (
-              <button
-                onClick={() => { setChatOpen(true); setChatMinimized(false); }}
-                title="Abrir Nexp Chat"
-                style={{
-                  position:"fixed", right:24, bottom:24, zIndex:500,
-                  width:62, height:62, borderRadius:"50%",
-                  background:`linear-gradient(135deg,${C.lg1},${C.lg2},${C.acc})`,
-                  backgroundSize:"200% 200%",
-                  border:"none", cursor:"pointer",
-                  boxShadow:`0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22, inset 0 1px 0 rgba(255,255,255,0.2)`,
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  transition:"transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s",
-                  animation:"fabAppear 0.4s cubic-bezier(.34,1.56,.64,1), bgShift 4s ease infinite",
-                }}
-                onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.15) translateY(-3px)"; e.currentTarget.style.boxShadow=`0 12px 36px ${C.acc}88, 0 0 0 6px ${C.acc}33, inset 0 1px 0 rgba(255,255,255,0.25)`; }}
-                onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1) translateY(0)"; e.currentTarget.style.boxShadow=`0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22, inset 0 1px 0 rgba(255,255,255,0.2)`; }}
-              >
-                <style>{`
-                  @keyframes fabAppear { from { transform:scale(0) rotate(-180deg); opacity:0; } to { transform:scale(1) rotate(0deg); opacity:1; } }
-                  @keyframes fabRing { 0%,100% { box-shadow: 0 6px 28px ${C.acc}77, 0 0 0 4px ${C.acc}22; } 50% { box-shadow: 0 6px 28px ${C.acc}99, 0 0 0 8px ${C.acc}18; } }
-                `}</style>
-                <NexpRobot size={34} showFaceOnly />
-                {unreadChat > 0 && (
-                  <span style={{ position:"absolute", top:0, right:0, minWidth:20, height:20, borderRadius:10, background:"linear-gradient(135deg,#EF4444,#DC2626)", color:"#fff", fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${C.bg}`, padding:"0 4px", animation:"pulse 1.5s infinite", boxShadow:"0 2px 8px #EF444466" }}>
-                    {unreadChat > 9 ? "9+" : unreadChat}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {/* Chat flutuante — sempre montado quando open, usa minimized para pill */}
+            {/* Chat flutuante — abre apenas via aba Chat na sidebar */}
             {chatOpen && chatAllowed && (
               <FloatingChat
                 currentUser={currentUser}
