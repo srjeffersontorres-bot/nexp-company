@@ -10738,7 +10738,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   // Detectar mensagem de simulação futura
   const parseFutureDate = (errMsg) => {
     if (!errMsg) return null;
-    const m = errMsg.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-]?(\d{2,4})?/);
+    const m = errMsg.match(/(\d{1,2})[/-](\d{1,2})[/-]?(\d{2,4})?/);
     if (m) return `${m[1]}/${m[2]}${m[3]?"/"+m[3]:""}`;
     const m2 = errMsg.match(/dia\s+(\d+)/i);
     if (m2) {
@@ -11343,11 +11343,7 @@ function ApisBancosPage({ currentUser, contacts }) {
   });
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ banco:"", apiKey:"", endpoint:"", descricao:"" });
-  const [cpf, setCpf] = useState("");
   const [selectedApi, setSelectedApi] = useState(null);
-  const [simResult, setSimResult] = useState(null);
-  const [simLoading, setSimLoading] = useState(false);
-  const [simErr, setSimErr] = useState("");
 
   const saveApis = (list) => { setApis(list); localStorage.setItem("nexp_bank_apis", JSON.stringify(list)); };
   const addApi = () => {
@@ -11357,24 +11353,6 @@ function ApisBancosPage({ currentUser, contacts }) {
     setShowAdd(false);
   };
   const removeApi = (id) => { if (selectedApi === id) setSelectedApi(null); saveApis(apis.filter(a => a.id !== id)); };
-  const fmtCpf = (v) => v.replace(/\D/g,"").slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,"$1.$2.$3-$4");
-
-  const simulate = async () => {
-    const clean = cpf.replace(/\D/g,"");
-    if (clean.length !== 11) { setSimErr("CPF inválido — digite 11 dígitos."); return; }
-    if (!selectedApi) { setSimErr("Selecione um banco para simular."); return; }
-    const api = apis.find(a => a.id === selectedApi);
-    if (!api?.endpoint) { setSimErr("Este banco não tem endpoint configurado."); return; }
-    setSimLoading(true); setSimErr(""); setSimResult(null);
-    try {
-      const url = api.endpoint.replace("{cpf}", clean).replace("{apiKey}", api.apiKey);
-      const res = await fetch(url, { headers:{ "Authorization":`Bearer ${api.apiKey}`, "Content-Type":"application/json" } });
-      if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
-      const data = await res.json();
-      setSimResult(data);
-    } catch (e) { setSimErr(e.message || "Erro ao consultar API."); }
-    setSimLoading(false);
-  };
 
   return (
     <div style={{ padding:"24px 30px", maxWidth:900 }}>
@@ -11394,34 +11372,6 @@ function ApisBancosPage({ currentUser, contacts }) {
       {/* ABA GERAL */}
       {aba === "geral" && (
         <div>
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px", marginBottom:16 }}>
-            <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:14 }}>🔍 Simular pelo CPF</div>
-            <div style={{ display:"flex", gap:10, alignItems:"flex-end", flexWrap:"wrap", marginBottom:14 }}>
-              <div style={{ flex:"0 0 190px" }}>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
-                <input value={cpf} onChange={e=>setCpf(fmtCpf(e.target.value))} placeholder="000.000.000-00" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&simulate()} />
-              </div>
-              <div style={{ flex:1, minWidth:150 }}>
-                <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Banco</label>
-                <select value={selectedApi||""} onChange={e=>setSelectedApi(Number(e.target.value)||null)} style={{ ...S.input, cursor:"pointer" }}>
-                  <option value="">Selecione...</option>
-                  {apis.map(a=><option key={a.id} value={a.id}>{a.banco}</option>)}
-                </select>
-              </div>
-              <button onClick={simulate} disabled={simLoading||!cpf||!selectedApi}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:simLoading||!cpf||!selectedApi?0.5:1 }}>
-                {simLoading?"⏳...":"Simular →"}
-              </button>
-            </div>
-            {simErr && <div style={{ color:"#F87171", fontSize:12.5, background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"8px 12px", marginBottom:10 }}>⚠ {simErr}</div>}
-            {simResult && (
-              <div style={{ background:C.deep, borderRadius:10, padding:"14px 16px", border:`1px solid ${C.atxt}33` }}>
-                <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:8 }}>✅ Resultado</div>
-                <pre style={{ color:C.ts, fontSize:11.5, whiteSpace:"pre-wrap", wordBreak:"break-all", margin:0, lineHeight:1.7 }}>{JSON.stringify(simResult, null, 2)}</pre>
-              </div>
-            )}
-          </div>
-
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"20px 24px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
               <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>🔑 APIs configuradas ({apis.length})</div>
