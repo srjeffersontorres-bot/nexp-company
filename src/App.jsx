@@ -10717,10 +10717,12 @@ function V8DigitalTab({ currentUser, contacts }) {
 
   const apiFetch = async (path, method="GET", body=null, retries=3) => {
     if (!isTokenValid) throw new Error("Sessão expirada. Faça login novamente.");
+    // Adiciona prefixo /v1/ se não tiver
+    const fullPath = path.startsWith("/v1/") ? path : `/v1${path}`;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ action:"bff", payload:{ path, method, token, body } }) });
+          body: JSON.stringify({ action:"bff", payload:{ path:fullPath, method, token, body } }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || data.error_description || data.error || `Erro ${res.status}`);
         return data;
@@ -10783,7 +10785,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 1. Saldo
         let saldo = null;
         try {
-          saldo = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`);
+          saldo = await apiFetch(`/saque-aniversario/cliente/saldo/${c}`);
           // Detectar campo de saldo automaticamente — a V8 pode usar nomes diferentes
           const saldoVal = saldo?.saldoDisponivel ?? saldo?.saldo ?? saldo?.vlrSaldo
             ?? saldo?.valorDisponivel ?? saldo?.totalSaldo ?? saldo?.saldoTotal
@@ -10820,7 +10822,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 3. Contratos ativos
         let operacoes = null;
         try {
-          operacoes = await apiFetch(`/saque-aniversario/operacoes?cpf=${c}`);
+          operacoes = await apiFetch(`/saque-aniversario/operacoes/${c}`);
           addLog(`✅ Contratos: ${Array.isArray(operacoes)?operacoes.length:"carregado"}`);
         } catch(e) { addLog(`⚠ Contratos: ${e.message}`, false); }
 
@@ -11015,7 +11017,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido — pulado" };
 
       try {
-        const saldoRaw = await apiFetch(`/saque-aniversario/cliente/saldo?cpf=${c}`).catch(()=>null);
+        const saldoRaw = await apiFetch(`/saque-aniversario/cliente/saldo/${c}`).catch(()=>null);
         const saldoVal = saldoRaw?.saldoDisponivel ?? saldoRaw?.saldo ?? saldoRaw?.vlrSaldo
           ?? saldoRaw?.valorDisponivel ?? saldoRaw?.totalSaldo ?? saldoRaw?.value ?? 0;
         const TABELAS = ["cometa","turbo","grid","normal"];
