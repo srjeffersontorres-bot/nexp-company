@@ -11008,6 +11008,82 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   );
 }
 
+// ── Diagnóstico de erros V8 ─────────────────────────────────
+function diagnosticarErroV8(rawMsg, cpf) {
+  const msg = (rawMsg||"").toLowerCase();
+
+  if (msg.includes("autorização") || msg.includes("autorizacao") || msg.includes("fiduciária") || msg.includes("fiduciaria") || msg.includes("não possui autorização") || msg.includes("institution isn")) {
+    return {
+      titulo: "❌ Cliente sem adesão ao Saque Aniversário",
+      descricao: "Este CPF não possui autorização para Saque Aniversário junto à Caixa Econômica Federal.",
+      solucao: "O cliente precisa aderir ao Saque Aniversário no app FGTS ou nas agências da Caixa antes de prosseguir.",
+      tipo: "sem_adesao",
+      cor: "#F87171",
+      bg: "rgba(239,68,68,0.08)",
+    };
+  }
+  if (msg.includes("aniversário") || msg.includes("aniversario") || msg.includes("próximo mês") || msg.includes("proximo mes") || msg.includes("dia ")) {
+    const data = rawMsg.match(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/)?.[0] || "";
+    return {
+      titulo: "📅 Simulação indisponível no momento",
+      descricao: `Este cliente é aniversariante do mês. A simulação só estará disponível${data ? ` a partir de ${data}` : " no próximo período"}.`,
+      solucao: "Aguarde o período correto e tente novamente.",
+      tipo: "aniversariante",
+      cor: "#FBBF24",
+      bg: "rgba(251,191,36,0.08)",
+    };
+  }
+  if (msg.includes("saldo insuficiente") || msg.includes("saldo zero") || msg.includes("sem saldo") || msg.includes("saldo indisponível")) {
+    return {
+      titulo: "💰 Saldo FGTS insuficiente ou indisponível",
+      descricao: "O cliente não possui saldo disponível para antecipação do Saque Aniversário no momento.",
+      solucao: "Verifique se o cliente tem saldo no FGTS e se está modalidade Saque Aniversário.",
+      tipo: "sem_saldo",
+      cor: "#F87171",
+      bg: "rgba(239,68,68,0.08)",
+    };
+  }
+  if (msg.includes("cpf") && (msg.includes("inválido") || msg.includes("invalido") || msg.includes("não encontrado") || msg.includes("nao encontrado"))) {
+    return {
+      titulo: "⚠ CPF não encontrado ou inválido",
+      descricao: `O CPF ${cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : ""} não foi localizado na base de dados da V8 / Caixa.`,
+      solucao: "Verifique se o CPF está correto e se o cliente tem conta no FGTS.",
+      tipo: "cpf_invalido",
+      cor: "#F87171",
+      bg: "rgba(239,68,68,0.08)",
+    };
+  }
+  if (msg.includes("timeout") || msg.includes("45s") || msg === "timeout") {
+    return {
+      titulo: "⏳ Tempo limite excedido",
+      descricao: "A consulta não retornou em 45 segundos. Isso pode ser instabilidade temporária na API.",
+      solucao: "Tente novamente em alguns segundos. Se persistir, verifique se o CPF tem conta ativa no FGTS.",
+      tipo: "timeout",
+      cor: "#FBBF24",
+      bg: "rgba(251,191,36,0.08)",
+    };
+  }
+  if (msg.includes("token") || msg.includes("autent") || msg.includes("unauthorized") || msg.includes("401")) {
+    return {
+      titulo: "🔑 Sessão expirada",
+      descricao: "O token de acesso V8 expirou.",
+      solucao: "Clique em 'Desconectar' e faça login novamente.",
+      tipo: "auth",
+      cor: "#F87171",
+      bg: "rgba(239,68,68,0.08)",
+    };
+  }
+  // Genérico — mostra a mensagem original
+  return {
+    titulo: "❌ Erro na consulta",
+    descricao: rawMsg || "Erro desconhecido retornado pela API V8.",
+    solucao: "Verifique os dados e tente novamente. Se persistir, entre em contato com o suporte.",
+    tipo: "generico",
+    cor: "#F87171",
+    bg: "rgba(239,68,68,0.08)",
+  };
+}
+
 function V8DigitalTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); };
@@ -11078,6 +11154,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indDigModal,  setIndDigModal]  = useState(null);
   const [indSelectedSim, setIndSelectedSim] = useState(null);
   const [indContratosOpen, setIndContratosOpen] = useState(false);
+  const [indErrDetail, setIndErrDetail] = useState(null); // diagnóstico detalhado do erro
 
   // ════════════════════════════════════════════════════════════
   // ABA: SIMULAÇÃO INDIVIDUAL
@@ -11100,6 +11177,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const simStep     = indSimStep;    const setSimStep     = setIndSimStep;
     const selectedSim = indSelectedSim; const setSelectedSim = setIndSelectedSim;
     const contratosOpen = indContratosOpen; const setContratosOpen = setIndContratosOpen;
+    const errDetail = indErrDetail; const setIndErrDetailAlias = setIndErrDetail;
 
     const addLog = (msg, ok=true) => setLogs(p => {
       const u=[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,99)];
@@ -11133,16 +11211,16 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(true); setErr(""); setFutureDate(null);
       setBalance(null); setTableSims([]); setOperacoes(null);
       setCpfSim(fmtCPF(c)); setSimStep("saldo");
+      setIndErrDetail(null);
       addLog(`▶ Consultando saldo — CPF ${fmtCPF(c)} (${provider.toUpperCase()})`);
       try {
-        // PASSO 1: Dispara consulta assíncrona (retorna null — comportamento esperado da V8)
         addLog("📡 Iniciando consulta de saldo (assíncrona)...");
         await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
         addLog("✅ Consulta disparada. Aguardando processamento...");
 
-        // PASSO 2: Polling — GET /fgts/balance?search=CPF até ter resultado (max 45s)
+        // Polling — GET /fgts/balance?search=CPF
         let bal = null;
-        const maxTentativas = 18; // 18 × 2.5s = 45s
+        const maxTentativas = 18;
         for (let i = 0; i < maxTentativas; i++) {
           await new Promise(r => setTimeout(r, 2500));
           addLog(`🔄 Verificando resultado (${i+1}/${maxTentativas})...`);
@@ -11150,74 +11228,66 @@ function V8DigitalTab({ currentUser, contacts }) {
             const res = await apiFetch(`/fgts/balance?search=${c}`);
             addLog(`📦 GET balance: ${JSON.stringify(res).slice(0,150)}`);
 
-            // Normaliza resposta: pode ser array direto ou { data: [...] }
             const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
-
-            // Procura registro com saldo disponível
-            const sucesso = registros.find(r =>
-              r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0
-            );
-
-            // Aceita também registro sem amount mas com status success (saldo zero é válido)
-            const qualquer = registros.find(r => r && r.status === "success");
-
+            const sucesso   = registros.find(r => r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0);
+            const qualquer  = registros.find(r => r && r.status === "success");
             const encontrado = sucesso || qualquer;
 
             if (encontrado) {
               bal = encontrado;
-              const saldoVal = parseFloat(bal.amount || 0);
-              addLog(`✅ Saldo: ${fmtBRL(saldoVal)} | ID: ${bal.id||"—"} | Status: ${bal.status}`);
-              // Persiste imediatamente para não desaparecer
+              addLog(`✅ Saldo: ${fmtBRL(parseFloat(bal.amount||0))} | ID: ${bal.id||"—"}`);
               setBalance(bal);
               localStorage.setItem("nexp_v8_ind_balance", JSON.stringify(bal));
               break;
             }
 
-            // Falha definitiva
+            // Falha — traduz mensagem da V8 para linguagem clara
             const falha = registros.find(r => r && (r.status === "fail" || r.status === "error" || r.status === "failed"));
             if (falha) {
-              const errMsg = falha.statusInfo || falha.errorMessage || falha.message || "Falha na consulta";
-              addLog(`❌ Saldo falhou: ${errMsg}`, false);
-              const fd = parseFutureDate(errMsg);
+              const rawMsg = falha.statusInfo || falha.errorMessage || falha.message || "";
+              const errDiag = diagnosticarErroV8(rawMsg, c);
+              addLog(`❌ ${rawMsg}`, false);
+              const fd = parseFutureDate(rawMsg);
               if (fd) setFutureDate(fd);
-              setErr("❌ " + errMsg);
+              setIndErrDetail(errDiag);
+              setErr(errDiag.titulo);
               setSimStep("done"); setLoading(false);
               return;
             }
 
-            addLog(`⏳ Ainda processando... (${registros.length} registro(s))`);
+            addLog(`⏳ Processando... (${registros.length} registro(s))`);
           } catch(e) {
             addLog(`⚠ Tentativa ${i+1}: ${e.message}`, false);
           }
         }
 
         if (!bal) {
-          // Tenta recuperar do localStorage como fallback
           try {
             const cached = JSON.parse(localStorage.getItem("nexp_v8_ind_balance")||"null");
             if (cached && padCPF(cached.documentNumber||"") === c) {
-              bal = cached;
-              addLog("⚠ Usando cache local do saldo anterior.", false);
-              setBalance(bal);
+              bal = cached; addLog("⚠ Usando cache do saldo anterior.", false); setBalance(bal);
             }
           } catch {}
         }
 
         if (!bal) {
-          setErr("⏳ Timeout — saldo não retornou em 45s. Verifique se o CPF tem autorização para Saque Aniversário e tente novamente.");
-          addLog("❌ Timeout: tente novamente em alguns segundos.", false);
+          const errDiag = diagnosticarErroV8("timeout", c);
+          setIndErrDetail(errDiag);
+          setErr(errDiag.titulo);
+          addLog("❌ Timeout: sem resposta em 45s.", false);
           setSimStep("done"); setLoading(false);
           return;
         }
 
         setBalance(bal);
-        // Com saldo em mãos, simula todas as tabelas
         await simularTodasTabelas(c, bal);
       } catch(e) {
         addLog(`❌ Erro: ${e.message}`, false);
         const fd = parseFutureDate(e.message);
         if (fd) setFutureDate(fd);
-        setErr("❌ " + e.message);
+        const errDiag = diagnosticarErroV8(e.message, c);
+        setIndErrDetail(errDiag);
+        setErr(errDiag.titulo);
       }
       setSimStep("done"); setLoading(false);
     };
@@ -11294,7 +11364,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const limpar = () => {
       setBalance(null); setTableSims([]); setOperacoes(null);
       setCpfSim(""); setLogs([]); setErr(""); setSimStep("idle");
-      setIndSelectedSim(null); setIndContratosOpen(false);
+      setIndSelectedSim(null); setIndContratosOpen(false); setIndErrDetail(null);
       ["nexp_v8_ind_result","nexp_v8_ind_logs","nexp_v8_ind_balance",
        "nexp_v8_ind_sims","nexp_v8_ind_ops","nexp_v8_ind_cpfsim"].forEach(k=>localStorage.removeItem(k));
     };
@@ -11344,7 +11414,25 @@ function V8DigitalTab({ currentUser, contacts }) {
               )}
             </div>
           </div>
-          {err && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 12px", marginTop:12, fontSize:12 }}>⚠ {err}</div>}
+          {/* Erro detalhado */}
+          {err && (
+            <div style={{ marginTop:12, background: errDetail?.bg || "rgba(239,68,68,0.08)", border:`1px solid ${errDetail?.cor||"#EF4444"}33`, borderRadius:12, padding:"14px 16px" }}>
+              <div style={{ color: errDetail?.cor||"#F87171", fontSize:13.5, fontWeight:700, marginBottom:6 }}>
+                {errDetail?.titulo || err}
+              </div>
+              {errDetail?.descricao && (
+                <div style={{ color:"rgba(255,255,255,0.7)", fontSize:12.5, marginBottom:8, lineHeight:1.5 }}>
+                  {errDetail.descricao}
+                </div>
+              )}
+              {errDetail?.solucao && (
+                <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:8, padding:"8px 12px", borderLeft:`3px solid ${errDetail.cor||"#F87171"}` }}>
+                  <span style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>💡 O que fazer: </span>
+                  <span style={{ color:"rgba(255,255,255,0.75)", fontSize:11.5 }}>{errDetail.solucao}</span>
+                </div>
+              )}
+            </div>
+          )}
           {futureDate && (
             <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid #FBBF2444", borderRadius:8, padding:"10px 14px", marginTop:12 }}>
               <div style={{ color:"#FBBF24", fontSize:12.5, fontWeight:700 }}>📅 Cliente aniversariante do mês</div>
