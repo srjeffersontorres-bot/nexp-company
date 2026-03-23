@@ -14113,7 +14113,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                           </td>
                           <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
                             <div style={{ display:"flex", gap:5, alignItems:"center" }}>
-                            <button onClick={async()=>{
+                            <button
+                              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}
+                              onClick={async()=>{
                               const providerNorm = (op.provider||loteProvider||"cartos").toLowerCase().trim();
                               const providerValido = ["qi","cartos","bms"].includes(providerNorm) ? providerNorm : "cartos";
                               const cpfParaBusca = cpfRaw.padStart(11,"0");
@@ -14144,8 +14146,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                 const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
                                 setAcompSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
                               }catch(e){setAcompSimModal(p=>({...p,loading:false,err:e.message}));}
-                            }}
-                              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                            }}>
                               ⚡ Simular
                             </button>
                             <button onClick={e=>{e.stopPropagation(); document.getElementById("del_prop_"+op.id).style.display="flex";}}
