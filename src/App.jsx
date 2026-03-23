@@ -11472,6 +11472,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indTableSims, setIndTableSims] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_sims")||"[]"); } catch { return []; } });
   const [indOperacoes, setIndOperacoes] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_ops")||"null"); } catch { return null; } });
   const [indCpfSim,    setIndCpfSim]   = useState(() => localStorage.getItem("nexp_v8_ind_cpfsim") || "");
+  const [indClienteNome, setIndClienteNome] = useState("");
   const [indLogs,      setIndLogs]      = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_ind_logs")||"[]"); } catch { return []; } });
   const [indFees,      setIndFees]      = useState([]);
   const [indSimStep,   setIndSimStep]   = useState("idle");
@@ -11631,6 +11632,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     const err         = indErr;        const setErr         = setIndErr;
     const futureDate  = indFutureDate; const setFutureDate  = setIndFutureDate;
     const balance     = indBalance;    const setBalance     = setIndBalance;
+    const clienteNome = indClienteNome;
     const tableSims   = indTableSims;  const setTableSims   = setIndTableSims;
     const operacoes   = indOperacoes;  const setOperacoes   = setIndOperacoes;
     const cpfSim      = indCpfSim;
@@ -11842,6 +11844,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           const detalhe = await apiFetch(`/fgts/proposal/${primeiro.id}`);
           clienteV8 = detalhe;
           addLog(`✅ Dados do cliente carregados: ${detalhe.name||detalhe.clientName||""}`);
+          setIndClienteNome(detalhe.name||detalhe.clientName||"");
         }
       } catch {}
 
@@ -12145,7 +12148,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   ⚡ Super oferta liberada
                 </div>
                 <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500 }}>
-                  {cpfSim} · {indBalance?.name||(contacts||[]).find(c=>(c.cpf||"").replace(/\D/g,"")===(indCpfSim||"").replace(/\D/g,""))?.name||"Cliente"}
+                  {cpfSim} · {clienteNome || (contacts||[]).find(c=>(c.cpf||"").replace(/\D/g,"")===(indCpfSim||"").replace(/\D/g,""))?.name || "Cliente"}
                 </div>
               </div>
               {/* Valor */}
