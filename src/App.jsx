@@ -11884,41 +11884,41 @@ function V8DigitalTab({ currentUser, contacts }) {
     return (
       <div>
         {/* ── Painel de entrada ── */}
-        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"20px 22px", marginBottom:20 }}>
-          <div style={{ display:"flex", alignItems:"flex-end", gap:12, flexWrap:"wrap" }}>
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, padding:"16px 20px", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:10, flexWrap:"wrap" }}>
             <div style={{ flex:1, minWidth:180 }}>
-              <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>CPF do cliente</label>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
               <input
                 value={cpf}
                 onChange={e=>{ const v=e.target.value; setCpf(v); }}
                 onKeyDown={e=>e.key==="Enter"&&!loading&&buscarSaldo()}
                 placeholder="000.000.000-00"
                 autoComplete="off"
-                style={{ ...S.input, fontSize:16, fontWeight:700, letterSpacing:"0.5px" }} />
+                style={{ ...S.input, fontSize:15, fontWeight:700, letterSpacing:"0.5px" }} />
             </div>
             <div>
-              <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:5 }}>Instituição</label>
-              <div style={{ display:"flex", gap:6 }}>
+              <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Instituição</label>
+              <div style={{ display:"flex", gap:5 }}>
                 {["cartos","qi","bms"].map(p=>(
                   <button key={p} onClick={()=>setProvider(p)}
-                    style={{ background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:8, padding:"9px 14px", fontSize:12, fontWeight:provider===p?700:400, cursor:"pointer", textTransform:"uppercase" }}>
+                    style={{ background:provider===p?C.abg:C.deep, color:provider===p?C.atxt:C.tm, border:provider===p?`1px solid ${C.atxt}55`:`1px solid ${C.b2}`, borderRadius:8, padding:"7px 12px", fontSize:12, fontWeight:provider===p?700:400, cursor:"pointer", textTransform:"uppercase" }}>
                     {p}
                   </button>
                 ))}
               </div>
             </div>
-            <div style={{ display:"flex", gap:8 }}>
+            <div style={{ display:"flex", gap:7 }}>
               <button onClick={buscarSaldo} disabled={loading}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 24px", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, whiteSpace:"nowrap" }}>
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"8px 22px", fontSize:13, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?0.6:1, whiteSpace:"nowrap" }}>
                 {loading?`⏳ ${stepLabel[simStep]||"Simulando..."}`:"▶ Simular"}
               </button>
               {(balance||tableSims.length>0) && (
                 <button onClick={buscarSaldo} disabled={loading} title="Recarregar"
-                  style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:10, padding:"9px 13px", fontSize:13, cursor:"pointer" }}>🔄</button>
+                  style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🔄</button>
               )}
               {(balance||tableSims.length>0||logs.length>0) && (
-                <button onClick={limpar} title="Limpar"
-                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 13px", fontSize:13, cursor:"pointer" }}>🗑</button>
+                <button onClick={limpar} title="Limpar sessão atual"
+                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }} title="Limpar cache">🗑 Cache</button>
               )}
             </div>
           </div>
@@ -12034,36 +12034,15 @@ function V8DigitalTab({ currentUser, contacts }) {
               )}
             </div>
 
-            {/* Tabelas — formato lote */}
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, overflow:"hidden" }}>
-              <div style={{ padding:"12px 16px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-                <div style={{ color:C.ts, fontSize:13.5, fontWeight:700 }}>
+            {/* Tabelas — formato compacto */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, overflow:"hidden" }}>
+              <div style={{ padding:"9px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                <div style={{ color:C.ts, fontSize:12.5, fontWeight:700 }}>
                   📊 Simulação por Tabela
-                  {loading && simStep==="simulando" && <span style={{ color:C.atxt, fontSize:11, marginLeft:10, fontWeight:400 }}>⏳ calculando...</span>}
+                  {loading && simStep==="simulando" && <span style={{ color:C.atxt, fontSize:10.5, marginLeft:8, fontWeight:400 }}>⏳ calculando...</span>}
                 </div>
                 <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                  {/* Apagar cache por CPF */}
-                  <input id="ind_cache_cpf" placeholder="CPF apagar cache"
-                    style={{ ...S.input, width:150, fontSize:11.5, padding:"5px 9px" }}
-                    onKeyDown={async e=>{
-                      if(e.key==="Enter"&&e.target.value.trim()){
-                        const cv=padCPF(e.target.value);
-                        try{await apiFetch(`/fgts/balance/cache/${cv}`,"DELETE");}catch{}
-                        if(padCPF(cpf)===cv){setBalance(null);setTableSims([]);}
-                        e.target.value="";
-                      }
-                    }}/>
-                  <button onClick={async()=>{
-                    const inp=document.getElementById("ind_cache_cpf");
-                    if(!inp?.value.trim())return;
-                    const cv=padCPF(inp.value);
-                    try{await apiFetch(`/fgts/balance/cache/${cv}`,"DELETE");}catch{}
-                    if(padCPF(cpf)===cv){setBalance(null);setTableSims([]);}
-                    inp.value="";
-                  }} style={{ background:"#2D1515",color:"#F87171",border:"1px solid #EF444422",borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",whiteSpace:"nowrap" }}>
-                    🗑 Cache
-                  </button>
-                  <span style={{ color:C.td, fontSize:11 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
+                  <span style={{ color:C.td, fontSize:10.5 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
                 </div>
               </div>
 
@@ -12313,21 +12292,53 @@ function V8DigitalTab({ currentUser, contacts }) {
         {/* ── Histórico de simulações ── */}
         {historico.length > 0 && (
           <div style={{ marginBottom:16 }}>
-            {/* Header + busca */}
-            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"14px 14px 0 0", padding:"12px 16px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+            {/* Header + busca + data */}
+            <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:"14px 14px 0 0", padding:"12px 16px", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
               <div style={{ color:C.ts, fontSize:13, fontWeight:700 }}>📑 Histórico de Simulações <span style={{ color:C.td, fontSize:11, fontWeight:400 }}>({historico.length})</span></div>
               <input
                 value={histSearch} onChange={e=>{ setIndHistSearch(e.target.value); setIndHistPage(0); }}
                 placeholder="🔍 Buscar por CPF ou nome..."
-                style={{ ...S.input, flex:1, minWidth:180, fontSize:12, padding:"5px 10px" }}
+                style={{ ...S.input, flex:1, minWidth:150, fontSize:12, padding:"5px 10px" }}
               />
-              <select
-                onChange={e=>setIndHistPage(0)}
-                style={{ ...S.input, width:120, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
-                {["Todos","ok","erro"].map(s=><option key={s}>{s}</option>)}
-              </select>
-              <button onClick={()=>{ setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null); }}
-                style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:11 }}>Limpar tudo</button>
+              <input
+                type="date"
+                onChange={e=>{ setIndHistSearch(e.target.value); setIndHistPage(0); }}
+                style={{ ...S.input, width:145, fontSize:12, padding:"5px 9px", cursor:"pointer", colorScheme:"dark" }}
+                title="Filtrar por data"
+              />
+              <button onClick={()=>{
+                if(window.__histClearConfirm) { clearTimeout(window.__histClearConfirm); }
+                // Show inline popup confirm
+                const modal = document.getElementById("hist_clear_modal");
+                if(modal) modal.style.display="flex";
+              }}
+                style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                🗑 Limpar tudo
+              </button>
+            </div>
+
+            {/* Modal confirmação limpar histórico */}
+            <div id="hist_clear_modal" style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
+              <div style={{ background:C.card, border:"1px solid #EF444433", borderRadius:20, padding:"32px 36px", maxWidth:400, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
+                <div style={{ fontSize:44, marginBottom:12 }}>🗑</div>
+                <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:8 }}>Limpar histórico?</div>
+                <div style={{ color:C.tm, fontSize:13, marginBottom:24, lineHeight:1.6 }}>
+                  Todos os <strong style={{ color:"#F87171" }}>{historico.length} registros</strong> de simulação serão apagados permanentemente. Esta ação não pode ser desfeita.
+                </div>
+                <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
+                  <button onClick={()=>{ document.getElementById("hist_clear_modal").style.display="none"; }}
+                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                    Cancelar
+                  </button>
+                  <button onClick={()=>{
+                    setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null);
+                    document.getElementById("hist_clear_modal").style.display="none";
+                  }}
+                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    ✕ Confirmar exclusão
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Painel de detalhe */}
@@ -13667,12 +13678,40 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12, flexWrap:"wrap", gap:10 }}>
             <div>
               <div style={{ color:C.ts, fontSize:14, fontWeight:700 }}>📡 Acompanhamento de Propostas V8</div>
-              <div style={{ color:C.tm, fontSize:12, marginTop:3 }}>Propostas digitadas, status em tempo real, links de formalização.</div>
+              <div style={{ color:C.tm, fontSize:12, marginTop:3 }}>
+                Propostas digitadas, status em tempo real, links de formalização.
+                {data?.pages && <span style={{ color:C.td, marginLeft:8 }}>· {data.pages.total||0} resultado{data.pages.total!==1?"s":""}</span>}
+              </div>
             </div>
-            <button onClick={()=>buscar(1)} disabled={loading}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
-              {loading?"⏳":"🔄"} {loading?"Buscando...":"Atualizar"}
-            </button>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>{
+                // Export to CSV with all available data
+                const rows = [...fila.map(f=>({
+                  Nome: f.clientName||"", CPF: f.cpf||"", Contrato: f.contractNumber||"",
+                  Status:"Formalização", Valor: f.valor||0, Provider: f.provider||"",
+                  Link: f.formalizationLink||"", Adicionado: f.criadoEmStr||""
+                })), ...(data?.data||[]).map(op=>({
+                  Nome: op.clientName||op.name||"", CPF:(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"").padStart(11,"0"),
+                  Contrato: op.contractNumber||"", Status: op.status||"", Valor: op.disbursedIssueAmount||0,
+                  Provider: op.provider||"", Link: op.formalizationLink||"",
+                  Email: op.email||"", Telefone: op.phone?(op.phoneRegionCode||"")+op.phone:"",
+                  Parceiro: op.partnerId||"", Criado: op.createdAt?new Date(op.createdAt).toLocaleString("pt-BR"):""
+                }))];
+                const header = Object.keys(rows[0]||{}).join(";");
+                const body = rows.map(r=>Object.values(r).map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";")).join("\n");
+                const blob = new Blob(["\uFEFF"+header+"\n"+body], {type:"text/csv;charset=utf-8"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href=url; a.download=`propostas_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+                style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", border:"1px solid #34D39933", borderRadius:9, padding:"9px 16px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                📥 Exportar CSV
+              </button>
+              <button onClick={()=>buscar(1)} disabled={loading}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:loading?0.6:1 }}>
+                {loading?"⏳":"🔄"} {loading?"Buscando...":"Atualizar"}
+              </button>
+            </div>
           </div>
 
           {/* Filtros rápidos — apenas os 3 status relevantes */}
@@ -13943,7 +13982,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
                                   🗑 Remover
                                 </button>
-                              : <button onClick={()=>removerDaFila(item.id)}
+                              : <button onClick={()=>{
+                                    if(window.confirm(`Remover "${item.clientName||item.cpf}" do histórico?`)) removerDaFila(item.id);
+                                  }}
                                   style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
                                   🗑
                                 </button>
@@ -14153,6 +14194,20 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </tbody>
               </table>
             </div>
+            {/* Paginação */}
+            {data?.pages && (data.pages.hasNext || data.pages.hasPrev) && (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
+                <button onClick={()=>buscar((data.pages.current||1)-1)} disabled={!data.pages.hasPrev||loading}
+                  style={{ background:data.pages.hasPrev?C.abg:C.deep, color:data.pages.hasPrev?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 16px", fontSize:12, cursor:data.pages.hasPrev?"pointer":"not-allowed" }}>
+                  ← Anterior
+                </button>
+                <span style={{ color:C.tm, fontSize:12 }}>Página {data.pages.current||1}/{data.pages.totalPages||1} · {data.pages.total||0} resultados</span>
+                <button onClick={()=>buscar((data.pages.current||1)+1)} disabled={!data.pages.hasNext||loading}
+                  style={{ background:data.pages.hasNext?C.abg:C.deep, color:data.pages.hasNext?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 16px", fontSize:12, cursor:data.pages.hasNext?"pointer":"not-allowed" }}>
+                  Próxima →
+                </button>
+              </div>
+            )}
           )}
         </div>
       </div>
@@ -14162,7 +14217,6 @@ function V8DigitalTab({ currentUser, contacts }) {
   const TABS = [
     { id:"individual",      label:"🔍 Individual" },
     { id:"lote",            label:"⚡ Lote" },
-    { id:"operacoes",       label:"📋 Contratos" },
     { id:"acompanhamento",  label:"📡 Acompanhamento de Propostas" },
   ];
 
