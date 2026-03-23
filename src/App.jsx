@@ -11940,8 +11940,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🔄</button>
               )}
               {(balance||tableSims.length>0||logs.length>0) && (
-                <button onClick={limpar} title="Limpar cache"
-                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🗑 Cache</button>
+                <button onClick={limpar} title="Limpar sessão atual"
+                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }} title="Limpar cache">🗑 Cache</button>
               )}
             </div>
           </div>
@@ -12080,8 +12080,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                     const isBest = bestSim?.feeId === t.feeId;
                     return (
                       <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
-                        <div
-                          onClick={()=> t.ok && setSelectedSim(t)}
+                        <div onClick={()=> t.ok && setSelectedSim(t)}
                           style={{
                             background:isBest?"rgba(52,211,153,0.15)":t.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
                             border:`2px solid ${isBest?"rgba(52,211,153,0.5)":t.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
@@ -12096,22 +12095,16 @@ function V8DigitalTab({ currentUser, contacts }) {
                               🏆 MELHOR OFERTA
                             </div>
                           )}
-                          {t.ok ? (
-                            <>
-                              <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.92)", fontWeight:900, fontSize:22, lineHeight:1, marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:5 }}>Valor liberado via PIX</div>
-                              <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginTop:6, fontWeight:700 }}>{anos} de antecipação</div>
-                              <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"6px 0", fontSize:11.5, fontWeight:800, color:"#fff" }}>
-                                📝 DIGITAR
-                              </div>
-                            </>
-                          ) : (
+                          {t.ok ? (<>
+                            <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.92)", fontWeight:900, fontSize:22, lineHeight:1, marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
+                            <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:5 }}>Valor liberado via PIX</div>
+                            <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginTop:6, fontWeight:700 }}>{anos} de antecipação</div>
+                            <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"6px 0", fontSize:11.5, fontWeight:800, color:"#fff" }}>📝 DIGITAR</div>
+                          </>) : (
                             <div style={{ color:"#F87171", fontSize:11, padding:"8px 0" }}>✘ {(t.err||"").slice(0,30)}</div>
                           )}
                         </div>
-                        <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, fontWeight:600, textTransform:"capitalize" }}>
-                          {t.label}
-                        </div>
+                        <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, fontWeight:600, textTransform:"capitalize" }}>{t.label}</div>
                       </div>
                     );
                   })}
@@ -12126,15 +12119,9 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div onClick={()=>setSelectedSim(null)}
             style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
             <div onClick={e=>e.stopPropagation()}
-              style={{
-                background:"linear-gradient(145deg,rgba(30,30,32,0.98),rgba(20,20,22,0.99))",
-                border:"1px solid rgba(255,255,255,0.1)",
-                borderRadius:28, padding:"32px 28px", width:"100%", maxWidth:400,
-                boxShadow:"0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
-              }}>
+              style={{ background:"linear-gradient(145deg,rgba(30,30,32,0.98),rgba(20,20,22,0.99))", border:"1px solid rgba(255,255,255,0.1)", borderRadius:28, padding:"32px 28px", width:"100%", maxWidth:400, boxShadow:"0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)" }}>
               <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
-                <button onClick={()=>setSelectedSim(null)}
-                  style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:28, height:28, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                <button onClick={()=>setSelectedSim(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:28, height:28, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
               </div>
               <div style={{ textAlign:"center", marginBottom:20 }}>
                 <div style={{ display:"inline-block", background:"linear-gradient(135deg,#7C3AED,#4F46E5)", color:"#fff", fontSize:10, fontWeight:800, padding:"4px 14px", borderRadius:99, letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:14, boxShadow:"0 4px 16px rgba(124,58,237,0.4)" }}>
@@ -12145,13 +12132,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </div>
               </div>
               <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ color:bestSim?.feeId===selectedSim.feeId?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>
-                  {fmtBRL(selectedSim.sim?.availableBalance||0)}
-                </div>
+                <div style={{ color:bestSim?.feeId===selectedSim.feeId?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>{fmtBRL(selectedSim.sim?.availableBalance||0)}</div>
                 <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
-                <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, marginTop:6, fontWeight:700 }}>
-                  {calcAnos(selectedSim.sim)} de antecipação
-                </div>
+                <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, marginTop:6, fontWeight:700 }}>{calcAnos(selectedSim.sim)} de antecipação</div>
               </div>
               <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
                 {parseFloat(selectedSim.sim?.totalBalance||saldoTotal||0) > 0 && (
@@ -12165,8 +12148,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div style={{ color:"#fff", fontWeight:700, fontSize:15, textTransform:"uppercase" }}>{(provider||indProvider||"—").toUpperCase()}</div>
                 </div>
               </div>
-              <button
-                disabled={digLoading}
+              <button disabled={digLoading}
                 onClick={async ()=>{
                   setDigLoading(true);
                   let clienteV8 = null;
@@ -12181,8 +12163,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   const cpfLimpo = (indCpfSim||"").replace(/\D/g,"");
                   const nexp = (contacts||[]).find(nx=>(nx.cpf||"").replace(/\D/g,"")=== cpfLimpo)||{};
                   const v8Phone = clienteV8?.phone ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"").slice(0,11) : "";
-                  const nexpPhone = (nexp.phone||"").replace(/\D/g,"").slice(0,11);
-                  const phoneFinal = v8Phone || nexpPhone;
+                  const phoneFinal = v8Phone || (nexp.phone||"").replace(/\D/g,"").slice(0,11);
                   const preData = {
                     clienteV8, nome:clienteV8?.name||clienteV8?.clientName||nexp.name||"",
                     email:clienteV8?.email||nexp.email||"", phone:phoneFinal, phoneDdd:phoneFinal.slice(0,2),
@@ -12204,7 +12185,8 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
           </div>
         )}
-        {/* ── Contratos anteriores (colapsível) ── */}
+
+                {/* ── Contratos anteriores (colapsível) ── */}
         {operacoes && Array.isArray(operacoes) && operacoes.length > 0 && (
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
             <button onClick={()=>setContratosOpen(p=>!p)}
@@ -12440,8 +12422,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </table>
               </div>
 
-                        )}
-            {/* Paginação */}
+              {/* Paginação */}
               {historico.filter(h=>!histSearch||h.cpf?.includes(histSearch)||(h.nome||"").toLowerCase().includes(histSearch.toLowerCase())).length > 20 && (
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", background:C.deep, borderTop:`1px solid ${C.b1}`, borderRadius:"0 0 14px 14px" }}>
                   <button onClick={()=>setIndHistPage(p=>Math.max(0,p-1))} disabled={histPage===0}
@@ -13364,8 +13345,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 )}
               </tbody>
             </table>
-             )}
-                   </div>
+          </div>
 
           {/* Paginação */}
           {totalPages>1 && (
@@ -13414,9 +13394,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </div>
               </div>
               <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ color:cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>
-                  {fmtBRL(cardSim.s.sim?.availableBalance||0)}
-                </div>
+                <div style={{ color:cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>{fmtBRL(cardSim.s.sim?.availableBalance||0)}</div>
                 <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
                 <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, marginTop:6, fontWeight:700 }}>{calcAnos(cardSim.s.sim)} de antecipação</div>
               </div>
@@ -13443,7 +13421,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-        {loteDigModal && (
+                {loteDigModal && (
           <ModalDigitacaoRapida
             tabela={loteDigModal.tabela}
             balance={loteDigModal.balance}
@@ -14154,7 +14132,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
                                   const fail=regs.find(r=>r&&r.status==="fail");
-                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:fail.statusInfo||"Falha na consulta"}));return;}
+                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:fail.(statusInfo||"Falha na consulta").includes("Saque Aniversário")?"Instituição não autorizada":(statusInfo||"Falha na consulta")}));return;}
                                 }
                                 if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout — tente novamente"}));return;}
                                 const feesR=await apiFetch("/fgts/simulations/fees");
@@ -14277,7 +14255,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </tbody>
               </table>
             </div>
-          )}
             {/* Paginação */}
             {data?.pages && (data.pages.hasNext || data.pages.hasPrev) && (
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
