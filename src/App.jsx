@@ -12126,55 +12126,53 @@ function V8DigitalTab({ currentUser, contacts }) {
         {selectedSim && (
           <div
             onClick={()=>setSelectedSim(null)}
-            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", backdropFilter:"blur(12px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
             <div
               onClick={e=>e.stopPropagation()}
               style={{
-                background:"rgba(28,28,30,0.97)", border:"1px solid rgba(255,255,255,0.12)",
-                borderRadius:22, padding:"28px 32px", width:"100%", maxWidth:480,
-                boxShadow:"0 32px 80px rgba(0,0,0,0.7), 0 0 0 0.5px rgba(255,255,255,0.08)",
+                background:"linear-gradient(145deg,rgba(30,30,32,0.98),rgba(20,20,22,0.99))",
+                border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:28, padding:"32px 28px", width:"100%", maxWidth:400,
+                boxShadow:"0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
               }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:22 }}>
-                <div>
-                  <div style={{ color:"#fff", fontSize:20, fontWeight:800, letterSpacing:"-0.5px", textTransform:"capitalize" }}>
-                    {selectedSim.label}
-                  </div>
-                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:13, marginTop:3 }}>
-                    CPF {cpfSim} · {provider?.toUpperCase()}
-                  </div>
-                </div>
+              {/* Fechar */}
+              <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
                 <button onClick={()=>setSelectedSim(null)}
-                  style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"rgba(255,255,255,0.7)", borderRadius:50, width:30, height:30, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                  ✕
-                </button>
+                  style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:28, height:28, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
               </div>
-              <div style={{ textAlign:"center", marginBottom:24 }}>
-                {bestSim?.feeId === selectedSim.feeId && (
-                  <div style={{ display:"inline-block", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:10, fontWeight:800, padding:"3px 12px", borderRadius:99, marginBottom:10 }}>
-                    🏆 MELHOR OFERTA
-                  </div>
-                )}
-                <div style={{ color:bestSim?.feeId===selectedSim.feeId?"#34D399":"#fff", fontSize:42, fontWeight:900, lineHeight:1, letterSpacing:"-1px" }}>
+              {/* Título */}
+              <div style={{ textAlign:"center", marginBottom:20 }}>
+                <div style={{ display:"inline-block", background:"linear-gradient(135deg,#7C3AED,#4F46E5)", color:"#fff", fontSize:10, fontWeight:800, padding:"4px 14px", borderRadius:99, letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:14, boxShadow:"0 4px 16px rgba(124,58,237,0.4)" }}>
+                  ⚡ Super oferta liberada
+                </div>
+                <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500 }}>
+                  {cpfSim} · {indBalance?.name||(contacts||[]).find(c=>(c.cpf||"").replace(/\D/g,"")===(indCpfSim||"").replace(/\D/g,""))?.name||"Cliente"}
+                </div>
+              </div>
+              {/* Valor */}
+              <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ color:bestSim?.feeId===selectedSim.feeId?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>
                   {fmtBRL(selectedSim.sim?.availableBalance||0)}
                 </div>
-                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
-                <div style={{ color:"rgba(255,255,255,0.7)", fontSize:14, marginTop:4, fontWeight:600 }}>
+                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
+                <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, marginTop:6, fontWeight:700 }}>
                   {calcAnos(selectedSim.sim)} de antecipação
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:24 }}>
-                {[
-                  ["CET Mensal", fmtPct(selectedSim.sim?.cet)],
-                  ["IOF", fmtBRL(selectedSim.sim?.iof)],
-                  ["Total Bloqueado", fmtBRL(selectedSim.sim?.totalBalance||saldoTotal)],
-                  ["Parcelas", String(selectedSim.sim?.totalInstallments||"—")],
-                ].filter(([,v])=>v&&v!=="R$ 0,00"&&v!=="—").map(([l,v])=>(
-                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px" }}>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:3 }}>{l}</div>
-                    <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>{v}</div>
+              {/* Total Bloqueado + Provider */}
+              <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
+                {(selectedSim.sim?.totalBalance||saldoTotal||0) > 0 && (
+                  <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px" }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>
+                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(selectedSim.sim?.totalBalance||saldoTotal)}</div>
                   </div>
-                ))}
+                )}
+                <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>Averbador</div>
+                  <div style={{ color:"#fff", fontWeight:700, fontSize:14, textTransform:"uppercase" }}>{(provider||"—").toUpperCase()}</div>
+                </div>
               </div>
+              {/* Botão */}
               <button
                 disabled={digLoading}
                 onClick={async ()=>{
@@ -12208,7 +12206,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   openDigModal(d); setIndDigModal(d);
                   setDigLoading(false);
                 }}
-                style={{ width:"100%", background:digLoading?C.deep:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:14, padding:"15px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1 }}>
+                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1, letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
                 {digLoading?"⏳ Carregando dados...":"📝 Digitar esta proposta"}
               </button>
             </div>
@@ -13416,58 +13414,52 @@ function V8DigitalTab({ currentUser, contacts }) {
         {/* ── Popup Apple ao clicar no card do lote ── */}
         {cardSim && (
           <div onClick={()=>setCardSim(null)}
-            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", backdropFilter:"blur(12px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
             <div onClick={e=>e.stopPropagation()}
               style={{
-                background:"rgba(28,28,30,0.97)", border:"1px solid rgba(255,255,255,0.12)",
-                borderRadius:22, padding:"28px 32px", width:"100%", maxWidth:480,
-                boxShadow:"0 32px 80px rgba(0,0,0,0.7), 0 0 0 0.5px rgba(255,255,255,0.08)",
+                background:"linear-gradient(145deg,rgba(30,30,32,0.98),rgba(20,20,22,0.99))",
+                border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:28, padding:"32px 28px", width:"100%", maxWidth:400,
+                boxShadow:"0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
               }}>
-              {/* Header */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:22 }}>
-                <div>
-                  <div style={{ color:"#fff", fontSize:20, fontWeight:800, letterSpacing:"-0.5px", textTransform:"capitalize" }}>
-                    {cardSim.s.label}
-                  </div>
-                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:13, marginTop:3 }}>
-                    {cardSim.it.cpf} · {cardSim.it.nome}
-                  </div>
-                </div>
+              {/* Fechar */}
+              <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
                 <button onClick={()=>setCardSim(null)}
-                  style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"rgba(255,255,255,0.7)", borderRadius:50, width:30, height:30, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                  ✕
-                </button>
+                  style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:28, height:28, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+              </div>
+              {/* Título */}
+              <div style={{ textAlign:"center", marginBottom:20 }}>
+                <div style={{ display:"inline-block", background:"linear-gradient(135deg,#7C3AED,#4F46E5)", color:"#fff", fontSize:10, fontWeight:800, padding:"4px 14px", borderRadius:99, letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:14, boxShadow:"0 4px 16px rgba(124,58,237,0.4)" }}>
+                  ⚡ Super oferta liberada
+                </div>
+                <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500, letterSpacing:"0.2px" }}>
+                  {(cardSim.it.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {cardSim.it.nome||"Cliente"}
+                </div>
               </div>
               {/* Valor */}
-              <div style={{ textAlign:"center", marginBottom:24 }}>
-                {cardSim.s.label === cardSim.it.sim?.melhor?.label && (
-                  <div style={{ display:"inline-block", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:10, fontWeight:800, padding:"3px 12px", borderRadius:99, marginBottom:10 }}>
-                    🏆 MELHOR OFERTA
-                  </div>
-                )}
-                <div style={{ color:cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:42, fontWeight:900, lineHeight:1, letterSpacing:"-1px" }}>
+              <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ color: cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>
                   {fmtBRL(cardSim.s.sim?.availableBalance||0)}
                 </div>
-                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
-                <div style={{ color:"rgba(255,255,255,0.7)", fontSize:14, marginTop:4, fontWeight:600 }}>
+                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
+                <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, marginTop:6, fontWeight:700 }}>
                   {calcAnos(cardSim.s.sim)} de antecipação
                 </div>
               </div>
-              {/* Detalhes */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:24 }}>
-                {[
-                  ["CET Mensal", fmtPct(cardSim.s.sim?.cet)],
-                  ["IOF", fmtBRL(cardSim.s.sim?.iof)],
-                  ["Total Bloqueado", fmtBRL(cardSim.s.sim?.totalBalance)],
-                  ["Parcelas", String(cardSim.s.sim?.totalInstallments||"—")],
-                ].filter(([,v])=>v&&v!=="R$ 0,00"&&v!=="—"&&v!=="undefined").map(([l,v])=>(
-                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px" }}>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:3 }}>{l}</div>
-                    <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>{v}</div>
+              {/* Total Bloqueado + Provider */}
+              <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
+                {(cardSim.s.sim?.totalBalance||0) > 0 && (
+                  <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px" }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>
+                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(cardSim.s.sim?.totalBalance)}</div>
                   </div>
-                ))}
+                )}
+                <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>Averbador</div>
+                  <div style={{ color:"#fff", fontWeight:700, fontSize:14, textTransform:"uppercase" }}>{(cardSim.it.balance?.provider||loteProvider||"—").toUpperCase()}</div>
+                </div>
               </div>
-              {/* Botão Digitar */}
+              {/* Botão */}
               <button onClick={()=>{
                 const s = cardSim.s;
                 const it = cardSim.it;
@@ -13475,7 +13467,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 const d={tabela:{label:s.label,sim:s.sim,feeId:s.sim?.id||""},balance:{...it.balance,id:it.sim?.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it};
                 openDigModal(d); setLoteDigModal(d);
               }}
-                style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:14, padding:"15px", fontSize:15, fontWeight:800, cursor:"pointer" }}>
+                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:"pointer", letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
                 📝 Digitar esta proposta
               </button>
             </div>
