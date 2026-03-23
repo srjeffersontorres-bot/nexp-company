@@ -16229,6 +16229,36 @@ function PropCard({ p, myId, canSeeAll, onAtualizar }) {
               ✏ Atualizar
             </button>
           )}
+          <button onClick={e=>{e.stopPropagation(); document.getElementById("del_propc_"+p.id).style.display="flex";}}
+            style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"1px solid #EF444422",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+            🗑 Excluir
+          </button>
+          {/* Modal confirmação excluir */}
+          <div id={"del_propc_"+p.id} style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:2000, alignItems:"center", justifyContent:"center" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ background:C.card, border:"1px solid #EF444433", borderRadius:20, padding:"32px 36px", maxWidth:420, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+              <div style={{ fontSize:44, marginBottom:12 }}>🗑</div>
+              <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:8 }}>Excluir proposta?</div>
+              <div style={{ color:C.tm, fontSize:13, marginBottom:6 }}><strong>{p.nome||"—"}</strong></div>
+              <div style={{ color:C.td, fontSize:12, marginBottom:16 }}>CPF: {p.cpf||"—"} · {p.tipo||p.produto||"—"}</div>
+              <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid #EF444422", borderRadius:10, padding:"10px 14px", marginBottom:22, fontSize:12, color:"#F87171" }}>
+                ⚠️ Esta ação é permanente e não pode ser desfeita.
+              </div>
+              <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
+                <button onClick={e=>{e.stopPropagation(); document.getElementById("del_propc_"+p.id).style.display="none";}}
+                  style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"11px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                  Cancelar
+                </button>
+                <button onClick={async e=>{
+                  e.stopPropagation();
+                  try { await deleteDoc(doc(db,"propostas",p.id)); } catch(err) { console.error(err); }
+                  document.getElementById("del_propc_"+p.id).style.display="none";
+                }}
+                  style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"11px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                  🗑 Confirmar exclusão
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
