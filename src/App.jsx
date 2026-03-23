@@ -13939,9 +13939,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                           </td>
                           <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
                             {item.status==="formalization"
-                              ? <button onClick={()=>setShowCancelModal(item)}
-                                  style={{ background:"rgba(239,68,68,0.1)", color:"#F87171", border:"1px solid #EF444433", borderRadius:7, padding:"4px 10px", fontSize:10.5, fontWeight:600, cursor:"pointer" }}>
-                                  ✕ Cancelar
+                              ? <button onClick={()=>removerDaFila(item.id)}
+                                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
+                                  🗑 Remover
                                 </button>
                               : <button onClick={()=>removerDaFila(item.id)}
                                   style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
@@ -13997,12 +13997,26 @@ function V8DigitalTab({ currentUser, contacts }) {
                     const stCol = getStatusColor(op.status);
                     const isSel = detalhe?.id===op.id && !detalhe?._filaItem;
                     const hasLink = !!op.formalizationLink;
-                    const cpfRaw = (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"").padStart(11,"0");
-                    const cpfFmt = cpfRaw.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+                    // CPF da listagem pode vir vazio — só mostra se tiver dados reais
+                    const cpfRaw = (op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                    const cpfFmt = cpfRaw.length >= 3
+                      ? cpfRaw.padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")
+                      : "—";
                     return (
                       <React.Fragment key={op.id}>
                         <tr
-                          onClick={()=>setDetalhe(isSel?null:op)}
+                          onClick={async ()=>{
+                            if (isSel) { setDetalhe(null); return; }
+                            // Marca como selecionado imediatamente (sem detalhe ainda)
+                            setDetalhe({id:op.id, _loading:true});
+                            try {
+                              // Busca dados completos do contrato na API
+                              const det = await apiFetch(`/fgts/proposal/${op.id}`);
+                              setDetalhe({...op, ...det});
+                            } catch {
+                              setDetalhe(op); // fallback com dados da lista
+                            }
+                          }}
                           style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
                           onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
                           onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}>
@@ -14031,13 +14045,14 @@ function V8DigitalTab({ currentUser, contacts }) {
                             <button onClick={async()=>{
                               const providerNorm = (op.provider||loteProvider||"cartos").toLowerCase().trim();
                               const providerValido = ["qi","cartos","bms"].includes(providerNorm) ? providerNorm : "cartos";
-                              setAcompSimModal({loading:true,cpf:cpfRaw,nome:op.clientName||"",contrato:op});
+                              const cpfParaBusca = cpfRaw.padStart(11,"0");
+                              setAcompSimModal({loading:true,cpf:cpfParaBusca,nome:op.clientName||"",contrato:op});
                               try{
-                                await apiFetch("/fgts/balance","POST",{documentNumber:cpfRaw,provider:providerValido});
+                                await apiFetch("/fgts/balance","POST",{documentNumber:cpfParaBusca,provider:providerValido});
                                 let bal=null;
                                 for(let ii=0;ii<18;ii++){
                                   await new Promise(r=>setTimeout(r,2500));
-                                  const res=await apiFetch(`/fgts/balance?search=${cpfRaw}`);
+                                  const res=await apiFetch(`/fgts/balance?search=${cpfParaBusca}`);
                                   const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
@@ -14052,7 +14067,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   ?(bal.periods||bal.installments).map(p=>({totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal),dueDate:p.dueDate||p.date}))
                                   :[{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0]},{totalAmount:saldoVal||100,dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0]}];
                                 const sims=await Promise.all(fees.map(async fee=>{
-                                  try{const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfRaw,desiredInstallments:installments,provider:providerValido});return{label:fee.simulation_fees?.label||"",sim,ok:true};}
+                                  try{const sim=await apiFetch("/fgts/simulations","POST",{simulationFeesId:fee.simulation_fees?.id_simulation_fees,balanceId:bal.id,targetAmount:0,documentNumber:cpfParaBusca,desiredInstallments:installments,provider:providerValido});return{label:fee.simulation_fees?.label||"",sim,ok:true};}
                                   catch(e){return{label:fee.simulation_fees?.label||"",err:e.message,ok:false};}
                                 }));
                                 const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
@@ -14064,29 +14079,32 @@ function V8DigitalTab({ currentUser, contacts }) {
                             </button>
                           </td>
                         </tr>
-                        {/* Detalhe inline da API */}
+                        {/* Detalhe inline — abre abaixo da linha com dados completos do contrato */}
                         {isSel && (
                           <tr>
                             <td colSpan={8} style={{ padding:0, background:"linear-gradient(135deg,rgba(15,31,61,0.98),rgba(22,42,80,0.98))", borderBottom:`2px solid rgba(79,142,247,0.4)` }}>
+                              {detalhe?._loading ? (
+                                <div style={{ padding:"24px", textAlign:"center", color:"rgba(255,255,255,0.6)", fontSize:13 }}>⏳ Carregando dados do contrato...</div>
+                              ) : (
                               <div style={{ padding:"18px 22px" }}>
                                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                                   <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>
-                                    {op.clientName||"Proposta"} <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, fontWeight:400 }}>· {op.contractNumber||op.id}</span>
+                                    {detalhe?.clientName||detalhe?.name||"Proposta"} <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, fontWeight:400 }}>· {detalhe?.contractNumber||detalhe?.id}</span>
                                   </div>
-                                  <button onClick={e=>{e.stopPropagation();setDetalhe(null);}} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✕ Fechar</button>
+                                  <button onClick={e=>{e.stopPropagation();setDetalhe(null);}} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:6, padding:"4px 12px", fontSize:11, cursor:"pointer" }}>✕ Fechar</button>
                                 </div>
-                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:8, marginBottom:14 }}>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:14 }}>
                                   {[
-                                    ["Cliente",   op.clientName||"—"],
-                                    ["CPF",       cpfFmt],
-                                    ["E-mail",    op.email||"—"],
-                                    ["Telefone",  op.phone?(op.phoneRegionCode||"")+op.phone:"—"],
-                                    ["Contrato",  op.contractNumber||"—"],
-                                    ["Status",    getStatusLabel(op.status)],
-                                    ["Valor",     fmtBRL(op.disbursedIssueAmount)],
-                                    ["Provider",  (op.provider||"—").toUpperCase()],
-                                    ["Parceiro",  op.partnerId||"—"],
-                                    ["Criado em", op.createdAt?new Date(op.createdAt).toLocaleString("pt-BR"):"—"],
+                                    ["Cliente",   detalhe?.clientName||detalhe?.name||"—"],
+                                    ["CPF",       (()=>{ const r=(detalhe?.individualDocumentNumber||detalhe?.documentNumber||"").replace(/\D/g,""); return r.length>=3?r.padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"):"—"; })()],
+                                    ["E-mail",    detalhe?.email||"—"],
+                                    ["Telefone",  detalhe?.phone?(detalhe?.phoneRegionCode||"")+detalhe.phone:"—"],
+                                    ["Contrato",  detalhe?.contractNumber||"—"],
+                                    ["Status",    getStatusLabel(detalhe?.status)],
+                                    ["Valor",     fmtBRL(detalhe?.disbursedIssueAmount)],
+                                    ["Provider",  (detalhe?.provider||"—").toUpperCase()],
+                                    ["Parceiro",  detalhe?.partnerId||"—"],
+                                    ["Criado em", detalhe?.createdAt?new Date(detalhe.createdAt).toLocaleString("pt-BR"):"—"],
                                   ].map(([l,v])=>(
                                     <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"8px 12px" }}>
                                       <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
@@ -14096,48 +14114,42 @@ function V8DigitalTab({ currentUser, contacts }) {
                                 </div>
                                 <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:9, padding:"12px 16px" }}>
                                   <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10, marginBottom:8, textTransform:"uppercase", letterSpacing:"0.5px" }}>Link de Formalização</div>
-                                  {op.formalizationLink ? (
+                                  {detalhe?.formalizationLink ? (
                                     <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                                      <a href={op.formalizationLink} target="_blank" rel="noreferrer"
-                                        style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{op.formalizationLink}</a>
-                                      <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
-                                        style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
-                                        {copied===op.id?"✅ Copiado":"📋 Copiar"}
+                                      <a href={detalhe.formalizationLink} target="_blank" rel="noreferrer"
+                                        style={{ color:C.atxt, fontSize:11, fontFamily:"monospace", wordBreak:"break-all", flex:1 }}>{detalhe.formalizationLink}</a>
+                                      <button onClick={()=>copiarLink(detalhe.id,detalhe.formalizationLink)}
+                                        style={{ background:C.abg, color:copied===detalhe.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
+                                        {copied===detalhe.id?"✅ Copiado":"📋 Copiar"}
                                       </button>
-                                      <button onClick={()=>window.open(op.formalizationLink,"_blank")}
+                                      <button onClick={()=>window.open(detalhe.formalizationLink,"_blank")}
                                         style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>🔗 Abrir</button>
-                                      {canGenerateLink(op) && (
-                                        <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                      {canGenerateLink(detalhe) && (
+                                        <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
                                           style={{ background:"rgba(251,191,36,0.15)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:7, padding:"5px 12px", fontSize:11, cursor:"pointer" }}>
                                           {acompLinkLoading?"⏳":"🔄"} Atualizar Link
                                         </button>
                                       )}
                                     </div>
-                                  ) : canGenerateLink(op) ? (
-                                    <button onClick={()=>gerarNovoLink(op.id)} disabled={acompLinkLoading}
+                                  ) : canGenerateLink(detalhe) ? (
+                                    <button onClick={()=>gerarNovoLink(detalhe.id)} disabled={acompLinkLoading}
                                       style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                                       {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
                                     </button>
                                   ) : (
                                     <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
-                                      🔒 {op.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
+                                      🔒 {detalhe?.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
                                     </span>
                                   )}
                                 </div>
                               </div>
+                              )}
                             </td>
                           </tr>
                         )}
                       </React.Fragment>
                     );
                   })}
-
-                  {/* Empty */}
-                  {!loading && (!data?.data||data.data.length===0) && fila.filter(f=>!status||f.status===status).length===0 && (
-                    <tr><td colSpan={8} style={{ color:C.td, textAlign:"center", padding:"40px", fontSize:13 }}>
-                      {status === "formalization" ? "Nenhum contrato na fila de formalização." : "Nenhuma proposta encontrada. Use os filtros acima."}
-                    </td></tr>
-                  )}
                 </tbody>
               </table>
             </div>
