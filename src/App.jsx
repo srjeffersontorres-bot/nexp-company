@@ -13655,8 +13655,8 @@ function V8DigitalTab({ currentUser, contacts }) {
           if (q) { const d=q.replace(/\D/g,""); params.append("search",d.length>=6?d:q); }
           if (provider) params.append("provider", provider);
           if (apiStatus) params.append("status", apiStatus);
-          if (df) { params.append("startDate", df); params.append("createdAtFrom", df); }
-          if (dt) { params.append("endDate", dt+"T23:59:59"); params.append("createdAtTo", dt+"T23:59:59"); }
+          if (df) { params.append("startDate", df+"T00:00:00.000Z"); }
+          if (dt) { params.append("endDate", dt+"T23:59:59.999Z"); }
           const res = await apiFetch(`/fgts/proposal?${params}`);
           const rows = res?.data || [];
           allRows = [...allRows, ...rows];
@@ -13840,14 +13840,16 @@ function V8DigitalTab({ currentUser, contacts }) {
               🔍 Buscar
             </button>
             {(search||status||provider) && (
-              <button onClick={()=>{ setSearch(""); setStatus(""); setProvider(""); setDateFrom(h3dias); setDateTo(hoje); buscar(1,"",h3dias,hoje); }}
+              <button onClick={()=>{ setSearch(""); setStatus(""); setProvider(""); setDateFrom(""); setDateTo(""); buscar(1,"","",""); }}
                 style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 14px", fontSize:12, cursor:"pointer", alignSelf:"flex-end" }}>
                 ✕ Limpar
               </button>
             )}
           </div>
           <div style={{ color:C.td, fontSize:10.5, marginTop:8 }}>
-            📅 {(dateFrom||dateTo) ? `Filtrando de ${dateFrom||"início"} até ${dateTo||"hoje"}` : "Exibindo todas as propostas — use os filtros de data para restringir o período."}
+            📅 {(dateFrom||dateTo)
+              ? `Filtrando de ${dateFrom} até ${dateTo} — ${data?.pages?.total||0} resultado(s)`
+              : `Carregando todos os contratos disponíveis — use os atalhos de mês (Nov/25, Dez/25...) para períodos específicos`}
           </div>
           {err && <div style={{ color:"#F87171", marginTop:8, fontSize:12 }}>⚠ {err}</div>}
         </div>
