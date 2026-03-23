@@ -14128,7 +14128,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
                                   const fail=regs.find(r=>r&&r.status==="fail");
-                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:fail.(statusInfo||"Falha na consulta").includes("Saque Aniversário")?"Instituição não autorizada":(statusInfo||"Falha na consulta")}));return;}
+                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:(fail.statusInfo||"Falha na consulta").includes("Saque Aniversário")?"Instituição não autorizada":(fail.statusInfo||"Falha na consulta")}));return;}
                                 }
                                 if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout — tente novamente"}));return;}
                                 const feesR=await apiFetch("/fgts/simulations/fees");
