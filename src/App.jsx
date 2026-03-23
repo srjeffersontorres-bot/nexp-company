@@ -11557,7 +11557,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [acompSearch,      setAcompSearch]      = useState("");
   const [acompStatus,      setAcompStatus]      = useState("");
   const [acompProvider,    setAcompProvider]    = useState("");
-  const [acompPage,        setAcompPage]        = useState(1);
+  // acompPage removed — paginação direto na API
   const [acompData,        setAcompData]        = useState(null);
   const [acompLoading,     setAcompLoading]     = useState(false);
   const [acompErr,         setAcompErr]         = useState("");
@@ -13612,7 +13612,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         const rows = res?.data || [];
         rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
-        setAcompPage(pg);
+        // page tracking removed — direct API pagination
         setData({
           data: rows,
           _all: rows,
