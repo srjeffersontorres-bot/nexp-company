@@ -13226,7 +13226,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   const stBg  = STATUS_BG[it.status]||"#1a1a2e";
                   const isDetalhado = detalheItem?.id === it.id;
                   return (
-                    <tr key={it.id}
+                    <React.Fragment key={it.id}>
+                    <tr
                       onClick={()=>setDetalheItem(isDetalhado?null:it)}
                       style={{ background:isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", opacity:isSim?0.85:1, transition:"background 0.1s" }}
                       onMouseEnter={e=>!isDetalhado&&(e.currentTarget.style.background=`${C.acc}08`)}
@@ -13369,6 +13370,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         </td>
                       </tr>
                     )}
+                    </React.Fragment>
                   );
                 })}
                 {pageItems.length===0 && (
