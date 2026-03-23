@@ -12163,7 +12163,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   ⚡ Super oferta liberada
                 </div>
                 <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500 }}>
-                  {(indCpfSim||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {clienteNome||(contacts||[]).find(c=>(c.cpf||"").replace(/\D/g,"")===(indCpfSim||"").replace(/\D/g,""))?.name||"Cliente"}
+                  {(indCpfSim||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {(contacts||[]).find(c=>(c.cpf||"").replace(/\D/g,"")===(indCpfSim||"").replace(/\D/g,""))?.name||indBalance?.name||"Cliente"}
                 </div>
               </div>
               {/* Valor */}
