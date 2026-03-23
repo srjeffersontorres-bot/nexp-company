@@ -14226,8 +14226,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                     );
                   })}
                 </tbody>
-              </t          )}
-            able>
+              </table>
             </div>
           )}
             {/* Paginação */}
