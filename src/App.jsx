@@ -11387,7 +11387,6 @@ function diagnosticarErroV8(rawMsg, cpf) {
 function V8DigitalTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); };
-  const fmtPct = v => { const n = parseFloat(v); return isNaN(n) ? "—" : (n * 100).toFixed(2) + "%"; };
   const padCPF = raw => raw.replace(/\D/g,"").padStart(11,"0");
   const fmtCPF = v => { const c = padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"); };
   const calcAnos = (sim) => {
