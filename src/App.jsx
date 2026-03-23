@@ -11587,9 +11587,12 @@ function V8DigitalTab({ currentUser, contacts }) {
       cpf:              (dadosDigitacao?.cpf||dadosDigitacao?.documentNumber||"").replace(/\D/g,""),
       valor:            parseFloat(dadosDigitacao?.valorLiberado || dadosDigitacao?.availableBalance || 0),
       provider:         dadosDigitacao?.provider || "",
+      tabela:           dadosDigitacao?.tabela || "",
+      anos:             dadosDigitacao?.anos || "",
       status:           "formalization",
       criadoEm:         Date.now(),
       criadoEmStr:      new Date().toLocaleDateString("pt-BR"),
+      criadoEmHora:     new Date().toLocaleTimeString("pt-BR"),
     };
     const atualizada = [novo, ...filaFormalizacao.filter(f => f.id !== novo.id)];
     salvarFilaLocal(atualizada);
@@ -12055,8 +12058,8 @@ function V8DigitalTab({ currentUser, contacts }) {
 
               {/* Header */}
               {tableSims.length > 0 && (
-                <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
-                  {["Tabela","Saldo Liberado","Anos","CET a.m.","Emissão",""].map(h=>(
+                <div style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
+                  {["Tabela","Saldo Liberado","Anos","CET a.m.",""].map(h=>(
                     <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
                   ))}
                 </div>
@@ -12064,7 +12067,6 @@ function V8DigitalTab({ currentUser, contacts }) {
 
               {sortedSims.map((t, i) => {
                 const vlr    = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
-                const emissao = parseFloat(t.sim?.emissionAmount || t.sim?.issueAmount || 0);
                 const cet    = t.sim?.cet;
                 const anos   = calcAnos(t.sim);
                 const isBest = bestSim?.feeId === t.feeId;
@@ -12073,7 +12075,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div key={i}
                     onClick={()=> t.ok && setSelectedSim(isSel ? null : t)}
                     style={{
-                      display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr",
+                      display:"grid", gridTemplateColumns:"1.6fr 1fr 0.8fr 0.8fr 0.9fr",
                       gap:0, padding:"11px 14px",
                       background: isSel?`${C.acc}20`:isBest?`${C.acc}12`:i%2===0?C.card:C.deep,
                       borderBottom:`1px solid ${C.b1}`,
@@ -12098,9 +12100,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                     </div>
                     <div style={{ display:"flex", alignItems:"center" }}>
                       {t.ok && cet && <span style={{ color:C.tm, fontSize:12 }}>{fmtPct(cet)}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <span style={{ color:C.ts, fontSize:12, fontWeight:600 }}>{fmtBRL(emissao)}</span>}
                     </div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
                       {t.ok && (
@@ -12283,6 +12282,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                 cpf: indDigModal?.cpf || "",
                 valorLiberado: indDigModal?.tabela?.sim?.availableBalance || 0,
                 provider: indDigModal?.provider || "",
+                tabela: indDigModal?.tabela?.label || "",
+                anos: calcAnos(indDigModal?.tabela?.sim),
               });
               setAba("acompanhamento"); 
             }}
@@ -13049,10 +13050,30 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
 
     const exportar = () => {
-      const rows=[["Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Anos","Data simulação","Erro"]];
-      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.status,it.saldo??""  ,it.margem??"",it.sim?.melhor?.label||"",it.sim?.anos||"",it.ts||"",it.erro||""]));
-      const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-      const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="lote_fgts.csv"; a.click();
+      const rows=[["CPF","Nome","Status","Saldo","Melhor Oferta","Tabela","Anos","Data simulação","Erro","Email","Telefone","CEP","Rua","Cidade","UF"]];
+      filtered.forEach(it=>rows.push([
+        it.cpf||"",
+        it.nome||"",
+        it.status||"",
+        it.saldo!=null?String(it.saldo).replace(".",","):"",
+        it.margem!=null?String(it.margem).replace(".",","):"",
+        it.sim?.melhor?.label||"",
+        it.sim?.anos||"",
+        it.ts||"",
+        it.erro||"",
+        it.email||"",
+        it.phone?(it.phoneDdd||"")+it.phone:"",
+        it.cep||"",
+        it.rua||"",
+        it.cidade||"",
+        it.uf||"",
+      ]));
+      const bom = "\uFEFF"; // UTF-8 BOM for Excel
+      const csv = bom + rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";")).join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href=url; a.download=`lote_fgts_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`; a.click();
+      URL.revokeObjectURL(url);
     };
 
     const filtered=items.filter(it=>{
@@ -13249,7 +13270,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                     .map((s,i)=>{
                       const isBest = s.label === detalheItem.sim?.melhor?.label;
                       const vlr    = parseFloat(s.sim?.availableBalance||0);
-                      const emissao= parseFloat(s.sim?.emissionAmount||0);
                       const anos   = calcAnos(s.sim);
                       return (
                         <div key={i}
@@ -13269,21 +13289,21 @@ function V8DigitalTab({ currentUser, contacts }) {
                               🏆 MELHOR OFERTA
                             </div>
                           )}
-                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, textTransform:"capitalize", marginBottom:6, marginTop:isBest?6:0, fontWeight:600 }}>
-                            {s.label}
-                          </div>
                           {s.ok ? (
                             <>
-                              <div style={{ color:isBest?"#34D399":"#fff", fontWeight:900, fontSize:20, lineHeight:1, letterSpacing:"-0.5px" }}>{fmtBRL(vlr)}</div>
+                              <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.9)", fontWeight:900, fontSize:22, lineHeight:1, letterSpacing:"-0.5px", marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
                               <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:3 }}>Valor liberado via PIX</div>
-                              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:6, padding:"2px 8px", display:"inline-block", fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10, marginTop:3 }}>{anos}</div>
+                              <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10.5, marginTop:4, fontWeight:600 }}>{anos} de antecipação</div>
+                              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:3, textTransform:"capitalize", fontWeight:600 }}>Tabela {s.label}</div>
                               <div style={{ marginTop:10, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"5px 0", textAlign:"center", fontSize:11, fontWeight:800, color:"#fff", letterSpacing:"0.5px" }}>
                                 📝 DIGITAR
                               </div>
                             </>
                           ) : (
-                            <div style={{ color:"#F87171", fontSize:11, marginTop:4 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
+                            <>
+                              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"capitalize", marginBottom:4 }}>{s.label}</div>
+                              <div style={{ color:"#F87171", fontSize:11 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
+                            </>
                           )}
                         </div>
                       );
@@ -13470,6 +13490,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                 cpf: loteDigModal?.cpf || "",
                 valorLiberado: loteDigModal?.tabela?.sim?.availableBalance || 0,
                 provider: loteDigModal?.provider || "",
+                tabela: loteDigModal?.tabela?.label || "",
+                anos: calcAnos(loteDigModal?.tabela?.sim),
               });
               setAba("acompanhamento"); 
             }}
@@ -13651,12 +13673,17 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         const res = await apiFetch(`/fgts/proposal?${params}`);
         const rows = res?.data || [];
-        rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
+        // Sort descending by createdAt (timestamp ms or ISO string)
+        rows.sort((a,b)=>{
+          const ta = typeof (b.createdAt||b.created_at) === 'number' ? (b.createdAt||b.created_at) : new Date(b.createdAt||b.created_at||0).getTime();
+          const tb = typeof (a.createdAt||a.created_at) === 'number' ? (a.createdAt||a.created_at) : new Date(a.createdAt||a.created_at||0).getTime();
+          return ta - tb;
+        });
 
         setData({
           data: rows,
           _all: rows,
-          pages: res?.pages || { current:pg, hasNext:false, hasPrev:pg>1, total:rows.length, totalPages:1 },
+          pages: res?.pages || { current:pg, hasNext:rows.length===50, hasPrev:pg>1, total:rows.length, totalPages:1 },
         });
         cruzarFilaComAPI(rows);
 
@@ -13665,7 +13692,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         if (semCpf.length > 0) {
           (async () => {
             const enriched = [...rows];
-            for (const op of semCpf) {
+            for (const op of semCpf.slice(0, 20)) { // limit to 20 to avoid overload
               try {
                 const det = await apiFetch(`/fgts/proposal/${op.id}`);
                 const idx = enriched.findIndex(r => r.id === op.id);
@@ -14022,20 +14049,33 @@ function V8DigitalTab({ currentUser, contacts }) {
                           </td>
                           <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
                             {item.status==="formalization"
-                              ? <button onClick={()=>removerDaFila(item.id)}
+                              ? <button onClick={()=>{ document.getElementById(`fila_del_${item.id}`).style.display="flex"; }}
                                   style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
                                   🗑 Remover
                                 </button>
-                              : <button onClick={()=>{
-                                    if(window.confirm(`Remover "${item.clientName||item.cpf}" do histórico?`)) removerDaFila(item.id);
-                                  }}
+                              : <button onClick={()=>{ document.getElementById(`fila_del_${item.id}`).style.display="flex"; }}
                                   style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
                                   🗑
                                 </button>
                             }
                           </td>
                         </tr>
-                        {/* Detalhe inline da fila */}
+                        {/* Modal confirmação remover da fila */}
+                        <div id={`fila_del_${item.id}`} style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
+                          <div style={{ background:C.card, border:`1px solid #EF444433`, borderRadius:20, padding:"28px 32px", maxWidth:380, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
+                            <div style={{ fontSize:36, marginBottom:10 }}>🗑</div>
+                            <div style={{ color:C.tp, fontSize:16, fontWeight:800, marginBottom:6 }}>Remover proposta?</div>
+                            <div style={{ color:C.tm, fontSize:12.5, marginBottom:20, lineHeight:1.6 }}>
+                              <strong style={{ color:C.tp }}>{item.clientName||item.cpf}</strong> será removido da fila. Esta ação não pode ser desfeita.
+                            </div>
+                            <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+                              <button onClick={()=>{ document.getElementById(`fila_del_${item.id}`).style.display="none"; }}
+                                style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
+                              <button onClick={()=>{ removerDaFila(item.id); document.getElementById(`fila_del_${item.id}`).style.display="none"; }}
+                                style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>✕ Remover</button>
+                            </div>
+                          </div>
+                        </div>
                         {isSel && (
                           <tr>
                             <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`2px solid #C084FC44` }}>
@@ -14048,7 +14088,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                                     ["Status", stLabel],
                                     ["Valor", fmtBRL(item.valor||0)],
                                     ["Provider", (item.provider||"—").toUpperCase()],
-                                    ["Adicionado em", item.criadoEmStr||"—"],
+                                    ["Tabela", item.tabela||"—"],
+                                    ["Antecipação", item.anos||"—"],
+                                    ["Data/Hora", item.criadoEmStr ? `${item.criadoEmStr} ${item.criadoEmHora||""}`.trim() : item.criadoEm ? new Date(item.criadoEm).toLocaleString("pt-BR") : "—"],
                                   ].map(([l,v])=>(
                                     <div key={l} style={{ background:C.card, borderRadius:8, padding:"8px 12px" }}>
                                       <div style={{ color:C.td, fontSize:10 }}>{l}</div>
@@ -14092,14 +14134,19 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <tr
                           onClick={async ()=>{
                             if (isSel) { setDetalhe(null); return; }
-                            // Marca como selecionado imediatamente (sem detalhe ainda)
-                            setDetalhe({id:op.id, _loading:true});
+                            setDetalhe({...op, _loading:true});
                             try {
-                              // Busca dados completos do contrato na API
                               const det = await apiFetch(`/fgts/proposal/${op.id}`);
-                              setDetalhe({...op, ...det});
+                              const merged = {...op, ...det};
+                              setDetalhe(merged);
+                              // Persist CPF into the data list so it stays visible
+                              setData(prev => prev ? {
+                                ...prev,
+                                data: (prev.data||[]).map(r => r.id===op.id ? merged : r),
+                                _all: (prev._all||[]).map(r => r.id===op.id ? merged : r),
+                              } : prev);
                             } catch {
-                              setDetalhe(op); // fallback com dados da lista
+                              setDetalhe(op);
                             }
                           }}
                           style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
@@ -14187,9 +14234,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                                     ["Contrato",  detalhe?.contractNumber||"—"],
                                     ["Status",    getStatusLabel(detalhe?.status)],
                                     ["Valor",     fmtBRL(detalhe?.disbursedIssueAmount)],
+                                    ["Tabela",    detalhe?.tableLabel||detalhe?.simulationFeesLabel||"—"],
+                                    ["Antecipação", detalhe?.installmentsCount ? `${detalhe.installmentsCount} ano${detalhe.installmentsCount!==1?"s":""}` : "—"],
                                     ["Provider",  (detalhe?.provider||"—").toUpperCase()],
                                     ["Parceiro",  detalhe?.partnerId||"—"],
-                                    ["Criado em", detalhe?.createdAt?new Date(detalhe.createdAt).toLocaleString("pt-BR"):"—"],
+                                    ["Criado em", detalhe?.createdAt ? new Date(typeof detalhe.createdAt==="number"?detalhe.createdAt:detalhe.createdAt).toLocaleString("pt-BR") : "—"],
                                   ].map(([l,v])=>(
                                     <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"8px 12px" }}>
                                       <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
