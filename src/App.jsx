@@ -2133,11 +2133,11 @@ const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
-                  onClick={() => {
+                  style={{
+                  onClick=                  onClick={() => {
                     setForm({ ...contact });
                     setEd(true);
-                  }}
-                  style={{
+                  }}>
                     ...S.btn(C.abg, C.atxt),
                     border: `1px solid ${C.atxt}33`,
                     fontSize: 12,
@@ -2147,17 +2147,16 @@ const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
                   Editar
                 </button>
                 <button
-                  onClick={() => {
-                    if (window.confirm("Remover este cliente?"))
-                      onDelete(contact.id);
-                  }}
                   style={{
                     ...S.btn("transparent", "#EF4444"),
                     border: "1px solid #EF444433",
                     fontSize: 12,
                     padding: "7px 14px",
-                  }}
-                >
+                  onClick=
+                  onClick=                  onClick={() => {
+                    if (window.confirm("Remover este cliente?"))
+                      onDelete(contact.id);
+                  }}>
                   Remover
                 </button>
               </div>
@@ -3252,7 +3251,8 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               const isSel = leadTypeRef.current === t || extraLeadsRef.current.includes(t);
               const isPrimary = leadTypeRef.current === t;
               return (
-                <button key={t}
+                <button
+                  style={{ background: isSel ? col+"18" : C.deep, color: isSel ? col : C.tm, border: isSel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: isSel ? 600 : 400, transition: "all 0.12s" }}
                   onClick={() => {
                     if (!isPrimary) {
                       const oldPrimary = leadTypeRef.current;
@@ -3264,8 +3264,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
                       setExtraLeads(newExtra);
                       upd({ ...cur, leadType: t, extraLeads: newExtra, reactions: reactionsRef.current, extraStatus: extraStatusRef.current });
                     }
-                  }}
-                  style={{ background: isSel ? col+"18" : C.deep, color: isSel ? col : C.tm, border: isSel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: isSel ? 600 : 400, transition: "all 0.12s" }}>
+                  }}>
                   {isPrimary ? "★ " : isSel ? "✓ " : ""}{t}
                 </button>
               );
@@ -3279,13 +3278,9 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Marcar status <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>(selecione múltiplos)</span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {CLIENT_STATUS.map((s) => {
-              const st = STATUS_STYLE[s];
-              const sel = extraStatus.includes(s);
-              return (
-                <button key={s} onClick={() => toggleStatus(s)}
-                  style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
+          <div
+            const st = STATUS_STYLE[s];
+            onClick=            {CLIENT_STATUS.map((s) => {>
                   {sel ? "✓ " : ""}{s}
                 </button>
               );
@@ -3353,13 +3348,12 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           {/* V8 Digital — só para FGTS e CLT */}
           {(leadTypeRef.current === "FGTS" || leadTypeRef.current === "CLT" || (extraLeadsRef.current||[]).some(l=>l==="FGTS"||l==="CLT")) && (
             <button
+              style={{ background:"linear-gradient(135deg,#0f4c81,#1a6bb5)", color:"#fff", border:"1px solid rgba(79,142,247,0.4)", borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap", boxShadow:"0 2px 12px rgba(79,142,247,0.3)" }}
               onClick={() => {
                 sessionStorage.setItem("nexp_v8_simular_cpf", cur.cpf||"");
                 const event = new CustomEvent("nexp_navigate", { detail:{ page:"apis", cpf:cur.cpf } });
                 window.dispatchEvent(event);
-              }}
-              style={{ background:"linear-gradient(135deg,#0f4c81,#1a6bb5)", color:"#fff", border:"1px solid rgba(79,142,247,0.4)", borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap", boxShadow:"0 2px 12px rgba(79,142,247,0.3)" }}
-            >
+              }}>
               🏦 V8 Digital
             </button>
           )}
@@ -3406,14 +3400,14 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               <div style={{ color:C.tm, fontSize:11, marginBottom:8, fontWeight:600 }}>Selecione o tipo de proposta:</div>
               <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                 {["FGTS","CLT","INSS","CARTÃO"].map(t=>(
-                  <button key={t} onClick={()=>{
-                    // Salvar cliente em sessionStorage para DigitacaoPage carregar
+                  <button
+                    style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:700, cursor:"pointer", flex:1 }}
+                    onClick= Salvar cliente em sessionStorage para DigitacaoPage carregar
                     sessionStorage.setItem("nexp_digitar_cliente", JSON.stringify(cur));
                     sessionStorage.setItem("nexp_digitar_tipo", t);
                     setModalDigitar(false);
                     if (onDigitar) onDigitar(cur);
-                  }}
-                    style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:700, cursor:"pointer", flex:1 }}>
+                  }}>
                     {t}
                   </button>
                 ))}
@@ -3429,16 +3423,13 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           <div style={{ color: C.td, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Próximos {nexts.length}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {nexts.map((c, i) => {
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
+            onClick=            {nexts.map((c, i) => {
               const lc2 = LEAD_COLOR[c.leadType] || "#9CA3AF";
               const ss2 = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
               return (
-                <div key={c.id} onClick={() => navigate(c.id)}
-                  style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = C.card)}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = C.deep)}
-                >
+                <div key={c.id} onClick={() => navigate(c.id)}>
                   <div style={{ width: 22, height: 22, borderRadius: "50%", background: lc2 + "18", color: lc2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
                     {ini(c.name)}
                   </div>
@@ -3592,17 +3583,16 @@ function ClienteStatus({ contacts, setContacts }) {
             Ver {filtered.length} cliente{filtered.length !== 1 ? "s" : ""}
           </button>
           <button
-            onClick={() => {
-              setSelS([]);
-              setSelL([]);
-            }}
             style={{
               ...S.btn("transparent", C.tm),
               border: `1px solid ${C.b2}`,
               padding: "12px 18px",
               fontSize: 13,
             }}
-          >
+            onClick=Click={() => {
+              setSelS([]);
+              setSelL([]);
+            }}>
             Limpar filtros
           </button>
         </div>
@@ -3620,14 +3610,14 @@ function ClienteStatus({ contacts, setContacts }) {
         }}
       >
         <button
-          onClick={() => setApplied(false)}
+          
+          onClick=          onClick={() => setApplied(false)}
           style={{
             ...S.btn(C.abg, C.atxt),
             border: `1px solid ${C.atxt}33`,
             padding: "7px 14px",
             fontSize: 12,
-          }}
-        >
+          }}>
           ← Filtros
         </button>
         {selS.map((s) => {
@@ -4178,12 +4168,6 @@ function PremiumNexp({ contacts, setContacts }) {
         </span>
         {(selS.length > 0 || selL.length > 0 || q.trim()) && (
           <button
-            onClick={() => {
-              setSelS([]);
-              setSelL([]);
-              setQ("");
-              setQty("");
-            }}
             style={{
               background: "transparent",
               border: `1px solid ${C.b2}`,
@@ -4193,7 +4177,12 @@ function PremiumNexp({ contacts, setContacts }) {
               fontSize: 11.5,
               cursor: "pointer",
             }}
-          >
+            onClick=Click={() => {
+              setSelS([]);
+              setSelL([]);
+              setQ("");
+              setQty("");
+            }}>
             Limpar filtros
           </button>
         )}
@@ -4507,14 +4496,6 @@ function PremiumNexp({ contacts, setContacts }) {
                       Cancelar
                     </button>
                     <button
-                      onClick={async () => {
-                        if (window.confirm("Remover este lead?")) {
-                          await deleteContact(String(c.id));
-                          addLog("delete_one", `Lead removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Status: ${c.status}`);
-                          setContacts((cs) => cs.filter((x) => x.id !== c.id));
-                        }
-                        closeEdit();
-                      }}
                       style={{
                         ...S.btn("transparent", "#EF4444"),
                         border: "1px solid #EF444433",
@@ -4522,7 +4503,14 @@ function PremiumNexp({ contacts, setContacts }) {
                         fontSize: 13,
                         marginLeft: "auto",
                       }}
-                    >
+                      onClick=Click={async () => {
+                        if (window.confirm("Remover este lead?")) {
+                          await deleteContact(String(c.id));
+                          addLog("delete_one", `Lead removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Status: ${c.status}`);
+                          setContacts((cs) => cs.filter((x) => x.id !== c.id));
+                        }
+                        closeEdit();
+                      }}>
                       Remover lead
                     </button>
                   </div>
@@ -4549,12 +4537,12 @@ function TemasTab({ currentTheme, onTheme }) {
         Altera a cor de destaque de toda a interface imediatamente.
       </div>
       <div
-        style={{
+        
+        onClick=        style={{
           display: "grid",
           gridTemplateColumns: "repeat(3,1fr)",
           gap: 14,
-        }}
-      >
+        }}>
         {Object.entries(ACCENT_THEMES).map(([name, t]) => {
           const sel = currentTheme === name;
           return (
@@ -5090,6 +5078,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
           </div>
           {(currentUser.role === "administrador" || currentUser.role === "mestre") && (
             <button
+              style={{ background:"rgba(251,191,36,0.1)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}
               title="Converte roles legados (mestre→administrador, master→gerente, digitador/visitante/indicado→operador)"
               onClick={async () => {
                 const preview = await migrarRolesLegados(true);
@@ -5103,9 +5092,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
                   await migrarRolesLegados(false);
                   alert("✅ Migração concluída!");
                 }
-              }}
-              style={{ background:"rgba(251,191,36,0.1)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}
-            >
+              }}>
               🔄 Migrar Roles Legados
             </button>
           )}
@@ -5122,8 +5109,9 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
           ))}
         </div>
       </div>
-      <div style={{ padding:"26px 36px", maxWidth:860 }}>
-        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
+      <div
+        { id:"digitacao",    label:"Digitação" },
+        onClick=        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "rank" && <RankTab users={users} currentUser={currentUser} />}
         {tab === "perfis" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "permissoes" && (isMestre || isMaster) && sysConfig && onSysConfig && (() => {
@@ -5148,8 +5136,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"notificacoes", label:"Notificações" },
             { id:"chat",         label:"Nexp Chat" },
             { id:"premium",      label:"Premium Nexp" },
-            { id:"config",       label:"Configurações" },
-            { id:"digitacao",    label:"Digitação" },
+            { id:"config",       label:"Configurações" },>
             { id:"propostas",    label:"Propostas" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
@@ -8704,11 +8691,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   ].map(t => {
                     const sel = dmTheme === t.id;
                     return (
-                      <button key={String(t.id)} onClick={async ()=>{
-                        setDmTheme(t.id);
+                      <button
+                        style={{ background:t.bg, backgroundSize:"200% 200%", border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", fontSize:11, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.2)" : "none", transition:"all 0.15s" }}
+                        onClick=tDmTheme(t.id);
                         if (t.id) await sendChatMessage({ text:`${currentUser.name||currentUser.email} trocou o tema da conversa para ${t.label}`, type:"system", toId:activeTab, authorId:myId, authorName:currentUser.name||currentUser.email });
-                      }}
-                        style={{ background:t.bg, backgroundSize:"200% 200%", border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", fontSize:11, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.2)" : "none", transition:"all 0.15s" }}>
+                      }}>
                         {t.label}
                       </button>
                     );
@@ -8776,13 +8763,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               {/* Header */}
               <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                 <button onClick={()=>setShowGroupConfig(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, padding:"0 4px", lineHeight:1 }}>‹</button>
-                <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>⚙ Configurações do grupo</div>
-              </div>
+                <div
+                  
+                  onClick=              </div>
 
-              <div style={{ flex:1, overflowY:"auto", padding:"14px", animation:"gcFade 0.18s ease" }}>
-
-                {/* ── Nome + Foto ── */}
-                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>✏ Nome e foto</div>
+              <div style={{ flex:1, overflowY:"auto", padding:"14px", animation:"gcFade 0.18s ease" }}>>
                 <div style={{ display:"flex", gap:12, marginBottom:14 }}>
                   <div onClick={() => editGroupPhotoRef.current?.click()}
                     style={{ width:56, height:56, borderRadius:"50%", background:C.deep, border:`1.5px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
@@ -12148,7 +12133,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div style={{ color:"#fff", fontWeight:700, fontSize:15, textTransform:"uppercase" }}>{(provider||indProvider||"—").toUpperCase()}</div>
                 </div>
               </div>
-              <button disabled={digLoading}
+              <button
+                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1, letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}
                 onClick={async ()=>{
                   setDigLoading(true);
                   let clienteV8 = null;
@@ -12178,8 +12164,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   const d = {tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData};
                   openDigModal(d); setIndDigModal(d);
                   setSelectedSim(null); setDigLoading(false);
-                }}
-                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1, letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
+                }}>
                 {digLoading?"⏳ Carregando dados...":"📝 Digitar esta proposta"}
               </button>
             </div>
@@ -12271,13 +12256,13 @@ function V8DigitalTab({ currentUser, contacts }) {
                 style={{ ...S.input, width:145, fontSize:12, padding:"5px 9px", cursor:"pointer", colorScheme:"dark" }}
                 title="Filtrar por data"
               />
-              <button onClick={()=>{
+              <button
+                style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}
                 if(window.__histClearConfirm) { clearTimeout(window.__histClearConfirm); }
                 // Show inline popup confirm
                 const modal = document.getElementById("hist_clear_modal");
                 if(modal) modal.style.display="flex";
-              }}
-                style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+              }}>
                 🗑 Limpar tudo
               </button>
             </div>
@@ -12295,11 +12280,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                     style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
                     Cancelar
                   </button>
-                  <button onClick={()=>{
-                    setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null);
+                  <button
+                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}
+                    onClick=tIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null);
                     document.getElementById("hist_clear_modal").style.display="none";
-                  }}
-                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                  }}>
                     ✕ Confirmar exclusão
                   </button>
                 </div>
@@ -12348,14 +12333,14 @@ function V8DigitalTab({ currentUser, contacts }) {
                         const isBest = s.label===histDetalhe.melhorTabela;
                         const vlr = parseFloat(s.sim?.availableBalance||0);
                         return (
-                          <div key={i}
-                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
+                          <div
+                            <div style={{ color:isBest?"#34D399":"#fff", fontWeight:800, fontSize:16, lineHeight:1, marginTop:2 }}>{fmtBRL(vlr)}</div
+                            onClick=                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
                             style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.1)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
                             onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";} }}
                             onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
                             {isBest&&<div style={{ position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap" }}>🏆 MELHOR</div>}
-                            <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, textTransform:"capitalize", marginTop:isBest?4:0 }}>{s.label}</div>
-                            <div style={{ color:isBest?"#34D399":"#fff", fontWeight:800, fontSize:16, lineHeight:1, marginTop:2 }}>{fmtBRL(vlr)}</div>
+                            <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, textTransform:"capitalize", marginTop:isBest?4:0 }}>{s.label}</div>>
                             <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:2 }}>{calcAnos(s.sim)}</div>
                             {s.ok&&<div style={{ marginTop:6, background:"rgba(255,255,255,0.12)", borderRadius:6, padding:"3px 0", textAlign:"center", fontSize:10, fontWeight:700, color:"#fff" }}>📝 DIGITAR</div>}
                           </div>
@@ -12375,16 +12360,16 @@ function V8DigitalTab({ currentUser, contacts }) {
 
             {/* Tabela */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderTop:"none", overflow:"hidden", borderRadius: histDetalhe?"0":"0 0 14px 14px" }}>
-              <div style={{ overflowX:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <div
+                <tbody
+                onClick=                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                   <thead>
                     <tr style={{ background:C.deep }}>
                       {["#","CPF","Nome","Provider","Status","Saldo FGTS","Melhor Oferta","Tabela","Anos","Data"].map(h=>(
                         <th key={h} style={{ color:C.td, fontSize:10, fontWeight:700, padding:"8px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", textTransform:"uppercase", letterSpacing:"0.3px" }}>{h}</th>
                       ))}
                     </tr>
-                  </thead>
-                  <tbody>
+                  </thead>>
                     {historico
                       .filter(h => !histSearch || h.cpf?.includes(histSearch) || (h.nome||"").toLowerCase().includes(histSearch.toLowerCase()))
                       .slice(histPage*20, (histPage+1)*20)
@@ -12543,6 +12528,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               <div style={{ display:"flex", gap:8 }}>
                 {/* Botão Simular */}
                 <button
+                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}
                   onClick={async ()=>{
                     setSimModal({ loading:true, cpf:detalhe.documentNumber||detalhe.individualDocumentNumber||"", nome:detalhe.clientName||"", contrato:detalhe });
                     try {
@@ -12572,8 +12558,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
                       setSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
                     } catch(e){setSimModal(p=>({...p,loading:false,err:e.message}));}
-                  }}
-                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  }}>
                   ⚡ Nova Simulação
                 </button>
                 <button onClick={()=>setDetalhe(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
@@ -12665,9 +12650,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                     </div>
                     {simModal.best && (
                       <div style={{ background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:10, padding:"12px 16px" }}>
-                        <div style={{ color:"#34D399", fontSize:11, fontWeight:700 }}>✅ MELHOR OFERTA — {simModal.best.label}</div>
-                        <div style={{ color:"#34D399", fontSize:22, fontWeight:900 }}>{fmtBRL(simModal.best.sim?.availableBalance||0)}</div>
-                        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>via PIX · {calcAnos(simModal.best.sim)}</div>
+                        <div
+                          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>via PIX · {calcAnos(simModal.best.sim)}</div
+                          onClick=                        <div style={{ color:"#34D399", fontSize:22, fontWeight:900 }}>{fmtBRL(simModal.best.sim?.availableBalance||0)}</div>>
                       </div>
                     )}
                   </div>
@@ -12678,15 +12663,15 @@ function V8DigitalTab({ currentUser, contacts }) {
                       {[...(simModal.sims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
                         const isBest = s.label===simModal.best?.label;
                         return (
-                          <div key={i}
+                          <div
+                            style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
+onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}
                             onClick={()=>{
                               if(!s.ok)return;
                               const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
                               openDigModal(d); setIndDigModal(d); setSimModal(null);
-                            }}
-                            style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
-                            onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
-                            onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                            }}>
                             {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
                             <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"capitalize",marginTop:isBest?4:0}}>{s.label}</div>
                             {s.ok?<>
@@ -12746,8 +12731,10 @@ function V8DigitalTab({ currentUser, contacts }) {
                           )}
                         </td>
                         <td style={{ padding:"9px 10px" }} onClick={e=>e.stopPropagation()}>
-                          <button onClick={async ()=>{
-                            const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                          <button
+                            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
+                            </tr
+                            onClick=                            const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
                             setSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
                             try{
                               await apiFetch("/fgts/balance","POST",{documentNumber:cpfv,provider:op.provider||"cartos"});
@@ -12775,12 +12762,10 @@ function V8DigitalTab({ currentUser, contacts }) {
                               const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
                               setSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
                             }catch(e){setSimModal(p=>({...p,loading:false,err:e.message}));}
-                          }}
-                            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                          }}>
                             ⚡ Simular
                           </button>
-                        </td>
-                      </tr>
+                        </td>>
                     );
                   })}
                   {(data.data||[]).length===0&&(
@@ -13142,14 +13127,14 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
               <div style={{ display:"flex", gap:8 }}>
                 <button
+                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}
                   onClick={async ()=>{
                     const ri=items.findIndex(x=>x.id===detalheItem.id);
                     if(ri<0) return;
                     const updated=await simularUm({...items[ri],status:"pendente"});
                     setItems(p=>{const n=[...p];n[ri]=updated;return n;});
                     setDetalheItem(updated);
-                  }}
-                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}>
+                  }}>
                   🔄 Re-simular
                 </button>
                 <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
@@ -13259,6 +13244,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 }
               }}/>
             <button
+              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}
               onClick={async ()=>{
                 const inp = document.getElementById("lote_cache_cpf");
                 if(!inp?.value.trim()) return;
@@ -13266,8 +13252,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE"); } catch {}
                 setItems(p=>p.map(x=>(x.cpfRaw===cpfv||x.cpf===fmtCPF(cpfv))?{...x,status:"pendente",saldo:null,margem:null,sim:null,erro:null}:x));
                 inp.value="";
-              }}
-              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>
+              }}>
               🗑 Apagar cache
             </button>
           </div>
@@ -13275,12 +13260,11 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         {/* Tabela */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+          <div
+            {["#","Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Qtd anos","Data simulação","Ação","DIGITAR"].map(h=>(
+            onClick=            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
-                <tr style={{ background:C.deep }}>
-                  {["#","Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Qtd anos","Data simulação","Ação","DIGITAR"].map(h=>(
-                    <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
+                <tr style={{ background:C.deep }}>>
                   ))}
                 </tr>
               </thead>
@@ -13400,9 +13384,9 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
               <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
                 {parseFloat(cardSim.s.sim?.totalBalance||0) > 0 && (
-                  <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px" }}>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>
-                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(cardSim.s.sim?.totalBalance)}</div>
+                  <div
+                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(cardSim.s.sim?.totalBalance)}</div
+                    onClick=                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>>
                   </div>
                 )}
                 <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -13709,7 +13693,8 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              <button onClick={()=>{
+              <button
+                style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", border:"1px solid #34D39933", borderRadius:9, padding:"9px 16px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
                 // Export to CSV with all available data
                 const rows = [...fila.map(f=>({
                   Nome: f.clientName||"", CPF: f.cpf||"", Contrato: f.contractNumber||"",
@@ -13728,8 +13713,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a"); a.href=url; a.download=`propostas_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`; a.click();
                 URL.revokeObjectURL(url);
-              }}
-                style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", border:"1px solid #34D39933", borderRadius:9, padding:"9px 16px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+              }}>
                 📥 Exportar CSV
               </button>
               <button onClick={()=>buscar(1)} disabled={loading}
@@ -13863,10 +13847,10 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>⚡ Nova Simulação — {acompSimModal.nome||acompSimModal.cpf}</div>
                   <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:2 }}>CPF: {(acompSimModal.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}</div>
                 </div>
-                <button onClick={()=>setAcompSimModal(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
-              </div>
-              {acompSimModal.loading ? (
-                <div style={{ textAlign:"center", padding:"40px 0" }}>
+                <button
+                  <div style={{ textAlign:"center", padding:"40px 0" }}
+                  onClick=              </div>
+              {acompSimModal.loading ? (>
                   <div style={{ color:"#60A5FA", fontSize:32, marginBottom:12 }}>⏳</div>
                   <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13 }}>Consultando saldo FGTS e simulando tabelas...</div>
                 </div>
@@ -13892,15 +13876,15 @@ function V8DigitalTab({ currentUser, contacts }) {
                     {[...(acompSimModal.sims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
                       const isBest = s.label===acompSimModal.best?.label;
                       return (
-                        <div key={i}
+                        <div
+                          style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
+onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}
                           onClick={()=>{
                             if(!s.ok)return;
                             const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
                             openDigModal(d); setIndDigModal(d); setAcompSimModal(null);
-                          }}
-                          style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
-                          onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
-                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                          }}>
                           {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
                           {s.ok?<>
                             <div style={{color:isBest?"#34D399":"rgba(255,255,255,0.9)",fontWeight:900,fontSize:20,lineHeight:1,marginTop:isBest?8:0}}>{fmtBRL(s.sim?.availableBalance||0)}</div>
@@ -13910,8 +13894,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                             <div style={{marginTop:8,background:"rgba(255,255,255,0.15)",borderRadius:6,padding:"4px 0",textAlign:"center",fontSize:10.5,fontWeight:800,color:"#fff"}}>📝 DIGITAR</div>
                           </>:<>
                             <div style={{color:"rgba(255,255,255,0.5)",fontSize:10.5,textTransform:"capitalize",marginBottom:4}}>{s.label}</div>
-                            <div style={{color:"#F87171",fontSize:11}}>✘</div>
-                          </>}
+                            <div
+                              style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}
+                              </>}
                         </div>
                       );
                     })}
@@ -14017,8 +14002,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                 </button>
                               : <button onClick={()=>{
                                     if(window.confirm(`Remover "${item.clientName||item.cpf}" do histórico?`)) removerDaFila(item.id);
-                                  }}
-                                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
+                                  }}>
                                   🗑
                                 </button>
                             }
@@ -14029,17 +14013,16 @@ function V8DigitalTab({ currentUser, contacts }) {
                           <tr>
                             <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`2px solid #C084FC44` }}>
                               <div style={{ padding:"16px 20px" }}>
-                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:12 }}>
-                                  {[
+                                <div
+                                  ].map(([l,v])=>(
+                                  onClick=                                  {[
                                     ["Cliente", item.clientName||"—"],
                                     ["CPF", cpfFmt],
                                     ["Contrato", item.contractNumber||"—"],
                                     ["Status", stLabel],
                                     ["Valor", fmtBRL(item.valor||0)],
                                     ["Provider", (item.provider||"—").toUpperCase()],
-                                    ["Adicionado em", item.criadoEmStr||"—"],
-                                  ].map(([l,v])=>(
-                                    <div key={l} style={{ background:C.card, borderRadius:8, padding:"8px 12px" }}>
+                                    ["Adicionado em", item.criadoEmStr||"—"],>
                                       <div style={{ color:C.td, fontSize:10 }}>{l}</div>
                                       <div style={{ color:C.tp, fontWeight:600, fontSize:12.5, marginTop:2 }}>{v}</div>
                                     </div>
@@ -14079,6 +14062,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                     return (
                       <React.Fragment key={op.id}>
                         <tr
+                          style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
+onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}
                           onClick={async ()=>{
                             if (isSel) { setDetalhe(null); return; }
                             setDetalhe({...op, _loading:true});
@@ -14092,10 +14078,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                 _all: (prev._all||[]).map(r=>r.id===op.id?merged:r),
                               } : prev);
                             } catch { setDetalhe(op); }
-                          }}
-                          style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
-                          onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
-                          onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}>
+                          }}>
                           <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{op.clientName||"—"}</td>
                           <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{cpfFmt}</td>
                           <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
@@ -14165,16 +14148,17 @@ function V8DigitalTab({ currentUser, contacts }) {
                                 <div style={{ color:C.tm, fontSize:12.5, marginBottom:6 }}><strong>{op.clientName||cpfFmt}</strong></div>
                                 <div style={{ color:"#F87171", fontSize:11.5, marginBottom:20 }}>Esta ação cancela o contrato permanentemente.</div>
                                 <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-                                  <button onClick={e=>{e.stopPropagation(); document.getElementById("del_prop_"+op.id).style.display="none";}}
-                                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
-                                  <button onClick={async e=>{
+                                  <button
+                                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}
+                                    onClick=                                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
+                                  <button>
+                                    onClick={async e=>{
                                     e.stopPropagation();
                                     try { await apiFetch(`/fgts/proposal/${op.id}/cancel`,"PATCH",{reason:"invalid_data:other",description:"Excluído pelo operador."}); } catch {}
                                     document.getElementById("del_prop_"+op.id).style.display="none";
                                     setDetalhe(null);
                                     setData(prev=>prev?{...prev,data:(prev.data||[]).filter(r=>r.id!==op.id),_all:(prev._all||[]).filter(r=>r.id!==op.id)}:prev);
-                                  }}
-                                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                  }}>
                                     🗑 Excluir
                                   </button>
                                 </div>
@@ -14240,12 +14224,12 @@ function V8DigitalTab({ currentUser, contacts }) {
                                       {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
                                     </button>
                                   ) : (
-                                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
-                                      🔒 {detalhe?.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
+                                    <span
+                                      </div
+                                      onClick=                                      🔒 {detalhe?.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
                                     </span>
                                   )}
-                                </div>
-                              </div>
+                                </div>>
                               )}
                             </td>
                           </tr>
