@@ -14297,6 +14297,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </tbody>
               </table>
             </div>
+          )}
             {/* Paginação */}
             {data?.pages && (data.pages.hasNext || data.pages.hasPrev) && (
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
