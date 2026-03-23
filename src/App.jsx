@@ -5095,14 +5095,9 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
                 const preview = await migrarRolesLegados(true);
                 if (preview.length === 0) { alert("✅ Nenhuma migração necessária — todos os roles já são canônicos."); return; }
                 const ok = window.confirm(
-                  `Migrar ${preview.length} usuário(s)?
-
-` +
-                  preview.map(u => `${u.id}: ${u.roleAtual} → ${u.roleNovo}`).join("
-") +
-                  "
-
-Esta ação é reversível manualmente no Firestore."
+                  "Migrar " + preview.length + " usuário(s)?\n\n" +
+                  preview.map(u => u.id + ": " + u.roleAtual + " → " + u.roleNovo).join("\n") +
+                  "\n\nEsta ação é reversível manualmente no Firestore."
                 );
                 if (ok) {
                   await migrarRolesLegados(false);
