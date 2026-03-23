@@ -12057,190 +12057,160 @@ function V8DigitalTab({ currentUser, contacts }) {
               )}
             </div>
 
-            {/* Tabelas — formato compacto */}
+            {/* Tabelas — cards igual ao lote */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, overflow:"hidden" }}>
               <div style={{ padding:"9px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
                 <div style={{ color:C.ts, fontSize:12.5, fontWeight:700 }}>
                   📊 Simulação por Tabela
                   {loading && simStep==="simulando" && <span style={{ color:C.atxt, fontSize:10.5, marginLeft:8, fontWeight:400 }}>⏳ calculando...</span>}
                 </div>
-                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                  <span style={{ color:C.td, fontSize:10.5 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
-                </div>
+                <span style={{ color:C.td, fontSize:10.5 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
               </div>
-
               {tableSims.length === 0 && loading && (
                 <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>⏳ Simulando tabelas em paralelo...</div>
               )}
               {tableSims.length === 0 && !loading && balance && (
                 <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>Aguardando simulação...</div>
               )}
-
-              {/* Header */}
-              {tableSims.length > 0 && (
-                <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
-                  {["Tabela","Saldo Liberado","Anos","CET a.m.","Emissão",""].map(h=>(
-                    <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
-                  ))}
+              {sortedSims.length > 0 && (
+                <div style={{ padding:"18px 16px", display:"flex", gap:12, flexWrap:"wrap" }}>
+                  {sortedSims.map((t, i) => {
+                    const vlr  = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
+                    const anos = calcAnos(t.sim);
+                    const isBest = bestSim?.feeId === t.feeId;
+                    return (
+                      <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+                        <div
+                          onClick={()=> t.ok && setSelectedSim(t)}
+                          style={{
+                            background:isBest?"rgba(52,211,153,0.15)":t.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
+                            border:`2px solid ${isBest?"rgba(52,211,153,0.5)":t.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
+                            borderRadius:14, padding:"18px 16px", width:155,
+                            cursor:t.ok?"pointer":"default", transition:"all 0.15s",
+                            position:"relative", textAlign:"center",
+                          }}
+                          onMouseEnter={e=>{if(t.ok){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                          {isBest && (
+                            <div style={{ position:"absolute", top:-11, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 10px", borderRadius:99, whiteSpace:"nowrap" }}>
+                              🏆 MELHOR OFERTA
+                            </div>
+                          )}
+                          {t.ok ? (
+                            <>
+                              <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.92)", fontWeight:900, fontSize:22, lineHeight:1, marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
+                              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:5 }}>Valor liberado via PIX</div>
+                              <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginTop:6, fontWeight:700 }}>{anos} de antecipação</div>
+                              <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"6px 0", fontSize:11.5, fontWeight:800, color:"#fff" }}>
+                                📝 DIGITAR
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ color:"#F87171", fontSize:11, padding:"8px 0" }}>✘ {(t.err||"").slice(0,30)}</div>
+                          )}
+                        </div>
+                        <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, fontWeight:600, textTransform:"capitalize" }}>
+                          {t.label}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-
-              {sortedSims.map((t, i) => {
-                const vlr    = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
-                const emissao = parseFloat(t.sim?.emissionAmount || t.sim?.issueAmount || 0);
-                const cet    = t.sim?.cet;
-                const anos   = calcAnos(t.sim);
-                const isBest = bestSim?.feeId === t.feeId;
-                const isSel  = selectedSim?.feeId === t.feeId;
-                return (
-                  <div key={i}
-                    onClick={()=> t.ok && setSelectedSim(isSel ? null : t)}
-                    style={{
-                      display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr",
-                      gap:0, padding:"11px 14px",
-                      background: isSel?`${C.acc}20`:isBest?`${C.acc}12`:i%2===0?C.card:C.deep,
-                      borderBottom:`1px solid ${C.b1}`,
-                      borderLeft: isSel?`3px solid ${C.acc}`:isBest?`3px solid ${C.acc}88`:"3px solid transparent",
-                      cursor:t.ok?"pointer":"default", transition:"all 0.15s", opacity:t.ok?1:0.45,
-                    }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      {isBest && <span style={{ fontSize:12 }}>🏆</span>}
-                      <div>
-                        <div style={{ color:isBest||isSel?C.atxt:C.tp, fontWeight:700, fontSize:12.5, textTransform:"capitalize" }}>{t.label}</div>
-                        {!t.ok && <div style={{ color:"#F87171", fontSize:10 }}>{(t.err||"").slice(0,40)}</div>}
-                      </div>
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok?<div>
-                        <div style={{ color:isBest?"#34D399":C.atxt, fontWeight:800, fontSize:14 }}>{fmtBRL(vlr)}</div>
-                        <div style={{ color:C.td, fontSize:10 }}>via PIX</div>
-                      </div>:<span style={{ color:"#F87171", fontSize:12 }}>✘</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <span style={{ color:C.tm, fontSize:12.5, fontWeight:600 }}>{anos}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && cet && <span style={{ color:C.tm, fontSize:12 }}>{fmtPct(cet)}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <span style={{ color:C.ts, fontSize:12, fontWeight:600 }}>{fmtBRL(emissao)}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
-                      {t.ok && (
-                        <button onClick={e=>{e.stopPropagation();openDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider}); setIndDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider});}}
-                          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                          DIGITAR
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}
 
-        {/* ── Proposta selecionada — painel estilo Lote ── */}
+        {/* ── Popup Apple ao clicar no card ── */}
         {selectedSim && (
-          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {selectedSim.label?.toUpperCase()} · <span style={{ color:"rgba(255,255,255,0.5)", fontSize:12, fontWeight:400 }}>{cpfSim}</span></div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button
-                  onClick={()=>{
-                    // Print apenas esse painel
-                    const el = document.getElementById("ind_sim_print");
-                    if(!el) return;
-                    const w = window.open("","_blank","width=700,height=600");
-                    w.document.write(`<html><head><title>Simulação FGTS</title><style>body{font-family:sans-serif;background:#fff;color:#000;padding:24px}table{border-collapse:collapse;width:100%}td{padding:8px 12px;border:1px solid #ddd;font-size:13px}.head{font-size:11px;color:#666}.val{font-weight:700;font-size:14px}</style></head><body>${el.innerHTML}</body></html>`);
-                    w.document.close(); w.focus(); w.print(); w.close();
-                  }}
-                  style={{ background:"rgba(255,255,255,0.1)", color:"#fff", border:"1px solid rgba(255,255,255,0.2)", borderRadius:7, padding:"5px 14px", fontSize:12, cursor:"pointer" }}>
-                  🖨 Print
+          <div
+            onClick={()=>setSelectedSim(null)}
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", backdropFilter:"blur(12px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            <div
+              onClick={e=>e.stopPropagation()}
+              style={{
+                background:"rgba(28,28,30,0.97)", border:"1px solid rgba(255,255,255,0.12)",
+                borderRadius:22, padding:"28px 32px", width:"100%", maxWidth:480,
+                boxShadow:"0 32px 80px rgba(0,0,0,0.7), 0 0 0 0.5px rgba(255,255,255,0.08)",
+              }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:22 }}>
+                <div>
+                  <div style={{ color:"#fff", fontSize:20, fontWeight:800, letterSpacing:"-0.5px", textTransform:"capitalize" }}>
+                    {selectedSim.label}
+                  </div>
+                  <div style={{ color:"rgba(255,255,255,0.45)", fontSize:13, marginTop:3 }}>
+                    CPF {cpfSim} · {provider?.toUpperCase()}
+                  </div>
+                </div>
+                <button onClick={()=>setSelectedSim(null)}
+                  style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"rgba(255,255,255,0.7)", borderRadius:50, width:30, height:30, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  ✕
                 </button>
-                <button onClick={()=>setSelectedSim(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
               </div>
-            </div>
-            <div id="ind_sim_print">
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:8, marginBottom:14 }}>
+              <div style={{ textAlign:"center", marginBottom:24 }}>
+                {bestSim?.feeId === selectedSim.feeId && (
+                  <div style={{ display:"inline-block", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:10, fontWeight:800, padding:"3px 12px", borderRadius:99, marginBottom:10 }}>
+                    🏆 MELHOR OFERTA
+                  </div>
+                )}
+                <div style={{ color:bestSim?.feeId===selectedSim.feeId?"#34D399":"#fff", fontSize:42, fontWeight:900, lineHeight:1, letterSpacing:"-1px" }}>
+                  {fmtBRL(selectedSim.sim?.availableBalance||0)}
+                </div>
+                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
+                <div style={{ color:"rgba(255,255,255,0.7)", fontSize:14, marginTop:4, fontWeight:600 }}>
+                  {calcAnos(selectedSim.sim)} de antecipação
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:24 }}>
                 {[
-                  ["CPF",          cpfSim],
-                  ["Provider",     provider?.toUpperCase()],
-                  ["Tabela",       selectedSim.label],
-                  ["Valor Liberado",fmtBRL(selectedSim.sim?.availableBalance||0)],
-                  ["Valor Emissão",fmtBRL(selectedSim.sim?.emissionAmount||0)],
-                  ["Anos",         calcAnos(selectedSim.sim)],
-                  ["CET Mensal",   fmtPct(selectedSim.sim?.cet)],
-                  ["IOF",          fmtBRL(selectedSim.sim?.iof)],
-                  ["Total Bloqueado",fmtBRL(selectedSim.sim?.totalBalance||saldoTotal)],
-                  ["Parcelas",     String(selectedSim.sim?.totalInstallments||"—")],
-                  ["Data",         new Date().toLocaleString("pt-BR")],
-                ].map(([l,v])=>(
-                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
-                    <div style={{ color:"#fff", fontWeight:600, fontSize:13, marginTop:2 }}>{v}</div>
+                  ["CET Mensal", fmtPct(selectedSim.sim?.cet)],
+                  ["IOF", fmtBRL(selectedSim.sim?.iof)],
+                  ["Total Bloqueado", fmtBRL(selectedSim.sim?.totalBalance||saldoTotal)],
+                  ["Parcelas", String(selectedSim.sim?.totalInstallments||"—")],
+                ].filter(([,v])=>v&&v!=="R$ 0,00"&&v!=="—").map(([l,v])=>(
+                  <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"10px 14px" }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:3 }}>{l}</div>
+                    <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>{v}</div>
                   </div>
                 ))}
               </div>
+              <button
+                disabled={digLoading}
+                onClick={async ()=>{
+                  setSelectedSim(null);
+                  setDigLoading(true);
+                  let clienteV8 = null;
+                  try {
+                    const cpfBusca = (indCpfSim||"").replace(/\D/g,"");
+                    const ops = await apiFetch(`/fgts/proposal?search=${cpfBusca}&page=1&limit=5`);
+                    const rows = ops?.data || ops || [];
+                    const paid = rows.find(r=>r.status==="paid");
+                    const primeiro = paid || rows[0];
+                    if (primeiro?.id) clienteV8 = await apiFetch(`/fgts/proposal/${primeiro.id}`);
+                  } catch {}
+                  const cpfLimpo = (indCpfSim||"").replace(/\D/g,"");
+                  const nexp = (contacts||[]).find(nx=>(nx.cpf||"").replace(/\D/g,"")=== cpfLimpo)||{};
+                  const v8Phone = clienteV8?.phone ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"").slice(0,11) : "";
+                  const preData = {
+                    clienteV8, nome:clienteV8?.name||clienteV8?.clientName||nexp.name||"",
+                    email:clienteV8?.email||nexp.email||"", phone:v8Phone||(nexp.phone||"").replace(/\D/g,"").slice(0,11),
+                    phoneDdd:(v8Phone||(nexp.phone||"").replace(/\D/g,"")).slice(0,2),
+                    rg:clienteV8?.documentIdentificationNumber||nexp.rg||"",
+                    nomeMae:clienteV8?.motherName||nexp.nomeMae||"", nascimento:clienteV8?.birthDate||nexp.dataNascimento||"",
+                    cep:clienteV8?.postalCode||(nexp.cep||"").replace(/\D/g,""), rua:clienteV8?.street||nexp.rua||"",
+                    numero:clienteV8?.addressNumber||nexp.numero||"", complemento:clienteV8?.complement||nexp.complemento||"",
+                    bairro:clienteV8?.neighborhood||nexp.bairro||"", cidade:clienteV8?.city||nexp.cidade||"",
+                    uf:clienteV8?.state||nexp.ufEnd||"", estadoCivil:clienteV8?.maritalStatus||"single",
+                    nacionalidade:clienteV8?.nationality||"Brasileiro(a)", isPEP:clienteV8?.isPEP||false,
+                  };
+                  const d = {tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData};
+                  openDigModal(d); setIndDigModal(d);
+                  setDigLoading(false);
+                }}
+                style={{ width:"100%", background:digLoading?C.deep:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:14, padding:"15px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1 }}>
+                {digLoading?"⏳ Carregando dados...":"📝 Digitar esta proposta"}
+              </button>
             </div>
-            <button
-              disabled={digLoading}
-              onClick={async ()=>{
-                setDigLoading(true);
-
-                // Busca dados do cliente na V8 (contrato anterior)
-                let clienteV8 = null;
-                try {
-                  const cpfBusca = (indCpfSim||"").replace(/\D/g,"");
-                  const ops = await apiFetch(`/fgts/proposal?search=${cpfBusca}&page=1&limit=5`);
-                  const rows = ops?.data || ops || [];
-                  const paid = rows.find(r=>r.status==="paid");
-                  const primeiro = paid || rows[0];
-                  if (primeiro?.id) {
-                    clienteV8 = await apiFetch(`/fgts/proposal/${primeiro.id}`);
-                  }
-                } catch {}
-
-                // Cruza com contatos Nexp
-                const cpfLimpo = (indCpfSim||"").replace(/\D/g,"");
-                const nexp = (contacts||[]).find(nx => (nx.cpf||"").replace(/\D/g,"") === cpfLimpo) || {};
-
-                // Monta telefone — V8 guarda DDD em phoneRegionCode e número em phone
-                const v8Phone = clienteV8?.phone
-                  ? `${clienteV8.phoneRegionCode||""}${clienteV8.phone}`.replace(/\D/g,"").slice(0,11)
-                  : "";
-                const nexpPhone = (nexp.phone||"").replace(/\D/g,"").slice(0,11);
-                const phoneFinal = v8Phone || nexpPhone;
-
-                const preData = {
-                  clienteV8,
-                  nome:         clienteV8?.name || clienteV8?.clientName || nexp.name || "",
-                  email:        clienteV8?.email || nexp.email || "",
-                  phone:        phoneFinal,
-                  phoneDdd:     phoneFinal.slice(0,2),
-                  rg:           clienteV8?.documentIdentificationNumber || nexp.rg || "",
-                  nomeMae:      clienteV8?.motherName || nexp.nomeMae || "",
-                  nascimento:   clienteV8?.birthDate || nexp.dataNascimento || "",
-                  cep:          clienteV8?.postalCode || (nexp.cep||"").replace(/\D/g,""),
-                  rua:          clienteV8?.street || nexp.rua || "",
-                  numero:       clienteV8?.addressNumber || nexp.numero || "",
-                  complemento:  clienteV8?.complement || nexp.complemento || "",
-                  bairro:       clienteV8?.neighborhood || nexp.bairro || "",
-                  cidade:       clienteV8?.city || nexp.cidade || "",
-                  uf:           clienteV8?.state || nexp.ufEnd || nexp.estado || "",
-                  estadoCivil:  clienteV8?.maritalStatus || "single",
-                  nacionalidade:clienteV8?.nationality || "Brasileiro(a)",
-                  isPEP:        clienteV8?.isPEP || false,
-                };
-
-                const d = { tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData };
-                openDigModal(d);
-                setIndDigModal(d);
-                setDigLoading(false);
-              }}
-              style={{ background:digLoading?C.deep:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1 }}>
-              {digLoading ? "⏳ Carregando dados..." : "📝 Digitar esta proposta"}
-            </button>
           </div>
         )}
 
@@ -13205,117 +13175,6 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         </div>
 
-        {/* Painel de detalhe ao clicar na linha */}
-        {detalheItem && (
-          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <div>
-                <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {detalheItem.cpf}</div>
-                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-                  {detalheItem.ts||""} · {(detalheItem.balance?.provider||loteProvider)?.toUpperCase()}
-                </div>
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button
-                  onClick={async ()=>{
-                    const ri=items.findIndex(x=>x.id===detalheItem.id);
-                    if(ri<0) return;
-                    const updated=await simularUm({...items[ri],status:"pendente"});
-                    setItems(p=>{const n=[...p];n[ri]=updated;return n;});
-                    setDetalheItem(updated);
-                  }}
-                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}>
-                  🔄 Re-simular
-                </button>
-                <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
-              </div>
-            </div>
-
-            {/* Info resumida */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:18 }}>
-              {[
-                ["CPF", detalheItem.cpf],
-                ["Saldo FGTS", fmtBRL(detalheItem.saldo||0)],
-                ["Melhor Oferta", fmtBRL(detalheItem.margem||0)],
-                ["Tabela", detalheItem.sim?.melhor?.label||"—"],
-                ["Anos", detalheItem.sim?.anos||"—"],
-                ["Status", detalheItem.status],
-              ].map(([l,v])=>(
-                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
-                  <div style={{ color:"#fff", fontWeight:600, fontSize:13, marginTop:2 }}>{v}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Todas as tabelas simuladas — clicáveis para digitar */}
-            {(detalheItem.sim?.allSims||[]).length > 0 ? (
-              <div>
-                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:12 }}>
-                  📊 {detalheItem.sim.allSims.length} tabelas simuladas — clique no balão para digitar
-                </div>
-                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                  {[...detalheItem.sim.allSims]
-                    .sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))
-                    .map((s,i)=>{
-                      const isBest = s.label === detalheItem.sim?.melhor?.label;
-                      const vlr    = parseFloat(s.sim?.availableBalance||0);
-                      const emissao= parseFloat(s.sim?.emissionAmount||0);
-                      const anos   = calcAnos(s.sim);
-                      return (
-                        <div key={i}
-                          onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:s.sim?.id||"" }, balance:{ ...detalheItem.balance, id:detalheItem.sim?.balanceId }, cpf:detalheItem.cpf, provider:loteProvider, clientePreFill:detalheItem }; openDigModal(d); setLoteDigModal(d); }}
-                          style={{
-                            background: isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
-                            border:`2px solid ${isBest?"rgba(52,211,153,0.5)":s.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
-                            borderRadius:14, padding:"14px 18px", minWidth:150,
-                            cursor:s.ok?"pointer":"default",
-                            transition:"all 0.15s",
-                            position:"relative",
-                          }}
-                          onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}}
-                          onMouseLeave={e=>{ e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"; }}>
-                          {isBest && (
-                            <div style={{ position:"absolute", top:-11, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 10px", borderRadius:99, whiteSpace:"nowrap", boxShadow:"0 2px 8px rgba(52,211,153,0.4)" }}>
-                              🏆 MELHOR OFERTA
-                            </div>
-                          )}
-                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, textTransform:"capitalize", marginBottom:6, marginTop:isBest?6:0, fontWeight:600 }}>
-                            {s.label}
-                          </div>
-                          {s.ok ? (
-                            <>
-                              <div style={{ color:isBest?"#34D399":"#fff", fontWeight:900, fontSize:20, lineHeight:1, letterSpacing:"-0.5px" }}>{fmtBRL(vlr)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:3 }}>Valor liberado via PIX</div>
-                              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:6, padding:"2px 8px", display:"inline-block", fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10, marginTop:3 }}>{anos}</div>
-                              <div style={{ marginTop:10, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"5px 0", textAlign:"center", fontSize:11, fontWeight:800, color:"#fff", letterSpacing:"0.5px" }}>
-                                📝 DIGITAR
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ color:"#F87171", fontSize:11, marginTop:4 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            ) : (
-              <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.2)", borderRadius:10, padding:"12px 16px" }}>
-                <div style={{ color:"#FBBF24", fontSize:12.5, fontWeight:600 }}>⚠ Dados de tabelas não disponíveis para este item</div>
-                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, marginTop:4 }}>Clique em 🔄 Re-simular para buscar todas as tabelas.</div>
-              </div>
-            )}
-
-            {/* Erro */}
-            {detalheItem.erro && (
-              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px", marginTop:12 }}>
-                <div style={{ color:"#F87171", fontWeight:600 }}>{detalheItem.erro}</div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Barra de pesquisa + apagar cache */}
         <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
@@ -13411,6 +13270,105 @@ function V8DigitalTab({ currentUser, contacts }) {
                         ) : <span style={{ color:C.td, fontSize:10 }}>—</span>}
                       </td>
                     </tr>
+                    {/* ── Detalhe inline — aparece abaixo da linha clicada ── */}
+                    {isDetalhado && (
+                      <tr key={it.id+"_det"}>
+                        <td colSpan={11} style={{ padding:0, background:"linear-gradient(135deg,#0c1a38,#142040)", borderBottom:`2px solid rgba(79,142,247,0.35)` }}>
+                          <div style={{ padding:"20px 24px" }}>
+                            {/* Header */}
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                              <div>
+                                <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 {it.nome} <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12, fontWeight:400 }}>· {it.cpf}</span></div>
+                                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>{it.ts||""} · {(it.balance?.provider||loteProvider)?.toUpperCase()}</div>
+                              </div>
+                              <div style={{ display:"flex", gap:8 }}>
+                                <button onClick={e=>{e.stopPropagation(); const n=[...items]; simularUm(n[ri]).then(u=>{n[ri]=u;setItems([...n]);setDetalheItem(u);}); }}
+                                  disabled={running}
+                                  style={{ background:"rgba(79,142,247,0.15)", color:"#60A5FA", border:"1px solid rgba(79,142,247,0.3)", borderRadius:8, padding:"5px 14px", fontSize:12, cursor:"pointer" }}>
+                                  🔄 Re-simular
+                                </button>
+                                <button onClick={e=>{e.stopPropagation();setDetalheItem(null);}}
+                                  style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
+                              </div>
+                            </div>
+                            {/* Info resumo */}
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:8, marginBottom:16 }}>
+                              {[
+                                ["Saldo FGTS", fmtBRL(it.saldo||0)],
+                                ["Melhor Oferta", fmtBRL(it.margem||0)],
+                                ["Tabela", it.sim?.melhor?.label||"—"],
+                                ["Anos", it.sim?.anos ? it.sim.anos+" de antecipação" : "—"],
+                              ].map(([l,v])=>(
+                                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"8px 12px" }}>
+                                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
+                                  <div style={{ color:"#fff", fontWeight:700, fontSize:13, marginTop:2 }}>{v}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {/* Cards das tabelas */}
+                            {(it.sim?.allSims||[]).length > 0 ? (
+                              <div>
+                                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:12 }}>
+                                  📊 {it.sim.allSims.length} tabelas simuladas — clique no card para digitar
+                                </div>
+                                <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+                                  {[...it.sim.allSims]
+                                    .sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))
+                                    .map((s,i)=>{
+                                      const isBest = s.label === it.sim?.melhor?.label;
+                                      const vlr = parseFloat(s.sim?.availableBalance||0);
+                                      const anos = calcAnos(s.sim);
+                                      return (
+                                        <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+                                          <div
+                                            onClick={e=>{e.stopPropagation(); if(!s.ok) return; const d={tabela:{label:s.label,sim:s.sim,feeId:s.sim?.id||""},balance:{...it.balance,id:it.sim?.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it}; openDigModal(d); setLoteDigModal(d);}}
+                                            style={{
+                                              background:isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
+                                              border:`2px solid ${isBest?"rgba(52,211,153,0.5)":s.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
+                                              borderRadius:14, padding:"18px 16px", width:155,
+                                              cursor:s.ok?"pointer":"default", transition:"all 0.15s",
+                                              position:"relative", textAlign:"center",
+                                            }}
+                                            onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}}
+                                            onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                                            {isBest && (
+                                              <div style={{ position:"absolute", top:-11, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 10px", borderRadius:99, whiteSpace:"nowrap" }}>
+                                                🏆 MELHOR OFERTA
+                                              </div>
+                                            )}
+                                            {s.ok ? (
+                                              <>
+                                                <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.92)", fontWeight:900, fontSize:22, lineHeight:1, marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
+                                                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:5 }}>Valor liberado via PIX</div>
+                                                <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginTop:6, fontWeight:700 }}>{anos} de antecipação</div>
+                                                <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"6px 0", fontSize:11.5, fontWeight:800, color:"#fff" }}>
+                                                  📝 DIGITAR
+                                                </div>
+                                              </>
+                                            ) : (
+                                              <div style={{ color:"#F87171", fontSize:11, padding:"8px 0" }}>✘ {(s.err||"").slice(0,30)}</div>
+                                            )}
+                                          </div>
+                                          {/* Nome da tabela abaixo do card */}
+                                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, fontWeight:600, textTransform:"capitalize" }}>
+                                            {s.label}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              </div>
+                            ) : it.erro ? (
+                              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px" }}>
+                                <div style={{ color:"#F87171", fontWeight:600 }}>{it.erro}</div>
+                              </div>
+                            ) : (
+                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Clique em ▶ ou 🔄 para simular este CPF.</div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   );
                 })}
                 {pageItems.length===0 && (
