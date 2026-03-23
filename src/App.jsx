@@ -11556,7 +11556,6 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [loteFees,         setLoteFees]          = useState([]);
   const [loteDigModal,     setLoteDigModal]      = useState(null);
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
-  const [loteCardSim,      setLoteCardSim]       = useState(null);
   const [loteSearch,       setLoteSearch]        = useState("");
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
@@ -11940,8 +11939,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🔄</button>
               )}
               {(balance||tableSims.length>0||logs.length>0) && (
-                <button onClick={limpar} title="Limpar cache"
-                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🗑 Cache</button>
+                <button onClick={limpar} title="Limpar sessão atual"
+                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }} title="Limpar cache">🗑 Cache</button>
               )}
             </div>
           </div>
@@ -12057,25 +12056,21 @@ function V8DigitalTab({ currentUser, contacts }) {
               )}
             </div>
 
-            {/* Tabelas — formato compacto */}
+            {/* Tabelas — cards */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, overflow:"hidden" }}>
               <div style={{ padding:"9px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
                 <div style={{ color:C.ts, fontSize:12.5, fontWeight:700 }}>
                   📊 Simulação por Tabela
                   {loading && simStep==="simulando" && <span style={{ color:C.atxt, fontSize:10.5, marginLeft:8, fontWeight:400 }}>⏳ calculando...</span>}
                 </div>
-                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                  <span style={{ color:C.td, fontSize:10.5 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
-                </div>
+                <span style={{ color:C.td, fontSize:10.5 }}>{tableSims.filter(t=>t.ok).length}/{tableSims.length} tabelas · {provider.toUpperCase()}</span>
               </div>
-
               {tableSims.length === 0 && loading && (
                 <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>⏳ Simulando tabelas em paralelo...</div>
               )}
               {tableSims.length === 0 && !loading && balance && (
                 <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>Aguardando simulação...</div>
               )}
-
               {sortedSims.length > 0 && (
                 <div style={{ padding:"18px 16px", display:"flex", gap:12, flexWrap:"wrap" }}>
                   {sortedSims.map((t, i) => {
@@ -12125,7 +12120,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-        {/* ── Proposta selecionada — painel estilo Lote ── */}
+        {/* ── Popup Apple individual ── */}
         {selectedSim && (
           <div onClick={()=>setSelectedSim(null)}
             style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -12136,12 +12131,10 @@ function V8DigitalTab({ currentUser, contacts }) {
                 borderRadius:28, padding:"32px 28px", width:"100%", maxWidth:400,
                 boxShadow:"0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
               }}>
-              {/* Fechar */}
               <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
                 <button onClick={()=>setSelectedSim(null)}
                   style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:28, height:28, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
               </div>
-              {/* Título */}
               <div style={{ textAlign:"center", marginBottom:20 }}>
                 <div style={{ display:"inline-block", background:"linear-gradient(135deg,#7C3AED,#4F46E5)", color:"#fff", fontSize:10, fontWeight:800, padding:"4px 14px", borderRadius:99, letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:14, boxShadow:"0 4px 16px rgba(124,58,237,0.4)" }}>
                   ⚡ Super oferta liberada
@@ -12150,7 +12143,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                   {(indCpfSim||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {(contacts||[]).find(c=>(c.cpf||"").replace(/\D/g,"")===(indCpfSim||"").replace(/\D/g,""))?.name||indBalance?.name||"Cliente"}
                 </div>
               </div>
-              {/* Valor */}
               <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
                 <div style={{ color:bestSim?.feeId===selectedSim.feeId?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>
                   {fmtBRL(selectedSim.sim?.availableBalance||0)}
@@ -12160,7 +12152,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                   {calcAnos(selectedSim.sim)} de antecipação
                 </div>
               </div>
-              {/* Total Bloqueado + Averbador */}
               <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
                 {parseFloat(selectedSim.sim?.totalBalance||saldoTotal||0) > 0 && (
                   <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px" }}>
@@ -12173,7 +12164,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div style={{ color:"#fff", fontWeight:700, fontSize:15, textTransform:"uppercase" }}>{(provider||indProvider||"—").toUpperCase()}</div>
                 </div>
               </div>
-              {/* Botão */}
               <button
                 disabled={digLoading}
                 onClick={async ()=>{
@@ -12194,8 +12184,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   const phoneFinal = v8Phone || nexpPhone;
                   const preData = {
                     clienteV8, nome:clienteV8?.name||clienteV8?.clientName||nexp.name||"",
-                    email:clienteV8?.email||nexp.email||"", phone:phoneFinal,
-                    phoneDdd:phoneFinal.slice(0,2),
+                    email:clienteV8?.email||nexp.email||"", phone:phoneFinal, phoneDdd:phoneFinal.slice(0,2),
                     rg:clienteV8?.documentIdentificationNumber||nexp.rg||"",
                     nomeMae:clienteV8?.motherName||nexp.nomeMae||"", nascimento:clienteV8?.birthDate||nexp.dataNascimento||"",
                     cep:clienteV8?.postalCode||(nexp.cep||"").replace(/\D/g,""), rua:clienteV8?.street||nexp.rua||"",
@@ -12206,7 +12195,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   };
                   const d = {tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData};
                   openDigModal(d); setIndDigModal(d);
-                  setDigLoading(false);
+                  setSelectedSim(null); setDigLoading(false);
                 }}
                 style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1, letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
                 {digLoading?"⏳ Carregando dados...":"📝 Digitar esta proposta"}
@@ -12214,7 +12203,6 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
           </div>
         )}
-
         {/* ── Contratos anteriores (colapsível) ── */}
         {operacoes && Array.isArray(operacoes) && operacoes.length > 0 && (
           <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
@@ -12880,7 +12868,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     const provider     = loteProvider;
     const fees         = loteFees;        const setFees         = setLoteFees;
     const detalheItem  = loteDetalhe;     const setDetalheItem  = setLoteDetalhe;
-    const cardSim      = loteCardSim;     const setCardSim      = setLoteCardSim;
     const abortRef     = loteAbortRef;
     const pauseRef     = lotePauseRef;
     const PAGE_SIZE    = 50;
@@ -13218,7 +13205,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       const anos   = calcAnos(s.sim);
                       return (
                         <div key={i}
-                          onClick={()=>{ if(!s.ok) return; setCardSim({s, it:detalheItem}); }}
+                          onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:s.sim?.id||"" }, balance:{ ...detalheItem.balance, id:detalheItem.sim?.balanceId }, cpf:detalheItem.cpf, provider:loteProvider, clientePreFill:detalheItem }; openDigModal(d); setLoteDigModal(d); }}
                           style={{
                             background: isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
                             border:`2px solid ${isBest?"rgba(52,211,153,0.5)":s.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
@@ -13401,68 +13388,6 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
             <div style={{ maxHeight:180, overflowY:"auto", display:"flex", flexDirection:"column", gap:3 }}>
               {logs.map((l,i)=><div key={i} style={{ display:"flex", gap:8, fontSize:10.5 }}><span style={{ color:C.td, flexShrink:0 }}>{l.ts}</span><span style={{ color:l.ok?"#34D399":"#F87171" }}>{l.msg}</span></div>)}
-            </div>
-          </div>
-        )}
-
-        {/* ── Popup Apple card lote ── */}
-        {cardSim && (
-          <div onClick={()=>setCardSim(null)}
-            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", zIndex:1500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-            <div onClick={e=>e.stopPropagation()}
-              style={{
-                background:"linear-gradient(145deg,rgba(30,30,32,0.98),rgba(20,20,22,0.99))",
-                border:"1px solid rgba(255,255,255,0.1)",
-                borderRadius:28, padding:"32px 28px", width:"100%", maxWidth:400,
-                boxShadow:"0 40px 100px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
-              }}>
-              {/* Fechar */}
-              <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
-                <button onClick={()=>setCardSim(null)}
-                  style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:28, height:28, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
-              </div>
-              {/* Título */}
-              <div style={{ textAlign:"center", marginBottom:20 }}>
-                <div style={{ display:"inline-block", background:"linear-gradient(135deg,#7C3AED,#4F46E5)", color:"#fff", fontSize:10, fontWeight:800, padding:"4px 14px", borderRadius:99, letterSpacing:"1.5px", textTransform:"uppercase", marginBottom:14, boxShadow:"0 4px 16px rgba(124,58,237,0.4)" }}>
-                  ⚡ Super oferta liberada
-                </div>
-                <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500 }}>
-                  {(cardSim.it.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {cardSim.it.nome||"Cliente"}
-                </div>
-              </div>
-              {/* Valor */}
-              <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ color:cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>
-                  {fmtBRL(cardSim.s.sim?.availableBalance||0)}
-                </div>
-                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:13, marginTop:6 }}>Valor liberado via PIX</div>
-                <div style={{ color:"rgba(255,255,255,0.65)", fontSize:14, marginTop:6, fontWeight:700 }}>
-                  {calcAnos(cardSim.s.sim)} de antecipação
-                </div>
-              </div>
-              {/* Total Bloqueado + Averbador */}
-              <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
-                {parseFloat(cardSim.s.sim?.totalBalance||0) > 0 && (
-                  <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px" }}>
-                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>
-                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(cardSim.s.sim?.totalBalance)}</div>
-                  </div>
-                )}
-                <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11 }}>Averbador</div>
-                  <div style={{ color:"#fff", fontWeight:700, fontSize:15, textTransform:"uppercase" }}>{(cardSim.it.balance?.provider||loteProvider||"—").toUpperCase()}</div>
-                </div>
-              </div>
-              {/* Botão */}
-              <button onClick={()=>{
-                const {s, it} = cardSim;
-                setCardSim(null);
-                const d={tabela:{label:s.label,sim:s.sim,feeId:s.sim?.id||""},balance:{...it.balance,id:it.sim?.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it};
-                openDigModal(d); setLoteDigModal(d);
-              }}
-                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:"pointer", letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
-                📝 Digitar esta proposta
-              </button>
             </div>
           </div>
         )}
@@ -14301,7 +14226,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </tbody>
               </table>
             </div>
-          )}
             {/* Paginação */}
             {data?.pages && (data.pages.hasNext || data.pages.hasPrev) && (
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
