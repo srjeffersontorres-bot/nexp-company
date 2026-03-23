@@ -13636,7 +13636,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     // Helpers de data
     const toISO = (d) => d.toISOString().split("T")[0];
     const hoje  = toISO(new Date());
-    const h3dias = toISO(new Date(Date.now() - 3*24*60*60*1000));
 
     const buscar = async (pg=1, statusOverride, fromOverride, toOverride) => {
       setLoading(true); setErr("");
