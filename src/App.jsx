@@ -11939,8 +11939,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🔄</button>
               )}
               {(balance||tableSims.length>0||logs.length>0) && (
-                <button onClick={limpar} title="Limpar sessão atual"
-                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }} title="Limpar cache">🗑 Cache</button>
+                <button onClick={limpar} title="Limpar cache"
+                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🗑 Cache</button>
               )}
             </div>
           </div>
@@ -12439,7 +12439,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </table>
               </div>
 
-              {/* Paginação */}
+                        )}
+            {/* Paginação */}
               {historico.filter(h=>!histSearch||h.cpf?.includes(histSearch)||(h.nome||"").toLowerCase().includes(histSearch.toLowerCase())).length > 20 && (
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 16px", background:C.deep, borderTop:`1px solid ${C.b1}`, borderRadius:"0 0 14px 14px" }}>
                   <button onClick={()=>setIndHistPage(p=>Math.max(0,p-1))} disabled={histPage===0}
@@ -13361,7 +13362,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                 )}
               </tbody>
             </table>
-          </div>
+             )}
+                   </div>
 
           {/* Paginação */}
           {totalPages>1 && (
@@ -14224,7 +14226,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                     );
                   })}
                 </tbody>
-              </table>
+              </t          )}
+            able>
             </div>
           )}
             {/* Paginação */}
