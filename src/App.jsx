@@ -12077,66 +12077,51 @@ function V8DigitalTab({ currentUser, contacts }) {
                 <div style={{ padding:"24px 18px", color:C.td, fontSize:13, textAlign:"center" }}>Aguardando simulação...</div>
               )}
 
-              {/* Header */}
-              {tableSims.length > 0 && (
-                <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
-                  {["Tabela","Saldo Liberado","Anos","CET a.m.","Emissão",""].map(h=>(
-                    <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
-                  ))}
+              {sortedSims.length > 0 && (
+                <div style={{ padding:"18px 16px", display:"flex", gap:12, flexWrap:"wrap" }}>
+                  {sortedSims.map((t, i) => {
+                    const vlr  = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
+                    const anos = calcAnos(t.sim);
+                    const isBest = bestSim?.feeId === t.feeId;
+                    return (
+                      <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+                        <div
+                          onClick={()=> t.ok && setSelectedSim(t)}
+                          style={{
+                            background:isBest?"rgba(52,211,153,0.15)":t.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
+                            border:`2px solid ${isBest?"rgba(52,211,153,0.5)":t.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
+                            borderRadius:14, padding:"18px 16px", width:155,
+                            cursor:t.ok?"pointer":"default", transition:"all 0.15s",
+                            position:"relative", textAlign:"center",
+                          }}
+                          onMouseEnter={e=>{if(t.ok){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                          {isBest && (
+                            <div style={{ position:"absolute", top:-11, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 10px", borderRadius:99, whiteSpace:"nowrap" }}>
+                              🏆 MELHOR OFERTA
+                            </div>
+                          )}
+                          {t.ok ? (
+                            <>
+                              <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.92)", fontWeight:900, fontSize:22, lineHeight:1, marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
+                              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:5 }}>Valor liberado via PIX</div>
+                              <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, marginTop:6, fontWeight:700 }}>{anos} de antecipação</div>
+                              <div style={{ marginTop:12, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"6px 0", fontSize:11.5, fontWeight:800, color:"#fff" }}>
+                                📝 DIGITAR
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ color:"#F87171", fontSize:11, padding:"8px 0" }}>✘ {(t.err||"").slice(0,30)}</div>
+                          )}
+                        </div>
+                        <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, fontWeight:600, textTransform:"capitalize" }}>
+                          {t.label}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-
-              {sortedSims.map((t, i) => {
-                const vlr    = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
-                const emissao = parseFloat(t.sim?.emissionAmount || t.sim?.issueAmount || 0);
-                const cet    = t.sim?.cet;
-                const anos   = calcAnos(t.sim);
-                const isBest = bestSim?.feeId === t.feeId;
-                const isSel  = selectedSim?.feeId === t.feeId;
-                return (
-                  <div key={i}
-                    onClick={()=> t.ok && setSelectedSim(isSel ? null : t)}
-                    style={{
-                      display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr",
-                      gap:0, padding:"11px 14px",
-                      background: isSel?`${C.acc}20`:isBest?`${C.acc}12`:i%2===0?C.card:C.deep,
-                      borderBottom:`1px solid ${C.b1}`,
-                      borderLeft: isSel?`3px solid ${C.acc}`:isBest?`3px solid ${C.acc}88`:"3px solid transparent",
-                      cursor:t.ok?"pointer":"default", transition:"all 0.15s", opacity:t.ok?1:0.45,
-                    }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      {isBest && <span style={{ fontSize:12 }}>🏆</span>}
-                      <div>
-                        <div style={{ color:isBest||isSel?C.atxt:C.tp, fontWeight:700, fontSize:12.5, textTransform:"capitalize" }}>{t.label}</div>
-                        {!t.ok && <div style={{ color:"#F87171", fontSize:10 }}>{(t.err||"").slice(0,40)}</div>}
-                      </div>
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok?<div>
-                        <div style={{ color:isBest?"#34D399":C.atxt, fontWeight:800, fontSize:14 }}>{fmtBRL(vlr)}</div>
-                        <div style={{ color:C.td, fontSize:10 }}>via PIX</div>
-                      </div>:<span style={{ color:"#F87171", fontSize:12 }}>✘</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <span style={{ color:C.tm, fontSize:12.5, fontWeight:600 }}>{anos}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && cet && <span style={{ color:C.tm, fontSize:12 }}>{fmtPct(cet)}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center" }}>
-                      {t.ok && <span style={{ color:C.ts, fontSize:12, fontWeight:600 }}>{fmtBRL(emissao)}</span>}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
-                      {t.ok && (
-                        <button onClick={e=>{e.stopPropagation();openDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider}); setIndDigModal({tabela:t,balance:indBalance,cpf:indCpfSim,provider:indProvider});}}
-                          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                          DIGITAR
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}
