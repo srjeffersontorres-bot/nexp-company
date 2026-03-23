@@ -10904,6 +10904,29 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
       // Notifica o pai para navegar para acompanhamento
       if (onSuccess) onSuccess(res);
 
+      // Salvar/atualizar contato nos dados salvos
+      try {
+        const { addDoc, collection: fbCol, query, where, getDocs, updateDoc, doc: fbDoc } = await import("firebase/firestore");
+        const { db: fbDb } = await import("./firebase");
+        // Busca contato existente pelo CPF
+        const qContato = query(fbCol(fbDb,"contacts"), where("cpf","==",cpfClean));
+        const snap = await getDocs(qContato);
+        const dadosContato = {
+          name: form.name, cpf: cpfClean, email: form.email,
+          phone: `${phoneDDD}${phoneNum}`, rg: form.rg||"",
+          nomeMae: form.motherName||"", dataNascimento: form.birthDate||"",
+          cep: form.postalCode||"", rua: form.street||"", numero: form.addressNumber||"",
+          complemento: form.complement||"", bairro: form.neighborhood||"",
+          cidade: form.city||"", ufEnd: form.state||"",
+          updatedAt: Date.now(),
+        };
+        if (!snap.empty) {
+          await updateDoc(fbDoc(fbDb,"contacts",snap.docs[0].id), dadosContato);
+        } else {
+          await addDoc(fbCol(fbDb,"contacts"), { ...dadosContato, createdAt: Date.now() });
+        }
+      } catch(e2) { console.warn("Aviso: dados do cliente não salvos:", e2.message); }
+
       // Salvar cópia no Firestore
       try {
         const { addDoc, collection: fbCol } = await import("firebase/firestore");
@@ -11587,12 +11610,9 @@ function V8DigitalTab({ currentUser, contacts }) {
       cpf:              (dadosDigitacao?.cpf||dadosDigitacao?.documentNumber||"").replace(/\D/g,""),
       valor:            parseFloat(dadosDigitacao?.valorLiberado || dadosDigitacao?.availableBalance || 0),
       provider:         dadosDigitacao?.provider || "",
-      tabela:           dadosDigitacao?.tabela || "",
-      anos:             dadosDigitacao?.anos || "",
       status:           "formalization",
       criadoEm:         Date.now(),
       criadoEmStr:      new Date().toLocaleDateString("pt-BR"),
-      criadoEmHora:     new Date().toLocaleTimeString("pt-BR"),
     };
     const atualizada = [novo, ...filaFormalizacao.filter(f => f.id !== novo.id)];
     salvarFilaLocal(atualizada);
@@ -11920,8 +11940,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🔄</button>
               )}
               {(balance||tableSims.length>0||logs.length>0) && (
-                <button onClick={limpar} title="Limpar cache"
-                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }}>🗑 Cache</button>
+                <button onClick={limpar} title="Limpar sessão atual"
+                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:9, padding:"8px 12px", fontSize:13, cursor:"pointer" }} title="Limpar cache">🗑 Cache</button>
               )}
             </div>
           </div>
@@ -12058,8 +12078,8 @@ function V8DigitalTab({ currentUser, contacts }) {
 
               {/* Header */}
               {tableSims.length > 0 && (
-                <div style={{ display:"grid", gridTemplateColumns:"1.6fr 1fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
-                  {["Tabela","Saldo Liberado","Anos","CET a.m.",""].map(h=>(
+                <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr", background:C.deep, padding:"8px 14px", borderBottom:`1px solid ${C.b1}` }}>
+                  {["Tabela","Saldo Liberado","Anos","CET a.m.","Emissão",""].map(h=>(
                     <div key={h} style={{ color:C.td, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px" }}>{h}</div>
                   ))}
                 </div>
@@ -12067,6 +12087,7 @@ function V8DigitalTab({ currentUser, contacts }) {
 
               {sortedSims.map((t, i) => {
                 const vlr    = parseFloat(t.sim?.availableBalance || t.sim?.availableAmount || 0);
+                const emissao = parseFloat(t.sim?.emissionAmount || t.sim?.issueAmount || 0);
                 const cet    = t.sim?.cet;
                 const anos   = calcAnos(t.sim);
                 const isBest = bestSim?.feeId === t.feeId;
@@ -12075,7 +12096,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div key={i}
                     onClick={()=> t.ok && setSelectedSim(isSel ? null : t)}
                     style={{
-                      display:"grid", gridTemplateColumns:"1.6fr 1fr 0.8fr 0.8fr 0.9fr",
+                      display:"grid", gridTemplateColumns:"1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr",
                       gap:0, padding:"11px 14px",
                       background: isSel?`${C.acc}20`:isBest?`${C.acc}12`:i%2===0?C.card:C.deep,
                       borderBottom:`1px solid ${C.b1}`,
@@ -12100,6 +12121,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                     </div>
                     <div style={{ display:"flex", alignItems:"center" }}>
                       {t.ok && cet && <span style={{ color:C.tm, fontSize:12 }}>{fmtPct(cet)}</span>}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      {t.ok && <span style={{ color:C.ts, fontSize:12, fontWeight:600 }}>{fmtBRL(emissao)}</span>}
                     </div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end" }}>
                       {t.ok && (
@@ -12282,8 +12306,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                 cpf: indDigModal?.cpf || "",
                 valorLiberado: indDigModal?.tabela?.sim?.availableBalance || 0,
                 provider: indDigModal?.provider || "",
-                tabela: indDigModal?.tabela?.label || "",
-                anos: calcAnos(indDigModal?.tabela?.sim),
               });
               setAba("acompanhamento"); 
             }}
@@ -13050,30 +13072,10 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
 
     const exportar = () => {
-      const rows=[["CPF","Nome","Status","Saldo","Melhor Oferta","Tabela","Anos","Data simulação","Erro","Email","Telefone","CEP","Rua","Cidade","UF"]];
-      filtered.forEach(it=>rows.push([
-        it.cpf||"",
-        it.nome||"",
-        it.status||"",
-        it.saldo!=null?String(it.saldo).replace(".",","):"",
-        it.margem!=null?String(it.margem).replace(".",","):"",
-        it.sim?.melhor?.label||"",
-        it.sim?.anos||"",
-        it.ts||"",
-        it.erro||"",
-        it.email||"",
-        it.phone?(it.phoneDdd||"")+it.phone:"",
-        it.cep||"",
-        it.rua||"",
-        it.cidade||"",
-        it.uf||"",
-      ]));
-      const bom = "\uFEFF"; // UTF-8 BOM for Excel
-      const csv = bom + rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(";")).join("\n");
-      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href=url; a.download=`lote_fgts_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`; a.click();
-      URL.revokeObjectURL(url);
+      const rows=[["Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Anos","Data simulação","Erro"]];
+      filtered.forEach(it=>rows.push([it.nome,it.cpf,it.status,it.saldo??""  ,it.margem??"",it.sim?.melhor?.label||"",it.sim?.anos||"",it.ts||"",it.erro||""]));
+      const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="lote_fgts.csv"; a.click();
     };
 
     const filtered=items.filter(it=>{
@@ -13116,36 +13118,24 @@ function V8DigitalTab({ currentUser, contacts }) {
               {running && <button onClick={()=>{pauseRef.current=!pauseRef.current;setPaused(p=>!p);}} style={{ background:paused?"#091E12":"#2B2310", color:paused?"#34D399":"#FBBF24", border:`1px solid ${paused?"#34D39933":"#FBBF2433"}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>{paused?"▶ Retomar":"⏸ Pausar"}</button>}
               {running && <button onClick={()=>{abortRef.current=true;setRunning(false);setPaused(false);}} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>⏹ Parar</button>}
               {!running && items.some(i=>i.status==="erro"||i.status==="ok") && (
-                <button onClick={()=>{ abortRef.current=false; pauseRef.current=false; simularLote(); }}
+                <button onClick={()=>{abortRef.current=false;pauseRef.current=false;simularLote();}}
                   style={{ background:"rgba(96,165,250,0.12)", color:"#60A5FA", border:"1px solid #60A5FA33", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🔄 Reiniciar</button>
               )}
               <button onClick={()=>setShowCpfBox(p=>!p)} style={{ background:showCpfBox?C.acc:C.abg, color:"#fff", border:"none", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer", fontWeight:600 }}>➕ CPFs</button>
               <button onClick={exportar} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>📥 CSV</button>
-              <button onClick={()=>{ document.getElementById("lote_clear_modal").style.display="flex"; }}
+              <button onClick={()=>document.getElementById("lote_clear_modal").style.display="flex"}
                 style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🗑 Limpar</button>
             </div>
-
-            {/* Modal confirmação limpar lote */}
             <div id="lote_clear_modal" style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
               <div style={{ background:C.card, border:"1px solid #EF444433", borderRadius:20, padding:"32px 36px", maxWidth:400, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
                 <div style={{ fontSize:44, marginBottom:12 }}>🗑</div>
                 <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:8 }}>Limpar lista do lote?</div>
-                <div style={{ color:C.tm, fontSize:13, marginBottom:24, lineHeight:1.6 }}>
-                  Todos os <strong style={{ color:"#F87171" }}>{items.length} CPF{items.length!==1?"s":""}</strong> e resultados serão removidos. Esta ação não pode ser desfeita.
-                </div>
+                <div style={{ color:C.tm, fontSize:13, marginBottom:24, lineHeight:1.6 }}>Todos os <strong style={{ color:"#F87171" }}>{items.length} CPF{items.length!==1?"s":""}</strong> e resultados serão removidos permanentemente.</div>
                 <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
-                  <button onClick={()=>{ document.getElementById("lote_clear_modal").style.display="none"; }}
-                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-                    Cancelar
-                  </button>
-                  <button onClick={()=>{
-                    setItems([]); setLogs([]); setProgress(0);
-                    localStorage.removeItem("nexp_v8_lote_state");
-                    document.getElementById("lote_clear_modal").style.display="none";
-                  }}
-                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                    ✕ Confirmar limpeza
-                  </button>
+                  <button onClick={()=>document.getElementById("lote_clear_modal").style.display="none"}
+                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
+                  <button onClick={()=>{ setItems([]); setLogs([]); setProgress(0); localStorage.removeItem("nexp_v8_lote_state"); document.getElementById("lote_clear_modal").style.display="none"; }}
+                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>✕ Confirmar limpeza</button>
                 </div>
               </div>
             </div>
@@ -13270,6 +13260,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                     .map((s,i)=>{
                       const isBest = s.label === detalheItem.sim?.melhor?.label;
                       const vlr    = parseFloat(s.sim?.availableBalance||0);
+                      const emissao= parseFloat(s.sim?.emissionAmount||0);
                       const anos   = calcAnos(s.sim);
                       return (
                         <div key={i}
@@ -13289,21 +13280,21 @@ function V8DigitalTab({ currentUser, contacts }) {
                               🏆 MELHOR OFERTA
                             </div>
                           )}
+                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, textTransform:"capitalize", marginBottom:6, marginTop:isBest?6:0, fontWeight:600 }}>
+                            {s.label}
+                          </div>
                           {s.ok ? (
                             <>
-                              <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.9)", fontWeight:900, fontSize:22, lineHeight:1, letterSpacing:"-0.5px", marginTop:isBest?8:0 }}>{fmtBRL(vlr)}</div>
+                              <div style={{ color:isBest?"#34D399":"#fff", fontWeight:900, fontSize:20, lineHeight:1, letterSpacing:"-0.5px" }}>{fmtBRL(vlr)}</div>
                               <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:3 }}>Valor liberado via PIX</div>
-                              <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10.5, marginTop:4, fontWeight:600 }}>{anos} de antecipação</div>
-                              <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, marginTop:3, textTransform:"capitalize", fontWeight:600 }}>Tabela {s.label}</div>
+                              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:6, padding:"2px 8px", display:"inline-block", fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
+                              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10, marginTop:3 }}>{anos}</div>
                               <div style={{ marginTop:10, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"5px 0", textAlign:"center", fontSize:11, fontWeight:800, color:"#fff", letterSpacing:"0.5px" }}>
                                 📝 DIGITAR
                               </div>
                             </>
                           ) : (
-                            <>
-                              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"capitalize", marginBottom:4 }}>{s.label}</div>
-                              <div style={{ color:"#F87171", fontSize:11 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
-                            </>
+                            <div style={{ color:"#F87171", fontSize:11, marginTop:4 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
                           )}
                         </div>
                       );
@@ -13490,8 +13481,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                 cpf: loteDigModal?.cpf || "",
                 valorLiberado: loteDigModal?.tabela?.sim?.availableBalance || 0,
                 provider: loteDigModal?.provider || "",
-                tabela: loteDigModal?.tabela?.label || "",
-                anos: calcAnos(loteDigModal?.tabela?.sim),
               });
               setAba("acompanhamento"); 
             }}
@@ -13654,57 +13643,52 @@ function V8DigitalTab({ currentUser, contacts }) {
       const s  = statusOverride !== undefined ? statusOverride : status;
       const df = fromOverride  !== undefined ? fromOverride  : dateFrom;
       const dt = toOverride    !== undefined ? toOverride    : dateTo;
-
-      // Só passa status para API se for suportado (paid/canceled)
       const statusSuportadoAPI = ["paid","canceled","processing","pending","analysis","manual_analysis","refounded"];
       const apiStatus = s && statusSuportadoAPI.includes(s) ? s : "";
-
       try {
+        let allRows = [];
         const q = search.trim();
-        const params = new URLSearchParams({ page:pg, limit:50 });
-        if (q) {
-          const digits = q.replace(/\D/g,"");
-          params.append("search", digits.length >= 6 ? digits : q);
+        const maxPages = (df||dt) ? 20 : 60; // com data: 20 pgs; sem: tudo
+        let curPage = 1;
+        while (curPage <= maxPages) {
+          const params = new URLSearchParams({ page:curPage, limit:50 });
+          if (q) { const d=q.replace(/\D/g,""); params.append("search",d.length>=6?d:q); }
+          if (provider) params.append("provider", provider);
+          if (apiStatus) params.append("status", apiStatus);
+          if (df) { params.append("startDate", df); params.append("createdAtFrom", df); }
+          if (dt) { params.append("endDate", dt+"T23:59:59"); params.append("createdAtTo", dt+"T23:59:59"); }
+          const res = await apiFetch(`/fgts/proposal?${params}`);
+          const rows = res?.data || [];
+          allRows = [...allRows, ...rows];
+          if (rows.length < 50) break;
+          curPage++;
         }
-        if (provider) params.append("provider", provider);
-        if (apiStatus) params.append("status", apiStatus);
-        if (df) params.append("startDate", df);
-        if (dt) params.append("endDate", dt);
-
-        const res = await apiFetch(`/fgts/proposal?${params}`);
-        const rows = res?.data || [];
-        // Sort descending by createdAt (timestamp ms or ISO string)
-        rows.sort((a,b)=>{
-          const ta = typeof (b.createdAt||b.created_at) === 'number' ? (b.createdAt||b.created_at) : new Date(b.createdAt||b.created_at||0).getTime();
-          const tb = typeof (a.createdAt||a.created_at) === 'number' ? (a.createdAt||a.created_at) : new Date(a.createdAt||a.created_at||0).getTime();
-          return ta - tb;
-        });
-
-        setData({
-          data: rows,
-          _all: rows,
-          pages: res?.pages || { current:pg, hasNext:rows.length===50, hasPrev:pg>1, total:rows.length, totalPages:1 },
-        });
-        cruzarFilaComAPI(rows);
-
-        // Enrich CPFs in background — fetch detail for rows missing documentNumber
-        const semCpf = rows.filter(r => !(r.documentNumber||r.individualDocumentNumber));
-        if (semCpf.length > 0) {
-          (async () => {
-            const enriched = [...rows];
-            for (const op of semCpf.slice(0, 20)) { // limit to 20 to avoid overload
+        // Remove duplicatas e ordena decrescente
+        const seen = new Set();
+        allRows = allRows.filter(r=>{ if(seen.has(r.id)) return false; seen.add(r.id); return true; });
+        const getTs = v => typeof v==='number'?v:(v?new Date(v).getTime():0);
+        allRows.sort((a,b)=>getTs(b.createdAt||b.created_at)-getTs(a.createdAt||a.created_at));
+        const PS=50, totalPages=Math.max(1,Math.ceil(allRows.length/PS));
+        const pageRows=allRows.slice((pg-1)*PS,pg*PS);
+        setData({data:pageRows,_all:allRows,pages:{current:pg,hasNext:pg<totalPages,hasPrev:pg>1,total:allRows.length,totalPages}});
+        cruzarFilaComAPI(allRows);
+        // Enrich CPFs — persiste em data e _all
+        const semCpf = pageRows.filter(r=>!(r.documentNumber||r.individualDocumentNumber));
+        if (semCpf.length>0) {
+          (async()=>{
+            const eP=[...pageRows], eA=[...allRows];
+            for (const op of semCpf.slice(0,20)) {
               try {
-                const det = await apiFetch(`/fgts/proposal/${op.id}`);
-                const idx = enriched.findIndex(r => r.id === op.id);
-                if (idx >= 0) enriched[idx] = { ...enriched[idx], ...det };
+                const det=await apiFetch(`/fgts/proposal/${op.id}`);
+                const merged={...op,...det};
+                const ip=eP.findIndex(r=>r.id===op.id); if(ip>=0) eP[ip]=merged;
+                const ia=eA.findIndex(r=>r.id===op.id); if(ia>=0) eA[ia]=merged;
               } catch {}
             }
-            setData(prev => prev ? { ...prev, data: enriched, _all: enriched } : prev);
+            setData(prev=>prev?{...prev,data:eP,_all:eA}:prev);
           })();
         }
-      } catch(e) {
-        setErr(e.message);
-      }
+      } catch(e) { setErr(e.message); }
       setLoading(false);
     };
 
@@ -13818,12 +13802,16 @@ function V8DigitalTab({ currentUser, contacts }) {
             </div>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>De</label>
-              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+              <input type="date" value={dateFrom}
+                onChange={e=>{ setDateFrom(e.target.value); }}
+                onBlur={e=>{ if(e.target.value) buscar(1, undefined, e.target.value, dateTo); }}
                 style={{ ...S.input, cursor:"pointer", width:150, colorScheme:"dark" }} />
             </div>
             <div>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Até</label>
-              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+              <input type="date" value={dateTo}
+                onChange={e=>{ setDateTo(e.target.value); }}
+                onBlur={e=>{ if(e.target.value) buscar(1, undefined, dateFrom, e.target.value); }}
                 style={{ ...S.input, cursor:"pointer", width:150, colorScheme:"dark" }} />
             </div>
             {/* Atalhos de data */}
@@ -13832,9 +13820,13 @@ function V8DigitalTab({ currentUser, contacts }) {
               <div style={{ display:"flex", gap:5 }}>
                 {[
                   { l:"Hoje",    f:hoje,    t:hoje },
-                  { l:"3 dias",  f:h3dias,  t:hoje },
-                  { l:"7 dias",  f:toISO(new Date(Date.now()-7*24*60*60*1000)),   t:hoje },
-                  { l:"30 dias", f:toISO(new Date(Date.now()-30*24*60*60*1000)),  t:hoje },
+                  { l:"7 dias",  f:toISO(new Date(Date.now()-7*24*60*60*1000)), t:hoje },
+                  { l:"30 dias", f:toISO(new Date(Date.now()-30*24*60*60*1000)), t:hoje },
+                  { l:"Nov/25",  f:"2025-11-01", t:"2025-11-30" },
+                  { l:"Dez/25",  f:"2025-12-01", t:"2025-12-31" },
+                  { l:"Jan/26",  f:"2026-01-01", t:"2026-01-31" },
+                  { l:"Fev/26",  f:"2026-02-01", t:"2026-02-28" },
+                  { l:"Mar/26",  f:"2026-03-01", t:hoje },
                 ].map(a=>(
                   <button key={a.l} onClick={()=>{ setDateFrom(a.f); setDateTo(a.t); buscar(1, undefined, a.f, a.t); }}
                     style={{ background:(dateFrom===a.f&&dateTo===a.t)?C.abg:C.deep, color:(dateFrom===a.f&&dateTo===a.t)?C.atxt:C.td, border:`1px solid ${(dateFrom===a.f&&dateTo===a.t)?C.atxt+"44":C.b2}`, borderRadius:7, padding:"4px 10px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
@@ -13944,12 +13936,16 @@ function V8DigitalTab({ currentUser, contacts }) {
                           onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
                           onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
                           {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
-                          <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"capitalize",marginTop:isBest?4:0}}>{s.label}</div>
                           {s.ok?<>
-                            <div style={{color:isBest?"#34D399":"#fff",fontWeight:800,fontSize:16,lineHeight:1,marginTop:2}}>{fmtBRL(s.sim?.availableBalance||0)}</div>
-                            <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginTop:2}}>{calcAnos(s.sim)}</div>
-                            <div style={{marginTop:8,background:"rgba(255,255,255,0.12)",borderRadius:6,padding:"3px 0",textAlign:"center",fontSize:10,fontWeight:700,color:"#fff"}}>📝 DIGITAR</div>
-                          </>:<div style={{color:"#F87171",fontSize:11,marginTop:4}}>✘</div>}
+                            <div style={{color:isBest?"#34D399":"rgba(255,255,255,0.9)",fontWeight:900,fontSize:20,lineHeight:1,marginTop:isBest?8:0}}>{fmtBRL(s.sim?.availableBalance||0)}</div>
+                            <div style={{color:"rgba(255,255,255,0.45)",fontSize:10,marginTop:3}}>Valor liberado via PIX</div>
+                            <div style={{color:"rgba(255,255,255,0.65)",fontSize:10.5,marginTop:4,fontWeight:700}}>{calcAnos(s.sim)} de antecipação</div>
+                            <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,marginTop:2,textTransform:"capitalize"}}>Tabela {s.label}</div>
+                            <div style={{marginTop:8,background:"rgba(255,255,255,0.15)",borderRadius:6,padding:"4px 0",textAlign:"center",fontSize:10.5,fontWeight:800,color:"#fff"}}>📝 DIGITAR</div>
+                          </>:<>
+                            <div style={{color:"rgba(255,255,255,0.5)",fontSize:10.5,textTransform:"capitalize",marginBottom:4}}>{s.label}</div>
+                            <div style={{color:"#F87171",fontSize:11}}>✘</div>
+                          </>}
                         </div>
                       );
                     })}
@@ -14048,34 +14044,29 @@ function V8DigitalTab({ currentUser, contacts }) {
                             }
                           </td>
                           <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
-                            {item.status==="formalization"
-                              ? <button onClick={()=>{ document.getElementById(`fila_del_${item.id}`).style.display="flex"; }}
-                                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
-                                  🗑 Remover
-                                </button>
-                              : <button onClick={()=>{ document.getElementById(`fila_del_${item.id}`).style.display="flex"; }}
-                                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
-                                  🗑
-                                </button>
-                            }
+                            <button onClick={()=>document.getElementById("fila_del_"+item.id).style.display="flex"}
+                              style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:7, padding:"4px 10px", fontSize:10.5, cursor:"pointer" }}>
+                              🗑 Remover
+                            </button>
                           </td>
                         </tr>
                         {/* Modal confirmação remover da fila */}
-                        <div id={`fila_del_${item.id}`} style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
+                        <div id={"fila_del_"+item.id} style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
                           <div style={{ background:C.card, border:`1px solid #EF444433`, borderRadius:20, padding:"28px 32px", maxWidth:380, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
                             <div style={{ fontSize:36, marginBottom:10 }}>🗑</div>
                             <div style={{ color:C.tp, fontSize:16, fontWeight:800, marginBottom:6 }}>Remover proposta?</div>
                             <div style={{ color:C.tm, fontSize:12.5, marginBottom:20, lineHeight:1.6 }}>
-                              <strong style={{ color:C.tp }}>{item.clientName||item.cpf}</strong> será removido da fila. Esta ação não pode ser desfeita.
+                              <strong style={{ color:C.tp }}>{item.clientName||item.cpf}</strong> será removido da fila permanentemente.
                             </div>
                             <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-                              <button onClick={()=>{ document.getElementById(`fila_del_${item.id}`).style.display="none"; }}
+                              <button onClick={()=>document.getElementById("fila_del_"+item.id).style.display="none"}
                                 style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
-                              <button onClick={()=>{ removerDaFila(item.id); document.getElementById(`fila_del_${item.id}`).style.display="none"; }}
+                              <button onClick={()=>{ removerDaFila(item.id); document.getElementById("fila_del_"+item.id).style.display="none"; }}
                                 style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>✕ Remover</button>
                             </div>
                           </div>
                         </div>
+                        {/* Detalhe inline da fila */}
                         {isSel && (
                           <tr>
                             <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`2px solid #C084FC44` }}>
@@ -14088,9 +14079,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                     ["Status", stLabel],
                                     ["Valor", fmtBRL(item.valor||0)],
                                     ["Provider", (item.provider||"—").toUpperCase()],
-                                    ["Tabela", item.tabela||"—"],
-                                    ["Antecipação", item.anos||"—"],
-                                    ["Data/Hora", item.criadoEmStr ? `${item.criadoEmStr} ${item.criadoEmHora||""}`.trim() : item.criadoEm ? new Date(item.criadoEm).toLocaleString("pt-BR") : "—"],
+                                    ["Adicionado em", item.criadoEm ? new Date(item.criadoEm).toLocaleString("pt-BR",{"day":"2-digit","month":"2-digit","year":"numeric","hour":"2-digit","minute":"2-digit"}) : (item.criadoEmStr||"—")],
                                   ].map(([l,v])=>(
                                     <div key={l} style={{ background:C.card, borderRadius:8, padding:"8px 12px" }}>
                                       <div style={{ color:C.td, fontSize:10 }}>{l}</div>
@@ -14137,17 +14126,14 @@ function V8DigitalTab({ currentUser, contacts }) {
                             setDetalhe({...op, _loading:true});
                             try {
                               const det = await apiFetch(`/fgts/proposal/${op.id}`);
-                              const merged = {...op, ...det};
+                              const merged = {...op,...det};
                               setDetalhe(merged);
-                              // Persist CPF into the data list so it stays visible
                               setData(prev => prev ? {
                                 ...prev,
-                                data: (prev.data||[]).map(r => r.id===op.id ? merged : r),
-                                _all: (prev._all||[]).map(r => r.id===op.id ? merged : r),
+                                data: (prev.data||[]).map(r=>r.id===op.id?merged:r),
+                                _all: (prev._all||[]).map(r=>r.id===op.id?merged:r),
                               } : prev);
-                            } catch {
-                              setDetalhe(op);
-                            }
+                            } catch { setDetalhe(op); }
                           }}
                           style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
                           onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
@@ -14163,17 +14149,16 @@ function V8DigitalTab({ currentUser, contacts }) {
                           <td style={{ color:C.atxt, fontWeight:700, padding:"10px 12px" }}>{fmtBRL(op.disbursedIssueAmount)}</td>
                           <td style={{ color:C.td, padding:"10px 12px", fontSize:11, textTransform:"uppercase" }}>{op.provider||"—"}</td>
                           <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
-                            {hasLink
-                              ? <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                  <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
-                                    style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
-                                    {copied===op.id?"✅ Copiado":"📋 Copiar"}
-                                  </button>
-                                </div>
+                            {hasLink && matchStatus(op.status,"formalization")
+                              ? <button onClick={()=>copiarLink(op.id,op.formalizationLink)}
+                                  style={{ background:C.abg, color:copied===op.id?"#34D399":C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:7, padding:"3px 10px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                                  {copied===op.id?"✅ Copiado":"📋 Copiar"}
+                                </button>
                               : <span style={{ color:C.td, fontSize:11 }}>—</span>
                             }
                           </td>
                           <td style={{ padding:"10px 12px" }} onClick={e=>e.stopPropagation()}>
+                            <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                             <button onClick={async()=>{
                               const providerNorm = (op.provider||loteProvider||"cartos").toLowerCase().trim();
                               const providerValido = ["qi","cartos","bms"].includes(providerNorm) ? providerNorm : "cartos";
@@ -14209,6 +14194,33 @@ function V8DigitalTab({ currentUser, contacts }) {
                               style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
                               ⚡ Simular
                             </button>
+                            <button onClick={e=>{e.stopPropagation(); document.getElementById("del_prop_"+op.id).style.display="flex";}}
+                              style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:7, padding:"5px 8px", fontSize:10.5, cursor:"pointer" }}>
+                              🗑
+                            </button>
+                            </div>
+                            <div id={"del_prop_"+op.id} style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
+                              <div style={{ background:C.card, border:"1px solid #EF444433", borderRadius:20, padding:"28px 32px", maxWidth:380, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
+                                <div style={{ fontSize:36, marginBottom:10 }}>⚠️</div>
+                                <div style={{ color:C.tp, fontSize:16, fontWeight:800, marginBottom:6 }}>Excluir proposta?</div>
+                                <div style={{ color:C.tm, fontSize:12.5, marginBottom:6 }}><strong>{op.clientName||cpfFmt}</strong></div>
+                                <div style={{ color:"#F87171", fontSize:11.5, marginBottom:20 }}>Esta ação cancela o contrato permanentemente.</div>
+                                <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+                                  <button onClick={e=>{e.stopPropagation(); document.getElementById("del_prop_"+op.id).style.display="none";}}
+                                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
+                                  <button onClick={async e=>{
+                                    e.stopPropagation();
+                                    try { await apiFetch(`/fgts/proposal/${op.id}/cancel`,"PATCH",{reason:"invalid_data:other",description:"Excluído pelo operador."}); } catch {}
+                                    document.getElementById("del_prop_"+op.id).style.display="none";
+                                    setDetalhe(null);
+                                    setData(prev=>prev?{...prev,data:(prev.data||[]).filter(r=>r.id!==op.id),_all:(prev._all||[]).filter(r=>r.id!==op.id)}:prev);
+                                  }}
+                                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                    🗑 Excluir
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </td>
                         </tr>
                         {/* Detalhe inline — abre abaixo da linha com dados completos do contrato */}
@@ -14234,11 +14246,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                                     ["Contrato",  detalhe?.contractNumber||"—"],
                                     ["Status",    getStatusLabel(detalhe?.status)],
                                     ["Valor",     fmtBRL(detalhe?.disbursedIssueAmount)],
-                                    ["Tabela",    detalhe?.tableLabel||detalhe?.simulationFeesLabel||"—"],
-                                    ["Antecipação", detalhe?.installmentsCount ? `${detalhe.installmentsCount} ano${detalhe.installmentsCount!==1?"s":""}` : "—"],
                                     ["Provider",  (detalhe?.provider||"—").toUpperCase()],
                                     ["Parceiro",  detalhe?.partnerId||"—"],
-                                    ["Criado em", detalhe?.createdAt ? new Date(typeof detalhe.createdAt==="number"?detalhe.createdAt:detalhe.createdAt).toLocaleString("pt-BR") : "—"],
+                                    ["Criado em", detalhe?.createdAt?new Date(detalhe.createdAt).toLocaleString("pt-BR"):"—"],
                                   ].map(([l,v])=>(
                                     <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:8, padding:"8px 12px" }}>
                                       <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
@@ -14287,7 +14297,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </tbody>
               </table>
             </div>
-          )}
             {/* Paginação */}
             {data?.pages && (data.pages.hasNext || data.pages.hasPrev) && (
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
