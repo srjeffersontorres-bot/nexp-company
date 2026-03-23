@@ -13094,9 +13094,39 @@ function V8DigitalTab({ currentUser, contacts }) {
               {!running && <button onClick={simularLote} disabled={items.length===0} style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 16px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:items.length===0?0.5:1 }}>▶ Simular Todos</button>}
               {running && <button onClick={()=>{pauseRef.current=!pauseRef.current;setPaused(p=>!p);}} style={{ background:paused?"#091E12":"#2B2310", color:paused?"#34D399":"#FBBF24", border:`1px solid ${paused?"#34D39933":"#FBBF2433"}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>{paused?"▶ Retomar":"⏸ Pausar"}</button>}
               {running && <button onClick={()=>{abortRef.current=true;setRunning(false);setPaused(false);}} style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444433", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>⏹ Parar</button>}
+              {!running && items.some(i=>i.status==="erro"||i.status==="ok") && (
+                <button onClick={()=>{ abortRef.current=false; pauseRef.current=false; simularLote(); }}
+                  style={{ background:"rgba(96,165,250,0.12)", color:"#60A5FA", border:"1px solid #60A5FA33", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🔄 Reiniciar</button>
+              )}
               <button onClick={()=>setShowCpfBox(p=>!p)} style={{ background:showCpfBox?C.acc:C.abg, color:"#fff", border:"none", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer", fontWeight:600 }}>➕ CPFs</button>
               <button onClick={exportar} style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>📥 CSV</button>
-              <button onClick={()=>{setItems([]);setLogs([]);setProgress(0);localStorage.removeItem("nexp_v8_lote_state");}} style={{ background:"transparent", color:C.td, border:`1px solid ${C.b2}`, borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🗑</button>
+              <button onClick={()=>{ document.getElementById("lote_clear_modal").style.display="flex"; }}
+                style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:10, padding:"9px 14px", fontSize:13, cursor:"pointer" }}>🗑 Limpar</button>
+            </div>
+
+            {/* Modal confirmação limpar lote */}
+            <div id="lote_clear_modal" style={{ display:"none", position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:2000, alignItems:"center", justifyContent:"center" }}>
+              <div style={{ background:C.card, border:"1px solid #EF444433", borderRadius:20, padding:"32px 36px", maxWidth:400, width:"90%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.5)" }}>
+                <div style={{ fontSize:44, marginBottom:12 }}>🗑</div>
+                <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:8 }}>Limpar lista do lote?</div>
+                <div style={{ color:C.tm, fontSize:13, marginBottom:24, lineHeight:1.6 }}>
+                  Todos os <strong style={{ color:"#F87171" }}>{items.length} CPF{items.length!==1?"s":""}</strong> e resultados serão removidos. Esta ação não pode ser desfeita.
+                </div>
+                <div style={{ display:"flex", gap:12, justifyContent:"center" }}>
+                  <button onClick={()=>{ document.getElementById("lote_clear_modal").style.display="none"; }}
+                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                    Cancelar
+                  </button>
+                  <button onClick={()=>{
+                    setItems([]); setLogs([]); setProgress(0);
+                    localStorage.removeItem("nexp_v8_lote_state");
+                    document.getElementById("lote_clear_modal").style.display="none";
+                  }}
+                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    ✕ Confirmar limpeza
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -13623,14 +13653,28 @@ function V8DigitalTab({ currentUser, contacts }) {
         const rows = res?.data || [];
         rows.sort((a,b)=>(b.createdAt||b.created_at||0)-(a.createdAt||a.created_at||0));
 
-        // page tracking removed — direct API pagination
         setData({
           data: rows,
           _all: rows,
           pages: res?.pages || { current:pg, hasNext:false, hasPrev:pg>1, total:rows.length, totalPages:1 },
         });
-        // Cruza fila de formalização com dados da API
         cruzarFilaComAPI(rows);
+
+        // Enrich CPFs in background — fetch detail for rows missing documentNumber
+        const semCpf = rows.filter(r => !(r.documentNumber||r.individualDocumentNumber));
+        if (semCpf.length > 0) {
+          (async () => {
+            const enriched = [...rows];
+            for (const op of semCpf) {
+              try {
+                const det = await apiFetch(`/fgts/proposal/${op.id}`);
+                const idx = enriched.findIndex(r => r.id === op.id);
+                if (idx >= 0) enriched[idx] = { ...enriched[idx], ...det };
+              } catch {}
+            }
+            setData(prev => prev ? { ...prev, data: enriched, _all: enriched } : prev);
+          })();
+        }
       } catch(e) {
         setErr(e.message);
       }
