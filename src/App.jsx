@@ -415,7 +415,7 @@ const LeadBadge = React.memo(function LeadBadge({ c }) {
       {lbl}
     </span>
   );
-}
+});
 const StatusBadge = React.memo(function StatusBadge({ status }) {
   const ss = STATUS_STYLE[status] || STATUS_STYLE["Não simulado"];
   return (
@@ -434,7 +434,7 @@ const StatusBadge = React.memo(function StatusBadge({ status }) {
       {status}
     </span>
   );
-}
+});
 function CommSimTabs({ contact }) {
   const [scTab, setScTab] = useState("comissao");
   return (
@@ -2296,7 +2296,7 @@ const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
       )}
     </div>
   );
-}
+});
 
 // ── Contacts Page ──────────────────────────────────────────────
 function ContactsPage({ contacts, setContacts }) {
@@ -16263,7 +16263,7 @@ const PropCard = React.memo(function PropCard({ p, myId, canSeeAll, onAtualizar 
       )}
     </div>
   );
-}
+});
 
 // ── Rank de Propostas ─────────────────────────────────────────────
 function PropostasRankTab({ propostas }) {
@@ -16734,7 +16734,7 @@ function PagamentosPage({ currentUser }) {
       </div>
     </div>
   );
-}
+});
 
 export default function App() {
   // ── Hooks centralizados — sem useEffect duplicado ─────────────
