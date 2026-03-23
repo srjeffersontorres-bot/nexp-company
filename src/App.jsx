@@ -10759,34 +10759,30 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   // ✅ Form state local — evita re-render do pai ao digitar (bug 1 caractere)
   const [form, setForm] = useState(() => initialForm || {});
 
-  // ✅ Sincroniza form quando initialForm muda (cruzamento de dados carregado depois)
+  // ✅ Sincroniza form APENAS quando o cliente muda (CPF diferente) ou na primeira montagem.
+  // Nunca sobrescreve enquanto o usuário está digitando.
+  const lastSyncedCpfRef = useRef(null);
   useEffect(() => {
-    if (initialForm && Object.keys(initialForm).length > 0) {
-      setForm(initialForm);
-    }
-  }, [initialForm]); // eslint-disable-line
-
-  // ✅ Quando initialForm mudar (novo cliente), atualiza o form interno
-  // Preserva campos de pagamento se o usuário já preencheu
-  useEffect(() => {
-    if (initialForm && Object.keys(initialForm).length > 0) {
-      setForm(prev => {
-        const paymentFilled = prev.pix || prev.bankId || prev.bankAccountNumber;
-        if (paymentFilled) {
-          // Mantém os dados de pagamento já preenchidos
-          return {
-            ...initialForm,
-            pix:              prev.pix              || initialForm.pix              || "",
-            bankId:           prev.bankId           || initialForm.bankId           || "",
-            bankAccountNumber:prev.bankAccountNumber|| initialForm.bankAccountNumber|| "",
-            bankAccountBranch:prev.bankAccountBranch|| initialForm.bankAccountBranch|| "",
-            bankAccountDigit: prev.bankAccountDigit || initialForm.bankAccountDigit || "",
-            bankAccountType:  prev.bankAccountType  || initialForm.bankAccountType  || "checking_account",
-          };
-        }
-        return initialForm;
-      });
-    }
+    if (!initialForm || Object.keys(initialForm).length === 0) return;
+    const incomingCpf = (initialForm.cpf || "").replace(/\D/g, "");
+    // Só atualiza se for um cliente diferente do que já está no form
+    if (incomingCpf && incomingCpf === lastSyncedCpfRef.current) return;
+    lastSyncedCpfRef.current = incomingCpf;
+    setForm(prev => {
+      const paymentFilled = prev.pix || prev.bankId || prev.bankAccountNumber;
+      if (paymentFilled) {
+        return {
+          ...initialForm,
+          pix:               prev.pix               || initialForm.pix               || "",
+          bankId:            prev.bankId             || initialForm.bankId            || "",
+          bankAccountNumber: prev.bankAccountNumber  || initialForm.bankAccountNumber || "",
+          bankAccountBranch: prev.bankAccountBranch  || initialForm.bankAccountBranch || "",
+          bankAccountDigit:  prev.bankAccountDigit   || initialForm.bankAccountDigit  || "",
+          bankAccountType:   prev.bankAccountType    || initialForm.bankAccountType   || "checking_account",
+        };
+      }
+      return initialForm;
+    });
   }, [initialForm]); // eslint-disable-line
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
   const simId = tabela?.sim?.id || "";
