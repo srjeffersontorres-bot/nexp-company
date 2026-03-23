@@ -1,4 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import {
+  useAuthUser, useContacts, useUsers, usePresence,
+  useTheme, useUnreadCounters,
+} from "./hooks";
+import { resolveRole, getRolesCanCreate, canManageUser, canSeePassword, ROLE_LABEL, ROLE_COLOR, migrarRolesLegados } from "./security";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword, getAuth, signInWithEmailAndPassword as signInSecondary } from "firebase/auth";
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
@@ -64,6 +69,23 @@ async function uploadCloudinary(base64, fileName) {
 }
 
 // ── Upload inteligente: comprime imagem → Firebase Storage (Cloudinary se configurado) ──
+// ─── Tipos e tamanho permitidos para upload ─────────────────────
+const UPLOAD_TIPOS_PERMITIDOS = [
+  "image/jpeg","image/png","image/webp","image/gif",
+  "application/pdf","application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+const UPLOAD_MAX_MB = 10;
+
+function validarArquivoUpload(file) {
+  if (!file) return "Nenhum arquivo selecionado.";
+  if (!UPLOAD_TIPOS_PERMITIDOS.includes(file.type))
+    return `Tipo não permitido: ${file.type||"desconhecido"}. Use imagens, PDF ou DOCX.`;
+  if (file.size > UPLOAD_MAX_MB * 1024 * 1024)
+    return `Arquivo muito grande (${(file.size/1024/1024).toFixed(1)}MB). Máximo: ${UPLOAD_MAX_MB}MB.`;
+  return null;
+}
+
 async function uploadArquivoOtimizado(base64, fileName, tipo, propId) {
   let dadoFinal = base64;
   // 1. Comprimir imagem
@@ -81,9 +103,9 @@ async function uploadArquivoOtimizado(base64, fileName, tipo, propId) {
     return { url, source: "firebase", path };
   } catch (err) {
     console.error("Upload Firebase falhou:", err);
+    // ⛔ Não faz fallback silencioso para base64 — lança o erro para o chamador tratar
+    throw new Error(`Falha no upload do arquivo ${fileName}: ${err.message}`);
   }
-  // 4. Fallback: base64 direto (sem storage externo — funciona mas usa espaço no Firestore)
-  return { url: dadoFinal, source: "local" };
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -127,64 +149,19 @@ const LEAD_COLOR = {
 };
 // ── Nova Hierarquia de Usuários ──────────────────────────────────
 // Níveis: 0=administrador(dono) > 1=gerente > 2=supervisor > 3=operador
-const ROLE_HIERARCHY = {
-  administrador: 0,
-  gerente:        1,
-  supervisor:     2,
-  operador:       3,
-  // aliases legados — mapeados internamente
-  mestre:         0,
-  master:         1,
-  indicado:       3,
-  visitante:      3,
-  digitador:      3,
-};
-const ROLE_LABEL = {
-  administrador: "Administrador",
-  gerente:       "Gerente Comercial",
-  supervisor:    "Supervisor",
-  operador:      "Operador",
-  // legados
-  mestre:        "Administrador",
-  master:        "Gerente Comercial",
-  indicado:      "Operador",
-  visitante:     "Operador",
-  digitador:     "Operador",
-};
-const ROLE_COLOR = {
-  administrador: "#C084FC",
-  gerente:       "#4F8EF7",
-  supervisor:    "#FBBF24",
-  operador:      "#34D399",
-  // legados
-  mestre:        "#C084FC",
-  master:        "#4F8EF7",
-  indicado:      "#34D399",
-  visitante:     "#34D399",
-  digitador:     "#34D399",
-};
-// Quais roles um usuário pode criar (apenas abaixo do seu nível)
-function getRolesCanCreate(myRole) {
-  const lvl = ROLE_HIERARCHY[myRole] ?? 99;
-  if (lvl === 0) return ["gerente","supervisor","operador"];   // administrador
-  if (lvl === 1) return ["supervisor","operador"];             // gerente
-  if (lvl === 2) return ["operador"];                          // supervisor
-  return [];                                                   // operador não cria
-}
-// Pode ver senha de usuários abaixo
-function canSeePassword(myRole, targetRole) {
-  const myLvl = ROLE_HIERARCHY[myRole] ?? 99;
-  const tgLvl = ROLE_HIERARCHY[targetRole] ?? 99;
-  // Apenas Administrador (lvl 0) e Gerente (lvl 1) podem ver senhas de abaixo
-  return myLvl <= 1 && myLvl < tgLvl;
-}
-// Pode editar um usuário
+// ── Roles, permissões e hierarquia — importados de security.js ──
+// ROLE_LABEL, ROLE_COLOR, getRolesCanCreate, canSeePassword, canManageUser, resolveRole
+// (evite duplicar aqui — use os imports do topo do arquivo)
+
+// Suporte a roles legados nos displays — redireciona para o canônico
+const ROLE_HIERARCHY = { administrador:0, gerente:1, supervisor:2, operador:3, mestre:0, master:1, indicado:3, visitante:3, digitador:3 };
+
 // Presença real: online:true E lastSeen < 3 minutos atrás
 function isReallyOnline(presenceEntry) {
   if (!presenceEntry?.online) return false;
   const lastSeen = presenceEntry.lastSeen?.seconds;
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 180; // 3 minutos
+  return (Date.now() / 1000 - lastSeen) < 180;
 }
 
 const EMOJIS = [
@@ -307,19 +284,12 @@ const makeBlank = () => ({
   complemento: "",
 });
 
-const INITIAL_USERS = [
-  {
-    id: "mestre",
-    username: "NexpCompanyADM",
-    email: "NexpCompanyADM",
-    password: "MestredaNexp2026@",
-    role: "mestre",
-    name: "Mestre Nexp",
-    cpf: "",
-    photo: null,
-    createdBy: null,
-  },
-];
+// ⛔ NUNCA coloque senha hardcoded aqui.
+// O usuário administrador deve ser criado no Firebase Console:
+//   Authentication → Add user (defina email e senha lá)
+//   Firestore → coleção "users" → documento com uid → { role: "administrador", active: true }
+// SEM campo "password" no Firestore.
+const INITIAL_USERS = [];
 
 
 const EXAMPLE_CSV = `Nome,CPF,Telefone,Telefone2,Telefone3,CNPJ,Email,Matricula,TipoLead,Observacao,Rua,Numero,Bairro,CEP,Cidade,UF
@@ -425,7 +395,7 @@ const exportCSV = (data, fname) => {
 };
 
 // ── Shared UI ──────────────────────────────────────────────────
-function LeadBadge({ c }) {
+const LeadBadge = React.memo(function LeadBadge({ c }) {
   const col = LEAD_COLOR[c.leadType] || "#9CA3AF";
   const lbl = c.leadType === "Outro" ? c.leadTypeCustom || "Outro" : c.leadType;
   return (
@@ -446,7 +416,7 @@ function LeadBadge({ c }) {
     </span>
   );
 }
-function StatusBadge({ status }) {
+const StatusBadge = React.memo(function StatusBadge({ status }) {
   const ss = STATUS_STYLE[status] || STATUS_STYLE["Não simulado"];
   return (
     <span
@@ -1910,7 +1880,7 @@ function Dashboard({ contacts }) {
 }
 
 // ── Contact Card ───────────────────────────────────────────────
-function CCard({ contact, onUpdate, onDelete }) {
+const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
   const [open, setOpen] = useState(false);
   const [ed, setEd] = useState(false);
   const [sc, setSc] = useState(false);
@@ -2331,24 +2301,29 @@ function CCard({ contact, onUpdate, onDelete }) {
 // ── Contacts Page ──────────────────────────────────────────────
 function ContactsPage({ contacts, setContacts }) {
   const [q, setQ] = useState("");
-  const res = q.trim()
-    ? contacts.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q.toLowerCase()) ||
-          c.cpf.includes(q) ||
-          (c.phone || "").includes(q) ||
-          (c.email || "").toLowerCase().includes(q.toLowerCase()) ||
-          (c.matricula || "").toLowerCase().includes(q.toLowerCase()),
-      )
-    : [];
-  const upd = async (u) => {
+  // useMemo evita re-filtrar a lista inteira a cada render irrelevante
+  const res = useMemo(() => {
+    if (!q.trim()) return [];
+    const ql = q.toLowerCase();
+    return contacts.filter(
+      (c) =>
+        c.name.toLowerCase().includes(ql) ||
+        c.cpf.includes(q) ||
+        (c.phone || "").includes(q) ||
+        (c.email || "").toLowerCase().includes(ql) ||
+        (c.matricula || "").toLowerCase().includes(ql),
+    );
+  }, [contacts, q]);
+
+  const upd = useCallback(async (u) => {
     await saveContact(u);
-  };
-  const rem = async (id) => {
+  }, []);
+
+  const rem = useCallback(async (id) => {
     const c = contacts.find((x) => String(x.id) === String(id));
     await deleteContact(id);
     if (c) addLog("delete_one", `Cliente removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Lead: ${c.leadType}`);
-  };
+  }, [contacts]);
   return (
     <div style={{ padding: "30px 36px", maxWidth: 820 }}>
       <div style={{ marginBottom: 20 }}>
@@ -3166,7 +3141,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
     );
 
   const lc = LEAD_COLOR[leadTypeRef.current] || "#9CA3AF";
-  const nexts = list.filter(c => c.id !== curIdRef.current).slice(0, 10);
+  const nexts = useMemo(() => list.filter(c => c.id !== curIdRef.current).slice(0, 10), [list, curIdRef.current]); // eslint-disable-line
 
   const upd = async (u) => {
     savingRef.current = true;
@@ -5108,8 +5083,38 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
   return (
     <div style={{ minHeight:"100%", background:C.bg }}>
       <div style={{ padding:"30px 36px 0" }}>
-        <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 4px" }}>👥 Usuários</h1>
-        <p style={{ color:C.tm, fontSize:12.5, margin:"0 0 20px" }}>Gerencie usuários, perfis e permissões</p>
+        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:10, marginBottom:4 }}>
+          <div>
+            <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>👥 Usuários</h1>
+            <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Gerencie usuários, perfis e permissões</p>
+          </div>
+          {(currentUser.role === "administrador" || currentUser.role === "mestre") && (
+            <button
+              title="Converte roles legados (mestre→administrador, master→gerente, digitador/visitante/indicado→operador)"
+              onClick={async () => {
+                const preview = await migrarRolesLegados(true);
+                if (preview.length === 0) { alert("✅ Nenhuma migração necessária — todos os roles já são canônicos."); return; }
+                const ok = window.confirm(
+                  `Migrar ${preview.length} usuário(s)?
+
+` +
+                  preview.map(u => `${u.id}: ${u.roleAtual} → ${u.roleNovo}`).join("
+") +
+                  "
+
+Esta ação é reversível manualmente no Firestore."
+                );
+                if (ok) {
+                  await migrarRolesLegados(false);
+                  alert("✅ Migração concluída!");
+                }
+              }}
+              style={{ background:"rgba(251,191,36,0.1)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}
+            >
+              🔄 Migrar Roles Legados
+            </button>
+          )}
+        </div>
         <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}` }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -5923,10 +5928,10 @@ function UsuariosTab({ users, setUsers, currentUser }) {
           }
         } else { throw e; }
       }
+      // ⛔ Nunca salva senha no Firestore — fica só no Firebase Auth
       const newU = {
         id: uid, uid,
         username: form.email, email: form.email,
-        password: form.password,
         role: form.role,
         name: form.name, cpf: form.cpf,
         photo: form.photo || null,
@@ -5983,7 +5988,9 @@ function UsuariosTab({ users, setUsers, currentUser }) {
       setErr("Você não pode conceder um nível acima do seu."); return;
     }
     try {
-      await saveUserProfile(editForm.uid||editForm.id, editForm);
+      // ⛔ Nunca salva senha no Firestore
+      const { password: _p, ...editSafe } = editForm;
+      await saveUserProfile(editSafe.uid||editSafe.id, editSafe);
       setExpandId(null); setEditForm(null); setResetPw("");
       flash("Usuário atualizado!");
     } catch (e) { setErr("Erro ao salvar: "+e.message); }
@@ -6015,7 +6022,9 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         authOk = true;
       } catch {}
     }
-    await saveUserProfile(uid2, { ...editForm, password: pw });
+    // ⛔ Nunca salva senha no Firestore — fica só no Firebase Auth
+    const { password: _pw, ...profileSafe } = editForm;
+    await saveUserProfile(uid2, profileSafe);
     setEditForm(f => f ? { ...f, password: pw } : f);
     setResetPw(""); return authOk;
   };
@@ -16071,7 +16080,7 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
 }
 
 // ── Card expandido de proposta com TODOS os dados ──────────────
-function PropCard({ p, myId, canSeeAll, onAtualizar }) {
+const PropCard = React.memo(function PropCard({ p, myId, canSeeAll, onAtualizar }) {
   const [open, setOpen] = useState(false);
   const st = p.status||"Proposta Digitada";
   const col = STATUS_PROPOSTA_COLORS[st]||C.td;
@@ -16728,32 +16737,32 @@ function PagamentosPage({ currentUser }) {
 }
 
 export default function App() {
-  const [users, setUsers] = useState(INITIAL_USERS);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [contacts, setContacts] = useState([]);
-  const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
-  const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
+  // ── Hooks centralizados — sem useEffect duplicado ─────────────
+  const { currentUser, setCurrentUser, authLoading } = useAuthUser();
+  const { contacts, setContacts }                    = useContacts(currentUser);
+  const { users, setUsers }                          = useUsers(currentUser);
+  const { presence }                                 = usePresence(currentUser);
+  const { theme, setTheme }                          = useTheme();
+  const {
+    unreadNotif, unreadStories, unreadPropostas,
+    unreadDigitacao, chatStories,
+  } = useUnreadCounters(currentUser);
+
+  const [page, setPage]           = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
   const [unreadChat, setUnreadChat] = useState(0);
-  const [shake, setShake] = useState(false);
-  const [presence, setPresenceData] = useState({});
+  const [shake, setShake]         = useState(false);
   const [flashUserId, setFlashUserId] = useState(null);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen]   = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
-  const [chatPos, setChatPos] = useState({ x: null, y: null });
-  const [chatStories, setChatStories] = useState([]);
-  const [unreadNotif, setUnreadNotif] = useState(0);
-  const [unreadStories, setUnreadStories] = useState(0);
+  const [chatPos, setChatPos]     = useState({ x: null, y: null });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [unreadPropostas, setUnreadPropostas] = useState(0);
-  const [unreadDigitacao, setUnreadDigitacao] = useState(0);
   const lastChatCount = useRef(0);
-  // System config — mestre controls what others can access
+  // System config — administrador controla o que outros podem acessar
   const [sysConfig, setSysConfig] = useState({
-    masterChatEnabled: true,     // mestre can disable chat for masters
-    indicadoChatEnabled: true,   // master can disable chat for indicados
+    masterChatEnabled: true,
+    indicadoChatEnabled: true,
     visitanteChatEnabled: true,
-    pagamentosEnabled: true,     // admin can toggle pagamentos tab
+    pagamentosEnabled: true,
     visitanteTabs: { dashboard:true, contacts:true, add:false, import:false, review:true, cstatus:true, leds:false, atalhos:true, premium:false, config:false },
   });
 
@@ -16774,116 +16783,8 @@ export default function App() {
     window.addEventListener("nexp_navigate", handler);
     return () => window.removeEventListener("nexp_navigate", handler);
   }, []); // eslint-disable-line
-
-  // ── Persistência de sessão Firebase ──────────────────────────
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const profile = await getUserProfile(firebaseUser.uid);
-        if (profile && profile.active !== false) {
-          setCurrentUser({ ...profile, uid: firebaseUser.uid });
-        } else {
-          setCurrentUser(null);
-        }
-      } else {
-        setCurrentUser(null);
-      }
-      setAuthLoading(false);
-    });
-    return () => unsub();
-  }, []);
-
-  // ── Ouvir contatos do Firestore em tempo real ─────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const unsub = listenContacts((data) => setContacts(data));
-    return () => unsub();
-  }, [currentUser]);
-
-  // ── Ouvir usuários do Firestore em tempo real ─────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const unsub = listenUsers((data) => setUsers(data));
-    return () => unsub();
-  }, [currentUser]);
-
-  // ── Ouvir stories para exibir ring no chat ────────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const myId = currentUser.uid || currentUser.id;
-    const unsub = onSnapshot(collection(db, "stories"), (snap) => {
-      const now = Date.now();
-      const live = snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.expiresAt>now);
-      setChatStories(live);
-      // Conta stories de OUTROS usuários com pelo menos 1 não visto por mim
-      const othersWithUnseen = new Set(
-        live
-          .filter(s => s.authorId !== myId && !(s.views||[]).includes(myId))
-          .map(s => s.authorId)
-      ).size;
-      setUnreadStories(othersWithUnseen);
-    });
-    return () => unsub();
-  }, [currentUser]); // eslint-disable-line
-
-  // ── Ouvir propostas não lidas ────────────────────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const myId = currentUser.uid || currentUser.id;
-    const isMestreOrMaster = ["mestre","master"].includes(currentUser.role);
-    const isDigitador = currentUser.role === "digitador";
-    const unsub = onSnapshot(collection(db, "propostas"), (snap) => {
-      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
-      const unread = all.filter(p => {
-        if (isMestreOrMaster) return !p.viewedBy?.includes(myId);
-        return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
-      }).length;
-      setUnreadPropostas(unread);
-      // Badge aba "Minhas Propostas" + sidebar "Digitação" — só digitador
-      if (isDigitador) {
-        setUnreadDigitacao(all.filter(p =>
-          p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)
-        ).length);
-      }
-    });
-    return () => unsub();
-  }, [currentUser]); // eslint-disable-line
-
-  // ── Ouvir notificações do usuário atual ───────────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const myId = currentUser.uid || currentUser.id;
-    const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
-      const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const TIPOS_PROPOSTA = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
-      const mine = notifs.filter(n => !TIPOS_PROPOSTA.includes(n.type) && (n.toId === myId || n.broadcast === true));
-      const unread = mine.filter(n => {
-        if (n.broadcast) return !(n.readBy || []).includes(myId);
-        return !n.readAt;
-      }).length;
-      setUnreadNotif(unread);
-    });
-    return () => unsub();
-  }, [currentUser]); // eslint-disable-line
-
-  // ── Presença online ───────────────────────────────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-    const myId = currentUser.uid || currentUser.id;
-    setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
-    const interval = setInterval(() => {
-      setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
-    }, 30000);
-    const handleUnload = () => removePresence(myId);
-    window.addEventListener("beforeunload", handleUnload);
-    const unsub = listenPresence((data) => setPresenceData(data));
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("beforeunload", handleUnload);
-      removePresence(myId);
-      unsub();
-    };
-  }, [currentUser]); // eslint-disable-line
+  // ── Auth, contatos, usuários, presença, counters e tema
+  //    são gerenciados pelos hooks em hooks.js ─────────────────
 
   // ── Ouvir chat para indicador de não lidas e shake ────────────
   useEffect(() => {
@@ -17167,7 +17068,7 @@ export default function App() {
           </div>
         )}
         {page === "config" && (
-          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={(t) => { setTheme(t); localStorage.setItem("nexp_theme", t); }} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "calendario" && (
           <CalendarPage currentUser={currentUser} />
