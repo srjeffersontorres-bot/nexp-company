@@ -1,9 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import {
-  useAuthUser, useContacts, useUsers, usePresence,
-  useTheme, useUnreadCounters,
-} from "./hooks";
-import { resolveRole, getRolesCanCreate, canManageUser, canSeePassword, ROLE_LABEL, ROLE_COLOR, migrarRolesLegados } from "./security";
+import React, { useState, useRef, useEffect } from "react";
 import { initializeApp as initFirebaseApp } from "firebase/app";
 import { onAuthStateChanged, reauthenticateWithCredential, EmailAuthProvider, updatePassword, getAuth, signInWithEmailAndPassword as signInSecondary } from "firebase/auth";
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
@@ -69,23 +64,6 @@ async function uploadCloudinary(base64, fileName) {
 }
 
 // ── Upload inteligente: comprime imagem → Firebase Storage (Cloudinary se configurado) ──
-// ─── Tipos e tamanho permitidos para upload ─────────────────────
-const UPLOAD_TIPOS_PERMITIDOS = [
-  "image/jpeg","image/png","image/webp","image/gif",
-  "application/pdf","application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-];
-const UPLOAD_MAX_MB = 10;
-
-function validarArquivoUpload(file) {
-  if (!file) return "Nenhum arquivo selecionado.";
-  if (!UPLOAD_TIPOS_PERMITIDOS.includes(file.type))
-    return `Tipo não permitido: ${file.type||"desconhecido"}. Use imagens, PDF ou DOCX.`;
-  if (file.size > UPLOAD_MAX_MB * 1024 * 1024)
-    return `Arquivo muito grande (${(file.size/1024/1024).toFixed(1)}MB). Máximo: ${UPLOAD_MAX_MB}MB.`;
-  return null;
-}
-
 async function uploadArquivoOtimizado(base64, fileName, tipo, propId) {
   let dadoFinal = base64;
   // 1. Comprimir imagem
@@ -103,9 +81,9 @@ async function uploadArquivoOtimizado(base64, fileName, tipo, propId) {
     return { url, source: "firebase", path };
   } catch (err) {
     console.error("Upload Firebase falhou:", err);
-    // ⛔ Não faz fallback silencioso para base64 — lança o erro para o chamador tratar
-    throw new Error(`Falha no upload do arquivo ${fileName}: ${err.message}`);
   }
+  // 4. Fallback: base64 direto (sem storage externo — funciona mas usa espaço no Firestore)
+  return { url: dadoFinal, source: "local" };
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -149,19 +127,64 @@ const LEAD_COLOR = {
 };
 // ── Nova Hierarquia de Usuários ──────────────────────────────────
 // Níveis: 0=administrador(dono) > 1=gerente > 2=supervisor > 3=operador
-// ── Roles, permissões e hierarquia — importados de security.js ──
-// ROLE_LABEL, ROLE_COLOR, getRolesCanCreate, canSeePassword, canManageUser, resolveRole
-// (evite duplicar aqui — use os imports do topo do arquivo)
-
-// Suporte a roles legados nos displays — redireciona para o canônico
-const ROLE_HIERARCHY = { administrador:0, gerente:1, supervisor:2, operador:3, mestre:0, master:1, indicado:3, visitante:3, digitador:3 };
-
+const ROLE_HIERARCHY = {
+  administrador: 0,
+  gerente:        1,
+  supervisor:     2,
+  operador:       3,
+  // aliases legados — mapeados internamente
+  mestre:         0,
+  master:         1,
+  indicado:       3,
+  visitante:      3,
+  digitador:      3,
+};
+const ROLE_LABEL = {
+  administrador: "Administrador",
+  gerente:       "Gerente Comercial",
+  supervisor:    "Supervisor",
+  operador:      "Operador",
+  // legados
+  mestre:        "Administrador",
+  master:        "Gerente Comercial",
+  indicado:      "Operador",
+  visitante:     "Operador",
+  digitador:     "Operador",
+};
+const ROLE_COLOR = {
+  administrador: "#C084FC",
+  gerente:       "#4F8EF7",
+  supervisor:    "#FBBF24",
+  operador:      "#34D399",
+  // legados
+  mestre:        "#C084FC",
+  master:        "#4F8EF7",
+  indicado:      "#34D399",
+  visitante:     "#34D399",
+  digitador:     "#34D399",
+};
+// Quais roles um usuário pode criar (apenas abaixo do seu nível)
+function getRolesCanCreate(myRole) {
+  const lvl = ROLE_HIERARCHY[myRole] ?? 99;
+  if (lvl === 0) return ["gerente","supervisor","operador"];   // administrador
+  if (lvl === 1) return ["supervisor","operador"];             // gerente
+  if (lvl === 2) return ["operador"];                          // supervisor
+  return [];                                                   // operador não cria
+}
+// Pode ver senha de usuários abaixo
+function canSeePassword(myRole, targetRole) {
+  const myLvl = ROLE_HIERARCHY[myRole] ?? 99;
+  const tgLvl = ROLE_HIERARCHY[targetRole] ?? 99;
+  // Apenas Administrador (lvl 0) e Gerente (lvl 1) podem ver senhas de abaixo
+  return myLvl <= 1 && myLvl < tgLvl;
+}
+// Pode editar um usuário
 // Presença real: online:true E lastSeen < 3 minutos atrás
 function isReallyOnline(presenceEntry) {
   if (!presenceEntry?.online) return false;
   const lastSeen = presenceEntry.lastSeen?.seconds;
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 180;
+  return (Date.now() / 1000 - lastSeen) < 180; // 3 minutos
 }
 
 const EMOJIS = [
@@ -284,11 +307,8 @@ const makeBlank = () => ({
   complemento: "",
 });
 
-// ⛔ NUNCA coloque senha hardcoded aqui.
-// O usuário administrador deve ser criado no Firebase Console:
-//   Authentication → Add user (defina email e senha lá)
-//   Firestore → coleção "users" → documento com uid → { role: "administrador", active: true }
-// SEM campo "password" no Firestore.
+// ⛔ Senha NUNCA hardcoded aqui. Crie o admin no Firebase Console.
+// Authentication → Add user | Firestore → users/{uid} → { role:"administrador", active:true }
 const INITIAL_USERS = [];
 
 
@@ -395,7 +415,7 @@ const exportCSV = (data, fname) => {
 };
 
 // ── Shared UI ──────────────────────────────────────────────────
-const LeadBadge = React.memo(function LeadBadge({ c }) {
+function LeadBadge({ c }) {
   const col = LEAD_COLOR[c.leadType] || "#9CA3AF";
   const lbl = c.leadType === "Outro" ? c.leadTypeCustom || "Outro" : c.leadType;
   return (
@@ -415,8 +435,8 @@ const LeadBadge = React.memo(function LeadBadge({ c }) {
       {lbl}
     </span>
   );
-});
-const StatusBadge = React.memo(function StatusBadge({ status }) {
+}
+function StatusBadge({ status }) {
   const ss = STATUS_STYLE[status] || STATUS_STYLE["Não simulado"];
   return (
     <span
@@ -434,7 +454,7 @@ const StatusBadge = React.memo(function StatusBadge({ status }) {
       {status}
     </span>
   );
-});
+}
 function CommSimTabs({ contact }) {
   const [scTab, setScTab] = useState("comissao");
   return (
@@ -1880,7 +1900,7 @@ function Dashboard({ contacts }) {
 }
 
 // ── Contact Card ───────────────────────────────────────────────
-const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
+function CCard({ contact, onUpdate, onDelete }) {
   const [open, setOpen] = useState(false);
   const [ed, setEd] = useState(false);
   const [sc, setSc] = useState(false);
@@ -2133,11 +2153,11 @@ const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
-                  style={{
-                  onClick=                  onClick={() => {
+                  onClick={() => {
                     setForm({ ...contact });
                     setEd(true);
-                  }}>
+                  }}
+                  style={{
                     ...S.btn(C.abg, C.atxt),
                     border: `1px solid ${C.atxt}33`,
                     fontSize: 12,
@@ -2147,16 +2167,17 @@ const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
                   Editar
                 </button>
                 <button
+                  onClick={() => {
+                    if (window.confirm("Remover este cliente?"))
+                      onDelete(contact.id);
+                  }}
                   style={{
                     ...S.btn("transparent", "#EF4444"),
                     border: "1px solid #EF444433",
                     fontSize: 12,
                     padding: "7px 14px",
-                  onClick=
-                  onClick=                  onClick={() => {
-                    if (window.confirm("Remover este cliente?"))
-                      onDelete(contact.id);
-                  }}>
+                  }}
+                >
                   Remover
                 </button>
               </div>
@@ -2295,34 +2316,29 @@ const CCard = React.memo(function CCard({ contact, onUpdate, onDelete }) {
       )}
     </div>
   );
-});
+}
 
 // ── Contacts Page ──────────────────────────────────────────────
 function ContactsPage({ contacts, setContacts }) {
   const [q, setQ] = useState("");
-  // useMemo evita re-filtrar a lista inteira a cada render irrelevante
-  const res = useMemo(() => {
-    if (!q.trim()) return [];
-    const ql = q.toLowerCase();
-    return contacts.filter(
-      (c) =>
-        c.name.toLowerCase().includes(ql) ||
-        c.cpf.includes(q) ||
-        (c.phone || "").includes(q) ||
-        (c.email || "").toLowerCase().includes(ql) ||
-        (c.matricula || "").toLowerCase().includes(ql),
-    );
-  }, [contacts, q]);
-
-  const upd = useCallback(async (u) => {
+  const res = q.trim()
+    ? contacts.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q.toLowerCase()) ||
+          c.cpf.includes(q) ||
+          (c.phone || "").includes(q) ||
+          (c.email || "").toLowerCase().includes(q.toLowerCase()) ||
+          (c.matricula || "").toLowerCase().includes(q.toLowerCase()),
+      )
+    : [];
+  const upd = async (u) => {
     await saveContact(u);
-  }, []);
-
-  const rem = useCallback(async (id) => {
+  };
+  const rem = async (id) => {
     const c = contacts.find((x) => String(x.id) === String(id));
     await deleteContact(id);
     if (c) addLog("delete_one", `Cliente removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Lead: ${c.leadType}`);
-  }, [contacts]);
+  };
   return (
     <div style={{ padding: "30px 36px", maxWidth: 820 }}>
       <div style={{ marginBottom: 20 }}>
@@ -3140,7 +3156,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
     );
 
   const lc = LEAD_COLOR[leadTypeRef.current] || "#9CA3AF";
-  const nexts = useMemo(() => list.filter(c => c.id !== curIdRef.current).slice(0, 10), [list, curIdRef.current]); // eslint-disable-line
+  const nexts = list.filter(c => c.id !== curIdRef.current).slice(0, 10);
 
   const upd = async (u) => {
     savingRef.current = true;
@@ -3251,8 +3267,7 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               const isSel = leadTypeRef.current === t || extraLeadsRef.current.includes(t);
               const isPrimary = leadTypeRef.current === t;
               return (
-                <button
-                  style={{ background: isSel ? col+"18" : C.deep, color: isSel ? col : C.tm, border: isSel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: isSel ? 600 : 400, transition: "all 0.12s" }}
+                <button key={t}
                   onClick={() => {
                     if (!isPrimary) {
                       const oldPrimary = leadTypeRef.current;
@@ -3264,7 +3279,8 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
                       setExtraLeads(newExtra);
                       upd({ ...cur, leadType: t, extraLeads: newExtra, reactions: reactionsRef.current, extraStatus: extraStatusRef.current });
                     }
-                  }}>
+                  }}
+                  style={{ background: isSel ? col+"18" : C.deep, color: isSel ? col : C.tm, border: isSel ? `1px solid ${col}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: isPrimary ? "default" : "pointer", fontWeight: isSel ? 600 : 400, transition: "all 0.12s" }}>
                   {isPrimary ? "★ " : isSel ? "✓ " : ""}{t}
                 </button>
               );
@@ -3278,9 +3294,13 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           <div style={{ color: C.tm, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Marcar status <span style={{ color: C.td, fontSize: 10, textTransform: "none" }}>(selecione múltiplos)</span>
           </div>
-          <div
-            const st = STATUS_STYLE[s];
-            onClick=            {CLIENT_STATUS.map((s) => {>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {CLIENT_STATUS.map((s) => {
+              const st = STATUS_STYLE[s];
+              const sel = extraStatus.includes(s);
+              return (
+                <button key={s} onClick={() => toggleStatus(s)}
+                  style={{ background: sel ? st.bg : C.deep, color: sel ? st.color : C.tm, border: sel ? `1px solid ${st.color}55` : `1px solid ${C.b2}`, borderRadius: 20, padding: "5px 11px", fontSize: 10.5, cursor: "pointer", fontWeight: sel ? 600 : 400, transition: "all 0.12s" }}>
                   {sel ? "✓ " : ""}{s}
                 </button>
               );
@@ -3348,12 +3368,13 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           {/* V8 Digital — só para FGTS e CLT */}
           {(leadTypeRef.current === "FGTS" || leadTypeRef.current === "CLT" || (extraLeadsRef.current||[]).some(l=>l==="FGTS"||l==="CLT")) && (
             <button
-              style={{ background:"linear-gradient(135deg,#0f4c81,#1a6bb5)", color:"#fff", border:"1px solid rgba(79,142,247,0.4)", borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap", boxShadow:"0 2px 12px rgba(79,142,247,0.3)" }}
               onClick={() => {
                 sessionStorage.setItem("nexp_v8_simular_cpf", cur.cpf||"");
                 const event = new CustomEvent("nexp_navigate", { detail:{ page:"apis", cpf:cur.cpf } });
                 window.dispatchEvent(event);
-              }}>
+              }}
+              style={{ background:"linear-gradient(135deg,#0f4c81,#1a6bb5)", color:"#fff", border:"1px solid rgba(79,142,247,0.4)", borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap", boxShadow:"0 2px 12px rgba(79,142,247,0.3)" }}
+            >
               🏦 V8 Digital
             </button>
           )}
@@ -3400,14 +3421,14 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
               <div style={{ color:C.tm, fontSize:11, marginBottom:8, fontWeight:600 }}>Selecione o tipo de proposta:</div>
               <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                 {["FGTS","CLT","INSS","CARTÃO"].map(t=>(
-                  <button
-                    style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:700, cursor:"pointer", flex:1 }}
-                    onClick= Salvar cliente em sessionStorage para DigitacaoPage carregar
+                  <button key={t} onClick={()=>{
+                    // Salvar cliente em sessionStorage para DigitacaoPage carregar
                     sessionStorage.setItem("nexp_digitar_cliente", JSON.stringify(cur));
                     sessionStorage.setItem("nexp_digitar_tipo", t);
                     setModalDigitar(false);
                     if (onDigitar) onDigitar(cur);
-                  }}>
+                  }}
+                    style={{ background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:700, cursor:"pointer", flex:1 }}>
                     {t}
                   </button>
                 ))}
@@ -3423,13 +3444,16 @@ function ReviewClient({ contacts, setContacts, filtered = null, onDigitar = null
           <div style={{ color: C.td, fontSize: 10.5, marginBottom: 7, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Próximos {nexts.length}
           </div>
-          <div
-            style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
-            onClick=            {nexts.map((c, i) => {
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {nexts.map((c, i) => {
               const lc2 = LEAD_COLOR[c.leadType] || "#9CA3AF";
               const ss2 = STATUS_STYLE[c.status] || STATUS_STYLE["Não simulado"];
               return (
-                <div key={c.id} onClick={() => navigate(c.id)}>
+                <div key={c.id} onClick={() => navigate(c.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: C.deep, borderRadius: 7, border: `1px solid ${C.b1}`, cursor: "pointer" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = C.card)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = C.deep)}
+                >
                   <div style={{ width: 22, height: 22, borderRadius: "50%", background: lc2 + "18", color: lc2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
                     {ini(c.name)}
                   </div>
@@ -3583,16 +3607,17 @@ function ClienteStatus({ contacts, setContacts }) {
             Ver {filtered.length} cliente{filtered.length !== 1 ? "s" : ""}
           </button>
           <button
+            onClick={() => {
+              setSelS([]);
+              setSelL([]);
+            }}
             style={{
               ...S.btn("transparent", C.tm),
               border: `1px solid ${C.b2}`,
               padding: "12px 18px",
               fontSize: 13,
             }}
-            onClick=Click={() => {
-              setSelS([]);
-              setSelL([]);
-            }}>
+          >
             Limpar filtros
           </button>
         </div>
@@ -3610,14 +3635,14 @@ function ClienteStatus({ contacts, setContacts }) {
         }}
       >
         <button
-          
-          onClick=          onClick={() => setApplied(false)}
+          onClick={() => setApplied(false)}
           style={{
             ...S.btn(C.abg, C.atxt),
             border: `1px solid ${C.atxt}33`,
             padding: "7px 14px",
             fontSize: 12,
-          }}>
+          }}
+        >
           ← Filtros
         </button>
         {selS.map((s) => {
@@ -4168,6 +4193,12 @@ function PremiumNexp({ contacts, setContacts }) {
         </span>
         {(selS.length > 0 || selL.length > 0 || q.trim()) && (
           <button
+            onClick={() => {
+              setSelS([]);
+              setSelL([]);
+              setQ("");
+              setQty("");
+            }}
             style={{
               background: "transparent",
               border: `1px solid ${C.b2}`,
@@ -4177,12 +4208,7 @@ function PremiumNexp({ contacts, setContacts }) {
               fontSize: 11.5,
               cursor: "pointer",
             }}
-            onClick=Click={() => {
-              setSelS([]);
-              setSelL([]);
-              setQ("");
-              setQty("");
-            }}>
+          >
             Limpar filtros
           </button>
         )}
@@ -4496,6 +4522,14 @@ function PremiumNexp({ contacts, setContacts }) {
                       Cancelar
                     </button>
                     <button
+                      onClick={async () => {
+                        if (window.confirm("Remover este lead?")) {
+                          await deleteContact(String(c.id));
+                          addLog("delete_one", `Lead removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Status: ${c.status}`);
+                          setContacts((cs) => cs.filter((x) => x.id !== c.id));
+                        }
+                        closeEdit();
+                      }}
                       style={{
                         ...S.btn("transparent", "#EF4444"),
                         border: "1px solid #EF444433",
@@ -4503,14 +4537,7 @@ function PremiumNexp({ contacts, setContacts }) {
                         fontSize: 13,
                         marginLeft: "auto",
                       }}
-                      onClick=Click={async () => {
-                        if (window.confirm("Remover este lead?")) {
-                          await deleteContact(String(c.id));
-                          addLog("delete_one", `Lead removido: ${c.name}`, `CPF: ${c.cpf || "—"} · Status: ${c.status}`);
-                          setContacts((cs) => cs.filter((x) => x.id !== c.id));
-                        }
-                        closeEdit();
-                      }}>
+                    >
                       Remover lead
                     </button>
                   </div>
@@ -4537,12 +4564,12 @@ function TemasTab({ currentTheme, onTheme }) {
         Altera a cor de destaque de toda a interface imediatamente.
       </div>
       <div
-        
-        onClick=        style={{
+        style={{
           display: "grid",
           gridTemplateColumns: "repeat(3,1fr)",
           gap: 14,
-        }}>
+        }}
+      >
         {Object.entries(ACCENT_THEMES).map(([name, t]) => {
           const sel = currentTheme === name;
           return (
@@ -5071,32 +5098,8 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
   return (
     <div style={{ minHeight:"100%", background:C.bg }}>
       <div style={{ padding:"30px 36px 0" }}>
-        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:10, marginBottom:4 }}>
-          <div>
-            <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:0 }}>👥 Usuários</h1>
-            <p style={{ color:C.tm, fontSize:12.5, margin:"4px 0 0" }}>Gerencie usuários, perfis e permissões</p>
-          </div>
-          {(currentUser.role === "administrador" || currentUser.role === "mestre") && (
-            <button
-              style={{ background:"rgba(251,191,36,0.1)", color:"#FBBF24", border:"1px solid rgba(251,191,36,0.3)", borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}
-              title="Converte roles legados (mestre→administrador, master→gerente, digitador/visitante/indicado→operador)"
-              onClick={async () => {
-                const preview = await migrarRolesLegados(true);
-                if (preview.length === 0) { alert("✅ Nenhuma migração necessária — todos os roles já são canônicos."); return; }
-                const ok = window.confirm(
-                  "Migrar " + preview.length + " usuário(s)?\n\n" +
-                  preview.map(u => u.id + ": " + u.roleAtual + " → " + u.roleNovo).join("\n") +
-                  "\n\nEsta ação é reversível manualmente no Firestore."
-                );
-                if (ok) {
-                  await migrarRolesLegados(false);
-                  alert("✅ Migração concluída!");
-                }
-              }}>
-              🔄 Migrar Roles Legados
-            </button>
-          )}
-        </div>
+        <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 4px" }}>👥 Usuários</h1>
+        <p style={{ color:C.tm, fontSize:12.5, margin:"0 0 20px" }}>Gerencie usuários, perfis e permissões</p>
         <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}` }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -5109,9 +5112,8 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
           ))}
         </div>
       </div>
-      <div
-        { id:"digitacao",    label:"Digitação" },
-        onClick=        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
+      <div style={{ padding:"26px 36px", maxWidth:860 }}>
+        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "rank" && <RankTab users={users} currentUser={currentUser} />}
         {tab === "perfis" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "permissoes" && (isMestre || isMaster) && sysConfig && onSysConfig && (() => {
@@ -5136,7 +5138,8 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) 
             { id:"notificacoes", label:"Notificações" },
             { id:"chat",         label:"Nexp Chat" },
             { id:"premium",      label:"Premium Nexp" },
-            { id:"config",       label:"Configurações" },>
+            { id:"config",       label:"Configurações" },
+            { id:"digitacao",    label:"Digitação" },
             { id:"propostas",    label:"Propostas" },
           ];
           const roleColor2 = { master:"#94a3b8", indicado:"#34D399", visitante:"#60a5fa" };
@@ -5910,7 +5913,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
           }
         } else { throw e; }
       }
-      // ⛔ Nunca salva senha no Firestore — fica só no Firebase Auth
+      // ⛔ Sem password no Firestore
       const newU = {
         id: uid, uid,
         username: form.email, email: form.email,
@@ -5970,7 +5973,6 @@ function UsuariosTab({ users, setUsers, currentUser }) {
       setErr("Você não pode conceder um nível acima do seu."); return;
     }
     try {
-      // ⛔ Nunca salva senha no Firestore
       const { password: _p, ...editSafe } = editForm;
       await saveUserProfile(editSafe.uid||editSafe.id, editSafe);
       setExpandId(null); setEditForm(null); setResetPw("");
@@ -6004,9 +6006,9 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         authOk = true;
       } catch {}
     }
-    // ⛔ Nunca salva senha no Firestore — fica só no Firebase Auth
-    const { password: _pw, ...profileSafe } = editForm;
-    await saveUserProfile(uid2, profileSafe);
+    // ⛔ Sem password no Firestore
+    const { password: _pw2, ...editSafeReset } = { ...editForm };
+    await saveUserProfile(uid2, editSafeReset);
     setEditForm(f => f ? { ...f, password: pw } : f);
     setResetPw(""); return authOk;
   };
@@ -8691,11 +8693,11 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   ].map(t => {
                     const sel = dmTheme === t.id;
                     return (
-                      <button
-                        style={{ background:t.bg, backgroundSize:"200% 200%", border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", fontSize:11, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.2)" : "none", transition:"all 0.15s" }}
-                        onClick=tDmTheme(t.id);
+                      <button key={String(t.id)} onClick={async ()=>{
+                        setDmTheme(t.id);
                         if (t.id) await sendChatMessage({ text:`${currentUser.name||currentUser.email} trocou o tema da conversa para ${t.label}`, type:"system", toId:activeTab, authorId:myId, authorName:currentUser.name||currentUser.email });
-                      }}>
+                      }}
+                        style={{ background:t.bg, backgroundSize:"200% 200%", border: sel ? "2.5px solid #fff" : `1px solid ${C.b2}`, borderRadius:10, padding:"6px 12px", cursor:"pointer", fontSize:11, color: t.id ? "#fff" : C.ts, fontWeight: sel ? 700 : 400, boxShadow: sel ? "0 0 10px rgba(255,255,255,0.2)" : "none", transition:"all 0.15s" }}>
                         {t.label}
                       </button>
                     );
@@ -8763,11 +8765,13 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               {/* Header */}
               <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.b1}`, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
                 <button onClick={()=>setShowGroupConfig(false)} style={{ background:"none", border:"none", color:C.tm, cursor:"pointer", fontSize:18, padding:"0 4px", lineHeight:1 }}>‹</button>
-                <div
-                  
-                  onClick=              </div>
+                <div style={{ flex:1, color:C.tp, fontSize:14, fontWeight:700 }}>⚙ Configurações do grupo</div>
+              </div>
 
-              <div style={{ flex:1, overflowY:"auto", padding:"14px", animation:"gcFade 0.18s ease" }}>>
+              <div style={{ flex:1, overflowY:"auto", padding:"14px", animation:"gcFade 0.18s ease" }}>
+
+                {/* ── Nome + Foto ── */}
+                <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:8, fontWeight:700 }}>✏ Nome e foto</div>
                 <div style={{ display:"flex", gap:12, marginBottom:14 }}>
                   <div onClick={() => editGroupPhotoRef.current?.click()}
                     style={{ width:56, height:56, borderRadius:"50%", background:C.deep, border:`1.5px dashed ${C.atxt}55`, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", overflow:"hidden", flexShrink:0 }}>
@@ -12133,8 +12137,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                   <div style={{ color:"#fff", fontWeight:700, fontSize:15, textTransform:"uppercase" }}>{(provider||indProvider||"—").toUpperCase()}</div>
                 </div>
               </div>
-              <button
-                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1, letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}
+              <button disabled={digLoading}
                 onClick={async ()=>{
                   setDigLoading(true);
                   let clienteV8 = null;
@@ -12164,7 +12167,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                   const d = {tabela:selectedSim, balance:indBalance, cpf:indCpfSim, provider:indProvider, clientePreFill:preData};
                   openDigModal(d); setIndDigModal(d);
                   setSelectedSim(null); setDigLoading(false);
-                }}>
+                }}
+                style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:digLoading?"not-allowed":"pointer", opacity:digLoading?0.7:1, letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
                 {digLoading?"⏳ Carregando dados...":"📝 Digitar esta proposta"}
               </button>
             </div>
@@ -12256,13 +12260,13 @@ function V8DigitalTab({ currentUser, contacts }) {
                 style={{ ...S.input, width:145, fontSize:12, padding:"5px 9px", cursor:"pointer", colorScheme:"dark" }}
                 title="Filtrar por data"
               />
-              <button
-                style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}
+              <button onClick={()=>{
                 if(window.__histClearConfirm) { clearTimeout(window.__histClearConfirm); }
                 // Show inline popup confirm
                 const modal = document.getElementById("hist_clear_modal");
                 if(modal) modal.style.display="flex";
-              }}>
+              }}
+                style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", color:"#F87171", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
                 🗑 Limpar tudo
               </button>
             </div>
@@ -12280,11 +12284,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                     style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
                     Cancelar
                   </button>
-                  <button
-                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}
-                    onClick=tIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null);
+                  <button onClick={()=>{
+                    setIndHistorico([]); localStorage.removeItem("nexp_v8_ind_historico"); setIndHistDetalhe(null);
                     document.getElementById("hist_clear_modal").style.display="none";
-                  }}>
+                  }}
+                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:10, padding:"10px 28px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
                     ✕ Confirmar exclusão
                   </button>
                 </div>
@@ -12333,14 +12337,14 @@ function V8DigitalTab({ currentUser, contacts }) {
                         const isBest = s.label===histDetalhe.melhorTabela;
                         const vlr = parseFloat(s.sim?.availableBalance||0);
                         return (
-                          <div
-                            <div style={{ color:isBest?"#34D399":"#fff", fontWeight:800, fontSize:16, lineHeight:1, marginTop:2 }}>{fmtBRL(vlr)}</div
-                            onClick=                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
+                          <div key={i}
+                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
                             style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.1)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
                             onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";} }}
                             onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
                             {isBest&&<div style={{ position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap" }}>🏆 MELHOR</div>}
-                            <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, textTransform:"capitalize", marginTop:isBest?4:0 }}>{s.label}</div>>
+                            <div style={{ color:"rgba(255,255,255,0.7)", fontSize:11, textTransform:"capitalize", marginTop:isBest?4:0 }}>{s.label}</div>
+                            <div style={{ color:isBest?"#34D399":"#fff", fontWeight:800, fontSize:16, lineHeight:1, marginTop:2 }}>{fmtBRL(vlr)}</div>
                             <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:2 }}>{calcAnos(s.sim)}</div>
                             {s.ok&&<div style={{ marginTop:6, background:"rgba(255,255,255,0.12)", borderRadius:6, padding:"3px 0", textAlign:"center", fontSize:10, fontWeight:700, color:"#fff" }}>📝 DIGITAR</div>}
                           </div>
@@ -12360,16 +12364,16 @@ function V8DigitalTab({ currentUser, contacts }) {
 
             {/* Tabela */}
             <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderTop:"none", overflow:"hidden", borderRadius: histDetalhe?"0":"0 0 14px 14px" }}>
-              <div
-                <tbody
-                onClick=                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                   <thead>
                     <tr style={{ background:C.deep }}>
                       {["#","CPF","Nome","Provider","Status","Saldo FGTS","Melhor Oferta","Tabela","Anos","Data"].map(h=>(
                         <th key={h} style={{ color:C.td, fontSize:10, fontWeight:700, padding:"8px 12px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", textTransform:"uppercase", letterSpacing:"0.3px" }}>{h}</th>
                       ))}
                     </tr>
-                  </thead>>
+                  </thead>
+                  <tbody>
                     {historico
                       .filter(h => !histSearch || h.cpf?.includes(histSearch) || (h.nome||"").toLowerCase().includes(histSearch.toLowerCase()))
                       .slice(histPage*20, (histPage+1)*20)
@@ -12528,7 +12532,6 @@ function V8DigitalTab({ currentUser, contacts }) {
               <div style={{ display:"flex", gap:8 }}>
                 {/* Botão Simular */}
                 <button
-                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}
                   onClick={async ()=>{
                     setSimModal({ loading:true, cpf:detalhe.documentNumber||detalhe.individualDocumentNumber||"", nome:detalhe.clientName||"", contrato:detalhe });
                     try {
@@ -12558,7 +12561,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                       const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
                       setSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
                     } catch(e){setSimModal(p=>({...p,loading:false,err:e.message}));}
-                  }}>
+                  }}
+                  style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                   ⚡ Nova Simulação
                 </button>
                 <button onClick={()=>setDetalhe(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
@@ -12650,9 +12654,9 @@ function V8DigitalTab({ currentUser, contacts }) {
                     </div>
                     {simModal.best && (
                       <div style={{ background:"rgba(52,211,153,0.1)", border:"1px solid rgba(52,211,153,0.3)", borderRadius:10, padding:"12px 16px" }}>
-                        <div
-                          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>via PIX · {calcAnos(simModal.best.sim)}</div
-                          onClick=                        <div style={{ color:"#34D399", fontSize:22, fontWeight:900 }}>{fmtBRL(simModal.best.sim?.availableBalance||0)}</div>>
+                        <div style={{ color:"#34D399", fontSize:11, fontWeight:700 }}>✅ MELHOR OFERTA — {simModal.best.label}</div>
+                        <div style={{ color:"#34D399", fontSize:22, fontWeight:900 }}>{fmtBRL(simModal.best.sim?.availableBalance||0)}</div>
+                        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5, marginTop:2 }}>via PIX · {calcAnos(simModal.best.sim)}</div>
                       </div>
                     )}
                   </div>
@@ -12663,15 +12667,15 @@ function V8DigitalTab({ currentUser, contacts }) {
                       {[...(simModal.sims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
                         const isBest = s.label===simModal.best?.label;
                         return (
-                          <div
-                            style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
-onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
-onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}
+                          <div key={i}
                             onClick={()=>{
                               if(!s.ok)return;
                               const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
                               openDigModal(d); setIndDigModal(d); setSimModal(null);
-                            }}>
+                            }}
+                            style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+                            onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
+                            onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
                             {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
                             <div style={{color:"rgba(255,255,255,0.7)",fontSize:11,textTransform:"capitalize",marginTop:isBest?4:0}}>{s.label}</div>
                             {s.ok?<>
@@ -12731,10 +12735,8 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                           )}
                         </td>
                         <td style={{ padding:"9px 10px" }} onClick={e=>e.stopPropagation()}>
-                          <button
-                            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
-                            </tr
-                            onClick=                            const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                          <button onClick={async ()=>{
+                            const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
                             setSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
                             try{
                               await apiFetch("/fgts/balance","POST",{documentNumber:cpfv,provider:op.provider||"cartos"});
@@ -12762,10 +12764,12 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                               const best=[...sims].filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))[0];
                               setSimModal(p=>({...p,loading:false,bal,saldo:saldoVal,sims,best}));
                             }catch(e){setSimModal(p=>({...p,loading:false,err:e.message}));}
-                          }}>
+                          }}
+                            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
                             ⚡ Simular
                           </button>
-                        </td>>
+                        </td>
+                      </tr>
                     );
                   })}
                   {(data.data||[]).length===0&&(
@@ -13127,14 +13131,14 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
               </div>
               <div style={{ display:"flex", gap:8 }}>
                 <button
-                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}
                   onClick={async ()=>{
                     const ri=items.findIndex(x=>x.id===detalheItem.id);
                     if(ri<0) return;
                     const updated=await simularUm({...items[ri],status:"pendente"});
                     setItems(p=>{const n=[...p];n[ri]=updated;return n;});
                     setDetalheItem(updated);
-                  }}>
+                  }}
+                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}>
                   🔄 Re-simular
                 </button>
                 <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
@@ -13244,7 +13248,6 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                 }
               }}/>
             <button
-              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}
               onClick={async ()=>{
                 const inp = document.getElementById("lote_cache_cpf");
                 if(!inp?.value.trim()) return;
@@ -13252,7 +13255,8 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                 try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE"); } catch {}
                 setItems(p=>p.map(x=>(x.cpfRaw===cpfv||x.cpf===fmtCPF(cpfv))?{...x,status:"pendente",saldo:null,margem:null,sim:null,erro:null}:x));
                 inp.value="";
-              }}>
+              }}
+              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>
               🗑 Apagar cache
             </button>
           </div>
@@ -13260,11 +13264,12 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
 
         {/* Tabela */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
-          <div
-            {["#","Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Qtd anos","Data simulação","Ação","DIGITAR"].map(h=>(
-            onClick=            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
-                <tr style={{ background:C.deep }}>>
+                <tr style={{ background:C.deep }}>
+                  {["#","Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Qtd anos","Data simulação","Ação","DIGITAR"].map(h=>(
+                    <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -13384,9 +13389,9 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
               </div>
               <div style={{ marginBottom:24, display:"flex", flexDirection:"column", gap:10 }}>
                 {parseFloat(cardSim.s.sim?.totalBalance||0) > 0 && (
-                  <div
-                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(cardSim.s.sim?.totalBalance)}</div
-                    onClick=                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>>
+                  <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px" }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:4 }}>Total que ficará Bloqueado como garantia</div>
+                    <div style={{ color:"#fff", fontWeight:800, fontSize:22 }}>{fmtBRL(cardSim.s.sim?.totalBalance)}</div>
                   </div>
                 )}
                 <div style={{ background:"rgba(255,255,255,0.05)", borderRadius:14, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -13693,8 +13698,7 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
               </div>
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              <button
-                style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", border:"1px solid #34D39933", borderRadius:9, padding:"9px 16px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
+              <button onClick={()=>{
                 // Export to CSV with all available data
                 const rows = [...fila.map(f=>({
                   Nome: f.clientName||"", CPF: f.cpf||"", Contrato: f.contractNumber||"",
@@ -13713,7 +13717,8 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a"); a.href=url; a.download=`propostas_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`; a.click();
                 URL.revokeObjectURL(url);
-              }}>
+              }}
+                style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", border:"1px solid #34D39933", borderRadius:9, padding:"9px 16px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
                 📥 Exportar CSV
               </button>
               <button onClick={()=>buscar(1)} disabled={loading}
@@ -13847,10 +13852,10 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                   <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>⚡ Nova Simulação — {acompSimModal.nome||acompSimModal.cpf}</div>
                   <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:2 }}>CPF: {(acompSimModal.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}</div>
                 </div>
-                <button
-                  <div style={{ textAlign:"center", padding:"40px 0" }}
-                  onClick=              </div>
-              {acompSimModal.loading ? (>
+                <button onClick={()=>setAcompSimModal(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer" }}>✕</button>
+              </div>
+              {acompSimModal.loading ? (
+                <div style={{ textAlign:"center", padding:"40px 0" }}>
                   <div style={{ color:"#60A5FA", fontSize:32, marginBottom:12 }}>⏳</div>
                   <div style={{ color:"rgba(255,255,255,0.7)", fontSize:13 }}>Consultando saldo FGTS e simulando tabelas...</div>
                 </div>
@@ -13876,15 +13881,15 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                     {[...(acompSimModal.sims||[])].sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0)).map((s,i)=>{
                       const isBest = s.label===acompSimModal.best?.label;
                       return (
-                        <div
-                          style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
-onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
-onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}
+                        <div key={i}
                           onClick={()=>{
                             if(!s.ok)return;
                             const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
                             openDigModal(d); setIndDigModal(d); setAcompSimModal(null);
-                          }}>
+                          }}
+                          style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
+                          onMouseEnter={e=>{if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";}}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
                           {isBest&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
                           {s.ok?<>
                             <div style={{color:isBest?"#34D399":"rgba(255,255,255,0.9)",fontWeight:900,fontSize:20,lineHeight:1,marginTop:isBest?8:0}}>{fmtBRL(s.sim?.availableBalance||0)}</div>
@@ -13894,9 +13899,8 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                             <div style={{marginTop:8,background:"rgba(255,255,255,0.15)",borderRadius:6,padding:"4px 0",textAlign:"center",fontSize:10.5,fontWeight:800,color:"#fff"}}>📝 DIGITAR</div>
                           </>:<>
                             <div style={{color:"rgba(255,255,255,0.5)",fontSize:10.5,textTransform:"capitalize",marginBottom:4}}>{s.label}</div>
-                            <div
-                              style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}
-                              </>}
+                            <div style={{color:"#F87171",fontSize:11}}>✘</div>
+                          </>}
                         </div>
                       );
                     })}
@@ -14002,7 +14006,8 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                                 </button>
                               : <button onClick={()=>{
                                     if(window.confirm(`Remover "${item.clientName||item.cpf}" do histórico?`)) removerDaFila(item.id);
-                                  }}>
+                                  }}
+                                  style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"4px 8px", fontSize:10.5, cursor:"pointer" }}>
                                   🗑
                                 </button>
                             }
@@ -14013,16 +14018,17 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                           <tr>
                             <td colSpan={8} style={{ padding:0, background:"rgba(192,132,252,0.08)", borderBottom:`2px solid #C084FC44` }}>
                               <div style={{ padding:"16px 20px" }}>
-                                <div
-                                  ].map(([l,v])=>(
-                                  onClick=                                  {[
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:12 }}>
+                                  {[
                                     ["Cliente", item.clientName||"—"],
                                     ["CPF", cpfFmt],
                                     ["Contrato", item.contractNumber||"—"],
                                     ["Status", stLabel],
                                     ["Valor", fmtBRL(item.valor||0)],
                                     ["Provider", (item.provider||"—").toUpperCase()],
-                                    ["Adicionado em", item.criadoEmStr||"—"],>
+                                    ["Adicionado em", item.criadoEmStr||"—"],
+                                  ].map(([l,v])=>(
+                                    <div key={l} style={{ background:C.card, borderRadius:8, padding:"8px 12px" }}>
                                       <div style={{ color:C.td, fontSize:10 }}>{l}</div>
                                       <div style={{ color:C.tp, fontWeight:600, fontSize:12.5, marginTop:2 }}>{v}</div>
                                     </div>
@@ -14062,9 +14068,6 @@ onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.b
                     return (
                       <React.Fragment key={op.id}>
                         <tr
-                          style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
-onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
-onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}
                           onClick={async ()=>{
                             if (isSel) { setDetalhe(null); return; }
                             setDetalhe({...op, _loading:true});
@@ -14078,7 +14081,10 @@ onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}
                                 _all: (prev._all||[]).map(r=>r.id===op.id?merged:r),
                               } : prev);
                             } catch { setDetalhe(op); }
-                          }}>
+                          }}
+                          style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
+                          onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
+                          onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}>
                           <td style={{ color:C.tp, fontWeight:600, padding:"10px 12px", maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{op.clientName||"—"}</td>
                           <td style={{ color:C.tm, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{cpfFmt}</td>
                           <td style={{ color:C.td, padding:"10px 12px", fontFamily:"monospace", fontSize:11 }}>{op.contractNumber||"—"}</td>
@@ -14148,17 +14154,16 @@ onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}
                                 <div style={{ color:C.tm, fontSize:12.5, marginBottom:6 }}><strong>{op.clientName||cpfFmt}</strong></div>
                                 <div style={{ color:"#F87171", fontSize:11.5, marginBottom:20 }}>Esta ação cancela o contrato permanentemente.</div>
                                 <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-                                  <button
-                                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}
-                                    onClick=                                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
-                                  <button>
-                                    onClick={async e=>{
+                                  <button onClick={e=>{e.stopPropagation(); document.getElementById("del_prop_"+op.id).style.display="none";}}
+                                    style={{ background:C.deep, color:C.tm, border:`1px solid ${C.b2}`, borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Cancelar</button>
+                                  <button onClick={async e=>{
                                     e.stopPropagation();
                                     try { await apiFetch(`/fgts/proposal/${op.id}/cancel`,"PATCH",{reason:"invalid_data:other",description:"Excluído pelo operador."}); } catch {}
                                     document.getElementById("del_prop_"+op.id).style.display="none";
                                     setDetalhe(null);
                                     setData(prev=>prev?{...prev,data:(prev.data||[]).filter(r=>r.id!==op.id),_all:(prev._all||[]).filter(r=>r.id!==op.id)}:prev);
-                                  }}>
+                                  }}
+                                    style={{ background:"linear-gradient(135deg,#DC2626,#B91C1C)", color:"#fff", border:"none", borderRadius:9, padding:"9px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                     🗑 Excluir
                                   </button>
                                 </div>
@@ -14224,12 +14229,12 @@ onMouseLeave={e=>(e.currentTarget.style.background=isSel?`${C.acc}15`:C.card)}
                                       {acompLinkLoading?"⏳ Gerando...":"✨ Gerar Link de Formalização"}
                                     </button>
                                   ) : (
-                                    <span
-                                      </div
-                                      onClick=                                      🔒 {detalhe?.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
+                                    <span style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>
+                                      🔒 {detalhe?.status==="paid"?"Proposta paga":"Proposta cancelada"} — não é possível gerar link
                                     </span>
                                   )}
-                                </div>>
+                                </div>
+                              </div>
                               )}
                             </td>
                           </tr>
@@ -16059,7 +16064,7 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
 }
 
 // ── Card expandido de proposta com TODOS os dados ──────────────
-const PropCard = React.memo(function PropCard({ p, myId, canSeeAll, onAtualizar }) {
+function PropCard({ p, myId, canSeeAll, onAtualizar }) {
   const [open, setOpen] = useState(false);
   const st = p.status||"Proposta Digitada";
   const col = STATUS_PROPOSTA_COLORS[st]||C.td;
@@ -16242,7 +16247,7 @@ const PropCard = React.memo(function PropCard({ p, myId, canSeeAll, onAtualizar 
       )}
     </div>
   );
-});
+}
 
 // ── Rank de Propostas ─────────────────────────────────────────────
 function PropostasRankTab({ propostas }) {
@@ -16713,35 +16718,35 @@ function PagamentosPage({ currentUser }) {
       </div>
     </div>
   );
-});
+}
 
 export default function App() {
-  // ── Hooks centralizados — sem useEffect duplicado ─────────────
-  const { currentUser, setCurrentUser, authLoading } = useAuthUser();
-  const { contacts, setContacts }                    = useContacts(currentUser);
-  const { users, setUsers }                          = useUsers(currentUser);
-  const { presence }                                 = usePresence(currentUser);
-  const { theme, setTheme }                          = useTheme();
-  const {
-    unreadNotif, unreadStories, unreadPropostas,
-    unreadDigitacao, chatStories,
-  } = useUnreadCounters(currentUser);
-
-  const [page, setPage]           = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
+  const [users, setUsers] = useState(INITIAL_USERS);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [contacts, setContacts] = useState([]);
+  const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
+  const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
-  const [shake, setShake]         = useState(false);
+  const [shake, setShake] = useState(false);
+  const [presence, setPresenceData] = useState({});
   const [flashUserId, setFlashUserId] = useState(null);
-  const [chatOpen, setChatOpen]   = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [chatMinimized, setChatMinimized] = useState(false);
-  const [chatPos, setChatPos]     = useState({ x: null, y: null });
+  const [chatPos, setChatPos] = useState({ x: null, y: null });
+  const [chatStories, setChatStories] = useState([]);
+  const [unreadNotif, setUnreadNotif] = useState(0);
+  const [unreadStories, setUnreadStories] = useState(0);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [unreadPropostas, setUnreadPropostas] = useState(0);
+  const [unreadDigitacao, setUnreadDigitacao] = useState(0);
   const lastChatCount = useRef(0);
-  // System config — administrador controla o que outros podem acessar
+  // System config — mestre controls what others can access
   const [sysConfig, setSysConfig] = useState({
-    masterChatEnabled: true,
-    indicadoChatEnabled: true,
+    masterChatEnabled: true,     // mestre can disable chat for masters
+    indicadoChatEnabled: true,   // master can disable chat for indicados
     visitanteChatEnabled: true,
-    pagamentosEnabled: true,
+    pagamentosEnabled: true,     // admin can toggle pagamentos tab
     visitanteTabs: { dashboard:true, contacts:true, add:false, import:false, review:true, cstatus:true, leds:false, atalhos:true, premium:false, config:false },
   });
 
@@ -16762,8 +16767,116 @@ export default function App() {
     window.addEventListener("nexp_navigate", handler);
     return () => window.removeEventListener("nexp_navigate", handler);
   }, []); // eslint-disable-line
-  // ── Auth, contatos, usuários, presença, counters e tema
-  //    são gerenciados pelos hooks em hooks.js ─────────────────
+
+  // ── Persistência de sessão Firebase ──────────────────────────
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const profile = await getUserProfile(firebaseUser.uid);
+        if (profile && profile.active !== false) {
+          setCurrentUser({ ...profile, uid: firebaseUser.uid });
+        } else {
+          setCurrentUser(null);
+        }
+      } else {
+        setCurrentUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Ouvir contatos do Firestore em tempo real ─────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = listenContacts((data) => setContacts(data));
+    return () => unsub();
+  }, [currentUser]);
+
+  // ── Ouvir usuários do Firestore em tempo real ─────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = listenUsers((data) => setUsers(data));
+    return () => unsub();
+  }, [currentUser]);
+
+  // ── Ouvir stories para exibir ring no chat ────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    const unsub = onSnapshot(collection(db, "stories"), (snap) => {
+      const now = Date.now();
+      const live = snap.docs.map(d=>({id:d.id,...d.data()})).filter(s=>s.expiresAt>now);
+      setChatStories(live);
+      // Conta stories de OUTROS usuários com pelo menos 1 não visto por mim
+      const othersWithUnseen = new Set(
+        live
+          .filter(s => s.authorId !== myId && !(s.views||[]).includes(myId))
+          .map(s => s.authorId)
+      ).size;
+      setUnreadStories(othersWithUnseen);
+    });
+    return () => unsub();
+  }, [currentUser]); // eslint-disable-line
+
+  // ── Ouvir propostas não lidas ────────────────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    const isMestreOrMaster = ["mestre","master"].includes(currentUser.role);
+    const isDigitador = currentUser.role === "digitador";
+    const unsub = onSnapshot(collection(db, "propostas"), (snap) => {
+      const all = snap.docs.map(d=>({...d.data(), id:d.id}));
+      const unread = all.filter(p => {
+        if (isMestreOrMaster) return !p.viewedBy?.includes(myId);
+        return p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId);
+      }).length;
+      setUnreadPropostas(unread);
+      // Badge aba "Minhas Propostas" + sidebar "Digitação" — só digitador
+      if (isDigitador) {
+        setUnreadDigitacao(all.filter(p =>
+          p.criadoPor === myId && p.hasNewInteraction && !p.viewedByDigitador?.includes(myId)
+        ).length);
+      }
+    });
+    return () => unsub();
+  }, [currentUser]); // eslint-disable-line
+
+  // ── Ouvir notificações do usuário atual ───────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    const unsub = onSnapshot(collection(db, "notifications"), (snap) => {
+      const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const TIPOS_PROPOSTA = ["proposta_editada","proposta_atualizada","edicao_liberada","pendente_documentacao","documentos_enviados","lembrete_evidencia"];
+      const mine = notifs.filter(n => !TIPOS_PROPOSTA.includes(n.type) && (n.toId === myId || n.broadcast === true));
+      const unread = mine.filter(n => {
+        if (n.broadcast) return !(n.readBy || []).includes(myId);
+        return !n.readAt;
+      }).length;
+      setUnreadNotif(unread);
+    });
+    return () => unsub();
+  }, [currentUser]); // eslint-disable-line
+
+  // ── Presença online ───────────────────────────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const myId = currentUser.uid || currentUser.id;
+    setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
+    const interval = setInterval(() => {
+      setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
+    }, 30000);
+    const handleUnload = () => removePresence(myId);
+    window.addEventListener("beforeunload", handleUnload);
+    const unsub = listenPresence((data) => setPresenceData(data));
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("beforeunload", handleUnload);
+      removePresence(myId);
+      unsub();
+    };
+  }, [currentUser]); // eslint-disable-line
 
   // ── Ouvir chat para indicador de não lidas e shake ────────────
   useEffect(() => {
@@ -17047,7 +17160,7 @@ export default function App() {
           </div>
         )}
         {page === "config" && (
-          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={setTheme} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+          <ConfigPage users={users} setUsers={setUsers} currentUser={currentUser} theme={theme} onTheme={(t) => { setTheme(t); localStorage.setItem("nexp_theme", t); }} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "calendario" && (
           <CalendarPage currentUser={currentUser} />
