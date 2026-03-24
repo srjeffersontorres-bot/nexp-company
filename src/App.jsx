@@ -1140,7 +1140,7 @@ function LoginPage({ onLogin }) {
   const [twoFASecret,  setTwoFASecret]  = useState("");      // gerado localmente
   const [twoFAPending, setTwoFAPending] = useState(null);    // profile aguardando 2FA
   const [twoFAErr,     setTwoFAErr]     = useState("");
-  const [twoFALoading, setTwoFALoading] = useState(false);
+
   const ROLES_2FA = ["administrador","mestre"];              // roles que exigem 2FA
 
   // Previsão do tempo em tempo real
@@ -5772,7 +5772,6 @@ function PerfilTab({ users, setUsers, currentUser }) {
   const [confirmPw, setConfirmPw] = useState("");
   const [pwErr, setPwErr] = useState("");
   const [pwOk, setPwOk] = useState("");
-  const [err, setErr] = useState("");
   const flash = (msg) => { setOk(msg); setTimeout(() => setOk(""), 3000); };
   const fRef = useRef();
   const docRef = useRef();
@@ -5969,7 +5968,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
                   setUsers(us => us.map(u => (u.uid||u.id) === (currentUser.uid||currentUser.id) ? { ...u, twoFAEnabled: novo } : u));
                   await auditLog(novo ? "2fa_ativado" : "2fa_desativado", { email: currentUser.email }, currentUser);
                   flash(novo ? "🛡 2FA ativado com sucesso!" : "2FA desativado.");
-                } catch(e) { setErr("Erro ao salvar 2FA: " + e.message); }
+                } catch(e) { setPwErr("Erro ao salvar 2FA: " + e.message); }
               }}
               style={{ background: currentUser.twoFAEnabled !== false ? "rgba(52,211,153,0.15)" : C.deep,
                 color: currentUser.twoFAEnabled !== false ? "#34D399" : C.tm,
