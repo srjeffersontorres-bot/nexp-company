@@ -308,7 +308,7 @@ function isReallyOnline(presenceEntry) {
   const lastSeen = presenceEntry.lastSeen?.seconds
     ?? (presenceEntry.lastSeen?.toDate?.()?.getTime?.() / 1000);
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 120; // 120s — heartbeat 20s
+  return (Date.now() / 1000 - lastSeen) < 300; // 300s — 5min, heartbeat a cada 20s
 }
 
 const EMOJIS = [
@@ -8886,9 +8886,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         ) : (
                           <div style={{ color:"#FBBF24", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
                             <span style={{ width:6, height:6, borderRadius:"50%", background:"#FBBF24", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                            {presence[uid]?.lastSeen?.seconds
-                              ? `offline · visto às ${new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`
-                              : "offline"}
+                            <span>offline{presence[uid]?.lastSeen?.seconds ? <span style={{color:"#fff"}}> · visto às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span> : ""}</span>
                           </div>
                         )}
                       </div>
@@ -8963,7 +8961,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         <div style={{ color: tabOnline ? "#16A34A" : "#FBBF24", fontSize:11.5, marginTop:2 }}>
                           {tabOnline
                             ? <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Online agora</span>
-                            : <span style={{display:"flex",alignItems:"center",gap:5,color:"#FBBF24"}}><span style={{width:7,height:7,borderRadius:"50%",background:"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Offline{lastMsgTime(tabUid)?` · visto às ${lastMsgTime(tabUid)}`:""}</span>}
+                            : <span style={{display:"flex",alignItems:"center",gap:5,color:"#FBBF24"}}><span style={{width:7,height:7,borderRadius:"50%",background:"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Offline{lastMsgTime(tabUid)?<span style={{color:"#fff"}}> · visto às {lastMsgTime(tabUid)}</span>:""}</span>}
                         </div>
                       </div>
                     </div>
@@ -17290,33 +17288,20 @@ export default function App() {
     // Marca online imediatamente ao logar
     setPresence(myId, nome, role);
 
-    // Heartbeat a cada 20s para manter lastSeen atualizado
-    const interval = setInterval(() => {
-      if (document.visibilityState !== "hidden") {
-        setPresence(myId, nome, role);
-      }
-    }, 20000);
+    // Heartbeat a cada 20s — sempre ativo independente da visibilidade da aba
+    const interval = setInterval(() => setPresence(myId, nome, role), 20000);
 
-    // Aba/janela fechada → offline
+    // Só marca offline quando fechar/recarregar a página de verdade
     const handleUnload = () => removePresence(myId);
     window.addEventListener("beforeunload", handleUnload);
-
-    // Aba oculta (minimizada, troca de aba) → offline; visível → online
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        removePresence(myId);
-      } else {
-        setPresence(myId, nome, role);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", handleUnload);
 
     const unsub = listenPresence((data) => setPresenceData(data));
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("beforeunload", handleUnload);
-      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", handleUnload);
       removePresence(myId);
       unsub();
     };
