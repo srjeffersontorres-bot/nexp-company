@@ -7964,7 +7964,6 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   };
 
   const isMestre = ["mestre","administrador"].includes(currentUser.role);
-  const mestreUser = users.find(u => u.role === "mestre" || u.role === "administrador");
   const dmListRaw = isMestre
     ? users.filter(u => (u.uid||u.id) !== myId)
     : (users.filter(u => (u.role === "mestre" || u.role === "administrador") && (u.uid||u.id) !== myId).length > 0
