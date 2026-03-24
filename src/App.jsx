@@ -5318,7 +5318,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig, pr
         </div>
       </div>
       <div style={{ padding:"26px 36px", maxWidth:860 }}>
-        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
+        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} presence={presence} />}
         {tab === "rank" && <RankTab users={users} currentUser={currentUser} />}
         {tab === "perfis" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "permissoes" && (isMestre || isMaster) && sysConfig && onSysConfig && (() => {
@@ -6078,7 +6078,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
 }
 
 // Subcomponente isolado para exibir/redefinir senha no painel de edição
-function UsuariosTab({ users, setUsers, currentUser }) {
+function UsuariosTab({ users, setUsers, currentUser, presence = {} }) {
   const myRole = currentUser.role || "operador";
   const myId   = currentUser.uid || currentUser.id;
   const myLvl  = ROLE_HIERARCHY[myRole] ?? 99;
