@@ -1887,16 +1887,15 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                       </div>
                     );
                   })()}
-                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: isReallyOnline(presence[(uObj.uid||uObj.id)]) ? "#16A34A" : "#FBBF24", border: `1.5px solid ${C.sb}` }} />
+                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}`, animation: "pulse 2s infinite" }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
                   <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4, flexWrap:"wrap" }}>
                     {roleLabel[user.role]}
-                    {isReallyOnline(presence[(uObj.uid || uObj.id)])
-                      ? <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />🟢 online</span>
-                      : <span style={{ color:"#FBBF24", fontSize:9 }}>🟡 offline</span>
-                    }
+                    <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}>
+                      <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 2s infinite" }} />🟢 online
+                    </span>
                     {(() => {
                       const uid2 = uObj.uid||uObj.id;
                       const override = sysConfig?.userOverrides?.[uid2];
@@ -16551,9 +16550,13 @@ function PropostasRankTab({ propostas }) {
     byUser[id].total++;
     const st = p.status || "Proposta Digitada";
     byUser[id].status[st] = (byUser[id].status[st]||0)+1;
-    if (["Pago","Pago Aguardando Confirmação","Aprovado"].includes(st)) byUser[id].ativos++;
-    else if (["Cancelado","Recusado"].includes(st)) byUser[id].inativos++;
-    if (p.valorLiberado) byUser[id].valores.push(parseFloat(String(p.valorLiberado).replace(/\./g,"").replace(",",".")) || 0);
+    if (["Pago","Pago Aguardando Confirmação","Aprovado"].includes(st)) {
+      byUser[id].ativos++;
+      // Soma SOMENTE valor liberado de propostas pagas/aprovadas
+      if (p.valorLiberado) byUser[id].valores.push(parseFloat(String(p.valorLiberado).replace(/\./g,"").replace(",",".")) || 0);
+    } else if (["Cancelado","Recusado"].includes(st)) {
+      byUser[id].inativos++;
+    }
   });
 
   const allUsers = Object.values(byUser).sort((a,b)=>b.total-a.total);
@@ -17207,12 +17210,69 @@ export default function App() {
         if (shakeSignal) {
           setShake(true);
           setTimeout(() => setShake(false), 1000);
+          // Som de vibração — toca enquanto a tela treme (1 segundo)
+          try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const dur = 1.0;
+            // Vibração: ruído de baixa frequência modulado
+            const bufSize = ctx.sampleRate * dur;
+            const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) {
+              // Pulsos rítmicos a 30Hz simulando vibração
+              const t = i / ctx.sampleRate;
+              data[i] = Math.sin(2 * Math.PI * 30 * t) * Math.sin(2 * Math.PI * 8 * t) * 0.5;
+            }
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.6, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, ctx.currentTime + dur);
+            src.connect(gain); gain.connect(ctx.destination);
+            src.start(); src.stop(ctx.currentTime + dur);
+            if (navigator.vibrate) navigator.vibrate([100,50,100,50,100,50,200]);
+          } catch(e) {}
         }
-        // Flash no avatar de quem mandou
+        // Flash no avatar de quem mandou + som mesmo fora do chat
         const lastNew = newMsgs.filter(m => m.type !== "shake").pop();
         if (lastNew && lastNew.authorId !== myId) {
           setFlashUserId(lastNew.authorId);
           setTimeout(() => setFlashUserId(null), 3000);
+          // Toca som mesmo quando chat está fechado/minimizado
+          try {
+            const ctx2 = new (window.AudioContext || window.webkitAudioContext)();
+            const type = lastNew.groupId ? "group" : lastNew.toId ? "ping" : "bird";
+            if (type === "ping") {
+              const o = ctx2.createOscillator(); const g = ctx2.createGain();
+              o.connect(g); g.connect(ctx2.destination);
+              o.frequency.setValueAtTime(880, ctx2.currentTime);
+              o.frequency.exponentialRampToValueAtTime(660, ctx2.currentTime + 0.1);
+              g.gain.setValueAtTime(0.3, ctx2.currentTime);
+              g.gain.exponentialRampToValueAtTime(0.001, ctx2.currentTime + 0.25);
+              o.start(); o.stop(ctx2.currentTime + 0.25);
+            } else if (type === "group") {
+              const o = ctx2.createOscillator(); const g = ctx2.createGain();
+              o.connect(g); g.connect(ctx2.destination);
+              o.frequency.setValueAtTime(440, ctx2.currentTime);
+              o.frequency.setValueAtTime(660, ctx2.currentTime + 0.1);
+              o.frequency.setValueAtTime(550, ctx2.currentTime + 0.2);
+              g.gain.setValueAtTime(0.25, ctx2.currentTime);
+              g.gain.exponentialRampToValueAtTime(0.001, ctx2.currentTime + 0.35);
+              o.start(); o.stop(ctx2.currentTime + 0.35);
+            } else {
+              const notes = [1047,1319,1568,1319,1047,1319];
+              notes.forEach((freq, i) => {
+                const o = ctx2.createOscillator(); const g = ctx2.createGain();
+                o.type = "sine"; o.connect(g); g.connect(ctx2.destination);
+                const t = ctx2.currentTime + i * 0.07;
+                o.frequency.setValueAtTime(freq, t);
+                g.gain.setValueAtTime(0, t);
+                g.gain.linearRampToValueAtTime(0.2, t + 0.03);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+                o.start(t); o.stop(t + 0.1);
+              });
+            }
+          } catch(e) {}
         }
       }
       lastChatCount.current = newCount;
