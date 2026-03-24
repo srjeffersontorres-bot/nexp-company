@@ -4868,8 +4868,8 @@ function PerfisTab({ users, setUsers, currentUser }) {
   const [searchPerfil, setSearchPerfil] = useState("");
   const dragId = useRef(null);
 
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
+  const roleColor = { administrador:"#C084FC", mestre: "#C084FC", gerente:"#4F8EF7", master: C.atxt, supervisor:"#FBBF24", indicado: "#34D399", visitante: "#60a5fa", operador:"#34D399", digitador:"#34D399" };
+  const roleLabel = { administrador:"Administrador", mestre: "Mestre", gerente:"Gerente", master: "Master", supervisor:"Supervisor", indicado: "Operador", visitante: "Visitante", operador:"Operador", digitador:"Digitador" };
 
   const allUsers = users.filter(u => !u.deleted);
   const allVisible = searchPerfil.trim()
@@ -7950,8 +7950,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const dragRef = useRef(null);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
+  const roleColor = { administrador:"#C084FC", mestre: "#C084FC", gerente:"#4F8EF7", master: C.atxt, supervisor:"#FBBF24", indicado: "#34D399", visitante: "#60a5fa", operador:"#34D399", digitador:"#34D399" };
+  const roleLabel = { administrador:"Administrador", mestre: "Mestre", gerente:"Gerente", master: "Master", supervisor:"Supervisor", indicado: "Operador", visitante: "Visitante", operador:"Operador", digitador:"Digitador" };
 
   const getUserPhoto = (uid) => users.find(u => (u.uid||u.id) === uid)?.photo || null;
   const myPhoto = getUserPhoto(myId) || currentUser.photo || null;
@@ -7963,9 +7963,13 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     return allSeen ? "seen" : "unseen";
   };
 
-  const isMestre = currentUser.role === "mestre";
-  const mestreUser = users.find(u => u.role === "mestre");
-  const dmListRaw = isMestre ? users.filter(u => (u.uid||u.id) !== myId) : (mestreUser ? [mestreUser] : []);
+  const isMestre = ["mestre","administrador"].includes(currentUser.role);
+  const mestreUser = users.find(u => u.role === "mestre" || u.role === "administrador");
+  const dmListRaw = isMestre
+    ? users.filter(u => (u.uid||u.id) !== myId)
+    : (users.filter(u => (u.role === "mestre" || u.role === "administrador") && (u.uid||u.id) !== myId).length > 0
+        ? users.filter(u => (u.role === "mestre" || u.role === "administrador") && (u.uid||u.id) !== myId)
+        : []);
 
   // Ordenação: online primeiro, depois por última mensagem trocada (mais recente no topo)
   const dmList = [...dmListRaw].sort((a, b) => {
@@ -14839,94 +14843,164 @@ function RelatorioDigitacao({ myId }) {
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db,"propostas"), snap => {
-      const all = snap.docs.map(d=>({...d.data(),id:d.id}))
-        .filter(p => p.criadoPor === myId);
-      setPropostas(all);
+      setPropostas(snap.docs.map(d=>({...d.data(),id:d.id})).filter(p => p.criadoPor === myId));
       setLoading(false);
     });
     return ()=>unsub();
   }, []); // eslint-disable-line
 
-  const fmtBRL = v => "R$ " + (v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
-  const parseVal = v => { const n=parseFloat((v||"0").replace(/\./g,"").replace(",",".")); return isNaN(n)?0:n; };
+  const fmtBRL = v => "R$ "+((v||0)).toLocaleString("pt-BR",{minimumFractionDigits:2});
+  const parseVal = v => {
+    try {
+      if (!v) return 0;
+      const n = parseFloat(String(v).replace(/[R$\s]/g,"").replace(/\./g,"").replace(",","."));
+      return isNaN(n) ? 0 : n;
+    } catch { return 0; }
+  };
 
-  // Filtrar pelo mês/ano atual
   const mesAtual = now.getMonth();
+  const mesPast  = mesAtual === 0 ? 11 : mesAtual - 1;
   const anoAtual = now.getFullYear();
+  const anoPast  = mesAtual === 0 ? anoAtual - 1 : anoAtual;
 
-  const doMes = propostas.filter(p => {
+  const filterMes = (m, a) => propostas.filter(p => {
     const d = new Date(p.createdAt||0);
-    return d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
+    return d.getMonth()===m && d.getFullYear()===a;
   });
-  const doAno = propostas.filter(p => new Date(p.createdAt||0).getFullYear()===anoAtual);
 
-  const calcMetrics = (list) => ({
-    total: list.length,
+  const calcMetrics = list => ({
+    total:      list.length,
     concluidas: list.filter(p=>p.status==="Proposta Concluída").length,
-    pendentes: list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização"].includes(p.status)).length,
+    pendentes:  list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização"].includes(p.status)).length,
     canceladas: list.filter(p=>p.status==="Cancelada").length,
-    valorTotal: list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorSolicitado),0),
+    valor:      list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorSolicitado||p.valorLiberado),0),
+    valorPend:  list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização"].includes(p.status)).reduce((a,p)=>a+parseVal(p.valorSolicitado||p.valorLiberado),0),
+    valorCanc:  list.filter(p=>p.status==="Cancelada").reduce((a,p)=>a+parseVal(p.valorSolicitado||p.valorLiberado),0),
   });
 
-  const metricsMes = calcMetrics(doMes);
-  const metricsAno = calcMetrics(doAno);
+  const doMes  = filterMes(mesAtual, anoAtual);
+  const doMesP = filterMes(mesPast,  anoPast);
+  const doAno  = propostas.filter(p => new Date(p.createdAt||0).getFullYear()===anoAtual);
 
-  // Breakdown por mês do ano atual
-  const porMes = Array.from({length:12},(_,m) => {
-    const list = propostas.filter(p => {
-      const d = new Date(p.createdAt||0);
-      return d.getMonth()===m && d.getFullYear()===anoAtual;
-    });
-    return { mes:MESES[m], ...calcMetrics(list) };
+  const metricsMes  = calcMetrics(doMes);
+  const metricsAno  = calcMetrics(doAno);
+  const metricsPast = calcMetrics(doMesP);
+
+  const porMes = Array.from({length:12},(_,m) => ({
+    mes: MESES[m], ...calcMetrics(filterMes(m, anoAtual))
+  }));
+
+  // Gráfico — últimos 7 dias mês atual vs mês passado
+  const chartDays = Array.from({length:7},(_,i)=>{
+    const dayAtual = new Date(anoAtual, mesAtual, now.getDate()-6+i);
+    const dayPast  = new Date(anoPast,  mesPast,  now.getDate()-6+i);
+    const fmt = d => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
+    const sumDay = (d) => propostas.filter(p=>{
+      const pd = new Date(p.createdAt||0);
+      return p.status==="Proposta Concluída" && pd.getDate()===d.getDate() && pd.getMonth()===d.getMonth() && pd.getFullYear()===d.getFullYear();
+    }).reduce((a,p)=>a+parseVal(p.valorSolicitado||p.valorLiberado),0);
+    return { label: fmt(dayAtual), atual: sumDay(dayAtual), passado: sumDay(dayPast) };
   });
+  const maxChart = Math.max(...chartDays.flatMap(d=>[d.atual,d.passado]),1);
 
-  const MetricCard = ({label,val,color,icon,isMoney=false}) => (
+  const MetricCard = ({label,val,color,icon}) => (
     <div style={{...S.card,padding:"18px 20px",textAlign:"center",border:`1px solid ${color}33`}}>
       <div style={{fontSize:26,marginBottom:6}}>{icon}</div>
-      <div style={{color,fontSize:isMoney?15:26,fontWeight:800,letterSpacing:isMoney?"-0.5px":"-1px",marginBottom:4,wordBreak:"break-all"}}>{val}</div>
+      <div style={{color,fontSize:26,fontWeight:800,letterSpacing:"-1px",marginBottom:4}}>{val}</div>
       <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.5px"}}>{label}</div>
     </div>
   );
+
+  const ValorRow = ({label,val,color}) => val > 0 ? (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.b1}`}}>
+      <span style={{color:C.td,fontSize:11.5}}>{label}</span>
+      <span style={{color,fontWeight:700,fontSize:13}}>{fmtBRL(val)}</span>
+    </div>
+  ) : null;
 
   if (loading) return <div style={{color:C.tm,textAlign:"center",padding:"40px 0"}}>Carregando...</div>;
 
   return (
     <div>
-      {/* ── Relatório Mensal ── */}
+      {/* ── Mensal ── */}
       <div style={{marginBottom:28}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
           <div style={{color:C.tp,fontSize:16,fontWeight:700}}>📅 {MESES[mesAtual]} {anoAtual}</div>
           <span style={{background:C.abg,color:C.atxt,fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700}}>Mês atual</span>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
-          <MetricCard label="Enviadas" val={metricsMes.total} color={C.atxt} icon="📤"/>
-          <MetricCard label="Concluídas" val={metricsMes.concluidas} color="#34D399" icon="✅"/>
-          <MetricCard label="Pendentes" val={metricsMes.pendentes} color="#FBBF24" icon="⏳"/>
-          <MetricCard label="Canceladas" val={metricsMes.canceladas} color="#EF4444" icon="❌"/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+          <MetricCard label="Enviadas"   val={metricsMes.total}      color={C.atxt}   icon="📤"/>
+          <MetricCard label="Concluídas" val={metricsMes.concluidas} color="#34D399"  icon="✅"/>
+          <MetricCard label="Pendentes"  val={metricsMes.pendentes}  color="#FBBF24"  icon="⏳"/>
+          <MetricCard label="Canceladas" val={metricsMes.canceladas} color="#EF4444"  icon="❌"/>
         </div>
-        <div style={{...S.card,padding:"16px 20px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:14}}>
-          <div style={{fontSize:32}}>💰</div>
-          <div>
-            <div style={{color:C.td,fontSize:11,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total liberado em {MESES[mesAtual]}</div>
-            <div style={{color:"#34D399",fontSize:22,fontWeight:800}}>{fmtBRL(metricsMes.valorTotal)}</div>
+
+        {/* Breakdown por valor */}
+        <div style={{...S.card,padding:"16px 20px",marginBottom:16}}>
+          <div style={{color:C.ts,fontSize:11.5,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.4px"}}>💰 Valores por status — {MESES[mesAtual]}</div>
+          <ValorRow label="✅ Concluídas" val={metricsMes.valor}     color="#34D399"/>
+          <ValorRow label="⏳ Pendentes"  val={metricsMes.valorPend} color="#FBBF24"/>
+          <ValorRow label="❌ Canceladas" val={metricsMes.valorCanc} color="#F87171"/>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0 0",marginTop:4}}>
+            <span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total em carteira</span>
+            <span style={{color:C.atxt,fontWeight:800,fontSize:14}}>{fmtBRL(metricsMes.valor + metricsMes.valorPend)}</span>
           </div>
+        </div>
+
+        {/* Gráfico comparativo */}
+        <div style={{...S.card,padding:"16px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+            <div style={{color:C.ts,fontSize:11.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.4px"}}>📊 Evolução de vendas — últimos 7 dias</div>
+            <div style={{display:"flex",gap:14}}>
+              <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:C.atxt}}>
+                <span style={{width:10,height:10,borderRadius:3,background:C.acc,display:"inline-block"}}/>{MESES[mesAtual]}
+              </span>
+              <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:C.td}}>
+                <span style={{width:10,height:10,borderRadius:3,background:C.b2,display:"inline-block"}}/>{MESES[mesPast]}
+              </span>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:6,height:120}}>
+            {chartDays.map((d,i)=>(
+              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,height:"100%",justifyContent:"flex-end"}}>
+                <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:90}}>
+                  <div style={{flex:1,background:C.b2,borderRadius:"3px 3px 0 0",height:`${Math.max(2,(d.passado/maxChart)*100)}%`,transition:"height 0.5s ease"}}/>
+                  <div style={{flex:1,background:`linear-gradient(180deg,${C.acc},${C.lg2})`,borderRadius:"3px 3px 0 0",height:`${Math.max(2,(d.atual/maxChart)*100)}%`,boxShadow:d.atual>0?`0 0 8px ${C.acc}66`:"none",transition:"height 0.5s ease"}}/>
+                </div>
+                <div style={{color:C.td,fontSize:9,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div>
+                {d.atual > 0 && <div style={{color:C.atxt,fontSize:9,fontWeight:700}}>{fmtBRL(d.atual).replace("R$ ","")}</div>}
+              </div>
+            ))}
+          </div>
+          {metricsMes.valor > metricsPast.valor ? (
+            <div style={{color:"#34D399",fontSize:11.5,fontWeight:600,marginTop:10,textAlign:"center"}}>
+              📈 +{fmtBRL(metricsMes.valor - metricsPast.valor)} vs {MESES[mesPast]}{metricsPast.valor>0?` (${Math.round(((metricsMes.valor-metricsPast.valor)/metricsPast.valor)*100)}% acima)`:""}
+            </div>
+          ) : metricsMes.valor < metricsPast.valor ? (
+            <div style={{color:"#F87171",fontSize:11.5,fontWeight:600,marginTop:10,textAlign:"center"}}>
+              📉 -{fmtBRL(metricsPast.valor - metricsMes.valor)} vs {MESES[mesPast]}{metricsPast.valor>0?` (${Math.round(((metricsPast.valor-metricsMes.valor)/metricsPast.valor)*100)}% abaixo)`:""}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      {/* ── Relatório Anual ── */}
+      {/* ── Anual ── */}
       <div>
         <div style={{color:C.tp,fontSize:16,fontWeight:700,marginBottom:16}}>📆 Relatório Anual — {anoAtual}</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
-          <MetricCard label="Enviadas" val={metricsAno.total} color={C.atxt} icon="📤"/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+          <MetricCard label="Enviadas"   val={metricsAno.total}      color={C.atxt}  icon="📤"/>
           <MetricCard label="Concluídas" val={metricsAno.concluidas} color="#34D399" icon="✅"/>
-          <MetricCard label="Pendentes" val={metricsAno.pendentes} color="#FBBF24" icon="⏳"/>
+          <MetricCard label="Pendentes"  val={metricsAno.pendentes}  color="#FBBF24" icon="⏳"/>
           <MetricCard label="Canceladas" val={metricsAno.canceladas} color="#EF4444" icon="❌"/>
         </div>
-        <div style={{...S.card,padding:"16px 20px",border:"1px solid #34D39933",marginBottom:20,display:"flex",alignItems:"center",gap:14}}>
-          <div style={{fontSize:32}}>🏆</div>
-          <div>
-            <div style={{color:C.td,fontSize:11,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.5px"}}>Total liberado em {anoAtual}</div>
-            <div style={{color:"#34D399",fontSize:22,fontWeight:800}}>{fmtBRL(metricsAno.valorTotal)}</div>
+        <div style={{...S.card,padding:"16px 20px",marginBottom:20}}>
+          <div style={{color:C.ts,fontSize:11.5,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.4px"}}>💰 Valores por status — {anoAtual}</div>
+          <ValorRow label="✅ Concluídas" val={metricsAno.valor}     color="#34D399"/>
+          <ValorRow label="⏳ Pendentes"  val={metricsAno.valorPend} color="#FBBF24"/>
+          <ValorRow label="❌ Canceladas" val={metricsAno.valorCanc} color="#F87171"/>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0 0",marginTop:4}}>
+            <span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total liberado em {anoAtual}</span>
+            <span style={{color:"#34D399",fontWeight:800,fontSize:14}}>{fmtBRL(metricsAno.valor)}</span>
           </div>
         </div>
 
@@ -14937,7 +15011,7 @@ function RelatorioDigitacao({ myId }) {
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
                 <tr style={{background:C.deep}}>
-                  {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Valor Liberado"].map(h=>(
+                  {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Concluídas R$","Pendentes R$","Canceladas R$"].map(h=>(
                     <th key={h} style={{color:C.td,fontSize:10.5,fontWeight:700,padding:"10px 14px",textAlign:"left",textTransform:"uppercase",letterSpacing:"0.3px",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -14952,7 +15026,9 @@ function RelatorioDigitacao({ myId }) {
                       <td style={{padding:"10px 14px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
                       <td style={{padding:"10px 14px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
                       <td style={{padding:"10px 14px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
-                      <td style={{padding:"10px 14px",color:m.valorTotal>0?"#34D399":C.td,fontWeight:m.valorTotal>0?600:400}}>{m.valorTotal>0?fmtBRL(m.valorTotal):"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.valor>0?"#34D399":C.td,fontWeight:m.valor>0?600:400}}>{m.valor>0?fmtBRL(m.valor):"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.valorPend>0?"#FBBF24":C.td}}>{m.valorPend>0?fmtBRL(m.valorPend):"—"}</td>
+                      <td style={{padding:"10px 14px",color:m.valorCanc>0?"#F87171":C.td}}>{m.valorCanc>0?fmtBRL(m.valorCanc):"—"}</td>
                     </tr>
                   );
                 })}
@@ -16281,29 +16357,45 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
     } catch { return 0; }
   };
 
-  // Proteção: se propostas não for array, retornar vazio
   if (!Array.isArray(propostas)) return null;
   const mine = canSeeAll ? propostas : propostas.filter(p=>p.criadoPor===myId);
   const mesAtual = now.getMonth();
-  const anoAtual = now.getFullYear();
+  const mesPast   = mesAtual === 0 ? 11 : mesAtual - 1;
+  const anoAtual  = now.getFullYear();
+  const anoPast   = mesAtual === 0 ? anoAtual - 1 : anoAtual;
 
   const calcMet = list => ({
-    total: list.length,
+    total:      list.length,
     concluidas: list.filter(p=>p.status==="Proposta Concluída").length,
-    pendentes: list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).length,
+    pendentes:  list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).length,
     canceladas: list.filter(p=>p.status==="Cancelada").length,
-    valor: list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
+    valor:      list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
+    valorCanc:  list.filter(p=>p.status==="Cancelada").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
+    valorPend:  list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
   });
 
-  const doMes = mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===mesAtual&&d.getFullYear()===anoAtual; });
-  const doAno = mine.filter(p=>new Date(p.createdAt||0).getFullYear()===anoAtual);
-  const mMes = calcMet(doMes);
-  const mAno = calcMet(doAno);
+  const filterMes = (m, a) => mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===m&&d.getFullYear()===a; });
+  const doMes  = filterMes(mesAtual, anoAtual);
+  const doMesP = filterMes(mesPast, anoPast);
+  const doAno  = mine.filter(p=>new Date(p.createdAt||0).getFullYear()===anoAtual);
+  const mMes   = calcMet(doMes);
+  const mMesP  = calcMet(doMesP);
+  const mAno   = calcMet(doAno);
 
-  const porMes = Array.from({length:12},(_,m)=>{
-    const l = mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===m&&d.getFullYear()===anoAtual; });
-    return {mes:MESES[m],...calcMet(l)};
+  const porMes = Array.from({length:12},(_,m)=>({ mes:MESES[m], ...calcMet(filterMes(m, anoAtual)) }));
+
+  // Dados do gráfico de comparação: últimos 7 dias do mês atual vs mês passado
+  const chartDays = Array.from({length:7},(_,i)=>{
+    const dayAtual = new Date(anoAtual, mesAtual, now.getDate()-6+i);
+    const dayPast  = new Date(anoPast,  mesPast,  now.getDate()-6+i);
+    const fmt = d => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
+    const sumDay = (list, d) => list.filter(p=>{
+      const pd = new Date(p.createdAt||0);
+      return p.status==="Proposta Concluída" && pd.getDate()===d.getDate() && pd.getMonth()===d.getMonth() && pd.getFullYear()===d.getFullYear();
+    }).reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0);
+    return { label: fmt(dayAtual), atual: sumDay(mine, dayAtual), passado: sumDay(mine, dayPast) };
   });
+  const maxChart = Math.max(...chartDays.flatMap(d=>[d.atual,d.passado]),1);
 
   const Card = ({icon,label,val,color,money=false}) => (
     <div style={{...S.card,padding:"16px",textAlign:"center",border:`1px solid ${color}33`}}>
@@ -16312,6 +16404,13 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
       <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px"}}>{label}</div>
     </div>
   );
+
+  const ValorRow = ({label,val,color}) => val > 0 ? (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.b1}`}}>
+      <span style={{color:C.td,fontSize:11.5}}>{label}</span>
+      <span style={{color,fontWeight:700,fontSize:13}}>{fmtBRL(val)}</span>
+    </div>
+  ) : null;
 
   return (
     <div>
@@ -16322,17 +16421,53 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
           <span style={{background:C.abg,color:C.atxt,fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700}}>Mês atual</span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
-          <Card icon="📤" label="Enviadas" val={mMes.total} color={C.atxt}/>
+          <Card icon="📤" label="Enviadas"   val={mMes.total}      color={C.atxt}/>
           <Card icon="✅" label="Concluídas" val={mMes.concluidas} color="#34D399"/>
-          <Card icon="⏳" label="Pendentes" val={mMes.pendentes} color="#FBBF24"/>
+          <Card icon="⏳" label="Pendentes"  val={mMes.pendentes}  color="#FBBF24"/>
           <Card icon="❌" label="Canceladas" val={mMes.canceladas} color="#EF4444"/>
         </div>
-        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:28}}>💰</span>
-          <div>
-            <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px",marginBottom:3}}>Total liberado em {MESES[mesAtual]}</div>
-            <div style={{color:"#34D399",fontSize:20,fontWeight:800}}>{fmtBRL(mMes.valor)}</div>
+        {/* Breakdown por valor e status */}
+        <div style={{...S.card,padding:"16px 20px",marginBottom:14}}>
+          <div style={{color:C.ts,fontSize:11.5,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.4px"}}>💰 Valores por status — {MESES[mesAtual]}</div>
+          <ValorRow label="✅ Concluídas" val={mMes.valor}    color="#34D399"/>
+          <ValorRow label="⏳ Pendentes"  val={mMes.valorPend} color="#FBBF24"/>
+          <ValorRow label="❌ Canceladas" val={mMes.valorCanc} color="#F87171"/>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0 0",marginTop:4}}>
+            <span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total em carteira</span>
+            <span style={{color:C.atxt,fontWeight:800,fontSize:14}}>{fmtBRL(mMes.valor+mMes.valorPend)}</span>
           </div>
+        </div>
+
+        {/* Gráfico comparativo — mês atual vs mês passado */}
+        <div style={{...S.card,padding:"16px 20px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+            <div style={{color:C.ts,fontSize:11.5,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.4px"}}>📊 Evolução de vendas — últimos 7 dias</div>
+            <div style={{display:"flex",gap:14}}>
+              <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:C.atxt}}><span style={{width:10,height:10,borderRadius:3,background:C.acc,display:"inline-block"}}/>{MESES[mesAtual]}</span>
+              <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:C.td}}><span style={{width:10,height:10,borderRadius:3,background:C.b2,display:"inline-block"}}/>{MESES[mesPast]}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:6,height:120}}>
+            {chartDays.map((d,i)=>(
+              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,height:"100%",justifyContent:"flex-end"}}>
+                <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:90}}>
+                  <div style={{flex:1,background:C.b2,borderRadius:"3px 3px 0 0",height:`${Math.max(2,(d.passado/maxChart)*100)}%`,transition:"height 0.5s ease"}} title={`${MESES[mesPast]}: ${fmtBRL(d.passado)}`}/>
+                  <div style={{flex:1,background:`linear-gradient(180deg,${C.acc},${C.lg2})`,borderRadius:"3px 3px 0 0",height:`${Math.max(2,(d.atual/maxChart)*100)}%`,boxShadow:d.atual>0?`0 0 8px ${C.acc}66`:"none",transition:"height 0.5s ease"}} title={`${MESES[mesAtual]}: ${fmtBRL(d.atual)}`}/>
+                </div>
+                <div style={{color:C.td,fontSize:9,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div>
+                {d.atual > 0 && <div style={{color:C.atxt,fontSize:9,fontWeight:700}}>{fmtBRL(d.atual).replace("R$ ","")}</div>}
+              </div>
+            ))}
+          </div>
+          {mMes.valor > mMesP.valor ? (
+            <div style={{color:"#34D399",fontSize:11.5,fontWeight:600,marginTop:10,textAlign:"center"}}>
+              📈 +{fmtBRL(mMes.valor - mMesP.valor)} vs {MESES[mesPast]} ({mMesP.valor>0?Math.round(((mMes.valor-mMesP.valor)/mMesP.valor)*100):"∞"}% acima)
+            </div>
+          ) : mMes.valor < mMesP.valor ? (
+            <div style={{color:"#F87171",fontSize:11.5,fontWeight:600,marginTop:10,textAlign:"center"}}>
+              📉 -{fmtBRL(mMesP.valor - mMes.valor)} vs {MESES[mesPast]} ({mMesP.valor>0?Math.round(((mMesP.valor-mMes.valor)/mMesP.valor)*100):0}% abaixo)
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -16340,44 +16475,51 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
       <div>
         <div style={{color:C.tp,fontSize:16,fontWeight:700,marginBottom:14}}>📆 Relatório Anual — {anoAtual}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
-          <Card icon="📤" label="Enviadas" val={mAno.total} color={C.atxt}/>
+          <Card icon="📤" label="Enviadas"   val={mAno.total}      color={C.atxt}/>
           <Card icon="✅" label="Concluídas" val={mAno.concluidas} color="#34D399"/>
-          <Card icon="⏳" label="Pendentes" val={mAno.pendentes} color="#FBBF24"/>
+          <Card icon="⏳" label="Pendentes"  val={mAno.pendentes}  color="#FBBF24"/>
           <Card icon="❌" label="Canceladas" val={mAno.canceladas} color="#EF4444"/>
         </div>
-        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",marginBottom:18,display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:28}}>🏆</span>
-          <div>
-            <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px",marginBottom:3}}>Total liberado em {anoAtual}</div>
-            <div style={{color:"#34D399",fontSize:20,fontWeight:800}}>{fmtBRL(mAno.valor)}</div>
+        <div style={{...S.card,padding:"16px 20px",marginBottom:18}}>
+          <div style={{color:C.ts,fontSize:11.5,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.4px"}}>💰 Valores por status — {anoAtual}</div>
+          <ValorRow label="✅ Concluídas" val={mAno.valor}    color="#34D399"/>
+          <ValorRow label="⏳ Pendentes"  val={mAno.valorPend} color="#FBBF24"/>
+          <ValorRow label="❌ Canceladas" val={mAno.valorCanc} color="#F87171"/>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0 0",marginTop:4}}>
+            <span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total em {anoAtual}</span>
+            <span style={{color:"#34D399",fontWeight:800,fontSize:14}}>{fmtBRL(mAno.valor)}</span>
           </div>
         </div>
         <div style={{...S.card,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.b1}`,color:C.ts,fontSize:12,fontWeight:700}}>Desempenho mês a mês</div>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-            <thead>
-              <tr style={{background:C.deep}}>
-                {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Valor Liberado"].map(h=>(
-                  <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"9px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {porMes.map((m,i)=>{
-                const isAt = i===mesAtual;
-                return (
-                  <tr key={m.mes} style={{background:isAt?C.abg:"transparent",borderBottom:`1px solid ${C.b1}`}}>
-                    <td style={{padding:"9px 12px",color:isAt?C.atxt:C.ts,fontWeight:isAt?700:400}}>{m.mes}{isAt&&" ←"}</td>
-                    <td style={{padding:"9px 12px",color:C.ts}}>{m.total||"—"}</td>
-                    <td style={{padding:"9px 12px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
-                    <td style={{padding:"9px 12px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
-                    <td style={{padding:"9px 12px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
-                    <td style={{padding:"9px 12px",color:m.valor>0?"#34D399":C.td,fontWeight:m.valor>0?600:400}}>{m.valor>0?fmtBRL(m.valor):"—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:C.deep}}>
+                  {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Concluídas R$","Pendentes R$","Canceladas R$"].map(h=>(
+                    <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"9px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {porMes.map((m,i)=>{
+                  const isAt = i===mesAtual;
+                  return (
+                    <tr key={m.mes} style={{background:isAt?C.abg:"transparent",borderBottom:`1px solid ${C.b1}`}}>
+                      <td style={{padding:"9px 12px",color:isAt?C.atxt:C.ts,fontWeight:isAt?700:400}}>{m.mes}{isAt&&" ←"}</td>
+                      <td style={{padding:"9px 12px",color:C.ts}}>{m.total||"—"}</td>
+                      <td style={{padding:"9px 12px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
+                      <td style={{padding:"9px 12px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
+                      <td style={{padding:"9px 12px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
+                      <td style={{padding:"9px 12px",color:m.valor>0?"#34D399":C.td,fontWeight:m.valor>0?600:400}}>{m.valor>0?fmtBRL(m.valor):"—"}</td>
+                      <td style={{padding:"9px 12px",color:m.valorPend>0?"#FBBF24":C.td}}>{m.valorPend>0?fmtBRL(m.valorPend):"—"}</td>
+                      <td style={{padding:"9px 12px",color:m.valorCanc>0?"#F87171":C.td}}>{m.valorCanc>0?fmtBRL(m.valorCanc):"—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -16671,7 +16813,7 @@ function PropostasRankTab({ propostas }) {
                     <span style={{color:C.atxt,fontSize:12,fontWeight:600}}>{u.total} propostas</span>
                     {u.concluidas>0&&<span style={{color:"#34D399",fontSize:11}}>✔ {u.concluidas} concluídas</span>}
                     {u.inativos>0&&<span style={{color:"#F87171",fontSize:11}}>✘ {u.inativos} canceladas</span>}
-                    {totalValor>0&&<span style={{color:"#FBBF24",fontSize:11}}>💰 {fmtBRL2(totalValor)}</span>}
+                    {totalValor>0&&<span style={{color:"#34D399",fontSize:11,fontWeight:700}}>💰 {fmtBRL2(totalValor)}</span>}
                   </div>
                 </div>
                 {/* Estatísticas por status */}
@@ -16682,9 +16824,15 @@ function PropostasRankTab({ propostas }) {
                 </div>
               </div>
               {/* Barra de progresso */}
-              <div style={{background:C.deep,borderRadius:99,height:6,overflow:"hidden"}}>
+              <div style={{background:C.deep,borderRadius:99,height:6,overflow:"hidden",marginBottom:totalValor>0||u.inativos>0?8:0}}>
                 <div style={{background:`linear-gradient(90deg,${C.acc},${C.lg2})`,height:"100%",width:`${pct}%`,borderRadius:99,transition:"width 0.6s ease"}}/>
               </div>
+              {(totalValor>0||u.inativos>0) && (
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+                  {totalValor>0&&<span style={{background:"rgba(52,211,153,0.1)",color:"#34D399",fontSize:10.5,fontWeight:700,padding:"3px 10px",borderRadius:20,border:"1px solid #34D39933"}}>✅ Concluídas: {fmtBRL2(totalValor)}</span>}
+                  {u.inativos>0&&<span style={{background:"rgba(239,68,68,0.08)",color:"#F87171",fontSize:10.5,fontWeight:700,padding:"3px 10px",borderRadius:20,border:"1px solid #EF444422"}}>❌ Canceladas: {u.inativos} prop.</span>}
+                </div>
+              )}
             </div>
           );
         })}
