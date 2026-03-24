@@ -26,6 +26,129 @@ import {
 } from "./firebase";
 import { uploadArquivo } from "./firebase";
 
+// ══════════════════════════════════════════════════════════════════
+// ── SEGURANÇA: Rate Limiting por usuário (Firestore) ─────────────
+// Admin/Mestre: 3000 consultas/dia | Operador: 1200 consultas/dia
+// ══════════════════════════════════════════════════════════════════
+const RATE_LIMITS = {
+  administrador: 3000, mestre: 3000, gerente: 3000, master: 3000,
+  supervisor: 1200, operador: 1200, indicado: 1200, visitante: 1200, digitador: 1200,
+};
+async function checkRateLimit(uid, role) {
+  if (!uid) throw new Error("Usuário não autenticado.");
+  const limite = RATE_LIMITS[role] ?? 1200;
+  const hoje = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const { doc: fbDoc, getDoc, setDoc: fbSetDoc, updateDoc, increment } = await import("firebase/firestore");
+  const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    const { count } = snap.data();
+    if (count >= limite) {
+      throw new Error(`⛔ Limite diário atingido (${limite} consultas). Tente novamente amanhã.`);
+    }
+    await updateDoc(ref, { count: increment(1) });
+  } else {
+    await fbSetDoc(ref, { count: 1, uid, role, data: hoje });
+  }
+}
+async function getRateLimitStatus(uid, role) {
+  try {
+    const { doc: fbDoc, getDoc } = await import("firebase/firestore");
+    const hoje = new Date().toISOString().slice(0, 10);
+    const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
+    const snap = await getDoc(ref);
+    const count = snap.exists() ? snap.data().count : 0;
+    const limite = RATE_LIMITS[role] ?? 1200;
+    return { count, limite, restante: Math.max(0, limite - count) };
+  } catch { return { count: 0, limite: RATE_LIMITS[role] ?? 1200, restante: RATE_LIMITS[role] ?? 1200 }; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── SEGURANÇA: Auditoria no Firestore ────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+async function auditLog(action, details = {}, user = null) {
+  try {
+    const { collection: fbCol, addDoc } = await import("firebase/firestore");
+    await addDoc(fbCol(db, "audit_logs"), {
+      action,
+      details,
+      userId:    user?.uid || user?.id || null,
+      userName:  user?.name || user?.email || "desconhecido",
+      userRole:  user?.role || null,
+      timestamp: new Date().toISOString(),
+      ip:        null, // preenchido pelo backend se disponível
+    });
+  } catch (e) {
+    console.warn("auditLog falhou:", e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── SEGURANÇA: Sanitização de uploads ────────────────────────────
+// Tipos permitidos, tamanho máximo e validação de conteúdo real
+// ══════════════════════════════════════════════════════════════════
+const UPLOAD_ALLOWED_TYPES = {
+  "image/jpeg":       { ext: ["jpg","jpeg"], maxMB: 10 },
+  "image/png":        { ext: ["png"],        maxMB: 10 },
+  "image/webp":       { ext: ["webp"],       maxMB: 10 },
+  "image/gif":        { ext: ["gif"],        maxMB: 5  },
+  "application/pdf":  { ext: ["pdf"],        maxMB: 25 },
+  "text/csv":         { ext: ["csv"],        maxMB: 5  },
+  "text/plain":       { ext: ["txt"],        maxMB: 2  },
+};
+// Assinaturas mágicas para validar o conteúdo real do arquivo
+const FILE_SIGNATURES = {
+  "image/jpeg":      [[0xFF,0xD8,0xFF]],
+  "image/png":       [[0x89,0x50,0x4E,0x47]],
+  "image/gif":       [[0x47,0x49,0x46,0x38]],
+  "image/webp":      null, // verificado por extensão
+  "application/pdf": [[0x25,0x50,0x44,0x46]],
+};
+async function sanitizarUpload(file) {
+  const erros = [];
+  const tipoDeclarado = file.type || "";
+  const regra = UPLOAD_ALLOWED_TYPES[tipoDeclarado];
+  // 1. Tipo não permitido
+  if (!regra) {
+    erros.push(`Tipo de arquivo não permitido: "${tipoDeclarado || "desconhecido"}". Use: imagens, PDF ou CSV.`);
+    return { ok: false, erros };
+  }
+  // 2. Tamanho
+  const maxBytes = regra.maxMB * 1024 * 1024;
+  if (file.size > maxBytes) {
+    erros.push(`Arquivo muito grande (${(file.size/1024/1024).toFixed(1)} MB). Máximo: ${regra.maxMB} MB.`);
+  }
+  // 3. Extensão coerente
+  const ext = (file.name || "").split(".").pop().toLowerCase();
+  if (!regra.ext.includes(ext)) {
+    erros.push(`Extensão ".${ext}" incompatível com o tipo "${tipoDeclarado}".`);
+  }
+  // 4. Assinatura mágica (magic bytes)
+  const sigs = FILE_SIGNATURES[tipoDeclarado];
+  if (sigs) {
+    try {
+      const buf = await file.slice(0, 8).arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      const valido = sigs.some(sig => sig.every((b, i) => bytes[i] === b));
+      if (!valido) erros.push(`Conteúdo do arquivo não corresponde ao tipo declarado. Possível arquivo malicioso.`);
+    } catch {}
+  }
+  return { ok: erros.length === 0, erros };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ── SEGURANÇA: Variáveis de ambiente ─────────────────────────────
+// Verifica se as chaves do Firebase estão em .env
+// ══════════════════════════════════════════════════════════════════
+if (process.env.NODE_ENV === "development") {
+  const envVars = ["REACT_APP_FIREBASE_API_KEY","REACT_APP_FIREBASE_PROJECT_ID"];
+  envVars.forEach(v => {
+    if (!process.env[v]) {
+      console.warn(`[SEGURANÇA] Variável de ambiente ausente: ${v}. Mova suas chaves para o arquivo .env`);
+    }
+  });
+}
+
 // ── Compressão de imagem via Canvas (máx 1200px, qualidade 82%) ──
 async function comprimirImagem(base64, maxW=1200, quality=0.82) {
   return new Promise((res) => {
@@ -1011,6 +1134,14 @@ function LoginPage({ onLogin }) {
   const [resetEmail, setResetEmail]         = useState("");
   const [resetMsg, setResetMsg]             = useState("");
   const [resetBusy, setResetBusy]           = useState(false);
+  // ── 2FA ─────────────────────────────────────────────────────
+  const [twoFAStep,    setTwoFAStep]    = useState(false);   // mostra tela de OTP
+  const [twoFACode,    setTwoFACode]    = useState("");      // digitado pelo user
+  const [twoFASecret,  setTwoFASecret]  = useState("");      // gerado localmente
+  const [twoFAPending, setTwoFAPending] = useState(null);    // profile aguardando 2FA
+  const [twoFAErr,     setTwoFAErr]     = useState("");
+  const [twoFALoading, setTwoFALoading] = useState(false);
+  const ROLES_2FA = ["administrador","mestre"];              // roles que exigem 2FA
 
   // Previsão do tempo em tempo real
   const [weather, setWeather]   = useState(null);
@@ -1052,6 +1183,42 @@ function LoginPage({ onLogin }) {
     setResetBusy(false);
   };
 
+  // Gera OTP de 6 dígitos e envia por e-mail via EmailJS
+  const send2FACode = async (profile, firebaseUid) => {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    setTwoFASecret(code);
+    setTwoFAPending({ ...profile, uid: firebaseUid });
+    try {
+      await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service_id: "nexp_service", template_id: "template_hubbahe", user_id: "GaZRJdTXt0UMdEY3H",
+          template_params: {
+            to_name: profile.name || "Administrador",
+            to_email: profile.email,
+            user_email: profile.email,
+            user_password: `Seu código de verificação é: ${code} (válido por 5 minutos)`,
+            user_role: "Código 2FA",
+            access_link: "https://nexp-company.vercel.app",
+          },
+        }),
+      });
+    } catch (e) { console.warn("2FA e-mail falhou:", e.message); }
+    // Expira em 5 min
+    setTimeout(() => { setTwoFASecret(""); setTwoFAStep(false); setTwoFAErr("Código expirado. Faça login novamente."); }, 5 * 60 * 1000);
+    setTwoFAStep(true);
+  };
+
+  const verify2FA = () => {
+    if (twoFACode.trim() === twoFASecret) {
+      auditLog("login_2fa_sucesso", { email: twoFAPending?.email }, twoFAPending);
+      onLogin(twoFAPending);
+    } else {
+      setTwoFAErr("Código incorreto. Tente novamente.");
+      setTwoFACode("");
+    }
+  };
+
   const go = async () => {
     if (!un.trim() || !pw.trim()) { setErr("Preencha e-mail e senha."); return; }
     setLoading(true); setErr("");
@@ -1060,6 +1227,13 @@ function LoginPage({ onLogin }) {
       const profile = await getUserProfile(firebaseUser.uid);
       if (!profile) { setErr("Perfil não encontrado. Entre em contato com o suporte."); setLoading(false); return; }
       if (profile.active === false) { setErr("Usuário inativo. Entre em contato com o suporte."); setLoading(false); return; }
+      // ── 2FA para administrador/mestre ────────────────────────
+      if (ROLES_2FA.includes(profile.role) && profile.twoFAEnabled !== false) {
+        setLoading(false);
+        await send2FACode(profile, firebaseUser.uid);
+        return;
+      }
+      auditLog("login", { email: un.trim() }, { ...profile, uid: firebaseUser.uid });
       onLogin({ ...profile, uid: firebaseUser.uid });
     } catch { setErr("Usuário ou senha inválidos."); }
     setLoading(false);
@@ -1093,6 +1267,38 @@ function LoginPage({ onLogin }) {
   // WMO icons
   const WMO = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"};
   const wxIcon = WMO[wcode] || (isNight ? "🌙" : "☀️");
+
+  // ── Tela 2FA ─────────────────────────────────────────────────
+  if (twoFAStep) return (
+    <div style={{ width:"100vw", height:"100vh", background:"linear-gradient(180deg,#020510,#050d22)", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0 }}>
+      <div style={{ background:"#0d1426", border:"1px solid rgba(79,142,247,0.3)", borderRadius:20, padding:"36px 40px", width:"100%", maxWidth:400, textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>🔐</div>
+        <div style={{ color:"#fff", fontSize:17, fontWeight:800, marginBottom:6 }}>Verificação em duas etapas</div>
+        <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12.5, marginBottom:20 }}>
+          Um código foi enviado para <strong style={{ color:"#60A5FA" }}>{twoFAPending?.email}</strong>.<br/>
+          Digite o código de 6 dígitos abaixo.
+        </div>
+        {twoFAErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {twoFAErr}</div>}
+        <input
+          value={twoFACode}
+          onChange={e => setTwoFACode(e.target.value.replace(/\D/g,"").slice(0,6))}
+          onKeyDown={e => e.key === "Enter" && verify2FA()}
+          placeholder="000000"
+          maxLength={6}
+          style={{ width:"100%", background:"rgba(255,255,255,0.07)", border:"2px solid rgba(79,142,247,0.4)", borderRadius:10, padding:"14px", fontSize:22, fontWeight:800, textAlign:"center", color:"#fff", letterSpacing:8, boxSizing:"border-box", marginBottom:16, outline:"none" }}
+        />
+        <button onClick={verify2FA} disabled={twoFACode.length < 6}
+          style={{ width:"100%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", color:"#fff", border:"none", borderRadius:10, padding:"13px", fontSize:14, fontWeight:700, cursor:twoFACode.length<6?"not-allowed":"pointer", opacity:twoFACode.length<6?0.6:1, marginBottom:10 }}>
+          ✅ Verificar e Entrar
+        </button>
+        <button onClick={() => { setTwoFAStep(false); setTwoFACode(""); setTwoFASecret(""); setTwoFAPending(null); setTwoFAErr(""); }}
+          style={{ width:"100%", background:"transparent", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.4)", borderRadius:10, padding:"10px", fontSize:12, cursor:"pointer" }}>
+          ← Voltar ao login
+        </button>
+        <div style={{ color:"rgba(255,255,255,0.25)", fontSize:10.5, marginTop:12 }}>Código válido por 5 minutos. Verifique sua caixa de spam se não receber.</div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ width:"100vw", height:"100vh", background:getBg(), display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
@@ -5572,12 +5778,16 @@ function PerfilTab({ users, setUsers, currentUser }) {
   // Operator count — users this person created
   const operatorsCreated = users.filter(u => u.createdBy === myId && !u.deleted).length;
 
-  const handleImg = (e) => {
+  const handleImg = async (e) => {
     const f = e.target.files[0]; if (!f) return;
+    const { ok, erros } = await sanitizarUpload(f);
+    if (!ok) { alert("❌ Upload bloqueado:\n" + erros.join("\n")); return; }
     const r = new FileReader(); r.onload = (ev) => setPreview(ev.target.result); r.readAsDataURL(f);
   };
-  const handleDoc = (e) => {
+  const handleDoc = async (e) => {
     const f = e.target.files[0]; if (!f) return;
+    const { ok, erros } = await sanitizarUpload(f);
+    if (!ok) { alert("❌ Upload bloqueado:\n" + erros.join("\n")); return; }
     const r = new FileReader();
     r.onload = (ev) => setDocFile({ name: f.name, url: ev.target.result, type: f.type });
     r.readAsDataURL(f);
@@ -5737,6 +5947,39 @@ function PerfilTab({ users, setUsers, currentUser }) {
               style={{ ...S.btn(C.deep, C.tm), padding: "9px 14px", fontSize: 12, border: `1px solid ${C.b2}` }}>
               Cancelar
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Segurança 2FA — apenas para administrador/mestre ── */}
+      {(currentUser.role === "administrador" || currentUser.role === "mestre") && (
+        <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16, border: `1px solid rgba(192,132,252,0.2)` }}>
+          <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>🛡 Verificação em Duas Etapas (2FA)</div>
+          <div style={{ color: C.tm, fontSize: 11.5, marginBottom: 16 }}>
+            Quando ativado, um código de 6 dígitos será enviado para o seu e-mail toda vez que você fizer login.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button
+              onClick={async () => {
+                const novo = !(currentUser.twoFAEnabled !== false);
+                try {
+                  await saveUserProfile(currentUser.uid || currentUser.id, { ...currentUser, twoFAEnabled: novo });
+                  setUsers(us => us.map(u => (u.uid||u.id) === (currentUser.uid||currentUser.id) ? { ...u, twoFAEnabled: novo } : u));
+                  await auditLog(novo ? "2fa_ativado" : "2fa_desativado", { email: currentUser.email }, currentUser);
+                  flash(novo ? "🛡 2FA ativado com sucesso!" : "2FA desativado.");
+                } catch(e) { setErr("Erro ao salvar 2FA: " + e.message); }
+              }}
+              style={{ background: currentUser.twoFAEnabled !== false ? "rgba(52,211,153,0.15)" : C.deep,
+                color: currentUser.twoFAEnabled !== false ? "#34D399" : C.tm,
+                border: `1px solid ${currentUser.twoFAEnabled !== false ? "#34D39944" : C.b2}`,
+                borderRadius: 9, padding: "8px 20px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+              {currentUser.twoFAEnabled !== false ? "✅ 2FA Ativado — Clique para desativar" : "⚪ 2FA Desativado — Clique para ativar"}
+            </button>
+            <span style={{ color: C.td, fontSize: 10.5 }}>
+              {currentUser.twoFAEnabled !== false
+                ? "Sua conta está protegida com verificação dupla."
+                : "Recomendado para contas de administrador."}
+            </span>
           </div>
         </div>
       )}
@@ -5936,6 +6179,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         });
         flash(reativado ? "Usuário reativado e e-mail enviado! ✉" : "Usuário criado e e-mail enviado! ✉");
       } catch { flash(reativado ? "Usuário reativado!" : "Usuário criado!"); }
+      auditLog(reativado ? "usuario_reativado" : "usuario_criado", { nome: form.name, email: form.email, role: form.role }, currentUser);
       setForm({ name:"", cpf:"", email:"", password:"", role:rolesCanCreate[0]||"operador", photo:null });
       setMode("list");
     } catch (e) { setErr("Erro: "+e.message); setOk(""); }
@@ -5953,6 +6197,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
         catch {} finally { try { await secAuth.signOut(); } catch {} }
       }
       await deleteDoc(doc(db,"users",uid2));
+      auditLog("usuario_excluido", { nome: u.name, email: u.email, role: u.role }, currentUser);
       flash(`Usuário "${u.name}" excluído!`);
     } catch (e) { setErr("Erro ao excluir: "+e.message); }
   };
@@ -6019,8 +6264,8 @@ function UsuariosTab({ users, setUsers, currentUser }) {
     catch (e) { setErr("Erro: "+e.message); }
   };
 
-  const handlePhoto     = (e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setF("photo",ev.target.result); r.readAsDataURL(f); };
-  const handleEditPhoto = (e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setEF("photo",ev.target.result); r.readAsDataURL(f); };
+  const handlePhoto     = async (e) => { const f=e.target.files[0]; if(!f) return; const {ok,erros}=await sanitizarUpload(f); if(!ok){alert("❌ "+erros.join("\n"));return;} const r=new FileReader(); r.onload=ev=>setF("photo",ev.target.result); r.readAsDataURL(f); };
+  const handleEditPhoto = async (e) => { const f=e.target.files[0]; if(!f) return; const {ok,erros}=await sanitizarUpload(f); if(!ok){alert("❌ "+erros.join("\n"));return;} const r=new FileReader(); r.onload=ev=>setEF("photo",ev.target.result); r.readAsDataURL(f); };
 
   // Roles que o editor pode atribuir ao editar (só abaixo do seu nível)
   const rolesCanAssign = myLvl === 0
@@ -8448,7 +8693,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     {groupPhoto && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center", opacity:0, transition:"opacity 0.2s" }} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0"}><span style={{ fontSize:16 }}>✏</span></div>}
                   </div>
                   <input ref={groupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
-                    onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>setGroupPhoto(ev.target.result); r.readAsDataURL(f); }} />
+                    onChange={async e=>{ const f=e.target.files[0]; if(!f)return; const {ok,erros}=await sanitizarUpload(f); if(!ok){alert("❌ "+erros.join("\n"));return;} const r=new FileReader(); r.onload=ev=>setGroupPhoto(ev.target.result); r.readAsDataURL(f); }} />
                   <div style={{ flex:1 }}>
                     <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:5 }}>Nome do grupo *</label>
                     <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Ex: Equipe Vendas..."
@@ -8778,7 +9023,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     {activeGroup.photo ? <img src={activeGroup.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontSize:22 }}>📷</span>}
                   </div>
                   <input ref={editGroupPhotoRef} type="file" accept="image/*" style={{ display:"none" }}
-                    onChange={e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>{setEditGroupPhoto(ev.target.result); gcUpdate({ photo: ev.target.result });}; r.readAsDataURL(f); }} />
+                    onChange={async e=>{ const f=e.target.files[0]; if(!f)return; const {ok,erros}=await sanitizarUpload(f); if(!ok){alert("❌ "+erros.join("\n"));return;} const r=new FileReader(); r.onload=ev=>{setEditGroupPhoto(ev.target.result); gcUpdate({ photo: ev.target.result });}; r.readAsDataURL(f); }} />
                   <input value={editGroupName} onChange={e=>setEditGroupName(e.target.value)}
                     onBlur={()=>{ if(editGroupName.trim() && editGroupName !== activeGroup.name) saveGroupEdit(); }}
                     placeholder={activeGroup.name}
@@ -9215,7 +9460,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               {activeTab !== "geral" && (
                 <>
                   <button onClick={()=>fileRef.current?.click()} style={{ background:"transparent", border:"none", color:attachment?C.atxt:C.tm, borderRadius:8, padding:"6px 8px", cursor:"pointer", fontSize:14, flexShrink:0 }}>📎</button>
-                  <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx" onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setAttachment({name:f.name,url:ev.target.result,type:f.type});r.readAsDataURL(f);}} style={{ display:"none" }} />
+                  <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(!f)return;const {ok,erros}=await sanitizarUpload(f);if(!ok){alert("❌ "+erros.join("\n"));return;}const r=new FileReader();r.onload=ev=>setAttachment({name:f.name,url:ev.target.result,type:f.type});r.readAsDataURL(f);}} style={{ display:"none" }} />
                 </>
               )}
               <textarea ref={inputRef} value={text}
@@ -9254,6 +9499,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   🖼 Capa
                   <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
                     const f=e.target.files[0]; if(!f) return;
+                    const {ok:okC,erros:errC}=await sanitizarUpload(f); if(!okC){alert("❌ "+errC.join("\n"));return;}
                     const r=new FileReader();
                     r.onload=async ev=>{ setUserCoverPhoto(ev.target.result); try{ await saveUserProfile(myId,{...currentUser,coverPhoto:ev.target.result}); }catch(e2){} };
                     r.readAsDataURL(f);
@@ -9269,6 +9515,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               </div>
               <input id="profilePhotoInput" type="file" accept="image/*" style={{ display:"none" }} onChange={async e=>{
                 const f=e.target.files[0]; if(!f) return;
+                const {ok:okP,erros:errP}=await sanitizarUpload(f); if(!okP){alert("❌ "+errP.join("\n"));return;}
                 const r=new FileReader();
                 r.onload=async ev=>{ try { await saveUserProfile(myId, {...currentUser, photo:ev.target.result}); } catch(e2){} };
                 r.readAsDataURL(f);
@@ -11396,6 +11643,13 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [authLoading, setAuthLoading] = useState(false);
   const [authErr, setAuthErr] = useState("");
   const [aba, setAba] = useState(() => token && tokenExp && Date.now() < tokenExp ? "individual" : "config");
+  // ── Rate limit status (exibido na UI) ────────────────────────
+  const [rateStatus, setRateStatus] = useState(null);
+  useEffect(() => {
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) return;
+    getRateLimitStatus(uid, currentUser?.role).then(setRateStatus).catch(()=>{});
+  }, []); // eslint-disable-line
 
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
@@ -11421,6 +11675,11 @@ function V8DigitalTab({ currentUser, contacts }) {
   // ── apiFetch — rotas corretas conforme documentação V8 ───────
   const apiFetch = async (path, method="GET", body=null, retries=2) => {
     if (!isTokenValid) throw new Error("Sessão expirada. Faça login novamente.");
+    // ── Rate limiting ─────────────────────────────────────────
+    const _uid  = currentUser?.uid || currentUser?.id;
+    const _role = currentUser?.role || "operador";
+    await checkRateLimit(_uid, _role);
+    getRateLimitStatus(_uid, _role).then(setRateStatus).catch(()=>{});
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
@@ -12480,6 +12739,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       setCancelLoading(true);
       try {
         await apiFetch(`/fgts/proposal/${id}/cancel`, "PATCH", { reason:cancelReason, description:cancelDesc });
+        auditLog("proposta_cancelada", { proposalId: id, reason: cancelReason, description: cancelDesc }, currentUser);
         setCancelId(null); setCancelDesc("");
         await buscar(page);
       } catch(e) { setErr("Cancelamento: " + e.message); }
@@ -13605,55 +13865,29 @@ function V8DigitalTab({ currentUser, contacts }) {
       const statusSuportadoAPI = ["paid","canceled","processing","pending","analysis","manual_analysis","refounded"];
       const apiStatus = s && statusSuportadoAPI.includes(s) ? s : "";
       try {
-        let allRows = [];
         const q = search.trim();
-        const maxPages = (df||dt) ? 20 : 60; // com data: 20 pgs; sem: tudo
-        let curPage = 1;
-        while (curPage <= maxPages) {
-          const params = new URLSearchParams({ page:curPage, limit:50 });
-          if (q) { const d=q.replace(/\D/g,""); params.append("search",d.length>=6?d:q); }
-          if (provider) params.append("provider", provider);
-          if (apiStatus) params.append("status", apiStatus);
-          if (df) { params.append("startDate", df); params.append("createdAtFrom", df); }
-          if (dt) { params.append("endDate", dt+"T23:59:59"); params.append("createdAtTo", dt+"T23:59:59"); }
-          const res = await apiFetch(`/fgts/proposal?${params}`);
-          const rows = res?.data || [];
-          allRows = [...allRows, ...rows];
-          if (rows.length < 50) break;
-          curPage++;
-        }
-        // Remove duplicatas e ordena decrescente
-        const seen = new Set();
-        allRows = allRows.filter(r=>{ if(seen.has(r.id)) return false; seen.add(r.id); return true; });
+        const params = new URLSearchParams({ page:pg, limit:50 });
+        if (q) { const d=q.replace(/\D/g,""); params.append("search",d.length>=6?d:q); }
+        if (provider) params.append("provider", provider);
+        if (apiStatus) params.append("status", apiStatus);
+        if (df) { params.append("startDate", df); params.append("createdAtFrom", df); }
+        if (dt) { params.append("endDate", dt+"T23:59:59"); params.append("createdAtTo", dt+"T23:59:59"); }
+        const res = await apiFetch(`/fgts/proposal?${params}`);
+        let rows = res?.data || [];
         const getTs = v => typeof v==='number'?v:(v?new Date(v).getTime():0);
-        allRows.sort((a,b)=>getTs(b.createdAt||b.created_at)-getTs(a.createdAt||a.created_at));
-        const PS=50, totalPages=Math.max(1,Math.ceil(allRows.length/PS));
-        const pageRows=allRows.slice((pg-1)*PS,pg*PS);
-        setData({data:pageRows,_all:allRows,pages:{current:pg,hasNext:pg<totalPages,hasPrev:pg>1,total:allRows.length,totalPages}});
-        cruzarFilaComAPI(allRows);
-        // Enrich CPFs — persiste em data e _all
-        const semCpf = pageRows.filter(r=>!(r.documentNumber||r.individualDocumentNumber));
-        if (semCpf.length>0) {
-          (async()=>{
-            const eP=[...pageRows], eA=[...allRows];
-            for (const op of semCpf.slice(0,20)) {
-              try {
-                const det=await apiFetch(`/fgts/proposal/${op.id}`);
-                const merged={...op,...det};
-                const ip=eP.findIndex(r=>r.id===op.id); if(ip>=0) eP[ip]=merged;
-                const ia=eA.findIndex(r=>r.id===op.id); if(ia>=0) eA[ia]=merged;
-              } catch {}
-            }
-            setData(prev=>prev?{...prev,data:eP,_all:eA}:prev);
-          })();
-        }
+        rows.sort((a,b)=>getTs(b.createdAt||b.created_at)-getTs(a.createdAt||a.created_at));
+        const totalAPI = res?.total || res?.pagination?.total || rows.length;
+        const totalPages = res?.totalPages || res?.pagination?.totalPages || Math.max(1, Math.ceil(totalAPI/50));
+        const hasNext = pg < totalPages || rows.length === 50;
+        setData({ data:rows, _all:rows, pages:{ current:pg, hasNext, hasPrev:pg>1, total:totalAPI, totalPages } });
+        cruzarFilaComAPI(rows);
       } catch(e) { setErr(e.message); }
       setLoading(false);
     };
 
     // Auto-carrega ao entrar na aba
     useEffect(() => {
-      if (!acompData && !acompLoading) buscar(1, undefined, "", "");
+      if (!acompData && !acompLoading) buscar(1);
     }, []); // eslint-disable-line
 
     const gerarNovoLink = async (id) => {
@@ -13663,6 +13897,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         const res = await apiFetch(`/fgts/proposal/${id}/formalization-link`, "POST", {});
         const link = res?.formalizationLink || res?.link || res?.url || res?.data?.formalizationLink || "";
         if (!link) throw new Error("Link não retornado pela API. Tente novamente.");
+        auditLog("link_formalizacao_gerado", { proposalId: id, link }, currentUser);
         setAcompLinkModal({ id, link });
         // Atualiza o item na lista
         setData(p => p ? { ...p, data: (p.data||[]).map(op => op.id===id ? { ...op, formalizationLink: link } : op) } : p);
@@ -14281,6 +14516,11 @@ function V8DigitalTab({ currentUser, contacts }) {
           <span style={{ color:"#34D399", fontSize:12, fontWeight:600 }}>V8 Digital — {savedUser}</span>
           <span style={{ color:C.td, fontSize:10.5, marginLeft:4 }}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
           <button onClick={clearSession} style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>Desconectar</button>
+          {rateStatus && (
+            <span style={{ background: rateStatus.restante < 100 ? "rgba(239,68,68,0.15)" : "rgba(52,211,153,0.1)", color: rateStatus.restante < 100 ? "#F87171" : "#34D399", fontSize:10.5, fontWeight:700, padding:"3px 10px", borderRadius:20, whiteSpace:"nowrap", border:`1px solid ${rateStatus.restante < 100 ? "#EF444433" : "#34D39933"}` }}>
+              📊 {rateStatus.count}/{rateStatus.limite} consultas hoje
+            </span>
+          )}
         </div>
       )}
 
@@ -15105,9 +15345,18 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
     } else { setClienteEncontrado(false); }
   };
 
-  const handleFiles = (e) => {
+  const handleFiles = async (e) => {
     const files = Array.from(e.target.files);
-    const readers = files.map(f => new Promise(res => {
+    const bloqueados = [];
+    const validos = [];
+    for (const f of files) {
+      const { ok, erros } = await sanitizarUpload(f);
+      if (!ok) bloqueados.push(`${f.name}: ${erros.join(", ")}`);
+      else validos.push(f);
+    }
+    if (bloqueados.length) alert("❌ Arquivo(s) bloqueado(s):\n" + bloqueados.join("\n"));
+    if (!validos.length) return;
+    const readers = validos.map(f => new Promise(res => {
       const r = new FileReader();
       r.onload = async () => {
         let data = r.result;
@@ -15751,6 +16000,8 @@ function PagoBlock({ proposta }) {
     try {
       const uploads = [];
       for (const f of files) {
+        const { ok, erros } = await sanitizarUpload(f);
+        if (!ok) { setMsg("❌ " + erros.join(", ")); setUploading(false); return; }
         const data = await new Promise(res => {
           const r = new FileReader();
           r.onload = () => res(r.result);
