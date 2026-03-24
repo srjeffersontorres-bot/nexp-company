@@ -14235,7 +14235,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   )}
                                 </div>
                               </div>
-                              )}
+                              ))}
                             </td>
                           </tr>
                         )}
