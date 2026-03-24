@@ -8871,7 +8871,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                           }
                         </div>
                       </div>
-                      {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
+                      <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:isOnline?"#16A34A":"#FBBF24", border:`2px solid ${C.sb}`, zIndex:3, boxShadow:isOnline?"0 0 6px #16A34A99":"0 0 6px #FBBF2499", animation:"pulse 1.5s infinite" }} />
                     </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"flex", alignItems:"center", gap:5 }}>
@@ -8883,12 +8883,13 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                             <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
                             online agora
                           </div>
-                        ) : presence[uid]?.lastSeen?.seconds ? (
-                          <div style={{ color:C.td, fontSize:10.5 }}>
-                            👁 Visto {new Date(presence[uid].lastSeen.seconds*1000).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})} às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
-                          </div>
                         ) : (
-                          <div style={{ color:C.tm, fontSize:11 }}>{roleLabel[u.role]}</div>
+                          <div style={{ color:"#FBBF24", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
+                            <span style={{ width:6, height:6, borderRadius:"50%", background:"#FBBF24", display:"inline-block", animation:"pulse 1.5s infinite" }} />
+                            {presence[uid]?.lastSeen?.seconds
+                              ? `offline · visto às ${new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`
+                              : "offline"}
+                          </div>
                         )}
                       </div>
                     {unread > 0 && !muted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
@@ -8955,12 +8956,14 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         <div style={{ width:50, height:50, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.atxt, border:`2px solid ${C.b1}` }}>
                           {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
                         </div>
-                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3 }} />
+                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3, boxShadow: tabOnline?"0 0 7px #16A34A99":"0 0 7px #FBBF2499", animation:"pulse 1.5s infinite" }} />
                       </div>
                       <div>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
-                        <div style={{ color: tabOnline ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
-                          {tabOnline ? "🟢 Online agora" : lastMsgTime(tabUid) ? `👁 Visto por último às ${lastMsgTime(tabUid)}` : "Nunca visto"}
+                        <div style={{ color: tabOnline ? "#16A34A" : "#FBBF24", fontSize:11.5, marginTop:2 }}>
+                          {tabOnline
+                            ? <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Online agora</span>
+                            : <span style={{display:"flex",alignItems:"center",gap:5,color:"#FBBF24"}}><span style={{width:7,height:7,borderRadius:"50%",background:"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Offline{lastMsgTime(tabUid)?` · visto às ${lastMsgTime(tabUid)}`:""}</span>}
                         </div>
                       </div>
                     </div>
