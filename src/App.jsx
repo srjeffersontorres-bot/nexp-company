@@ -7965,10 +7965,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   };
 
   // Admin e mestre veem todos os usuários; outros veem apenas admin/mestre
-  const isAdminOrMestre = ["mestre","administrador"].includes(currentUser.role);
+  const isAdminOrMestre = ["mestre","administrador","gerente","master"].includes(currentUser.role);
   const dmListBase = isAdminOrMestre
     ? users.filter(u => (u.uid||u.id) !== myId)
-    : users.filter(u => (u.uid||u.id) !== myId && ["mestre","administrador"].includes(u.role));
+    : users.filter(u => (u.uid||u.id) !== myId && ["mestre","administrador","gerente","master"].includes(u.role));
 
   // Ordena por última mensagem trocada (mais recente no topo)
   const dmList = [...dmListBase].sort((a, b) => {
