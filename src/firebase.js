@@ -32,14 +32,16 @@ import {
   getDownloadURL,
 } from "firebase/storage";
 
-// ── Substitua aqui com suas credenciais ──────────────────────────
+// ── Credenciais via variáveis de ambiente (.env.local / Vercel) ──
+// Nunca coloque chaves diretamente aqui. Use o arquivo .env.local
+// em desenvolvimento e as Environment Variables do Vercel em produção.
 const firebaseConfig = {
-  apiKey: "AIzaSyAnYyVIb5AxUd1qkQuXVEpEw7COzW2nvDw",
-  authDomain: "nexpcompany-9a7ba.firebaseapp.com",
-  projectId: "nexpcompany-9a7ba",
-  storageBucket: "nexpcompany-9a7ba.firebasestorage.app",
-  messagingSenderId: "1043432853586",
-  appId: "1:1043432853586:web:10d443d6757420fe01cf8b",
+  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket:     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             process.env.REACT_APP_FIREBASE_APP_ID,
 };
 // ────────────────────────────────────────────────────────────────
 
