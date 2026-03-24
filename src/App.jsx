@@ -302,12 +302,13 @@ function canSeePassword(myRole, targetRole) {
   return myLvl <= 1 && myLvl < tgLvl;
 }
 // Pode editar um usuário
-// Presença real: online:true E lastSeen < 40s (heartbeat a cada 20s)
+// Presença real: online:true E lastSeen < 90s (heartbeat 30s + tolerância)
 function isReallyOnline(presenceEntry) {
   if (!presenceEntry?.online) return false;
-  const lastSeen = presenceEntry.lastSeen?.seconds;
+  const lastSeen = presenceEntry.lastSeen?.seconds
+    ?? (presenceEntry.lastSeen?.toDate?.()?.getTime?.() / 1000);
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 40; // 40 segundos
+  return (Date.now() / 1000 - lastSeen) < 90; // 90 segundos
 }
 
 const EMOJIS = [
@@ -5500,19 +5501,19 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       id: "perfil",
       label: "Perfil",
       icon: "◎",
-      roles: ["mestre", "master", "indicado"],
+      roles: ["mestre", "master", "indicado", "administrador", "gerente", "supervisor", "operador", "digitador", "visitante"],
     },
     {
       id: "temas",
       label: "Temas",
       icon: "🎨",
-      roles: ["mestre", "master", "indicado"],
+      roles: ["mestre", "master", "indicado", "administrador", "gerente", "supervisor", "operador", "digitador", "visitante"],
     },
     {
       id: "apis",
       label: "Configurar API",
       icon: "⬧",
-      roles: ["mestre", "administrador", "gerente", "supervisor", "operador", "master", "indicado", "digitador", "visitante"],
+      roles: ["mestre", "administrador"],
     },
   ].filter((t) => t.roles.includes(currentUser.role));
   return (
@@ -8801,7 +8802,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             const uid = u.uid || u.id;
             const rc = roleColor[u.role] || C.atxt;
             const unread = unreadDM(uid);
-            const isOnline = isReallyOnline(presence[uid]);
+            const isOnline = isReallyOnline(presence[uid]) || (uid === (currentUser?.uid || currentUser?.id));
             const userHasStory = hasStory(uid);
             const muted = isMuted(uid);
             const isMestre = u.role === "mestre";
@@ -8901,16 +8902,23 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               <div style={{ flex:1, overflowY:"auto", padding:"16px" }}>
 
                 {/* Last seen */}
-                {tabUser && (
+                {tabUser && (() => {
+                  const tabUid = tabUser.uid || tabUser.id;
+                  const isSelf = tabUid === myId;
+                  const tabOnline = isSelf || isReallyOnline(presence[tabUid]);
+                  return (
                   <div style={{ ...S.card, padding:"14px", borderRadius:12, marginBottom:18 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10, cursor:"pointer" }} onClick={()=>setViewingProfile(tabUser.uid||tabUser.id)}>
-                      <div style={{ width:50, height:50, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.atxt, flexShrink:0, border:`2px solid ${C.b1}` }}>
-                        {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
+                    <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10, cursor:"pointer" }} onClick={()=>setViewingProfile(tabUid)}>
+                      <div style={{ position:"relative", flexShrink:0 }}>
+                        <div style={{ width:50, height:50, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.atxt, border:`2px solid ${C.b1}` }}>
+                          {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
+                        </div>
+                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3 }} />
                       </div>
                       <div>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
-                        <div style={{ color: isReallyOnline(presence[activeTab]) ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
-                          {isReallyOnline(presence[activeTab]) ? "🟢 Online agora" : lastMsgTime(activeTab) ? `👁 Visto por último às ${lastMsgTime(activeTab)}` : "Nunca visto"}
+                        <div style={{ color: tabOnline ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
+                          {tabOnline ? "🟢 Online agora" : lastMsgTime(tabUid) ? `👁 Visto por último às ${lastMsgTime(tabUid)}` : "Nunca visto"}
                         </div>
                       </div>
                     </div>
@@ -8918,7 +8926,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     {tabUser.recado && <div style={{ color:C.atxt, fontSize:12, padding:"8px 10px", background:C.abg, borderRadius:8, marginBottom:8 }}>💬 {tabUser.recado}</div>}
                     {tabUser.birthday && <div style={{ color:C.tm, fontSize:11 }}>🎂 {new Date(tabUser.birthday).toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* DM Themes */}
                 <div style={{ fontSize:10, color:C.td, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:10, fontWeight:700 }}>🎨 Tema da conversa</div>
@@ -17156,7 +17165,7 @@ export default function App() {
       }
     }, 20000);
 
-    // Aba/janela fechada ou navegador encerrado → offline
+    // Aba/janela fechada → offline
     const handleUnload = () => removePresence(myId);
     window.addEventListener("beforeunload", handleUnload);
 
