@@ -7928,10 +7928,13 @@ function AtalhosPage({ currentUser }) {
 
 // ── FloatingChat ───────────────────────────────────────────────
 function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChange, onMinimize, onRestore, onClose, unreadChat, stories, onOpenStory }) {
-  // Tick a cada 30s para reavaliação de presença em tempo real
-  const [, setTick] = useState(0);
-  useEffect(() => { const t = setInterval(() => setTick(n => n+1), 30000); return () => clearInterval(t); }, []);
   const myId = currentUser.uid || currentUser.id;
+  // Tick a cada 15s — força reavaliação de presença em tempo real
+  const [, _setPresenceTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => _setPresenceTick(n => n + 1), 15000);
+    return () => clearInterval(t);
+  }, []); // eslint-disable-line
   const [activeTab, setActiveTab] = useState(null); // null = inbox, uid = DM, "geral" = geral
   const [allMessages, setAllMessages] = useState([]);
   const [text, setText] = useState("");
@@ -7947,8 +7950,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const dragRef = useRef(null);
   const dragOffset = useRef({ x: 0, y: 0 });
 
-  const roleColor = { mestre: "#C084FC", master: C.atxt, indicado: "#34D399", visitante: "#60a5fa" };
-  const roleLabel = { mestre: "Mestre", master: "Master", indicado: "Operador", visitante: "Visitante" };
+  const roleColor = { administrador:"#C084FC", mestre:"#C084FC", gerente:"#4F8EF7", master:C.atxt, supervisor:"#FBBF24", operador:"#34D399", indicado:"#34D399", visitante:"#60a5fa", digitador:"#34D399" };
+  const roleLabel = { administrador:"Administrador", mestre:"Mestre", gerente:"Gerente", master:"Master", supervisor:"Supervisor", operador:"Operador", indicado:"Operador", visitante:"Visitante", digitador:"Digitador" };
 
   const getUserPhoto = (uid) => users.find(u => (u.uid||u.id) === uid)?.photo || null;
   const myPhoto = getUserPhoto(myId) || currentUser.photo || null;
@@ -7960,11 +7963,35 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
     return allSeen ? "seen" : "unseen";
   };
 
-  const isMestre = ["mestre","administrador"].includes(currentUser.role);
-  // admins e mestres veem todos; outros veem apenas mestre/administrador
-  const dmList = isMestre
+  // Admin e mestre veem todos; outros veem apenas admins/mestres
+  const isAdminRole = ["mestre","administrador"].includes(currentUser.role);
+  const dmListRaw = isAdminRole
     ? users.filter(u => (u.uid||u.id) !== myId)
     : users.filter(u => (u.uid||u.id) !== myId && ["mestre","administrador"].includes(u.role));
+
+  // Ordena: quem eu falei mais recente fica no topo
+  // (recalcula toda vez que allMessages muda)
+  const getLastTs = (uid) => {
+    let max = 0;
+    for (const m of allMessages) {
+      if ((m.authorId===uid&&m.toId===myId)||(m.authorId===myId&&m.toId===uid)) {
+        const s = m.createdAt?.seconds ?? 0;
+        if (s > max) max = s;
+      }
+    }
+    return max;
+  };
+  const dmList = [...dmListRaw].sort((a, b) => {
+    const aUid = a.uid||a.id, bUid = b.uid||b.id;
+    // 1º critério: última mensagem (mais recente no topo)
+    const tsDiff = getLastTs(bUid) - getLastTs(aUid);
+    if (tsDiff !== 0) return tsDiff;
+    // 2º critério: online primeiro
+    const aOn = isReallyOnline(presence[aUid]) ? 1 : 0;
+    const bOn = isReallyOnline(presence[bUid]) ? 1 : 0;
+    return bOn - aOn;
+  });
+
   const canManageGroups = currentUser.role === "mestre" || currentUser.role === "master";
 
   // Group states
@@ -8809,7 +8836,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
             const isOnline = isReallyOnline(presence[uid]) || (uid === (currentUser?.uid || currentUser?.id));
             const userHasStory = hasStory(uid);
             const muted = isMuted(uid);
-            const isMestre = u.role === "mestre";
+            const isMestreItem = u.role === "mestre"; // eslint-disable-line no-unused-vars
             return (
               <div key={uid} style={{ position:"relative", marginBottom:6 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:4 }}>
@@ -8856,7 +8883,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     {unread > 0 && !muted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
                   </button>
                   {/* Mute button — not allowed for mestre */}
-                  {!isMestre && (
+                  {!isMestreItem && (
                     <button
                       onClick={e=>{e.stopPropagation(); setShowMuteMenu(showMuteMenu===uid?null:uid);}}
                       style={{ background:"transparent", border:`1px solid ${C.b2}`, color:muted?C.atxt:C.td, borderRadius:8, width:24, height:24, cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all 0.12s" }}
@@ -8866,7 +8893,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                   )}
                 </div>
                 {/* Mute dropdown */}
-                {showMuteMenu === uid && !isMestre && (
+                {showMuteMenu === uid && !isMestreItem && (
                   <div style={{ position:"absolute", right:0, top:50, background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, padding:"6px", zIndex:100, boxShadow:"0 4px 20px rgba(0,0,0,0.5)", minWidth:160 }}>
                     <div style={{ color:C.tm, fontSize:10, padding:"4px 8px", fontWeight:600, marginBottom:4 }}>🔇 Silenciar por</div>
                     {[{label:"8 horas", val:8*3600000},{label:"24 horas",val:24*3600000},{label:"1 semana",val:7*24*3600000},{label:"Para sempre",val:"forever"}].map(opt=>(
@@ -14829,15 +14856,7 @@ function RelatorioDigitacao({ myId }) {
   }, []); // eslint-disable-line
 
   const fmtBRL = v => "R$ " + (v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
-  const parseVal = v => {
-    if (v === null || v === undefined || v === "") return 0;
-    if (typeof v === "number") return isNaN(v) ? 0 : v;
-    const s = String(v).trim().replace(/R\$\s*/g,"").replace(/\s/g,"");
-    const hasBRFormat = s.includes(",");
-    const clean = hasBRFormat ? s.replace(/\./g,"").replace(",",".") : s;
-    const n = parseFloat(clean);
-    return isNaN(n) ? 0 : n;
-  };
+  const parseVal = v => { const n=parseFloat((v||"0").replace(/\./g,"").replace(",",".")); return isNaN(n)?0:n; };
 
   // Filtrar pelo mês/ano atual
   const mesAtual = now.getMonth();
@@ -16261,118 +16280,18 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
   const now = new Date();
   const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   const fmtBRL = v => "R$ "+(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
-  const parseVal = v => {
-    if (v === null || v === undefined || v === "") return 0;
-    if (typeof v === "number") return isNaN(v) ? 0 : v;
-    const s = String(v).trim().replace(/R\$\s*/g,"").replace(/\s/g,"");
-    // Se tem vírgula como decimal: 1.234,56 → strip pontos primeiro
-    const hasBRFormat = s.includes(",");
-    const clean = hasBRFormat ? s.replace(/\./g,"").replace(",",".") : s;
-    const n = parseFloat(clean);
-    return isNaN(n) ? 0 : n;
-  };
+  const parseVal = v => { const d=(v||"0").replace(/[R$\s.]/g,"").replace(",","."); const n=parseFloat(d); return isNaN(n)?0:n; };
 
   const mine = canSeeAll ? propostas : propostas.filter(p=>p.criadoPor===myId);
-
-  // ── Gráfico de barras com linha de tendência ──────────────────
-  const SalesChart = ({ allPropostas, mesMes, anoMes, mesPastN, anoPastN, mesNome, mesNomeP }) => {
-    const semanas = [0,1,2,3].map(s => {
-      const d1=s*7+1, d2=s===3?31:(s+1)*7;
-      const soma = (ano,mes) => allPropostas.filter(p=>{
-        if(p.status!=="Proposta Concluída") return false;
-        const d=new Date(p.createdAt||0);
-        return d.getFullYear()===ano && d.getMonth()===mes && d.getDate()>=d1 && d.getDate()<=d2;
-      }).reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0);
-      return { label:`Sem ${s+1}`, atual: soma(anoMes,mesMes), passado: soma(anoPastN,mesPastN) };
-    });
-    const maxV = Math.max(...semanas.flatMap(s=>[s.atual,s.passado]),1);
-    const totalAtual = semanas.reduce((a,s)=>a+s.atual,0);
-    const totalPass  = semanas.reduce((a,s)=>a+s.passado,0);
-    const diff = totalAtual - totalPass;
-    const pct = totalPass>0?Math.round((diff/totalPass)*100):(totalAtual>0?100:0);
-    const pts = semanas.map((s,i)=>({ x:12.5+i*25, y:s.atual>0?100-Math.round((s.atual/maxV)*82):98, v:s.atual }));
-    const linePath = pts.map((p,i)=>i===0?`M${p.x},${p.y}`:`L${p.x},${p.y}`).join(" ");
-    const area = `M${pts[0].x},100 ${pts.map(p=>`L${p.x},${p.y}`).join(" ")} L${pts[pts.length-1].x},100 Z`;
-    return (
-      <div style={{...S.card,padding:"20px 22px",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:18,flexWrap:"wrap",gap:10}}>
-          <div>
-            <div style={{color:C.td,fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>💰 Vendas Concluídas — {mesNome}</div>
-            <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap"}}>
-              <span style={{color:C.tp,fontSize:26,fontWeight:900,letterSpacing:"-1px"}}>{fmtBRL(totalAtual)}</span>
-              {diff!==0&&<span style={{background:diff>0?"rgba(52,211,153,0.12)":"rgba(239,68,68,0.1)",color:diff>0?"#34D399":"#F87171",fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,border:`1px solid ${diff>0?"#34D39933":"#EF444422"}`}}>
-                {diff>0?"▲ +":diff<0?"▼ ":""}{pct}% vs {mesNomeP}
-              </span>}
-            </div>
-            <div style={{color:C.td,fontSize:10.5,marginTop:3}}>{mesNomeP}: <span style={{color:C.tm}}>{fmtBRL(totalPass)}</span></div>
-          </div>
-          <div style={{display:"flex",gap:16,alignItems:"center",flexShrink:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
-              <div style={{width:12,height:12,borderRadius:3,background:`linear-gradient(135deg,${C.acc},${C.lg2})`}}/>
-              <span style={{color:C.atxt,fontWeight:600}}>{mesNome}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
-              <div style={{width:12,height:12,borderRadius:3,background:C.b2}}/>
-              <span style={{color:C.td}}>{mesNomeP}</span>
-            </div>
-          </div>
-        </div>
-        {/* SVG Chart */}
-        <div style={{position:"relative",height:130,marginBottom:24}}>
-          <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{overflow:"visible"}}>
-            <defs>
-              <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.acc}/>
-                <stop offset="100%" stopColor={C.lg2} stopOpacity="0.7"/>
-              </linearGradient>
-              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.acc} stopOpacity="0.25"/>
-                <stop offset="100%" stopColor={C.acc} stopOpacity="0"/>
-              </linearGradient>
-            </defs>
-            {/* Grid */}
-            {[20,40,60,80].map(y=><line key={y} x1="0" y1={y} x2="100" y2={y} stroke={C.b1} strokeWidth="0.4"/>)}
-            {/* Barras passado (cinza fundo) */}
-            {semanas.map((s,i)=>{ const h=s.passado>0?Math.round((s.passado/maxV)*78):0; return h>0&&<rect key={`p${i}`} x={i*25+2} y={100-h} width="10" height={h} fill={C.b2} rx="1.5"/>; })}
-            {/* Barras atual (gradiente) */}
-            {semanas.map((s,i)=>{ const h=s.atual>0?Math.round((s.atual/maxV)*78):0; return h>0&&<rect key={`a${i}`} x={i*25+13} y={100-h} width="10" height={h} fill="url(#barGrad)" rx="1.5"/>; })}
-            {/* Área tendência */}
-            {totalAtual>0&&<path d={area} fill="url(#areaGrad)"/>}
-            {/* Linha tendência */}
-            {totalAtual>0&&<path d={linePath} fill="none" stroke={C.acc} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>}
-            {/* Pontos */}
-            {totalAtual>0&&pts.filter(p=>p.v>0).map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="2" fill={C.acc} stroke={C.bg} strokeWidth="0.8"/>)}
-          </svg>
-          {/* Labels eixo X */}
-          <div style={{position:"absolute",bottom:-20,left:0,right:0,display:"flex"}}>
-            {semanas.map((s,i)=><div key={i} style={{flex:1,textAlign:"center",color:C.td,fontSize:9}}>{s.label}</div>)}
-          </div>
-        </div>
-        {/* Valores por semana */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,borderTop:`1px solid ${C.b1}`,paddingTop:12}}>
-          {semanas.map((s,i)=>(
-            <div key={i} style={{textAlign:"center",padding:"8px 4px",background:s.atual>0?C.abg:"transparent",borderRadius:8,border:`1px solid ${s.atual>0?C.atxt+"22":C.b1}`}}>
-              <div style={{color:s.atual>0?C.atxt:C.td,fontSize:11,fontWeight:700}}>{s.atual>0?fmtBRL(s.atual).replace("R$ ","R$"):"—"}</div>
-              <div style={{color:C.td,fontSize:9,marginTop:2}}>{s.label}</div>
-              {s.passado>0&&<div style={{color:C.td,fontSize:9,marginTop:1,opacity:0.6}}>{fmtBRL(s.passado).replace("R$ ","R$")} ant.</div>}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   const mesAtual = now.getMonth();
   const anoAtual = now.getFullYear();
 
   const calcMet = list => ({
-    total:      list.length,
+    total: list.length,
     concluidas: list.filter(p=>p.status==="Proposta Concluída").length,
-    pendentes:  list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).length,
+    pendentes: list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).length,
     canceladas: list.filter(p=>p.status==="Cancelada").length,
-    valor:      list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
-    valorPend:  list.filter(p=>["Pendente","Pago Aguardando Confirmação","Aguardando Formalização","Proposta Digitada"].includes(p.status)).reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
-    valorCanc:  list.filter(p=>p.status==="Cancelada").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
+    valor: list.filter(p=>p.status==="Proposta Concluída").reduce((a,p)=>a+parseVal(p.valorLiberado||p.valorSolicitado||p.valorPrometido),0),
   });
 
   const doMes = mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===mesAtual&&d.getFullYear()===anoAtual; });
@@ -16393,10 +16312,6 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
     </div>
   );
 
-  // mês passado
-  const mesPastN = mesAtual===0?11:mesAtual-1;
-  const anoPastN = mesAtual===0?anoAtual-1:anoAtual;
-
   return (
     <div>
       {/* ── Mensal ── */}
@@ -16406,94 +16321,62 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
           <span style={{background:C.abg,color:C.atxt,fontSize:10,padding:"2px 10px",borderRadius:20,fontWeight:700}}>Mês atual</span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
-          <Card icon="📤" label="Enviadas"   val={mMes.total}      color={C.atxt}/>
+          <Card icon="📤" label="Enviadas" val={mMes.total} color={C.atxt}/>
           <Card icon="✅" label="Concluídas" val={mMes.concluidas} color="#34D399"/>
-          <Card icon="⏳" label="Pendentes"  val={mMes.pendentes}  color="#FBBF24"/>
+          <Card icon="⏳" label="Pendentes" val={mMes.pendentes} color="#FBBF24"/>
           <Card icon="❌" label="Canceladas" val={mMes.canceladas} color="#EF4444"/>
         </div>
-        {/* Valores por status */}
-        <div style={{...S.card,padding:"14px 18px",marginBottom:14}}>
-          <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.4px"}}>💰 Valores — {MESES[mesAtual]}</div>
-          {[
-            {label:"✅ Concluídas",val:mMes.valor,     color:"#34D399"},
-            {label:"⏳ Pendentes", val:mMes.valorPend, color:"#FBBF24"},
-            {label:"❌ Canceladas",val:mMes.valorCanc, color:"#F87171"},
-          ].map(r=>r.val>0&&(
-            <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.b1}`}}>
-              <span style={{color:C.td,fontSize:11.5}}>{r.label}</span>
-              <span style={{color:r.color,fontWeight:700,fontSize:13}}>{fmtBRL(r.val)}</span>
-            </div>
-          ))}
-          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",marginTop:2}}>
-            <span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total em carteira</span>
-            <span style={{color:C.atxt,fontWeight:800,fontSize:14}}>{fmtBRL(mMes.valor+mMes.valorPend)}</span>
+        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>💰</span>
+          <div>
+            <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px",marginBottom:3}}>Total liberado em {MESES[mesAtual]}</div>
+            <div style={{color:"#34D399",fontSize:20,fontWeight:800}}>{fmtBRL(mMes.valor)}</div>
           </div>
         </div>
-        {/* Gráfico */}
-        <SalesChart
-          allPropostas={mine}
-          mesMes={mesAtual} anoMes={anoAtual}
-          mesPastN={mesPastN} anoPastN={anoPastN}
-          mesNome={MESES[mesAtual]} mesNomeP={MESES[mesPastN]}
-        />
       </div>
 
       {/* ── Anual ── */}
       <div>
         <div style={{color:C.tp,fontSize:16,fontWeight:700,marginBottom:14}}>📆 Relatório Anual — {anoAtual}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
-          <Card icon="📤" label="Enviadas"   val={mAno.total}      color={C.atxt}/>
+          <Card icon="📤" label="Enviadas" val={mAno.total} color={C.atxt}/>
           <Card icon="✅" label="Concluídas" val={mAno.concluidas} color="#34D399"/>
-          <Card icon="⏳" label="Pendentes"  val={mAno.pendentes}  color="#FBBF24"/>
+          <Card icon="⏳" label="Pendentes" val={mAno.pendentes} color="#FBBF24"/>
           <Card icon="❌" label="Canceladas" val={mAno.canceladas} color="#EF4444"/>
         </div>
-        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",marginBottom:18}}>
-          <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.4px"}}>💰 Valores — {anoAtual}</div>
-          {[
-            {label:"✅ Concluídas",val:mAno.valor,     color:"#34D399"},
-            {label:"⏳ Pendentes", val:mAno.valorPend, color:"#FBBF24"},
-            {label:"❌ Canceladas",val:mAno.valorCanc, color:"#F87171"},
-          ].map(r=>r.val>0&&(
-            <div key={r.label} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.b1}`}}>
-              <span style={{color:C.td,fontSize:11.5}}>{r.label}</span>
-              <span style={{color:r.color,fontWeight:700,fontSize:13}}>{fmtBRL(r.val)}</span>
-            </div>
-          ))}
-          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",marginTop:2}}>
-            <span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total liberado</span>
-            <span style={{color:"#34D399",fontWeight:800,fontSize:14}}>{fmtBRL(mAno.valor)}</span>
+        <div style={{...S.card,padding:"14px 18px",border:"1px solid #34D39933",marginBottom:18,display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>🏆</span>
+          <div>
+            <div style={{color:C.td,fontSize:10.5,textTransform:"uppercase",letterSpacing:"0.4px",marginBottom:3}}>Total liberado em {anoAtual}</div>
+            <div style={{color:"#34D399",fontSize:20,fontWeight:800}}>{fmtBRL(mAno.valor)}</div>
           </div>
         </div>
         <div style={{...S.card,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.b1}`,color:C.ts,fontSize:12,fontWeight:700}}>Desempenho mês a mês</div>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead>
-                <tr style={{background:C.deep}}>
-                  {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Concluídas R$","Pendentes R$","Canceladas R$"].map(h=>(
-                    <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"9px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {porMes.map((m,i)=>{
-                  const isAt = i===mesAtual;
-                  return (
-                    <tr key={m.mes} style={{background:isAt?C.abg:"transparent",borderBottom:`1px solid ${C.b1}`}}>
-                      <td style={{padding:"9px 12px",color:isAt?C.atxt:C.ts,fontWeight:isAt?700:400}}>{m.mes}{isAt&&" ←"}</td>
-                      <td style={{padding:"9px 12px",color:C.ts}}>{m.total||"—"}</td>
-                      <td style={{padding:"9px 12px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
-                      <td style={{padding:"9px 12px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
-                      <td style={{padding:"9px 12px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
-                      <td style={{padding:"9px 12px",color:m.valor>0?"#34D399":C.td,fontWeight:m.valor>0?600:400}}>{m.valor>0?fmtBRL(m.valor):"—"}</td>
-                      <td style={{padding:"9px 12px",color:m.valorPend>0?"#FBBF24":C.td}}>{m.valorPend>0?fmtBRL(m.valorPend):"—"}</td>
-                      <td style={{padding:"9px 12px",color:m.valorCanc>0?"#F87171":C.td}}>{m.valorCanc>0?fmtBRL(m.valorCanc):"—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{background:C.deep}}>
+                {["Mês","Enviadas","Concluídas","Pendentes","Canceladas","Valor Liberado"].map(h=>(
+                  <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"9px 12px",textAlign:"left",textTransform:"uppercase",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {porMes.map((m,i)=>{
+                const isAt = i===mesAtual;
+                return (
+                  <tr key={m.mes} style={{background:isAt?C.abg:"transparent",borderBottom:`1px solid ${C.b1}`}}>
+                    <td style={{padding:"9px 12px",color:isAt?C.atxt:C.ts,fontWeight:isAt?700:400}}>{m.mes}{isAt&&" ←"}</td>
+                    <td style={{padding:"9px 12px",color:C.ts}}>{m.total||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.concluidas>0?"#34D399":C.td,fontWeight:m.concluidas>0?700:400}}>{m.concluidas||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.pendentes>0?"#FBBF24":C.td}}>{m.pendentes||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.canceladas>0?"#EF4444":C.td}}>{m.canceladas||"—"}</td>
+                    <td style={{padding:"9px 12px",color:m.valor>0?"#34D399":C.td,fontWeight:m.valor>0?600:400}}>{m.valor>0?fmtBRL(m.valor):"—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -16702,9 +16585,7 @@ function PropostasRankTab({ propostas }) {
     if (["Pago","Pago Aguardando Confirmação","Aprovado"].includes(st)) {
       byUser[id].ativos++;
       // Soma SOMENTE valor liberado de propostas pagas/aprovadas
-      const vLib = p.valorLiberado||p.valorSolicitado||p.valorPrometido||0;
-      const vNum = typeof vLib==="number" ? vLib : parseFloat(String(vLib).replace(/R\$\s*/g,"").replace(/\s/g,"").replace(/\./g,"").replace(",",".")) || 0;
-      if (vNum>0) byUser[id].valores.push(vNum);
+      if (p.valorLiberado) byUser[id].valores.push(parseFloat(String(p.valorLiberado).replace(/\./g,"").replace(",",".")) || 0);
     } else if (["Cancelado","Recusado"].includes(st)) {
       byUser[id].inativos++;
     }
