@@ -13960,6 +13960,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             <div style={{ padding:"16px 20px", color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>
           )}
           {!loading && (
+            <>
             <div style={{ overflowX:"auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                 <thead>
@@ -14259,6 +14260,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </button>
               </div>
             )}
+            </>
           )}
         </div>
       </div>
