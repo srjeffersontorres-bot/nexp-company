@@ -16396,8 +16396,6 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
   // mês passado
   const mesPastN = mesAtual===0?11:mesAtual-1;
   const anoPastN = mesAtual===0?anoAtual-1:anoAtual;
-  const doMesP = mine.filter(p=>{ const d=new Date(p.createdAt||0); return d.getMonth()===mesPastN&&d.getFullYear()===anoPastN; });
-  const mMesP  = calcMet(doMesP);
 
   return (
     <div>
