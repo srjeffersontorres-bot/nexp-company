@@ -5772,6 +5772,8 @@ function PerfilTab({ users, setUsers, currentUser }) {
   const [confirmPw, setConfirmPw] = useState("");
   const [pwErr, setPwErr] = useState("");
   const [pwOk, setPwOk] = useState("");
+  const [err, setErr] = useState("");
+  const flash = (msg) => { setOk(msg); setTimeout(() => setOk(""), 3000); };
   const fRef = useRef();
   const docRef = useRef();
 
