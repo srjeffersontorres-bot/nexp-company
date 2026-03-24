@@ -302,12 +302,12 @@ function canSeePassword(myRole, targetRole) {
   return myLvl <= 1 && myLvl < tgLvl;
 }
 // Pode editar um usuário
-// Presença real: online:true E lastSeen < 3 minutos atrás
+// Presença real: online:true E lastSeen < 40s (heartbeat a cada 20s)
 function isReallyOnline(presenceEntry) {
   if (!presenceEntry?.online) return false;
   const lastSeen = presenceEntry.lastSeen?.seconds;
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 180; // 3 minutos
+  return (Date.now() / 1000 - lastSeen) < 40; // 40 segundos
 }
 
 const EMOJIS = [
@@ -1140,7 +1140,7 @@ function LoginPage({ onLogin }) {
   const [twoFASecret,  setTwoFASecret]  = useState("");      // gerado localmente
   const [twoFAPending, setTwoFAPending] = useState(null);    // profile aguardando 2FA
   const [twoFAErr,     setTwoFAErr]     = useState("");
-
+  const [twoFALoading, setTwoFALoading] = useState(false);
   const ROLES_2FA = ["administrador","mestre"];              // roles que exigem 2FA
 
   // Previsão do tempo em tempo real
@@ -1676,18 +1676,18 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
-    { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"apis",       label:"Bancos",          icon:"⬧", roles:["administrador","gerente","mestre","master"] },
-    { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"] },
-    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
     { id:"dashboard",  label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"contacts",   label:"Contatos",       icon:"⬡", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"add",        label:"Adicionar",       icon:"⊕", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
     { id:"import",     label:"Importar",        icon:"⤓", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"cstatus",    label:"Status",          icon:"◐", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"apis",       label:"Bancos",          icon:"⬧", roles:["administrador","gerente","mestre","master"] },
     { id:"leds",       label:"Leds",            icon:"⬦", roles:["administrador","gerente","mestre","master"] },
     { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
+    { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"] },
+    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
     { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"calendario", label:"Agenda",          icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"pagamentos", label:"Pagamentos",       icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
@@ -5513,7 +5513,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       id: "apis",
       label: "Configurar API",
       icon: "⬧",
-      roles: ["mestre", "administrador"],
+      roles: ["mestre", "administrador", "gerente", "supervisor", "operador", "master", "indicado", "digitador", "visitante"],
     },
   ].filter((t) => t.roles.includes(currentUser.role));
   return (
@@ -5772,7 +5772,6 @@ function PerfilTab({ users, setUsers, currentUser }) {
   const [confirmPw, setConfirmPw] = useState("");
   const [pwErr, setPwErr] = useState("");
   const [pwOk, setPwOk] = useState("");
-  const flash = (msg) => { setOk(msg); setTimeout(() => setOk(""), 3000); };
   const fRef = useRef();
   const docRef = useRef();
 
@@ -5968,7 +5967,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
                   setUsers(us => us.map(u => (u.uid||u.id) === (currentUser.uid||currentUser.id) ? { ...u, twoFAEnabled: novo } : u));
                   await auditLog(novo ? "2fa_ativado" : "2fa_desativado", { email: currentUser.email }, currentUser);
                   flash(novo ? "🛡 2FA ativado com sucesso!" : "2FA desativado.");
-                } catch(e) { setPwErr("Erro ao salvar 2FA: " + e.message); }
+                } catch(e) { setErr("Erro ao salvar 2FA: " + e.message); }
               }}
               style={{ background: currentUser.twoFAEnabled !== false ? "rgba(52,211,153,0.15)" : C.deep,
                 color: currentUser.twoFAEnabled !== false ? "#34D399" : C.tm,
@@ -11849,7 +11848,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     setFilaFormalizacao(fila);
     localStorage.setItem("nexp_fila_formalizacao", JSON.stringify(fila));
   };
-  const adicionarNaFila = async (res, dadosDigitacao) => {
+  const adicionarNaFila = (res, dadosDigitacao) => {
     const novo = {
       id:               res?.id || String(Date.now()),
       v8ProposalId:     res?.id || "",
@@ -11865,33 +11864,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
     const atualizada = [novo, ...filaFormalizacao.filter(f => f.id !== novo.id)];
     salvarFilaLocal(atualizada);
-
-    // Salva no Firestore para aparecer em Minhas Propostas com status "Aguardando Formalização"
-    try {
-      const myId = currentUser?.uid || currentUser?.id || "";
-      const propostaId = "bancos_" + (res?.id || String(Date.now()));
-      await setDoc(doc(db, "propostas", propostaId), {
-        nome:              dadosDigitacao?.nome || dadosDigitacao?.name || "",
-        cpf:               (dadosDigitacao?.cpf || dadosDigitacao?.documentNumber || "").replace(/\D/g, ""),
-        tipo:              dadosDigitacao?.provider || "FGTS",
-        bancoProposta:     dadosDigitacao?.provider || "",
-        valorLiberado:     String(dadosDigitacao?.valorLiberado || dadosDigitacao?.availableBalance || ""),
-        v8ProposalId:      res?.id || "",
-        contractNumber:    res?.contractNumber || "",
-        linkFormalizacao:  res?.formalizationLink || "",
-        formalizationLink: res?.formalizationLink || "",
-        status:            "Aguardando Formalização",
-        criadoPor:         myId,
-        createdAt:         Date.now(),
-        origem:            "bancos",
-        hasNewInteraction: false,
-        viewedBy:          [],
-        viewedByDigitador: [myId],
-      }, { merge: false });
-    } catch (e) {
-      console.error("Erro ao salvar proposta no Firestore:", e);
-    }
-
     return novo;
   };
 
@@ -12516,10 +12488,10 @@ function V8DigitalTab({ currentUser, contacts }) {
             initialForm={modalForm}
             setAcompData={setAcompData}
             onClose={()=>{ setIndDigModal(null); }}
-            onSuccess={async (res)=>{ 
+            onSuccess={(res)=>{ 
               setIndDigModal(null); 
               setAcompData(null); 
-              if (res) await adicionarNaFila(res, { 
+              if (res) adicionarNaFila(res, { 
                 nome: indDigModal?.clientePreFill?.name || indDigModal?.clientePreFill?.nome || "",
                 cpf: indDigModal?.cpf || "",
                 valorLiberado: indDigModal?.tabela?.sim?.availableBalance || 0,
@@ -13720,10 +13692,10 @@ function V8DigitalTab({ currentUser, contacts }) {
             initialForm={modalForm}
             setAcompData={setAcompData}
             onClose={()=>{ setLoteDigModal(null); }}
-            onSuccess={async (res)=>{ 
+            onSuccess={(res)=>{ 
               setLoteDigModal(null); 
               setAcompData(null); 
-              if (res) await adicionarNaFila(res, {
+              if (res) adicionarNaFila(res, {
                 nome: loteDigModal?.clientePreFill?.name || loteDigModal?.clientePreFill?.nome || "",
                 cpf: loteDigModal?.cpf || "",
                 valorLiberado: loteDigModal?.tabela?.sim?.availableBalance || 0,
@@ -17140,20 +17112,43 @@ export default function App() {
     return () => unsub();
   }, [currentUser]); // eslint-disable-line
 
-  // ── Presença online ───────────────────────────────────────────
+  // ── Presença online (tempo real) ─────────────────────────────
   useEffect(() => {
     if (!currentUser) return;
     const myId = currentUser.uid || currentUser.id;
-    setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
+    const nome = currentUser.name || currentUser.email;
+    const role = currentUser.role;
+
+    // Marca online imediatamente ao logar
+    setPresence(myId, nome, role);
+
+    // Heartbeat a cada 20s para manter lastSeen atualizado
     const interval = setInterval(() => {
-      setPresence(myId, currentUser.name || currentUser.email, currentUser.role);
-    }, 30000);
+      if (document.visibilityState !== "hidden") {
+        setPresence(myId, nome, role);
+      }
+    }, 20000);
+
+    // Aba/janela fechada ou navegador encerrado → offline
     const handleUnload = () => removePresence(myId);
     window.addEventListener("beforeunload", handleUnload);
+
+    // Aba oculta (minimizada, troca de aba) → offline; visível → online
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        removePresence(myId);
+      } else {
+        setPresence(myId, nome, role);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     const unsub = listenPresence((data) => setPresenceData(data));
+
     return () => {
       clearInterval(interval);
       window.removeEventListener("beforeunload", handleUnload);
+      document.removeEventListener("visibilitychange", handleVisibility);
       removePresence(myId);
       unsub();
     };
