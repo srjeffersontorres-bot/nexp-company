@@ -308,7 +308,7 @@ function isReallyOnline(presenceEntry) {
   const lastSeen = presenceEntry.lastSeen?.seconds
     ?? (presenceEntry.lastSeen?.toDate?.()?.getTime?.() / 1000);
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 90; // 90 segundos
+  return (Date.now() / 1000 - lastSeen) < 120; // 120s — heartbeat a cada 20s
 }
 
 const EMOJIS = [
@@ -7928,6 +7928,12 @@ function AtalhosPage({ currentUser }) {
 
 // ── FloatingChat ───────────────────────────────────────────────
 function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChange, onMinimize, onRestore, onClose, unreadChat, stories, onOpenStory }) {
+  // Tick a cada 30s para reavaliação de presença em tempo real
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
   const myId = currentUser.uid || currentUser.id;
   const [activeTab, setActiveTab] = useState(null); // null = inbox, uid = DM, "geral" = geral
   const [allMessages, setAllMessages] = useState([]);
@@ -7959,7 +7965,25 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 
   const isMestre = currentUser.role === "mestre";
   const mestreUser = users.find(u => u.role === "mestre");
-  const dmList = isMestre ? users.filter(u => (u.uid||u.id) !== myId) : (mestreUser ? [mestreUser] : []);
+  const dmListRaw = isMestre ? users.filter(u => (u.uid||u.id) !== myId) : (mestreUser ? [mestreUser] : []);
+
+  // Ordenação: online primeiro, depois por última mensagem trocada (mais recente no topo)
+  const dmList = [...dmListRaw].sort((a, b) => {
+    const aUid = a.uid || a.id;
+    const bUid = b.uid || b.id;
+    const aOnline = isReallyOnline(presence[aUid]) ? 1 : 0;
+    const bOnline = isReallyOnline(presence[bUid]) ? 1 : 0;
+    if (bOnline !== aOnline) return bOnline - aOnline; // online primeiro
+    // Última mensagem trocada entre myId e cada usuário
+    const lastTs = (uid) => {
+      const msgs = allMessages.filter(m =>
+        (m.authorId === uid && m.toId === myId) ||
+        (m.authorId === myId && m.toId === uid)
+      );
+      return msgs.length ? (msgs[msgs.length - 1]?.createdAt?.seconds ?? 0) : 0;
+    };
+    return lastTs(bUid) - lastTs(aUid); // mais recente primeiro
+  });
   const canManageGroups = currentUser.role === "mestre" || currentUser.role === "master";
 
   // Group states
@@ -16247,9 +16271,18 @@ function ModalAcaoProposta({ proposta, onClose, onSave }) {
 function RelatorioProposta({ propostas, canSeeAll, myId }) {
   const now = new Date();
   const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-  const fmtBRL = v => "R$ "+(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
-  const parseVal = v => { const d=(v||"0").replace(/[R$\s.]/g,"").replace(",","."); const n=parseFloat(d); return isNaN(n)?0:n; };
+  const fmtBRL = v => "R$ "+((v||0)).toLocaleString("pt-BR",{minimumFractionDigits:2});
+  const parseVal = v => {
+    try {
+      if (v === null || v === undefined) return 0;
+      const s = String(v).replace(/[R$\s]/g,"").replace(/\./g,"").replace(",",".");
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : n;
+    } catch { return 0; }
+  };
 
+  // Proteção: se propostas não for array, retornar vazio
+  if (!Array.isArray(propostas)) return null;
   const mine = canSeeAll ? propostas : propostas.filter(p=>p.criadoPor===myId);
   const mesAtual = now.getMonth();
   const anoAtual = now.getFullYear();
@@ -16543,18 +16576,27 @@ function PropostasRankTab({ propostas }) {
 
   // Agrupa propostas por digitador
   const byUser = {};
+  const parseValRank = v => {
+    try {
+      if (!v) return 0;
+      const n = parseFloat(String(v).replace(/[R$\s]/g,"").replace(/\./g,"").replace(",","."));
+      return isNaN(n) ? 0 : n;
+    } catch { return 0; }
+  };
+
   propostas.forEach(p => {
     const id = p.criadoPor || "desconhecido";
     const nome = p.nomeOperador || p.criadoPorNome || id.slice(0,8)+"…";
-    if (!byUser[id]) byUser[id] = { id, nome, total:0, ativos:0, inativos:0, status:{}, valores:[] };
+    if (!byUser[id]) byUser[id] = { id, nome, total:0, concluidas:0, inativos:0, status:{}, valores:[] };
     byUser[id].total++;
     const st = p.status || "Proposta Digitada";
     byUser[id].status[st] = (byUser[id].status[st]||0)+1;
-    if (["Pago","Pago Aguardando Confirmação","Aprovado"].includes(st)) {
-      byUser[id].ativos++;
-      // Soma SOMENTE valor liberado de propostas pagas/aprovadas
-      if (p.valorLiberado) byUser[id].valores.push(parseFloat(String(p.valorLiberado).replace(/\./g,"").replace(",",".")) || 0);
-    } else if (["Cancelado","Recusado"].includes(st)) {
+    // Soma SOMENTE valor liberado de propostas com status "Proposta Concluída"
+    if (st === "Proposta Concluída") {
+      byUser[id].concluidas++;
+      const val = parseValRank(p.valorLiberado || p.valorSolicitado || p.valorPrometido);
+      if (val > 0) byUser[id].valores.push(val);
+    } else if (["Cancelada","Recusado","Cancelado"].includes(st)) {
       byUser[id].inativos++;
     }
   });
@@ -16606,7 +16648,7 @@ function PropostasRankTab({ propostas }) {
                 <div style={{background:`linear-gradient(180deg,${cols[rank]}44,${cols[rank]}22)`,border:`2px solid ${cols[rank]}66`,borderRadius:"10px 10px 0 0",width:90,height:heights[rank],display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"12px 8px",gap:4}}>
                   <div style={{color:cols[rank],fontSize:26,fontWeight:900,lineHeight:1}}>{u.total}</div>
                   <div style={{color:C.td,fontSize:10}}>propostas</div>
-                  {u.ativos>0&&<div style={{color:"#34D399",fontSize:11,fontWeight:600,marginTop:4}}>✔ {u.ativos}</div>}
+                  {u.concluidas>0&&<div style={{color:"#34D399",fontSize:11,fontWeight:600,marginTop:4}}>✔ {u.concluidas}</div>}
                 </div>
               </div>
             );
@@ -16627,7 +16669,7 @@ function PropostasRankTab({ propostas }) {
                   <div style={{color:C.tp,fontSize:13.5,fontWeight:700}}>{u.nome}</div>
                   <div style={{display:"flex",gap:10,marginTop:3,flexWrap:"wrap"}}>
                     <span style={{color:C.atxt,fontSize:12,fontWeight:600}}>{u.total} propostas</span>
-                    {u.ativos>0&&<span style={{color:"#34D399",fontSize:11}}>✔ {u.ativos} aprovadas</span>}
+                    {u.concluidas>0&&<span style={{color:"#34D399",fontSize:11}}>✔ {u.concluidas} concluídas</span>}
                     {u.inativos>0&&<span style={{color:"#F87171",fontSize:11}}>✘ {u.inativos} canceladas</span>}
                     {totalValor>0&&<span style={{color:"#FBBF24",fontSize:11}}>💰 {fmtBRL2(totalValor)}</span>}
                   </div>
@@ -17034,13 +17076,32 @@ export default function App() {
   const [unreadDigitacao, setUnreadDigitacao] = useState(0);
   const lastChatCount = useRef(0);
   // System config — mestre controls what others can access
-  const [sysConfig, setSysConfig] = useState({
-    masterChatEnabled: true,     // mestre can disable chat for masters
-    indicadoChatEnabled: true,   // master can disable chat for indicados
+  const SYS_CONFIG_DEFAULT = {
+    masterChatEnabled: true,
+    indicadoChatEnabled: true,
     visitanteChatEnabled: true,
-    pagamentosEnabled: true,     // admin can toggle pagamentos tab
+    pagamentosEnabled: true,
     visitanteTabs: { dashboard:true, contacts:true, add:false, import:false, review:true, cstatus:true, leds:false, atalhos:true, premium:false, config:false },
-  });
+  };
+  const [sysConfig, setSysConfigState] = useState(SYS_CONFIG_DEFAULT);
+
+  // Carrega sysConfig do Firestore na inicialização
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "sysconfig", "global"), (snap) => {
+      if (snap.exists()) {
+        setSysConfigState(prev => ({ ...SYS_CONFIG_DEFAULT, ...prev, ...snap.data() }));
+      }
+    });
+    return () => unsub();
+  }, []); // eslint-disable-line
+
+  // Salva sysConfig no Firestore toda vez que mudar
+  const setSysConfig = async (newCfg) => {
+    setSysConfigState(newCfg);
+    try {
+      await setDoc(doc(db, "sysconfig", "global"), newCfg, { merge: true });
+    } catch(e) { console.warn("sysConfig save failed:", e.message); }
+  };
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
   const setPageAndSave = (p) => {
