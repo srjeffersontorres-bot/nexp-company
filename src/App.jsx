@@ -5286,7 +5286,7 @@ function RankTab({ users, currentUser }) {
   );
 }
 
-function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) {
+function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig, presence = {} }) {
   const [tab, setTab] = useState("usuarios");
   const [permSearch, setPermSearch] = useState("");
   const [permExpandedId, setPermExpandedId] = useState(null);
@@ -6386,12 +6386,26 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       ? <img src={u.photo} alt="" style={{ width:42, height:42, borderRadius:"50%", objectFit:"cover", border:`1.5px solid ${col}44` }} />
                       : <div style={{ width:42, height:42, borderRadius:"50%", background:col+"18", color:col, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border:`1.5px solid ${col}33` }}>{ini(u.name||u.username)}</div>}
                     {!isActive && <div style={{ position:"absolute", bottom:0, right:0, width:12, height:12, borderRadius:"50%", background:"#EF4444", border:`2px solid ${C.card}` }}/>}
+                    {isActive && (() => {
+                      const uid2 = u.uid || u.id;
+                      const online = isReallyOnline(presence[uid2]);
+                      return <div style={{ position:"absolute", bottom:0, right:0, width:11, height:11, borderRadius:"50%", background: online ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, boxShadow: online ? "0 0 6px #16A34A99" : "0 0 6px #FBBF2499", animation:"pulse 1.5s infinite" }}/>;
+                    })()}
                   </div>
                   {/* Info */}
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
                       <span style={{ color:C.tp, fontSize:13.5, fontWeight:700 }}>{u.name||u.username}</span>
                       {isSelf && <span style={{ color:C.atxt, fontSize:10, background:C.abg, borderRadius:9, padding:"1px 7px", border:`1px solid ${C.atxt}33` }}>você</span>}
+                      {(() => {
+                        const uid2 = u.uid || u.id;
+                        const online = isReallyOnline(presence[uid2]);
+                        const ls = presence[uid2]?.lastSeen?.seconds;
+                        return online
+                          ? <span style={{ color:"#16A34A", fontSize:10, display:"flex", alignItems:"center", gap:3 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }}/>online</span>
+                          : ls ? <span style={{ color:C.td, fontSize:10 }}>visto {new Date(ls*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>
+                          : null;
+                      })()}
                       <span style={{ background:col+"18", color:col, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:700, border:`1px solid ${col}33` }}>
                         {{administrador:"👑",gerente:"🏆",supervisor:"🎯",operador:"👤",mestre:"👑",master:"🏆",indicado:"👤",visitante:"👤",digitador:"👤"}[u.role]||"👤"} {ROLE_LABEL[u.role]||u.role}
                       </span>
@@ -17617,7 +17631,7 @@ export default function App() {
           <LedsPage contacts={contacts} userRole={currentUser.role} />
         )}
         {page === "usuarios_page" && (
-          <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
+          <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} presence={presence} />
         )}
         {page === "digitacao" && (
           <DigitacaoPage contacts={contacts} currentUser={currentUser} unreadExterno={unreadDigitacao} />
