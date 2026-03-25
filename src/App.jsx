@@ -15056,11 +15056,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
               <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,marginBottom:10}}>⚡ Lote — Gerar Termos em Massa</div>
               <textarea value={loteCLTCpfs} onChange={e=>setLoteCLTCpfs(e.target.value)}
-                placeholder={"Cole os CPFs aqui, um por linha:
-84999999999,Nome,email@email.com,1990-01-01
-ou apenas CPFs (buscará nos contatos):
-12345678901
-98765432100"}
+                placeholder={"Cole os CPFs aqui, um por linha:\n84999999999,Nome,email@email.com,1990-01-01\nou apenas CPFs (buscará nos contatos):\n12345678901\n98765432100"}
                 style={{...S.input,height:90,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={async()=>{
