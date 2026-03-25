@@ -14487,7 +14487,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const consultLink = res.consent_url || res.consentUrl || res.url || res.link
         || res.authorization_url || res.authorizationUrl || res.formalization_url
         || res.formalizationUrl || res.signUrl || res.sign_url
-        || `https://app.v8sistema.com/private-consignment/consult/${consultId}/authorize`;
+        || `https://app.v8sistema.com/termos-de-autorizacao/${consultId}`;
       console.log("[CLT] Link gerado:", consultLink);
       // Adiciona à lista de termos
       const novoTermo = {
@@ -14536,7 +14536,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const r=await apiFetch(`/private-consignment/consult?page=${page}&limit=${TERMOS_LIMIT}&provider=QI&startDate=${start}&endDate=${end}`);
       const lista=(r?.data||[]).map(item=>({
         ...item,
-        link: item.consent_url || item.url || item.link || item.authorization_url || `https://app.v8sistema.com/private-consignment/consult/${item.id}/authorize`,
+        link: item.consent_url || item.url || item.link || item.authorization_url || `https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
       }));
       setTermos(lista);
       setTermosPages(r?.pages||null);
@@ -14603,8 +14603,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PARCELAS_PADRAO = [6,8,12,18,24,36];
 
   const executarSimulacoes = async (termo, inline=false) => {
-    if(inline) { setInlineSimId(termo.id); }
-    else { setSimModal({termo}); setAba("simulacao"); }
+    if(inline) {
+      setInlineSimId(termo.id);
+    } else {
+      setSimModal({termo});
+    }
     setSimConfigs(null);
     setSimLoading(true);
     setErr("");
@@ -14780,7 +14783,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","📋 Gerador de Termo"],["simulacao","⚡ Simulação"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
+        {[["termo","📋 Gerador de Termo"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -15017,6 +15020,88 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         </div>
       )}
 
+      {/* ══ POPUP SIMULAÇÃO — botão Simular ══ */}
+      {simModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:780,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>e.stopPropagation()}>
+            {/* Header popup */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div>
+                <div style={{color:"#fff",fontSize:15,fontWeight:800}}>⚡ Simulação — {simModal.termo?.name||simModal.termo?.nome||"Cliente"}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:2}}>{fmtCPF(simModal.termo?.documentNumber||simModal.termo?.cpf||"")} · Margem: {simModal.termo?.availableMarginValue?fmtBRL(simModal.termo.availableMarginValue):"—"}</div>
+              </div>
+              <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,padding:"6px 14px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>✕ Fechar</button>
+            </div>
+
+            {simLoading&&(
+              <div style={{textAlign:"center",padding:"40px 0"}}>
+                <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
+                <div style={{color:"rgba(255,255,255,0.7)",fontSize:13}}>Calculando 6 simulações...</div>
+              </div>
+            )}
+
+            {!simLoading&&simConfigs&&(()=>{
+              const cfgKeys = Object.keys(simConfigs);
+              const currentCfg = simConfigSel && simConfigs[simConfigSel] ? simConfigSel : cfgKeys[0];
+              return (
+                <div>
+                  {/* Seletor tabela */}
+                  {cfgKeys.length>1&&(
+                    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+                      {cfgKeys.map(k=>{const {cfg}=simConfigs[k]; return (
+                        <button key={k} onClick={()=>setSimConfigSel(k)}
+                          style={{background:currentCfg===k?"rgba(79,142,247,0.2)":"rgba(255,255,255,0.05)",color:currentCfg===k?"#60A5FA":"rgba(255,255,255,0.5)",border:`1px solid ${currentCfg===k?"#3B6EF544":"rgba(255,255,255,0.1)"}`,borderRadius:20,padding:"5px 14px",fontSize:11,fontWeight:currentCfg===k?700:400,cursor:"pointer"}}>
+                          {cfg.slug} ({cfg.monthly_interest_rate}% a.m.)
+                        </button>
+                      );})}
+                    </div>
+                  )}
+                  {simConfigs[currentCfg]&&(()=>{
+                    const {resultados}=simConfigs[currentCfg];
+                    const melhorIdx=resultados.reduce((mi,r,i)=>
+                      (parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0))?i:mi,0);
+                    return (
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+                        {resultados.map((r,idx)=>{
+                          const isMelhor=idx===melhorIdx;
+                          const desembolso=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                          const parcela=parseFloat(r.sim?.installment_value||0);
+                          const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
+                          return (
+                            <div key={r.np} onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor})}
+                              style={{background:isMelhor?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.04)",border:`2px solid ${isMelhor?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:16,padding:"18px",cursor:"pointer",position:"relative",transition:"all 0.15s"}}
+                              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 8px 28px ${isMelhor?"rgba(52,211,153,0.25)":"rgba(0,0,0,0.4)"}`}}
+                              onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
+                              {isMelhor&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR OFERTA</div>}
+                              <div style={{color:"rgba(255,255,255,0.4)",fontSize:10,marginBottom:4,marginTop:isMelhor?4:0}}>{r.np} parcelas</div>
+                              <div style={{color:isMelhor?"#34D399":"#fff",fontSize:26,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desembolso)}</div>
+                              <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:12}}>Valor liberado</div>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                                <span style={{color:"rgba(255,255,255,0.5)"}}>Parcela</span>
+                                <span style={{color:"#fff",fontWeight:700}}>{fmtBRL(parcela)}/mês</span>
+                              </div>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:14}}>
+                                <span style={{color:"rgba(255,255,255,0.5)"}}>Taxa</span>
+                                <span style={{color:"#FBBF24",fontWeight:700}}>{taxa}% a.m.</span>
+                              </div>
+                              <div style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:8,padding:"8px",textAlign:"center",fontSize:12,fontWeight:700,color:"#fff"}}>✍️ Digitar Proposta</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+
+            {!simLoading&&(!simConfigs||Object.keys(simConfigs).length===0)&&(
+              <div style={{textAlign:"center",color:"rgba(255,255,255,0.4)",padding:"32px 0",fontSize:13}}>Nenhum resultado disponível.</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* AVISO MODAL — motivo rejeição */}
       {avisoModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -15040,107 +15125,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════
-          ABA: SIMULAÇÃO
-      ══════════════════════════════════════════════════════════ */}
-      {aba==="simulacao" && (
-        <div>
-          <div style={{...S.card,padding:"20px 22px",marginBottom:16}}>
-            <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>⚡ Parâmetros da Simulação</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
-              <div>
-                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Tabela de Taxas</label>
-                <select value={simConfigSel||""} onChange={e=>setSimConfigSel(e.target.value)} style={{...S.input,cursor:"pointer"}}>
-                  {configs.map(c=><option key={c.id} value={c.id}>{c.slug} — {c.monthly_interest_rate}% a.m.</option>)}
-                </select>
-              </div>
-              <div style={{display:"flex",alignItems:"flex-end"}}>
-                <div style={{color:C.tm,fontSize:11}}>Parcelas simuladas automaticamente:<br/><b style={{color:C.tp}}>6x · 8x · 12x · 18x · 24x · 36x</b></div>
-              </div>
-            </div>
-            <div style={{color:C.td,fontSize:11.5}}>💡 Gere um termo de consentimento e aguarde o status <b style={{color:"#34D399"}}>Aprovado</b> para simular. Clique em ⚡ Simular na lista da aba Gerador de Termo.</div>
-          </div>
 
-          {/* Modal de simulação */}
-          {simLoading&&(
-            <div style={{...S.card,padding:"40px",textAlign:"center"}}>
-              <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
-              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:6}}>Calculando simulações...</div>
-              <div style={{color:C.tm,fontSize:12}}>Simulando 6 cenários de prazo. Aguarde.</div>
-            </div>
-          )}
-
-          {simModal&&simConfigs&&!simLoading&&(
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
-                <div style={{color:C.tp,fontSize:14,fontWeight:700}}>Simulações — {simModal.termo.name||simModal.termo.nome}</div>
-                <span style={{color:C.tm,fontSize:12,fontFamily:"monospace"}}>{fmtCPF(simModal.termo.documentNumber||simModal.termo.cpf||"")}</span>
-                {simModal.termo.availableMarginValue&&<span style={{background:"rgba(52,211,153,0.15)",color:"#34D399",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Margem: {fmtBRL(simModal.termo.availableMarginValue)}</span>}
-                <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{marginLeft:"auto",background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>✕ Fechar</button>
-              </div>
-
-              {/* Seletor de tabela */}
-              <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-                {Object.values(simConfigs).map(({cfg})=>(
-                  <button key={cfg.id} onClick={()=>setSimConfigSel(cfg.id)}
-                    style={{background:simConfigSel===cfg.id?C.abg:C.deep,color:simConfigSel===cfg.id?C.atxt:C.tm,border:`1px solid ${simConfigSel===cfg.id?C.atxt+"44":C.b2}`,borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:simConfigSel===cfg.id?700:400,cursor:"pointer"}}>
-                    {cfg.slug} ({cfg.monthly_interest_rate}% a.m.)
-                  </button>
-                ))}
-              </div>
-
-              {simConfigSel&&simConfigs[simConfigSel]&&(()=>{
-                const {resultados} = simConfigs[simConfigSel];
-                // Melhor oferta = maior disbursement_amount
-                const melhorIdx = resultados.reduce((mi,r,i)=>
-                  (parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0))?i:mi, 0);
-                return (
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
-                    {resultados.map((r,idx)=>{
-                      const isMelhor=idx===melhorIdx;
-                      const desembolso=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
-                      const parcela=parseFloat(r.sim?.installment_value||0);
-                      const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
-                      return (
-                        <div key={r.np} onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor})}
-                          style={{...S.card,padding:"18px",border:`2px solid ${isMelhor?"#34D399":"rgba(255,255,255,0.06)"}`,borderRadius:16,cursor:"pointer",position:"relative",transition:"transform 0.15s,box-shadow 0.15s",background:isMelhor?"rgba(52,211,153,0.06)":C.card}}
-                          onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 8px 24px ${isMelhor?"rgba(52,211,153,0.25)":"rgba(0,0,0,0.3)"}`}}
-                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                          {isMelhor&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR OFERTA</div>}
-                          <div style={{color:C.td,fontSize:10,marginBottom:4,marginTop:isMelhor?4:0}}>{r.np} parcelas</div>
-                          <div style={{color:isMelhor?"#34D399":C.tp,fontSize:22,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desembolso)}</div>
-                          <div style={{color:C.td,fontSize:10,marginBottom:10}}>Valor liberado</div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
-                            <span style={{color:C.tm}}>Parcela</span>
-                            <span style={{color:C.tp,fontWeight:700}}>{fmtBRL(parcela)}/mês</span>
-                          </div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:12}}>
-                            <span style={{color:C.tm}}>Taxa</span>
-                            <span style={{color:"#FBBF24",fontWeight:700}}>{taxa}% a.m.</span>
-                          </div>
-                          <button onClick={e=>{e.stopPropagation();setDigModal({r,termo:simModal.termo,isMelhor});}}
-                            style={{width:"100%",background:isMelhor?`linear-gradient(135deg,${C.lg1},${C.lg2})`:"rgba(255,255,255,0.08)",color:"#fff",border:"none",borderRadius:8,padding:"8px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
-                            ✍️ Digitar Proposta
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          {!simModal&&!simLoading&&(
-            <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>
-              <div style={{fontSize:36,marginBottom:12,opacity:0.4}}>⚡</div>
-              Vá até <b style={{color:C.atxt}}>Gerador de Termo</b>, aguarde o status <b style={{color:"#34D399"}}>Aprovado</b> e clique em ⚡ Simular.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════
+            {/* ══════════════════════════════════════════════════════════
           ABA: OPERAÇÕES
       ══════════════════════════════════════════════════════════ */}
       {aba==="clientes" && (
