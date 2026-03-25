@@ -14448,6 +14448,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
   });
   const [termos, setTermos] = useState([]); // lista de termos gerados
+  const [termosPages, setTermosPages] = useState(null); // paginação da API
+  const [termosPage, setTermosPage] = useState(1); // página atual
+  const TERMOS_LIMIT = 30;
   const [termoLoading, setTermoLoading] = useState(false);
   const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
 
@@ -14520,18 +14523,56 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
-  const buscarTermos = async () => {
+  const buscarTermos = async (page=1) => {
     setLoading(true); setErr("");
     try {
       const end=new Date().toISOString();
-      const start=new Date(Date.now()-30*86400000).toISOString();
-      const r=await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
+      const start=new Date(Date.now()-365*86400000).toISOString(); // 1 ano
+      const r=await apiFetch(`/private-consignment/consult?page=${page}&limit=${TERMOS_LIMIT}&provider=QI&startDate=${start}&endDate=${end}`);
       const lista=(r?.data||[]).map(item=>({
         ...item,
         link: item.consent_url || item.url || item.link || item.authorization_url || `https://app.v8sistema.com/private-consignment/consult/${item.id}/authorize`,
       }));
       setTermos(lista);
+      setTermosPages(r?.pages||null);
+      setTermosPage(page);
     } catch(e) { setErr(e.message); }
+    setLoading(false);
+  };
+
+  const exportarTermos = async () => {
+    setLoading(true);
+    try {
+      const end=new Date().toISOString();
+      const start=new Date(Date.now()-365*86400000).toISOString();
+      // Busca todas as páginas
+      let allData = [];
+      let pg = 1;
+      while (true) {
+        const r = await apiFetch(`/private-consignment/consult?page=${pg}&limit=100&provider=QI&startDate=${start}&endDate=${end}`);
+        const items = r?.data||[];
+        allData = [...allData, ...items];
+        if (!r?.pages?.hasNext || pg >= (r?.pages?.totalPages||1)) break;
+        pg++;
+      }
+      // Gera CSV
+      const headers = ["ID","Nome","CPF","Parceiro","Status","Margem Disponível","Criado em"];
+      const rows = allData.map(item => [
+        item.id||"",
+        `"${(item.name||item.signerName||"").replace(/"/g,'""')}"`,
+        item.documentNumber||item.borrowerDocumentNumber||"",
+        item.partnerId||item.partner_id||"",
+        item.status||"",
+        item.availableMarginValue||"",
+        item.createdAt||item.created_at||"",
+      ]);
+      const csv = [headers.join(";"), ...rows.map(r=>r.join(";"))].join("\n");
+      const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href=url; a.download=`consultas_clt_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+    } catch(e) { setErr("Erro ao exportar: "+e.message); }
     setLoading(false);
   };
 
@@ -14613,6 +14654,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setOpsLoading(false);
   };
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
+  useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(); },[aba,isTokenValid]); // eslint-disable-line
 
   // ── DIGITAÇÃO ────────────────────────────────────────────────
   const [digForm, setDigForm] = useState({
@@ -14802,20 +14844,31 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           </div>
 
           {/* Lista de termos gerados */}
-          {(termos.length>0||loading) && (
+          {(
             <div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Termos Gerados ({termos.length})</div>
-                <button onClick={buscarTermos} disabled={loading}
-                  style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
-                  {loading?"⏳":"🔄"} Atualizar
-                </button>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
+                  📄 Consultas CLT
+                  {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
+                    · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
+                  </span>}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={exportarTermos} disabled={loading}
+                    style={{background:"rgba(52,211,153,0.1)",color:"#34D399",border:"1px solid #34D39933",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                    📥 Exportar Lista
+                  </button>
+                  <button onClick={()=>buscarTermos(termosPage)} disabled={loading}
+                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
+                    {loading?"⏳":"🔄"} Atualizar
+                  </button>
+                </div>
               </div>
               <div style={{...S.card,overflow:"hidden"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
-                      {["Cliente","CPF","Status","Margem Disponível","Link","Ação"].map(h=>(
+                      {["Cliente","CPF","Parceiro","Status","Margem Disponível","Link","Ação"].map(h=>(
                         <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
                       ))}
                     </tr>
@@ -14827,6 +14880,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         <tr key={t.id} style={{borderBottom:`1px solid ${C.b1}`}}>
                           <td style={{padding:"10px 12px",color:C.tp,fontWeight:600}}>{t.name||t.nome||"—"}</td>
                           <td style={{padding:"10px 12px",color:C.tm,fontFamily:"monospace",fontSize:11}}>{fmtCPF(t.documentNumber||t.cpf||"")}</td>
+                          <td style={{padding:"10px 12px",color:C.td,fontSize:11}}>{t.partnerId||t.partner_id||"—"}</td>
                           <td style={{padding:"10px 12px"}}>
                             <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{STATUS_LABEL[t.status]||t.status}</span>
                           </td>
@@ -14861,10 +14915,26 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </tbody>
                 </table>
               </div>
+              {/* Paginação */}
+              {termosPages&&(termosPages.hasNext||termosPages.hasPrev)&&(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
+                  <button onClick={()=>buscarTermos(termosPage-1)} disabled={!termosPages.hasPrev||loading}
+                    style={{background:termosPages.hasPrev?C.abg:C.deep,color:termosPages.hasPrev?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 16px",fontSize:12,cursor:termosPages.hasPrev?"pointer":"not-allowed",fontWeight:600}}>
+                    ← Anterior
+                  </button>
+                  <span style={{color:C.tm,fontSize:12}}>
+                    Página {termosPage} de {termosPages.totalPages||1} · {termosPages.total||termos.length} consultas
+                  </span>
+                  <button onClick={()=>buscarTermos(termosPage+1)} disabled={!termosPages.hasNext||loading}
+                    style={{background:termosPages.hasNext?C.abg:C.deep,color:termosPages.hasNext?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 16px",fontSize:12,cursor:termosPages.hasNext?"pointer":"not-allowed",fontWeight:600}}>
+                    Próxima →
+                  </button>
+                </div>
+              )}
+              {termos.length===0&&!loading&&(
+                <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>Nenhuma consulta encontrada.</div>
+              )}
             </div>
-          )}
-          {termos.length===0&&!loading&&(
-            <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"24px 0"}}>Nenhum termo gerado ainda. Preencha o formulário acima.</div>
           )}
         </div>
       )}
