@@ -14860,6 +14860,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setOpsLoading(false);
   };
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
+  useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(1); },[aba,isTokenValid]); // eslint-disable-line
 
   // ── DIGITAÇÃO ────────────────────────────────────────────────
   const [digForm, setDigForm] = useState({
@@ -15130,7 +15131,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           )}
 
           {/* Lista de termos gerados */}
-          {(termos.length>0||loading) && (
+          {(true) && (
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                 <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Termos Gerados ({termos.length})</div>
