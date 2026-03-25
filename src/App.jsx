@@ -14796,8 +14796,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PARCELAS_PADRAO = [6,8,10,12,18,24,36];
 
   const executarSimulacoes = async (termo, inline=false) => {
-    if(inline) setInlineSimId(t=>t===termo.id?null:termo.id);
-    setSimModal(inline?null:{termo});
+    if(!inline) setSimModal({termo});
     setSimConfigs(null);
     setSimLoading(true);
     setSimConfigSel(null);
@@ -15166,7 +15165,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       return (
                         <React.Fragment key={t.id}>
                         <tr
-                          onClick={()=>{ if(t.status==="SUCCESS"||t.availableMarginValue){ setInlineSimId(p=>p===t.id?null:t.id); if(inlineSimId!==t.id) executarSimulacoes(t,true); } }}
+                          onClick={()=>{
+                            if(!(t.status==="SUCCESS"||t.availableMarginValue)) return;
+                            if(inlineSimId===t.id){ setInlineSimId(null); return; }
+                            setInlineSimId(t.id);
+                            executarSimulacoes(t,true);
+                          }}
                           style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}33`:`1px solid ${C.b1}`,cursor:(t.status==="SUCCESS"||t.availableMarginValue)?"pointer":"default",transition:"background 0.1s"}}
                           onMouseEnter={e=>e.currentTarget.style.background=C.deep}
                           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -15215,9 +15219,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         {/* Inline simulação */}
                         {inlineSimId===t.id&&(
                           <tr><td colSpan={8} style={{padding:0,background:"linear-gradient(135deg,rgba(10,22,45,0.98),rgba(15,30,60,0.98))"}}>
-                            {simLoading ? (
+                            {(simLoading&&inlineSimId===t.id) ? (
                               <div style={{padding:"20px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontSize:12}}>
-                                <div style={{animation:"pulse 1.5s infinite",marginBottom:6}}>⚡</div>Calculando simulações...
+                                <div style={{animation:"pulse 1.5s infinite",marginBottom:6}}>⚡</div>Calculando 7 simulações...
                               </div>
                             ) : simConfigs&&Object.keys(simConfigs).length>0 ? (()=>{
                               const cfgKeys=Object.keys(simConfigs);
@@ -15553,12 +15557,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"40px",textAlign:"center",minWidth:320}}>
             <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
-            <div style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:6}}>Calculando 6 simulações...</div>
+            <div style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:6}}>Calculando 7 simulações...</div>
             <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>{simModal.termo?.name||simModal.termo?.nome}</div>
           </div>
         </div>
       )}
-      {simModal&&!simLoading&&simConfigs&&Object.keys(simConfigs).length>0&&(
+      {simModal&&simConfigs&&Object.keys(simConfigs).length>0&&!simLoading&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);}}>
           <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
