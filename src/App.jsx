@@ -14478,14 +14478,20 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         provider: "QI",
       };
       const res = await apiFetch("/private-consignment/consult","POST",body);
+      console.log("[CLT] Resposta POST consult:", JSON.stringify(res));
+      // Usa URL da API se disponível, senão constrói com o ID
+      const consultId = res.id || res.consultId || res.consult_id;
+      const consultLink = res.consent_url || res.url || res.link || res.authorization_url || res.formalization_url
+        || `https://app.v8sistema.com/private-consignment/consult/${consultId}/authorize`;
       // Adiciona à lista de termos
       const novoTermo = {
-        id: res.id,
+        id: consultId,
         nome: termoForm.nome,
         cpf: termoForm.cpf,
         status: "WAITING_CONSENT",
         availableMarginValue: null,
-        link: `https://app.v8sistema.com/consignment/consult/${res.id}`,
+        link: consultLink,
+        resCompleto: res,
         criadoEm: new Date().toLocaleString("pt-BR"),
         dataNasc: termoForm.dataNasc,
         genero: termoForm.genero,
@@ -14522,7 +14528,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const r=await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
       const lista=(r?.data||[]).map(item=>({
         ...item,
-        link:`https://app.v8sistema.com/consignment/consult/${item.id}`,
+        link: item.consent_url || item.url || item.link || item.authorization_url || `https://app.v8sistema.com/private-consignment/consult/${item.id}/authorize`,
       }));
       setTermos(lista);
     } catch(e) { setErr(e.message); }
@@ -14828,15 +14834,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                             {t.availableMarginValue?fmtBRL(t.availableMarginValue):"—"}
                           </td>
                           <td style={{padding:"10px 12px"}}>
-                            {t.link&&(
+                            {t.link ? (
                               <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                                <a href={t.link} target="_blank" rel="noreferrer" style={{color:C.atxt,fontSize:10,fontFamily:"monospace"}}>🔗 link</a>
-                                <button onClick={()=>{navigator.clipboard.writeText(t.link).then(()=>{setCopied(t.id);setTimeout(()=>setCopied(null),2500);});}}
-                                  style={{background:C.abg,color:copied===t.id?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:6,padding:"3px 8px",fontSize:10,cursor:"pointer"}}>
-                                  {copied===t.id?"✅":"📋"}
+                                <button
+                                  onClick={()=>{navigator.clipboard.writeText(t.link).then(()=>{setCopied(t.id);setTimeout(()=>setCopied(null),2500);});}}
+                                  style={{background:copied===t.id?"rgba(52,211,153,0.15)":C.abg,color:copied===t.id?"#34D399":C.atxt,border:`1px solid ${copied===t.id?"#34D39944":C.atxt+"33"}`,borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.2s"}}>
+                                  {copied===t.id?"✅ Copiado":"🔗 LINK"}
                                 </button>
+                                <a href={t.link} target="_blank" rel="noreferrer"
+                                  style={{color:C.td,fontSize:10,textDecoration:"none",opacity:0.6}}
+                                  title={t.link}>↗</a>
                               </div>
-                            )}
+                            ) : <span style={{color:C.td,fontSize:11}}>—</span>}
                           </td>
                           <td style={{padding:"10px 12px"}}>
                             {t.status==="SUCCESS"&&(
