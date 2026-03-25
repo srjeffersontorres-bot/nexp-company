@@ -14454,20 +14454,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const buscarContatoTermo = () => {
     const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
     const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
-    if (c) setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:c.phone||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
+    if (c) {
+      const rawTel = (c.phone||"").replace(/\D/g,"").slice(0,11);
+      setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:rawTel||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
+    }
   };
 
   const gerarTermo = async () => {
     setErr(""); setTermoLoading(true);
     try {
-      const tel = (termoForm.telefone||"").replace(/\D/g,"");
+      const tel = (termoForm.telefone||"").replace(/\D/g,"").slice(0,11);
+      if (tel.length !== 11) { setErr("Telefone deve ter exatamente 11 dígitos (DDD + 9 dígitos). Ex: 84999999999"); setTermoLoading(false); return; }
+      const areaCode = tel.slice(0,2);
+      const phoneNum = tel.slice(2); // 9 dígitos
+      if (phoneNum.length !== 9 || !phoneNum.startsWith("9")) { setErr("O número após o DDD deve ter 9 dígitos iniciando com 9. Ex: 84999999999"); setTermoLoading(false); return; }
       const body = {
         borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""),
         gender: termoForm.genero,
         birthDate: termoForm.dataNasc,
         signerName: termoForm.nome,
         signerEmail: termoForm.email,
-        signerPhone: { phoneNumber: tel.slice(2), countryCode:"55", areaCode: tel.slice(0,2) },
+        signerPhone: { phoneNumber: phoneNum, countryCode:"55", areaCode },
         provider: "QI",
       };
       const res = await apiFetch("/private-consignment/consult","POST",body);
@@ -14761,9 +14768,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone * (11 dígitos)</label>
                 <input value={termoForm.telefone}
                   onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,11); setTermoForm(p=>({...p,telefone:v}));}}
-                  placeholder="84999999999" maxLength={11}
+                  placeholder="84999999999 (DDD + 9 dígitos)" maxLength={11}
                   style={{...S.input}}/>
-                <div style={{color:C.td,fontSize:10,marginTop:3}}>{(termoForm.telefone||"").length}/11 dígitos</div>
+                <div style={{color:(termoForm.telefone||"").length===11&&termoForm.telefone[2]==="9"?"#34D399":(termoForm.telefone||"").length>0?"#FBBF24":C.td,fontSize:10,marginTop:3}}>
+                  {(termoForm.telefone||"").length}/11 dígitos
+                  {(termoForm.telefone||"").length===11&&termoForm.telefone[2]!=="9"&&<span style={{color:"#F87171",marginLeft:6}}>⚠ 3º dígito deve ser 9</span>}
+                  {(termoForm.telefone||"").length===11&&termoForm.telefone[2]==="9"&&<span style={{marginLeft:6}}>✅</span>}
+                </div>
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Data de Nascimento *</label>
