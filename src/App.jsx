@@ -14481,11 +14481,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         provider: "QI",
       };
       const res = await apiFetch("/private-consignment/consult","POST",body);
-      console.log("[CLT] Resposta POST consult:", JSON.stringify(res));
-      // Usa URL da API se disponível, senão constrói com o ID
+      console.log("[CLT] Resposta POST consult completa:", JSON.stringify(res));
+      // Usa URL da API se disponível — tenta todos os campos possíveis
       const consultId = res.id || res.consultId || res.consult_id;
-      const consultLink = res.consent_url || res.url || res.link || res.authorization_url || res.formalization_url
+      const consultLink = res.consent_url || res.consentUrl || res.url || res.link
+        || res.authorization_url || res.authorizationUrl || res.formalization_url
+        || res.formalizationUrl || res.signUrl || res.sign_url
         || `https://app.v8sistema.com/private-consignment/consult/${consultId}/authorize`;
+      console.log("[CLT] Link gerado:", consultLink);
       // Adiciona à lista de termos
       const novoTermo = {
         id: consultId,
@@ -14504,6 +14507,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       setTermos(p=>[novoTermo,...p]);
       setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
       setTermoStep("form");
+      // Recarrega lista imediatamente
+      setTimeout(() => buscarTermos(1), 1500);
       // Inicia polling para verificar status
       let tentativas=0;
       const poll = setInterval(async()=>{
@@ -14592,11 +14597,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [simLoading, setSimLoading] = useState(false);
   const [simConfigSel, setSimConfigSel] = useState(null);
   const [digModal, setDigModal] = useState(null); // balão selecionado para digitar
+  const [avisoModal, setAvisoModal] = useState(null); // motivo rejeição
+  const [inlineSimId, setInlineSimId] = useState(null); // id do termo com sim inline aberta
 
   const PARCELAS_PADRAO = [6,8,12,18,24,36];
 
-  const executarSimulacoes = async (termo) => {
-    setSimModal({termo});
+  const executarSimulacoes = async (termo, inline=false) => {
+    if(inline) { setInlineSimId(termo.id); }
+    else { setSimModal({termo}); setAba("simulacao"); }
     setSimConfigs(null);
     setSimLoading(true);
     setErr("");
@@ -14877,7 +14885,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     {termos.map(t=>{
                       const col=STATUS_COR[t.status]||C.td;
                       return (
-                        <tr key={t.id} style={{borderBottom:`1px solid ${C.b1}`}}>
+                        <React.Fragment key={t.id}>
+                        <tr onClick={()=>{ if(t.status==="SUCCESS") { setInlineSimId(prev=>prev===t.id?null:t.id); if(inlineSimId!==t.id) executarSimulacoes(t,true); } }}
+                          style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}44`:`1px solid ${C.b1}`,cursor:t.status==="SUCCESS"?"pointer":"default",background:inlineSimId===t.id?C.abg:"transparent",transition:"background 0.15s"}}
+                          onMouseEnter={e=>{ if(t.status==="SUCCESS") e.currentTarget.style.background=C.deep; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.background=inlineSimId===t.id?C.abg:"transparent"; }}>
                           <td style={{padding:"10px 12px",color:C.tp,fontWeight:600}}>{t.name||t.nome||"—"}</td>
                           <td style={{padding:"10px 12px",color:C.tm,fontFamily:"monospace",fontSize:11}}>{fmtCPF(t.documentNumber||t.cpf||"")}</td>
                           <td style={{padding:"10px 12px",color:C.td,fontSize:11}}>{t.partnerId||t.partner_id||"—"}</td>
@@ -14903,13 +14915,79 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                           </td>
                           <td style={{padding:"10px 12px"}}>
                             {t.status==="SUCCESS"&&(
-                              <button onClick={()=>executarSimulacoes(t)}
-                                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                                ⚡ Simular
+                              <button onClick={e=>{e.stopPropagation();setInlineSimId(prev=>prev===t.id?null:t.id);if(inlineSimId!==t.id)executarSimulacoes(t,true);}}
+                                style={{background:inlineSimId===t.id?C.abg:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                {inlineSimId===t.id?"▼ Fechar":"⚡ Simular"}
                               </button>
+                            )}
+                            {["FAILED","REJECTED"].includes(t.status)&&(
+                              <button onClick={e=>{e.stopPropagation();setAvisoModal(t);}}
+                                style={{background:"rgba(239,68,68,0.12)",color:"#F87171",border:"1px solid #EF444433",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                ⚠ AVISO
+                              </button>
+                            )}
+                            {!["SUCCESS","FAILED","REJECTED"].includes(t.status)&&(
+                              <span style={{color:C.td,fontSize:10}}>—</span>
                             )}
                           </td>
                         </tr>
+                        {/* Inline simulação */}
+                        {inlineSimId===t.id&&(
+                          <tr>
+                            <td colSpan={7} style={{padding:0,background:"linear-gradient(135deg,rgba(15,31,61,0.98),rgba(22,42,80,0.98))",borderBottom:`2px solid ${C.atxt}44`}}>
+                              {(simLoading&&simModal?.termo?.id===t.id)||(!simConfigs&&inlineSimId===t.id&&simLoading) ? (
+                                <div style={{padding:"24px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:13}}>
+                                  <div style={{fontSize:28,marginBottom:8,animation:"pulse 1.5s infinite"}}>⚡</div>
+                                  Calculando simulações em 6x · 8x · 12x · 18x · 24x · 36x...
+                                </div>
+                              ) : simConfigs&&Object.keys(simConfigs).length>0 ? (
+                                <div style={{padding:"16px 18px"}}>
+                                  {/* Tab de tabelas */}
+                                  <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+                                    {Object.values(simConfigs).map(({cfg})=>(
+                                      <button key={cfg.id} onClick={()=>setSimConfigSel(cfg.id)}
+                                        style={{background:simConfigSel===cfg.id?C.abg:"rgba(255,255,255,0.06)",color:simConfigSel===cfg.id?C.atxt:"rgba(255,255,255,0.5)",border:`1px solid ${simConfigSel===cfg.id?C.atxt+"44":"rgba(255,255,255,0.1)"}`,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:simConfigSel===cfg.id?700:400,cursor:"pointer"}}>
+                                        {cfg.slug} ({cfg.monthly_interest_rate}% a.m.)
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {simConfigSel&&simConfigs[simConfigSel]&&(()=>{
+                                    const {resultados}=simConfigs[simConfigSel];
+                                    const melhorIdx=resultados.reduce((mi,r,i)=>
+                                      (parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0))?i:mi,0);
+                                    return (
+                                      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>
+                                        {resultados.map((r,idx)=>{
+                                          const isMelhor=idx===melhorIdx;
+                                          const desembolso=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                                          const parcela=parseFloat(r.sim?.installment_value||0);
+                                          const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
+                                          return (
+                                            <div key={r.np} onClick={()=>setDigModal({r,termo:t,isMelhor})}
+                                              style={{background:isMelhor?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.04)",border:`2px solid ${isMelhor?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:12,padding:"12px",cursor:"pointer",position:"relative",transition:"all 0.15s"}}
+                                              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 6px 20px ${isMelhor?"rgba(52,211,153,0.25)":"rgba(0,0,0,0.3)"}`}}
+                                              onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
+                                              {isMelhor&&<div style={{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:8,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
+                                              <div style={{color:C.td,fontSize:9,marginBottom:3,marginTop:isMelhor?4:0}}>{r.np}x</div>
+                                              <div style={{color:isMelhor?"#34D399":"rgba(255,255,255,0.9)",fontSize:16,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desembolso)}</div>
+                                              <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,marginBottom:6}}>liberado</div>
+                                              <div style={{color:"rgba(255,255,255,0.7)",fontSize:10,marginBottom:2}}>{fmtBRL(parcela)}/mês</div>
+                                              <div style={{color:"#FBBF24",fontSize:9}}>{taxa}% a.m.</div>
+                                              <div style={{marginTop:8,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:6,padding:"4px 0",textAlign:"center",fontSize:10,fontWeight:700,color:"#fff"}}>✍️ DIGITAR</div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              ) : (
+                                <div style={{padding:"20px",textAlign:"center",color:"rgba(255,255,255,0.4)",fontSize:12}}>Nenhuma simulação disponível.</div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -14936,6 +15014,29 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* AVISO MODAL — motivo rejeição */}
+      {avisoModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"rgba(45,15,15,0.97)",border:"1px solid #EF444444",borderRadius:18,padding:"28px 32px",width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <span style={{fontSize:28}}>⚠️</span>
+              <div>
+                <div style={{color:"#F87171",fontSize:15,fontWeight:800}}>Consulta {avisoModal.status==="FAILED"?"Falhou":"Rejeitada"}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:2}}>{avisoModal.name||avisoModal.nome} · {fmtCPF(avisoModal.documentNumber||avisoModal.cpf||"")}</div>
+              </div>
+            </div>
+            <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:10,padding:"14px 16px",marginBottom:20}}>
+              <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Motivo</div>
+              <div style={{color:"#FCA5A5",fontSize:13,lineHeight:1.6}}>{avisoModal.description||avisoModal.reason||avisoModal.detail||"Sem descrição disponível. Verifique os dados do cliente ou entre em contato com a V8 Digital."}</div>
+            </div>
+            <button onClick={()=>setAvisoModal(null)}
+              style={{width:"100%",background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              Fechar
+            </button>
+          </div>
         </div>
       )}
 
