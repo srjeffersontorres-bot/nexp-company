@@ -14794,31 +14794,37 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [digModal, setDigModal] = useState(null); // balão selecionado para digitar
   const [inlineSimId, setInlineSimId] = useState(null);
   const [avisoModal, setAvisoModal] = useState(null);
+  const [simCustomParcela, setSimCustomParcela] = useState("");
+  const [simTermoAtivo, setSimTermoAtivo] = useState(null); // termo sendo simulado
   const [limparModal, setLimparModal] = useState(false);
 
   const PARCELAS_PADRAO = [6,8,10,12,18,24,36];
 
-  const executarSimulacoes = async (termo, inline=false) => {
+  const executarSimulacoes = async (termo, inline=false, parcelaOverride=null, cfgIdOnly=null) => {
     if(!inline) setSimModal({termo});
+    setSimTermoAtivo(termo);
     setSimConfigs(null);
     setSimLoading(true);
     setSimConfigSel(null);
     setSimError("");
     setErr("");
     try {
-      // Carrega tabelas de taxa
+      // Carrega todas as tabelas de taxa
       let cfgList = configs.length ? configs : [];
       if(!cfgList.length) {
         const cfgRes = await apiFetch("/private-consignment/simulation/configs");
         cfgList = cfgRes?.configs || [];
+        if(cfgList.length) { setConfigs(cfgList); }
       }
       if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível na API.");
 
-      const margem = parseFloat(termo.availableMarginValue)||0;
+      // Se pediu tabela específica, filtra; senão simula todas
+      const cfgsToRun = cfgIdOnly ? cfgList.filter(c=>c.id===cfgIdOnly) : cfgList;
+      const margem = parcelaOverride ? parseFloat(parcelaOverride) : parseFloat(termo.availableMarginValue)||0;
       const melhores = {};
       let lastErrMsg = "";
 
-      for (const cfg of cfgList.slice(0,1)) {
+      for (const cfg of cfgsToRun) {
         const resultados = [];
         for (const np of PARCELAS_PADRAO) {
           try {
@@ -14832,15 +14838,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 : { disbursed_amount: 1000 }
               ),
             };
-            console.log(`[CLT SIM] ${np}x →`, JSON.stringify(body));
+            console.log(`[CLT SIM] ${cfg.slug} ${np}x →`, JSON.stringify(body));
             const sim = await apiFetch("/private-consignment/simulation","POST",body);
-            console.log(`[CLT SIM] ${np}x ←`, JSON.stringify(sim));
+            console.log(`[CLT SIM] ${cfg.slug} ${np}x ←`, JSON.stringify(sim));
             if(sim && typeof sim === "object") {
               resultados.push({ np, sim, cfg });
             }
           } catch(e) {
             lastErrMsg = e.message;
-            console.warn(`[CLT SIM] ${np}x erro:`, e.message);
+            console.warn(`[CLT SIM] ${cfg.slug} ${np}x erro:`, e.message);
             if(e.message?.includes("expirada") || e.message?.includes("401")) throw e;
           }
         }
@@ -15660,13 +15666,60 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       {simModal&&simConfigs&&Object.keys(simConfigs).length>0&&!simLoading&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);}}>
           <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+            {/* Header: título + tabela atual + botão trocar tabela */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
-                <div style={{color:"#fff",fontSize:15,fontWeight:800}}>⚡ Simulação — {simModal.termo?.name||simModal.termo?.nome||"Cliente"}</div>
-                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:2}}>{fmtCPF(simModal.termo?.documentNumber||simModal.termo?.cpf||"")} · Margem: {simModal.termo?.availableMarginValue?fmtBRL(simModal.termo.availableMarginValue):"—"}</div>
+                <div style={{color:"#fff",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  ⚡ {simModal.termo?.name||simModal.termo?.nome||"Cliente"}
+                  {simConfigs&&(()=>{
+                    const cur=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:Object.keys(simConfigs)[0];
+                    const cfg=simConfigs[cur]?.cfg;
+                    return cfg ? <span style={{background:"rgba(79,142,247,0.18)",color:"#60A5FA",fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:99}}>{cfg.slug} · {cfg.monthly_interest_rate}% a.m.</span> : null;
+                  })()}
+                </div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:4}}>{fmtCPF(simModal.termo?.documentNumber||simModal.termo?.cpf||"")} · Margem: {simModal.termo?.availableMarginValue?fmtBRL(simModal.termo.availableMarginValue):"—"}</div>
               </div>
-              <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{background:"rgba(255,255,255,0.07)",border:"none",borderRadius:8,padding:"6px 14px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>✕ Fechar</button>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                {simConfigs&&Object.keys(simConfigs).length>1&&(
+                  <div style={{display:"flex",gap:5}}>
+                    {Object.values(simConfigs).map(({cfg})=>(
+                      <button key={cfg.id} onClick={()=>setSimConfigSel(cfg.id)}
+                        style={{background:(simConfigSel||Object.keys(simConfigs)[0])===cfg.id?"rgba(79,142,247,0.25)":"rgba(255,255,255,0.06)",color:(simConfigSel||Object.keys(simConfigs)[0])===cfg.id?"#60A5FA":"rgba(255,255,255,0.45)",border:`1px solid ${(simConfigSel||Object.keys(simConfigs)[0])===cfg.id?"#3B6EF544":"rgba(255,255,255,0.1)"}`,borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                        {cfg.slug}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!simLoading&&simConfigs&&(()=>{
+                  const allCfgKeys=Object.keys(simConfigs);
+                  const cfgsAll=configs.length?configs:[];
+                  const otherCfgs=cfgsAll.filter(c=>!allCfgKeys.includes(c.id));
+                  return otherCfgs.length>0&&otherCfgs.map(c=>(
+                    <button key={c.id} onClick={()=>executarSimulacoes(simModal.termo,false,null,c.id)}
+                      style={{background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.6)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,padding:"5px 12px",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                      + {c.slug}
+                    </button>
+                  ));
+                })()}
+                <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{background:"rgba(255,255,255,0.07)",border:"none",borderRadius:8,padding:"6px 14px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>✕</button>
+              </div>
             </div>
+
+            {/* Campo de parcela personalizada */}
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:18,padding:"10px 14px",background:"rgba(255,255,255,0.04)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)"}}>
+              <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,whiteSpace:"nowrap"}}>📌 Simular com parcela:</span>
+              <input value={simCustomParcela} onChange={e=>setSimCustomParcela(e.target.value.replace(/[^0-9.,]/g,""))}
+                placeholder={simModal.termo?.availableMarginValue?`Margem: ${fmtBRL(simModal.termo.availableMarginValue)}`:"Ex: 350.00"}
+                style={{flex:1,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#fff",fontSize:13,padding:"7px 12px",outline:"none"}}
+                onKeyDown={e=>{ if(e.key==="Enter"&&simCustomParcela) executarSimulacoes(simModal.termo,false,simCustomParcela.replace(",",".")); }}
+              />
+              <button onClick={()=>{ if(simCustomParcela) executarSimulacoes(simModal.termo,false,simCustomParcela.replace(",",".")); }}
+                disabled={!simCustomParcela||simLoading}
+                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"7px 16px",fontSize:12,fontWeight:700,cursor:simCustomParcela?"pointer":"not-allowed",opacity:simCustomParcela?1:0.5,whiteSpace:"nowrap"}}>
+                ⚡ Simular →
+              </button>
+            </div>
+
             {(()=>{
               const cfgKeys=Object.keys(simConfigs);
               const cur=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:cfgKeys[0];
