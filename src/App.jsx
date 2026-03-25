@@ -308,7 +308,7 @@ function isReallyOnline(presenceEntry) {
   const lastSeen = presenceEntry.lastSeen?.seconds
     ?? (presenceEntry.lastSeen?.toDate?.()?.getTime?.() / 1000);
   if (!lastSeen) return false;
-  return (Date.now() / 1000 - lastSeen) < 300; // 300s — 5min, heartbeat a cada 20s
+  return (Date.now() / 1000 - lastSeen) < 120; // 120s — heartbeat 20s
 }
 
 const EMOJIS = [
@@ -1143,7 +1143,28 @@ function LoginPage({ onLogin }) {
   const [twoFAErr,     setTwoFAErr]     = useState("");
   const ROLES_2FA = ["administrador","mestre"];              // roles que exigem 2FA
 
+  // Previsão do tempo em tempo real
+  const [weather, setWeather]   = useState(null);
+  const [cityName, setCityName] = useState(null);
 
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&forecast_days=5`);
+        const d = await r.json();
+        setWeather(d);
+        try {
+          const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
+          const gd  = await geo.json();
+          const city  = gd.address?.city || gd.address?.town || gd.address?.village || "";
+          const state = gd.address?.state_code || "";
+          setCityName(city && state ? `${city}, ${state}` : city || state || null);
+        } catch {}
+      } catch {}
+    }, () => {});
+  }, []);
 
   const doLoginReset = async () => {
     if (!resetEmail.trim()) { setResetMsg("Digite seu e-mail de acesso."); return; }
@@ -1218,7 +1239,34 @@ function LoginPage({ onLogin }) {
     setLoading(false);
   };
 
+  // Determinar cenário baseado no clima real
+  const wcode   = weather?.current_weather?.weathercode ?? -1;
+  const temp    = weather?.current_weather?.temperature ?? null;
+  const hour    = new Date().getHours();
+  const isNight = hour >= 20 || hour < 6;
+  const isRain  = wcode >= 51 && wcode <= 82;
+  const isSnow  = wcode >= 71 && wcode <= 77;
+  const isCloud = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
+  const isThunder = wcode >= 95;
+  const isClear = wcode === 0 || wcode === 1;
 
+  // Gradiente de fundo dinâmico
+  const getBg = () => {
+    if (isThunder) return "linear-gradient(180deg,#050a12 0%,#0a1020 50%,#0d1428 100%)";
+    if (isRain && isNight) return "linear-gradient(180deg,#060c18 0%,#0c1830 50%,#101e38 100%)";
+    if (isRain)  return "linear-gradient(180deg,#101828 0%,#1a2c42 50%,#233450 100%)";
+    if (isSnow && isNight) return "linear-gradient(180deg,#0d1520 0%,#1a2535 50%,#243040 100%)";
+    if (isSnow)  return "linear-gradient(180deg,#1a2535 0%,#2a3f55 50%,#3a5070 100%)";
+    if (isNight) return "linear-gradient(180deg,#020510 0%,#050d22 40%,#080f28 100%)";
+    if (isCloud) return "linear-gradient(180deg,#1c2f48 0%,#2a4060 50%,#364e70 100%)";
+    if (hour < 9) return "linear-gradient(180deg,#1a2c50 0%,#2a4a80 40%,#e07030 85%,#f0a050 100%)"; // manhã
+    if (hour > 17) return "linear-gradient(180deg,#2a1040 0%,#5a1a6a 35%,#c04020 70%,#f06030 100%)"; // tarde/pôr
+    return "linear-gradient(180deg,#0a1828 0%,#1040a0 40%,#2060d0 75%,#80b8f0 100%)"; // dia claro
+  };
+
+  // WMO icons
+  const WMO = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"};
+  const wxIcon = WMO[wcode] || (isNight ? "🌙" : "☀️");
 
   // ── Tela 2FA ─────────────────────────────────────────────────
   if (twoFAStep) return (
@@ -1253,157 +1301,346 @@ function LoginPage({ onLogin }) {
   );
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:"#000", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBg(), display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
 
       <style>{`
-        @keyframes fadeIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes float1 { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-18px) rotate(2deg)} }
-        @keyframes float2 { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-12px) rotate(-1.5deg)} }
-        @keyframes drawLine { from{stroke-dashoffset:1000} to{stroke-dashoffset:0} }
-        @keyframes glow { 0%,100%{opacity:0.18} 50%{opacity:0.32} }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes fadeIn      { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes floatUp     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes twinkle     { 0%,100%{opacity:0.3} 50%{opacity:1} }
+        @keyframes cloudDrift  { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
+        @keyframes cloudDriftR { 0%{transform:translateX(0)} 100%{transform:translateX(-50px)} }
+        @keyframes rainFall    { from{transform:translateY(-30px)} to{transform:translateY(102vh)} }
+        @keyframes snowFall    { from{transform:translateY(-20px) rotate(0deg)} to{transform:translateY(102vh) rotate(360deg)} }
+        @keyframes lightning1  { 0%,91%,100%{opacity:0} 92%,94%{opacity:1} 93%,95%{opacity:0} 96%{opacity:0.6} 97%{opacity:0} }
+        @keyframes lightning2  { 0%,74%,100%{opacity:0} 75%,77%{opacity:0.9} 76%,78%{opacity:0} 82%{opacity:0.4} 83%{opacity:0} }
+        @keyframes skyFlash    { 0%,90%,100%{opacity:0} 91%,93%{opacity:0.07} 92%,94%{opacity:0} }
+        @keyframes sunRays     { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes sunPulse    { 0%,100%{r:58} 50%{r:62} }
+        @keyframes moonGlow    { 0%,100%{opacity:0.06} 50%{opacity:0.14} }
+        @keyframes splashRing  { from{r:1;opacity:0.5} to{r:8;opacity:0} }
       `}</style>
 
-      {/* ── Fundo preto com flores brancas animadas ── */}
-      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
+      {/* ══ FUNDO SVG DINÂMICO ══ */}
+      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0, pointerEvents:"none" }}
         viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <radialGradient id="flowerGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.08)"/>
-            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+          <radialGradient id="lgSunGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FFF7D4" stopOpacity="1"/>
+            <stop offset="50%" stopColor="#FDE68A" stopOpacity="0.6"/>
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/>
           </radialGradient>
+          <radialGradient id="lgMoonGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#EEF2FF" stopOpacity="0.15"/>
+            <stop offset="100%" stopColor="#C7D2FE" stopOpacity="0"/>
+          </radialGradient>
+          <filter id="lgGlow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="lgGlow2"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="lgRoad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a2234"/>
+            <stop offset="100%" stopColor="#0f1520"/>
+          </linearGradient>
+          <linearGradient id="lgGrass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={isRain||isThunder?"#0a1a0f":"#112a14"}/>
+            <stop offset="100%" stopColor={isRain||isThunder?"#060d08":"#0a1a0c"}/>
+          </linearGradient>
         </defs>
 
-        {/* Flores brancas espalhadas — cada flor tem 6 pétalas elípticas */}
-        {[
-          [120,120,38,0.13,22], [380,80,28,0.09,15],  [700,60,44,0.11,30],
-          [1050,110,32,0.10,18],[1310,90,40,0.12,25],  [60,400,36,0.09,10],
-          [280,320,50,0.14,35],[550,450,30,0.10,20],   [820,380,46,0.13,28],
-          [1100,420,34,0.09,12],[1380,350,42,0.12,22], [180,700,44,0.11,18],
-          [450,760,32,0.09,30],[730,720,50,0.14,8],    [980,700,36,0.10,25],
-          [1220,750,40,0.12,15],[1420,680,28,0.09,35], [320,560,38,0.11,20],
-          [600,580,46,0.13,12],[900,540,30,0.09,28],   [1150,560,44,0.12,5],
-        ].map(([cx,cy,r,op,delay],fi) => (
-          <g key={fi} transform={`translate(${cx},${cy})`}>
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
-              dur={`${18+fi*3}s`} begin={`${delay*0.3}s`} repeatCount="indefinite" additive="sum"/>
-            {[0,60,120,180,240,300].map((angle,pi) => (
-              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
-                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}>
-                <animate attributeName="opacity"
-                  values={`${op};${op*1.8};${op}`}
-                  dur={`${4+fi%3}s`} begin={`${pi*0.3+delay*0.1}s`} repeatCount="indefinite"/>
-              </ellipse>
-            ))}
-            {/* Centro da flor */}
-            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}>
-              <animate attributeName="r" values={`${r*0.12};${r*0.18};${r*0.12}`}
-                dur={`${3+fi%2}s`} repeatCount="indefinite"/>
+        {/* Flash céu (trovão) */}
+        {(isThunder||isRain) && <>
+          <rect width="1440" height="900" fill="#6EA8FF" style={{ animation:"skyFlash 7s ease-in-out infinite" }}/>
+          <rect width="1440" height="900" fill="#A0C4FF" style={{ animation:"skyFlash 11s ease-in-out infinite 4s" }}/>
+        </>}
+
+        {/* ── ESTRELAS (noite) ── */}
+        {isNight && [
+          [80,40],[200,25],[380,55],[560,30],[740,45],[920,20],[1100,50],[1300,35],[1420,60],
+          [140,100],[320,80],[500,110],[680,90],[860,120],[1040,85],[1220,105],[1390,95],
+          [60,160],[240,140],[440,170],[620,155],[800,175],[980,145],[1160,165],[1360,150],
+          [170,220],[350,200],[530,230],[710,210],[890,235],[1070,205],[1250,225],[1430,215],
+          [100,280],[280,260],[460,290],[640,270],[820,295],[1000,265],[1180,285],[1380,275],
+        ].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r={i%7===0?2.2:i%3===0?1.4:0.9}
+            fill={i%5===0?"#FEF9C3":i%3===0?"#C7D2FE":"#fff"}
+            opacity={0.3+(i%4)*0.15}>
+            <animate attributeName="opacity"
+              values={`${0.2+(i%3)*0.2};${0.9};${0.2+(i%3)*0.2}`}
+              dur={`${1.8+(i%5)*0.6}s`} begin={`${i*0.13}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+
+        {/* ── LUA (noite, não chuva intensa) ── */}
+        {isNight && !isThunder && (
+          <g filter="url(#lgGlow)">
+            <circle cx="1080" cy="120" r="100" fill="url(#lgMoonGlow)">
+              <animate attributeName="opacity" values="0.06;0.14;0.06" dur="4s" repeatCount="indefinite"/>
             </circle>
+            <circle cx="1080" cy="120" r="62" fill="#F5E878"/>
+            <circle cx="1080" cy="120" r="62" fill="#C8B030" opacity="0.2"/>
+            <circle cx="1108" cy="112" r="55" fill="#04081a" opacity="0.93"/>
+            <circle cx="1080" cy="120" r="62" fill="none" stroke="#FDE68A" strokeWidth="1.5" opacity="0.4"/>
+            <circle cx="1062" cy="108" r="7" fill="#B8960A" opacity="0.45"/>
+            <circle cx="1075" cy="135" r="5" fill="#B8960A" opacity="0.4"/>
+            <circle cx="1090" cy="108" r="3.5" fill="#A07808" opacity="0.35"/>
+            <circle cx="1064" cy="100" r="9" fill="#FFFDE7" opacity="0.2"/>
+          </g>
+        )}
+
+        {/* ── SOL (dia claro ou parcialmente nublado) ── */}
+        {!isNight && !isRain && !isThunder && (
+          <g filter="url(#lgGlow)">
+            <circle cx="200" cy="110" r="110" fill="url(#lgSunGlow)" opacity="0.4">
+              <animate attributeName="opacity" values="0.3;0.55;0.3" dur="5s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="200" cy="110" r="85" fill="url(#lgSunGlow)" opacity="0.55"/>
+            <g style={{ transformOrigin:"200px 110px", animation:"sunRays 80s linear infinite" }}>
+              {Array.from({length:18}).map((_,ri)=>{
+                const a = ri*20 * Math.PI/180;
+                return <line key={ri}
+                  x1={200+Math.cos(a)*70} y1={110+Math.sin(a)*70}
+                  x2={200+Math.cos(a)*100} y2={110+Math.sin(a)*100}
+                  stroke="#FDE68A" strokeWidth="2.5" strokeLinecap="round" opacity="0.5"/>;
+              })}
+            </g>
+            <circle cx="200" cy="110" r="58" fill="#FDE68A"/>
+            <circle cx="200" cy="110" r="46" fill="#FFFDE7"/>
+            <circle cx="182" cy="92" r="13" fill="#fff" opacity="0.3"/>
+          </g>
+        )}
+
+        {/* ── NUVENS ── */}
+        {/* Nuvens escuras (chuva/trovão) */}
+        {(isRain||isThunder||isCloud) && [
+          {cx:160,cy:72,rx:155,ry:58,f:"#1c2535"},{cx:340,cy:52,rx:118,ry:48,f:"#1a2030"},
+          {cx:520,cy:82,rx:175,ry:62,f:"#151e2d"},{cx:720,cy:50,rx:195,ry:68,f:"#1c2535"},
+          {cx:950,cy:68,rx:165,ry:58,f:"#1a2030"},{cx:1130,cy:46,rx:148,ry:56,f:"#151e2d"},
+          {cx:1310,cy:80,rx:128,ry:50,f:"#1c2535"},{cx:80,cy:125,rx:98,ry:38,f:"#1a2030"},
+          {cx:620,cy:118,rx:138,ry:46,f:"#151e2d"},{cx:1050,cy:128,rx:118,ry:43,f:"#1c2535"},
+        ].map((cl,i)=>(
+          <ellipse key={i} cx={cl.cx} cy={cl.cy} rx={cl.rx} ry={cl.ry} fill={cl.f} opacity={0.85+(i%3)*0.04}>
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;${i%2===0?30:-22} 0;0 0`} dur={`${20+(i*4)}s`} repeatCount="indefinite"/>
+          </ellipse>
+        ))}
+        {/* Nuvens brancas/claras (dia) */}
+        {!isRain && !isThunder && !isNight && (
+          <>
+            <g opacity={isCloud?0.9:0.55}>
+              <ellipse cx="600" cy="130" rx="110" ry="44" fill="white" opacity="0.9">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="530" cy="148" rx="74" ry="34" fill="white" opacity="0.85">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="668" cy="152" rx="64" ry="30" fill="white" opacity="0.78">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+            <g opacity={isCloud?0.8:0.42}>
+              <ellipse cx="1100" cy="95" rx="95" ry="38" fill="white" opacity="0.82">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="1038" cy="112" rx="65" ry="30" fill="white" opacity="0.74">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+          </>
+        )}
+
+        {/* ── RELÂMPAGOS (trovão/chuva forte) ── */}
+        {(isThunder||isRain) && <>
+          <g filter="url(#lgGlow2)" style={{ animation:"lightning1 8s ease-in-out infinite" }}>
+            <polyline points="310,95 284,218 306,218 272,382 296,382 258,525" fill="none" stroke="#E8F4FF" strokeWidth="3.5" strokeLinejoin="round"/>
+            <polyline points="310,95 284,218 306,218 272,382 296,382 258,525" fill="none" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" opacity="0.9"/>
+          </g>
+          <g filter="url(#lgGlow2)" style={{ animation:"lightning2 11s ease-in-out infinite 3s" }}>
+            <polyline points="1095,75 1068,198 1090,198 1050,348 1076,348 1036,492" fill="none" stroke="#CCE8FF" strokeWidth="2.8" strokeLinejoin="round"/>
+            <polyline points="1095,75 1068,198 1090,198 1050,348 1076,348 1036,492" fill="none" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" opacity="0.82"/>
+          </g>
+        </>}
+
+        {/* ── FLOCOS DE NEVE ── */}
+        {isSnow && Array.from({length:60}).map((_,i)=>(
+          <circle key={i} cx={(i*24+12)%1440} cy="-10" r={i%4===0?3.5:i%3===0?2.5:1.8} fill="white" opacity={0.6+(i%3)*0.13}>
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;${(i%7-3)*18} 920`}
+              dur={`${3+(i%5)*0.8}s`} begin={`${(i*0.18)%3.5}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+
+        {/* ── CHUVA ── */}
+        {(isRain||isThunder) && Array.from({length:130}).map((_,i)=>(
+          <line key={i} x1={(i*11+5)%1440} y1="-12" x2={(i*11+10)%1440} y2="28"
+            stroke={i%4===0?"rgba(147,197,253,0.55)":"rgba(147,197,253,0.38)"} strokeWidth={i%5===0?1.7:1.1} strokeLinecap="round">
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;4 940`} dur={`${0.44+(i%7)*0.055}s`} begin={`${(i*0.036)%1.1}s`} repeatCount="indefinite"/>
+          </line>
+        ))}
+
+        {/* ── PRÉDIOS ── */}
+        {[
+          {x:0,  w:55,h:165},{x:65, w:42,h:122},{x:117,w:62,h:205},{x:189,w:36,h:145},
+          {x:235,w:58,h:178},{x:303,w:44,h:132},{x:357,w:68,h:225},{x:435,w:40,h:158},
+          {x:485,w:60,h:188},{x:555,w:46,h:148},{x:611,w:72,h:244},{x:693,w:38,h:162},
+          {x:741,w:56,h:198},{x:807,w:44,h:152},{x:861,w:64,h:214},{x:935,w:40,h:168},
+          {x:985,w:57,h:183},{x:1052,w:42,h:143},{x:1104,w:70,h:234},{x:1184,w:38,h:158},
+          {x:1232,w:54,h:188},{x:1296,w:46,h:148},{x:1352,w:62,h:204},{x:1424,w:40,h:162},
+        ].map((b,i)=>(
+          <g key={i}>
+            <rect x={b.x} y={710-b.h} width={b.w} height={b.h}
+              fill={isNight||isRain||isThunder?(i%2===0?"#0c1520":"#0e1828"):(i%2===0?"#1a2535":"#1e2d42")}/>
+            {Array.from({length:Math.floor(b.h/28)}).map((_,row)=>
+              Array.from({length:Math.max(1,Math.floor(b.w/18))}).map((_,col)=>{
+                const lit = isNight ? (i*7+row*3+col*5)%9 < 4 : false;
+                const dusk = !isNight && (hour > 17 || hour < 8) ? (i*5+row*2+col*4)%11 < 3 : false;
+                return <rect key={`${row}-${col}`} x={b.x+4+col*18} y={710-b.h+8+row*28} width={12} height={8} rx={1}
+                  fill={lit?"#FDE68A":dusk?"#FBBF24":"#0a1320"} opacity={lit?0.75:dusk?0.5:0.4}/>;
+              })
+            )}
+            <line x1={b.x+b.w/2} y1={710-b.h} x2={b.x+b.w/2} y2={710-b.h-14} stroke="#475569" strokeWidth="1.8"/>
+            {isNight && <circle cx={b.x+b.w/2} cy={710-b.h-16} r="2.2" fill="#EF4444" opacity="0.85">
+              <animate attributeName="opacity" values="0.85;0.12;0.85" dur={`${1.6+(i%4)*0.3}s`} repeatCount="indefinite"/>
+            </circle>}
           </g>
         ))}
 
-        {/* Flores pequenas de fundo — mais sutis */}
-        {[
-          [200,240,18,0.06,5],[500,180,14,0.05,12],[850,200,20,0.07,3],
-          [1200,160,16,0.05,18],[90,600,15,0.06,8],[400,650,19,0.07,25],
-          [670,630,13,0.05,0],[950,600,17,0.06,14],[1300,620,21,0.07,9],
-        ].map(([cx,cy,r,op,delay],fi) => (
-          <g key={`s${fi}`} transform={`translate(${cx},${cy})`}>
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`-360 ${cx} ${cy}`}
-              dur={`${25+fi*4}s`} begin={`${delay*0.5}s`} repeatCount="indefinite" additive="sum"/>
-            {[0,60,120,180,240,300].map((angle,pi) => (
-              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
-                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}/>
-            ))}
-            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}/>
+        {/* ── ESTRADA ── */}
+        <rect x="0" y="710" width="1440" height="38" fill="url(#lgRoad)"/>
+        <rect x="0" y="727" width="1440" height="2" fill="#252f40" opacity="0.8"/>
+        {Array.from({length:14}).map((_,i)=>(
+          <rect key={i} x={i*110} y="727" width="55" height="2" rx="1" fill="#2d3a50" opacity="0.6">
+            <animateTransform attributeName="transform" type="translate" values="0 0;-110 0" dur="5s" begin={`${i*0.35}s`} repeatCount="indefinite"/>
+          </rect>
+        ))}
+        {/* Reflexo molhado na estrada */}
+        {(isRain||isThunder) && <rect x="0" y="710" width="1440" height="38" fill="#4F8EF7" opacity="0.07"/>}
+
+        {/* ── GRAMA ── */}
+        <rect x="0" y="748" width="1440" height="152" fill="url(#lgGrass)"/>
+
+        {/* ── POSTES (noite) ── */}
+        {isNight && [120,360,600,840,1080,1320].map((x,i)=>(
+          <g key={i} transform={`translate(${x},710)`}>
+            <rect x="-3" y="-68" width="6" height="68" rx="2" fill="#2d3a50"/>
+            <rect x="-15" y="-71" width="30" height="5" rx="2" fill="#3a4a60"/>
+            <ellipse cx="0" cy="-74" rx="6.5" ry="4.5" fill="#FDE68A" opacity="0.9" filter="url(#lgGlow2)"/>
+            <path d="M -6,-71 L -26,-12 L 26,-12 L 6,-71 Z" fill="#FDE68A" opacity="0.07"/>
           </g>
         ))}
+
+        {/* Respingos de chuva no chão */}
+        {(isRain||isThunder) && Array.from({length:28}).map((_,i)=>(
+          <circle key={i} cx={(i*52+18)%1440} cy="750" fill="none" stroke="rgba(147,197,253,0.28)" strokeWidth="0.8">
+            <animate attributeName="r" values="1;7;0" dur={`${0.55+(i%4)*0.1}s`} begin={`${(i*0.09)%1.0}s`} repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.4;0;0" dur={`${0.55+(i%4)*0.1}s`} begin={`${(i*0.09)%1.0}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+        {/* Neve no chão */}
+        {isSnow && <rect x="0" y="745" width="1440" height="8" fill="white" opacity="0.25" rx="2"/>}
       </svg>
 
-      {/* ── Card central estilo Apple — fosco ── */}
-      <div style={{ position:"relative", zIndex:1, width:"100%", maxWidth:400, padding:"0 20px", animation:"fadeIn 0.7s ease" }}>
-        <div style={{
-          background:"rgba(18,18,18,0.72)",
-          backdropFilter:"blur(40px) saturate(180%)",
-          WebkitBackdropFilter:"blur(40px) saturate(180%)",
-          border:"1px solid rgba(255,255,255,0.1)",
-          borderRadius:28,
-          padding:"40px 36px",
-          boxShadow:"0 32px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
-        }}>
+      {/* ══ CONTEÚDO CENTRAL ══ */}
+      <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:18, animation:"fadeIn 0.7s ease", width:"100%", maxWidth:380, padding:"0 20px" }}>
+
+        {/* Clima em tempo real (compacto, acima do card) */}
+        {weather?.current_weather && (
+          <div style={{ background:"rgba(8,12,22,0.55)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"10px 18px", display:"flex", alignItems:"center", gap:12, width:"100%", animation:"fadeIn 0.9s ease 0.2s both" }}>
+            <span style={{ fontSize:26 }}>{wxIcon}</span>
+            <div style={{ flex:1 }}>
+              {cityName && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
+              <div style={{ color:"#fff", fontSize:18, fontWeight:800, lineHeight:1 }}>{Math.round(temp)}°C</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:1 }}>
+                {isThunder?"Tempestade":isRain?"Chuva":isSnow?"Neve":isCloud?"Nublado":isClear?(isNight?"Céu limpo":"Ensolarado"):"—"}
+              </div>
+            </div>
+            {/* Mini previsão 3 dias */}
+            <div style={{ display:"flex", gap:8 }}>
+              {(weather.daily?.time||[]).slice(1,4).map((d,i)=>{
+                const wc2 = weather.daily.weathercode[i+1];
+                const tmax = Math.round(weather.daily.temperature_2m_max[i+1]);
+                const day = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d+"T12:00:00").getDay()];
+                return (
+                  <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9 }}>{day}</div>
+                    <div style={{ fontSize:13 }}>{WMO[wc2]||"🌡"}</div>
+                    <div style={{ color:"rgba(255,255,255,0.65)", fontSize:9.5, fontWeight:600 }}>{tmax}°</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Card de login centralizado */}
+        <div style={{ background:"rgba(8,12,22,0.75)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:22, padding:"32px 28px", width:"100%", boxShadow:"0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)", animation:"fadeIn 0.7s ease" }}>
           {/* Logo */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:32 }}>
-            <div style={{ fontWeight:800, fontSize:26, letterSpacing:"-0.8px", color:"#fff" }}>Nexp Consultas</div>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:26 }}>
+            <NexpRobot size={34} showFaceOnly />
+            <div>
+              <div style={{ fontWeight:900, fontSize:19, letterSpacing:"-0.6px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Nexp Consultas</div>
+              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10.5 }}>Sistema de Leads</div>
+            </div>
           </div>
 
-          {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
+          {err && <div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:9, padding:"9px 13px", marginBottom:16, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
 
-          {/* E-mail */}
-          <div style={{ marginBottom:14 }}>
-            <label style={{ color:"rgba(255,255,255,0.45)", fontSize:11, display:"block", marginBottom:6, letterSpacing:"0.4px", textTransform:"uppercase" }}>E-mail</label>
+          <div style={{ marginBottom:13 }}>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, display:"block", marginBottom:5 }}>E-mail</label>
             <input value={un} onChange={e=>setUn(e.target.value)} placeholder="seu@email.com" onKeyDown={e=>e.key==="Enter"&&go()}
-              style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, color:"#fff", fontSize:14, padding:"13px 18px", boxSizing:"border-box", outline:"none", transition:"border 0.2s" }}
-              onFocus={e=>e.target.style.border="1px solid rgba(255,255,255,0.35)"}
-              onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.12)"}
-            />
+              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF" }} />
           </div>
-
-          {/* Senha */}
-          <div style={{ marginBottom:26 }}>
-            <label style={{ color:"rgba(255,255,255,0.45)", fontSize:11, display:"block", marginBottom:6, letterSpacing:"0.4px", textTransform:"uppercase" }}>Senha</label>
+          <div style={{ marginBottom:22 }}>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, display:"block", marginBottom:5 }}>Senha</label>
             <div style={{ position:"relative" }}>
               <input value={pw} onChange={e=>setPw(e.target.value)} type={show?"text":"password"} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()}
-                style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, color:"#fff", fontSize:14, padding:"13px 18px", paddingRight:46, boxSizing:"border-box", outline:"none", transition:"border 0.2s" }}
-                onFocus={e=>e.target.style.border="1px solid rgba(255,255,255,0.35)"}
-                onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.12)"}
-              />
-              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:14 }}>
+                style={{ ...S.input, paddingRight:42, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF" }} />
+              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:14 }}>
                 {show?"🙈":"👁"}
               </button>
             </div>
           </div>
-
-          {/* Botão entrar */}
           <button onClick={go} disabled={loading}
-            style={{ width:"100%", background:loading?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.92)", color:loading?"rgba(255,255,255,0.4)":"#000", border:"none", borderRadius:99, padding:"14px", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", letterSpacing:"-0.2px", transition:"all 0.2s", boxShadow:loading?"none":"0 4px 24px rgba(255,255,255,0.15)" }}>
+            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 24px rgba(59,110,245,0.35)", borderRadius:12 }}>
             {loading ? "Entrando..." : "Entrar →"}
           </button>
 
-          {/* Redefinir senha */}
-          <div style={{ marginTop:18, borderTop:"1px solid rgba(255,255,255,0.06)", paddingTop:16 }}>
+          {/* Esqueci minha senha */}
+          <div style={{ marginTop:12, borderTop:"1px solid rgba(255,255,255,0.07)", paddingTop:12 }}>
             <button onClick={()=>{ setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
               style={{ width:"100%", display:"flex", alignItems:"center", gap:8, background:"transparent", border:"none", cursor:"pointer", padding:"4px 0" }}>
               <span style={{ fontSize:13 }}>🔑</span>
-              <span style={{ color:"rgba(255,255,255,0.3)", fontSize:11.5 }}>Esqueci minha senha</span>
-              <span style={{ color:"rgba(255,255,255,0.15)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
+              <span style={{ color:"rgba(255,255,255,0.38)", fontSize:11.5 }}>Esqueci minha senha</span>
+              <span style={{ color:"rgba(255,255,255,0.2)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
             </button>
             {showResetLogin && (
-              <div style={{ marginTop:10 }}>
+              <div style={{ marginTop:8 }}>
                 <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
                   onKeyDown={e=>e.key==="Enter"&&doLoginReset()} placeholder="seu@email.com"
-                  style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, color:"#fff", fontSize:13, padding:"12px 18px", boxSizing:"border-box", outline:"none", marginBottom:10, transition:"border 0.2s" }}
-                  onFocus={e=>e.target.style.border="1px solid rgba(255,255,255,0.35)"}
-                  onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.12)"}
-                />
+                  style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF", marginBottom:7 }} />
                 <button onClick={doLoginReset} disabled={resetBusy}
-                  style={{ width:"100%", background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.8)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, padding:"12px", fontSize:12.5, cursor:resetBusy?"not-allowed":"pointer", opacity:resetBusy?0.6:1, transition:"all 0.2s" }}>
+                  style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"8px", fontSize:12.5, opacity:resetBusy?0.7:1 }}>
                   {resetBusy ? "Enviando..." : "📧 Enviar link de redefinição"}
                 </button>
-                {resetMsg && <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:8, textAlign:"center" }}>{resetMsg}</div>}
+                {resetMsg && <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:6, textAlign:"center" }}>{resetMsg}</div>}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Suporte WhatsApp */}
-      <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer" title="Suporte WhatsApp"
-        style={{ position:"fixed", right:22, bottom:22, zIndex:10, width:48, height:48, borderRadius:"50%", background:"rgba(0,0,0,0.6)", backdropFilter:"blur(12px)", border:"1px solid rgba(37,211,102,0.3)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 4px 20px rgba(0,0,0,0.5)", textDecoration:"none", transition:"transform 0.2s" }}
-        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
-        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+      {/* ══ BOTÃO DE SUPORTE — direita, circular e discreto ══ */}
+      <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+        title="Suporte WhatsApp"
+        style={{
+          position:"fixed", right:22, bottom:22, zIndex:10,
+          width:48, height:48, borderRadius:"50%",
+          background:"rgba(10,35,20,0.55)", backdropFilter:"blur(12px)",
+          border:"1px solid rgba(37,211,102,0.28)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.4)",
+          textDecoration:"none", transition:"transform 0.2s, box-shadow 0.2s",
+        }}
+        onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.1)"; e.currentTarget.style.boxShadow="0 6px 28px rgba(37,211,102,0.25)"; }}
+        onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)";   e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,0.4)"; }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366">
           <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
         </svg>
@@ -1411,6 +1648,7 @@ function LoginPage({ onLogin }) {
     </div>
   );
 }
+
 
 
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
@@ -5048,7 +5286,7 @@ function RankTab({ users, currentUser }) {
   );
 }
 
-function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig, presence = {} }) {
+function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig }) {
   const [tab, setTab] = useState("usuarios");
   const [permSearch, setPermSearch] = useState("");
   const [permExpandedId, setPermExpandedId] = useState(null);
@@ -5080,7 +5318,7 @@ function UsuariosPage({ users, setUsers, currentUser, sysConfig, onSysConfig, pr
         </div>
       </div>
       <div style={{ padding:"26px 36px", maxWidth:860 }}>
-        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} presence={presence} />}
+        {tab === "usuarios" && <UsuariosTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "rank" && <RankTab users={users} currentUser={currentUser} />}
         {tab === "perfis" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PerfisTab users={users} setUsers={setUsers} currentUser={currentUser} />}
         {tab === "permissoes" && (isMestre || isMaster) && sysConfig && onSysConfig && (() => {
@@ -5840,7 +6078,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
 }
 
 // Subcomponente isolado para exibir/redefinir senha no painel de edição
-function UsuariosTab({ users, setUsers, currentUser, presence = {} }) {
+function UsuariosTab({ users, setUsers, currentUser }) {
   const myRole = currentUser.role || "operador";
   const myId   = currentUser.uid || currentUser.id;
   const myLvl  = ROLE_HIERARCHY[myRole] ?? 99;
@@ -6148,26 +6386,12 @@ function UsuariosTab({ users, setUsers, currentUser, presence = {} }) {
                       ? <img src={u.photo} alt="" style={{ width:42, height:42, borderRadius:"50%", objectFit:"cover", border:`1.5px solid ${col}44` }} />
                       : <div style={{ width:42, height:42, borderRadius:"50%", background:col+"18", color:col, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700, border:`1.5px solid ${col}33` }}>{ini(u.name||u.username)}</div>}
                     {!isActive && <div style={{ position:"absolute", bottom:0, right:0, width:12, height:12, borderRadius:"50%", background:"#EF4444", border:`2px solid ${C.card}` }}/>}
-                    {isActive && (() => {
-                      const uid2 = u.uid || u.id;
-                      const online = isReallyOnline(presence[uid2]);
-                      return <div style={{ position:"absolute", bottom:0, right:0, width:11, height:11, borderRadius:"50%", background: online ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, boxShadow: online ? "0 0 6px #16A34A99" : "0 0 6px #FBBF2499", animation:"pulse 1.5s infinite" }}/>;
-                    })()}
                   </div>
                   {/* Info */}
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
                       <span style={{ color:C.tp, fontSize:13.5, fontWeight:700 }}>{u.name||u.username}</span>
                       {isSelf && <span style={{ color:C.atxt, fontSize:10, background:C.abg, borderRadius:9, padding:"1px 7px", border:`1px solid ${C.atxt}33` }}>você</span>}
-                      {(() => {
-                        const uid2 = u.uid || u.id;
-                        const online = isReallyOnline(presence[uid2]);
-                        const ls = presence[uid2]?.lastSeen?.seconds;
-                        return online
-                          ? <span style={{ color:"#16A34A", fontSize:10, display:"flex", alignItems:"center", gap:3 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }}/>online</span>
-                          : ls ? <span style={{ color:C.td, fontSize:10 }}>visto {new Date(ls*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>
-                          : null;
-                      })()}
                       <span style={{ background:col+"18", color:col, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:700, border:`1px solid ${col}33` }}>
                         {{administrador:"👑",gerente:"🏆",supervisor:"🎯",operador:"👤",mestre:"👑",master:"🏆",indicado:"👤",visitante:"👤",digitador:"👤"}[u.role]||"👤"} {ROLE_LABEL[u.role]||u.role}
                       </span>
@@ -8633,7 +8857,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                           }
                         </div>
                       </div>
-                      <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:isOnline?"#16A34A":"#FBBF24", border:`2px solid ${C.sb}`, zIndex:3, boxShadow:isOnline?"0 0 6px #16A34A99":"0 0 6px #FBBF2499", animation:"pulse 1.5s infinite" }} />
+                      {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                     </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"flex", alignItems:"center", gap:5 }}>
@@ -8645,11 +8869,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                             <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
                             online agora
                           </div>
-                        ) : (
-                          <div style={{ color:"#FBBF24", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
-                            <span style={{ width:6, height:6, borderRadius:"50%", background:"#FBBF24", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                            <span>offline{presence[uid]?.lastSeen?.seconds ? <span style={{color:"#fff"}}> · visto às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span> : ""}</span>
+                        ) : presence[uid]?.lastSeen?.seconds ? (
+                          <div style={{ color:C.td, fontSize:10.5 }}>
+                            👁 Visto {new Date(presence[uid].lastSeen.seconds*1000).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})} às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
                           </div>
+                        ) : (
+                          <div style={{ color:C.tm, fontSize:11 }}>{roleLabel[u.role]}</div>
                         )}
                       </div>
                     {unread > 0 && !muted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
@@ -8716,14 +8941,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         <div style={{ width:50, height:50, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.atxt, border:`2px solid ${C.b1}` }}>
                           {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
                         </div>
-                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3, boxShadow: tabOnline?"0 0 7px #16A34A99":"0 0 7px #FBBF2499", animation:"pulse 1.5s infinite" }} />
+                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3 }} />
                       </div>
                       <div>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
-                        <div style={{ color: tabOnline ? "#16A34A" : "#FBBF24", fontSize:11.5, marginTop:2 }}>
-                          {tabOnline
-                            ? <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Online agora</span>
-                            : <span style={{display:"flex",alignItems:"center",gap:5,color:"#FBBF24"}}><span style={{width:7,height:7,borderRadius:"50%",background:"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Offline{lastMsgTime(tabUid)?<span style={{color:"#fff"}}> · visto às {lastMsgTime(tabUid)}</span>:""}</span>}
+                        <div style={{ color: tabOnline ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
+                          {tabOnline ? "🟢 Online agora" : lastMsgTime(tabUid) ? `👁 Visto por último às ${lastMsgTime(tabUid)}` : "Nunca visto"}
                         </div>
                       </div>
                     </div>
@@ -14424,15 +14647,605 @@ function BancoC6Tab() {
   );
 }
 
-function CreditoTrabalhadorTab() {
+function CreditoTrabalhadorTab({ currentUser, contacts }) {
+  const PROXY = "/api/v8proxy";
+  const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+  const fmtCPF = v => { const c=(v||"").replace(/\D/g,"").padStart(11,"0"); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
+
+  // Sessão compartilhada com FGTS
+  const [token]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
+  const [tokenExp] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.exp||null; } catch { return null; } });
+  const isTokenValid = token && tokenExp && Date.now() < tokenExp;
+
+  const [aba, setAba] = useState("simulador"); // simulador | clientes | digitacao
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [copied, setCopied] = useState(null);
+
+  // ── apiFetch CLT ──────────────────────────────────────────────
+  const apiFetch = async (path, method="GET", body=null) => {
+    if (!isTokenValid) throw new Error("Sessão V8 expirada. Faça login na aba FGTS.");
+    const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ action:"bff", payload:{ path, method, token, body } }) });
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch { throw new Error(`Servidor indisponível (${res.status})`); }
+    if (!res.ok) throw new Error(data.message || data.detail || data.error || `Erro ${res.status}`);
+    return data;
+  };
+
+  // ── SIMULADOR ────────────────────────────────────────────────
+  const [configs, setConfigs] = useState([]);
+  const [configSel, setConfigSel] = useState(null);
+  const [simForm, setSimForm] = useState({ cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male", installments:12, valorParcela:"", valorDesembolso:"" });
+  const [consultId, setConsultId] = useState(null);
+  const [simResult, setSimResult] = useState(null);
+  const [simStep, setSimStep] = useState("form"); // form | termo | aguardando | resultado
+
+  useEffect(() => {
+    if (!isTokenValid) return;
+    apiFetch("/private-consignment/simulation/configs").then(d => {
+      const list = d?.configs || [];
+      setConfigs(list);
+      if (list.length) setConfigSel(list[0]);
+    }).catch(()=>{});
+  }, [isTokenValid]); // eslint-disable-line
+
+  // Pré-preencher com contato existente
+  const buscarContato = () => {
+    const cpfLimpo = simForm.cpf.replace(/\D/g,"");
+    const c = (contacts||[]).find(x => (x.cpf||"").replace(/\D/g,"") === cpfLimpo);
+    if (c) {
+      setSimForm(p => ({ ...p,
+        nome:    c.name||p.nome,
+        email:   c.email||p.email,
+        telefone:c.phone||p.telefone,
+        dataNasc:c.dataNasc||p.dataNasc,
+      }));
+    }
+  };
+
+  const gerarTermo = async () => {
+    setErr(""); setLoading(true);
+    try {
+      const tel = (simForm.telefone||"").replace(/\D/g,"");
+      const body = {
+        borrowerDocumentNumber: simForm.cpf.replace(/\D/g,""),
+        gender: simForm.genero,
+        birthDate: simForm.dataNasc,
+        signerName: simForm.nome,
+        signerEmail: simForm.email,
+        signerPhone: { phoneNumber: tel.slice(-9), countryCode:"55", areaCode: tel.slice(0,2) },
+        provider: "QI",
+      };
+      const res = await apiFetch("/private-consignment/consult","POST", body);
+      setConsultId(res.id);
+      setSimStep("termo");
+    } catch(e) { setErr(e.message); }
+    setLoading(false);
+  };
+
+  const autorizarTermo = async () => {
+    setErr(""); setLoading(true);
+    try {
+      await apiFetch(`/private-consignment/consult/${consultId}/authorize`,"POST",{});
+      setSimStep("aguardando");
+      // Aguarda processamento (polling até SUCCESS)
+      let tentativas = 0;
+      const poll = setInterval(async () => {
+        try {
+          tentativas++;
+          const r = await apiFetch(`/private-consignment/consult?search=${simForm.cpf.replace(/\D/g,"")}&page=1&limit=5&provider=QI&startDate=${new Date(Date.now()-86400000).toISOString()}&endDate=${new Date().toISOString()}`);
+          const item = (r?.data||[]).find(x=>x.id===consultId);
+          if (item?.status==="SUCCESS" || tentativas>18) {
+            clearInterval(poll);
+            setSimStep("simular");
+          } else if (["FAILED","REJECTED"].includes(item?.status)) {
+            clearInterval(poll);
+            setErr(`Consulta ${item.status}: ${item.description||"sem margem disponível"}`);
+            setSimStep("form");
+          }
+        } catch { if(tentativas>18) clearInterval(poll); }
+      }, 3000);
+    } catch(e) { setErr(e.message); setSimStep("form"); }
+    setLoading(false);
+  };
+
+  const executarSimulacao = async () => {
+    if (!configSel) { setErr("Selecione uma tabela."); return; }
+    setErr(""); setLoading(true);
+    try {
+      const body = {
+        consult_id: consultId,
+        config_id: configSel.id,
+        installment_face_value: parseFloat(simForm.valorParcela)||0,
+        disbursed_amount: parseFloat(simForm.valorDesembolso)||0,
+        number_of_installments: parseInt(simForm.installments),
+        provider: "QI",
+      };
+      const res = await apiFetch("/private-consignment/simulation","POST",body);
+      setSimResult(res);
+      setSimStep("resultado");
+    } catch(e) { setErr(e.message); }
+    setLoading(false);
+  };
+
+  // ── LISTA DE CLIENTES (operações) ────────────────────────────
+  const [ops, setOps] = useState([]);
+  const [opsLoading, setOpsLoading] = useState(false);
+  const [opsSearch, setOpsSearch] = useState("");
+  const [opsStatus, setOpsStatus] = useState("");
+  const [opsDetalhe, setOpsDetalhe] = useState(null);
+
+  const buscarOps = async () => {
+    setOpsLoading(true); setErr("");
+    try {
+      const end = new Date().toISOString();
+      const start = new Date(Date.now()-30*86400000).toISOString();
+      const params = new URLSearchParams({ startDate:start, endDate:end, limit:"50", page:"1", provider:"QI" });
+      if (opsSearch) params.set("search", opsSearch);
+      if (opsStatus) params.set("status", opsStatus);
+      const r = await apiFetch(`/private-consignment/operation?${params}`);
+      setOps(Array.isArray(r) ? r : (r?.data||r?.operations||[]));
+    } catch(e) { setErr(e.message); }
+    setOpsLoading(false);
+  };
+
+  useEffect(() => { if (aba==="clientes" && isTokenValid) buscarOps(); }, [aba, isTokenValid]); // eslint-disable-line
+
+  const STATUS_CLT_COLOR = {
+    formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FBBF24",
+    awaiting_call:"#F97316", processing:"#34D399", paid:"#10B981",
+    canceled:"#F87171", pending:"#FBBF24", refunded:"#94A3B8",
+  };
+  const STATUS_CLT_LABEL = {
+    formalization:"⏳ Formalização", analysis:"🔍 Análise", manual_analysis:"👤 Análise Manual",
+    awaiting_call:"📞 Aguardando Ligação", processing:"⚙️ Processando", paid:"✅ Pago",
+    canceled:"❌ Cancelado", pending:"⚠️ Pendente", refunded:"↩️ Reembolsado",
+  };
+
+  const copiarLink = (id, link) => {
+    navigator.clipboard.writeText(link).then(()=>{ setCopied(id); setTimeout(()=>setCopied(null),2500); }).catch(()=>{});
+  };
+
+  // ── DIGITAÇÃO AUTOMÁTICA ─────────────────────────────────────
+  const [digForm, setDigForm] = useState({
+    cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male",
+    nomeMae:"", nacionalidade:"Brasil", docTipo:"rg", docNumero:"", docEmissao:"",
+    estadoCivil:"single", pepolitica:false,
+    cep:"", rua:"", numero:"", complemento:"", bairro:"", cidade:"", uf:"",
+    pixChave:"", pixTipo:"cpf",
+    simId:"",
+    consultaId:"",
+  });
+  const [digLoading, setDigLoading] = useState(false);
+  const [digErr, setDigErr] = useState("");
+  const [digSucesso, setDigSucesso] = useState(null);
+
+  // Pré-preencher da digitação FGTS/contatos
+  const preencherDigitacao = () => {
+    const cpfLimpo = digForm.cpf.replace(/\D/g,"");
+    const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
+    if (c) {
+      setDigForm(p=>({...p,
+        nome:c.name||p.nome, email:c.email||p.email, telefone:c.phone||p.telefone,
+        dataNasc:c.dataNasc||p.dataNasc, nomeMae:c.nomeMae||p.nomeMae,
+        cep:c.cep||p.cep, rua:c.rua||p.rua, numero:c.numero||p.numero,
+        bairro:c.bairro||p.bairro, cidade:c.cidade||p.cidade, uf:c.uf||p.uf,
+        pixChave:c.pix1||c.cpf||p.pixChave,
+      }));
+    }
+  };
+
+  const enviarDigitacao = async () => {
+    setDigErr(""); setDigLoading(true);
+    try {
+      const tel = (digForm.telefone||"").replace(/\D/g,"");
+      const body = {
+        simulation_id: digForm.simId,
+        provider: "QI",
+        borrower: {
+          name: digForm.nome, email: digForm.email,
+          phone: { area_code: tel.slice(0,2), country_code:"55", number: tel.slice(2) },
+          political_exposition: digForm.pepolitica,
+          address: { city:digForm.cidade, state:digForm.uf, number:digForm.numero, street:digForm.rua,
+            complement:digForm.complemento, postal_code:digForm.cep.replace(/\D/g,""), neighborhood:digForm.bairro },
+          birth_date: digForm.dataNasc,
+          mother_name: digForm.nomeMae,
+          nationality: digForm.nacionalidade||"Brasileiro",
+          document_issuer: "SSP",
+          gender: digForm.genero,
+          person_type: "natural",
+          marital_status: digForm.estadoCivil,
+          individual_document_number: digForm.cpf.replace(/\D/g,""),
+          document_identification_date: digForm.docEmissao||new Date().toISOString().slice(0,10),
+          document_identification_type: digForm.docTipo,
+          document_identification_number: digForm.docNumero||"000000",
+          bank: { transfer_method:"pix", pix_key:digForm.pixChave, pix_key_type:digForm.pixTipo },
+        },
+      };
+      const res = await apiFetch("/private-consignment/operation","POST",body);
+      setDigSucesso(res);
+    } catch(e) { setDigErr(e.message); }
+    setDigLoading(false);
+  };
+
+  const inp = (label, val, key, opts={}) => (
+    <div>
+      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>{label}</label>
+      <input value={val} onChange={e=>setDigForm(p=>({...p,[key]:e.target.value}))}
+        style={{...S.input,...(opts.style||{})}} placeholder={opts.ph||""} type={opts.type||"text"}/>
+    </div>
+  );
+  const sel = (label, val, key, options) => (
+    <div>
+      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>{label}</label>
+      <select value={val} onChange={e=>setDigForm(p=>({...p,[key]:e.target.value}))} style={{...S.input,cursor:"pointer"}}>
+        {options.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  );
+
+  if (!isTokenValid) return (
+    <div style={{...S.card,padding:"32px",textAlign:"center"}}>
+      <div style={{fontSize:36,marginBottom:12}}>🔐</div>
+      <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:8}}>Login necessário</div>
+      <div style={{color:C.tm,fontSize:12}}>Faça login na aba <b style={{color:C.atxt}}>FGTS</b> com suas credenciais V8 Digital para usar o Crédito CLT.</div>
+    </div>
+  );
+
   return (
-    <div style={{ padding:"32px 0", textAlign:"center" }}>
-      <div style={{ fontSize:48, marginBottom:16 }}>💼</div>
-      <div style={{ color:C.tp, fontSize:16, fontWeight:700, marginBottom:8 }}>Crédito do Trabalhador</div>
-      <div style={{ color:C.tm, fontSize:13, maxWidth:400, margin:"0 auto" }}>
-        Módulo de Crédito do Trabalhador em breve.<br/>
-        Esta modalidade usará a API V8 Digital para operações de crédito.
+    <div style={{padding:"4px 0"}}>
+      {/* Header sessão */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,padding:"8px 14px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:9}}>
+        <span style={{color:"#34D399"}}>🟢</span>
+        <span style={{color:"#34D399",fontSize:12,fontWeight:600}}>V8 Digital — CLT · Crédito do Trabalhador</span>
+        <span style={{color:C.td,fontSize:10.5,marginLeft:4}}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
       </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
+        {[["simulador","🧮 Simulador"],["clientes","📋 Lista de Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setAba(id)}
+            style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
+              fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
+              borderBottom:aba===id?`2px solid ${C.atxt}`:"2px solid transparent",marginBottom:"-1px"}}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {err && <div style={{color:"#F87171",background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:9,padding:"10px 14px",marginBottom:14,fontSize:12.5}}>⚠ {err}</div>}
+
+      {/* ══ SIMULADOR ══ */}
+      {aba==="simulador" && (
+        <div>
+          {simStep==="form" && (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              <div style={{...S.card,padding:"20px 22px"}}>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>👤 Dados do Cliente</div>
+                <div style={{display:"grid",gap:10}}>
+                  <div style={{display:"flex",gap:8}}>
+                    <div style={{flex:1}}>
+                      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
+                      <input value={simForm.cpf} onChange={e=>setSimForm(p=>({...p,cpf:e.target.value}))}
+                        onBlur={buscarContato} placeholder="000.000.000-00" style={{...S.input}}/>
+                    </div>
+                    <button onClick={buscarContato} style={{alignSelf:"flex-end",background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"9px 12px",fontSize:12,cursor:"pointer"}}>🔍</button>
+                  </div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label><input value={simForm.nome} onChange={e=>setSimForm(p=>({...p,nome:e.target.value}))} style={{...S.input}}/></div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>E-mail *</label><input value={simForm.email} onChange={e=>setSimForm(p=>({...p,email:e.target.value}))} style={{...S.input}}/></div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone *</label><input value={simForm.telefone} onChange={e=>setSimForm(p=>({...p,telefone:e.target.value}))} placeholder="(84) 99999-9999" style={{...S.input}}/></div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Data de Nascimento *</label><input value={simForm.dataNasc} onChange={e=>setSimForm(p=>({...p,dataNasc:e.target.value}))} type="date" style={{...S.input}}/></div>
+                    <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Gênero</label>
+                      <select value={simForm.genero} onChange={e=>setSimForm(p=>({...p,genero:e.target.value}))} style={{...S.input}}>
+                        <option value="male">Masculino</option><option value="female">Feminino</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{...S.card,padding:"20px 22px"}}>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>💰 Parâmetros da Simulação</div>
+                <div style={{display:"grid",gap:10}}>
+                  <div>
+                    <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Tabela de Taxas *</label>
+                    <select value={configSel?.id||""} onChange={e=>setConfigSel(configs.find(c=>c.id===e.target.value))} style={{...S.input}}>
+                      {configs.map(c=><option key={c.id} value={c.id}>{c.slug} — {c.monthly_interest_rate}% a.m.</option>)}
+                    </select>
+                  </div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nº de Parcelas</label>
+                    <select value={simForm.installments} onChange={e=>setSimForm(p=>({...p,installments:e.target.value}))} style={{...S.input}}>
+                      {(configSel?.number_of_installments||["6","12","18","24","36","48","60","72"]).map(n=><option key={n} value={n}>{n}x</option>)}
+                    </select>
+                  </div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Valor da Parcela (R$)</label><input value={simForm.valorParcela} onChange={e=>setSimForm(p=>({...p,valorParcela:e.target.value}))} placeholder="Ex: 350.00" style={{...S.input}}/></div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Valor de Desembolso (R$)</label><input value={simForm.valorDesembolso} onChange={e=>setSimForm(p=>({...p,valorDesembolso:e.target.value}))} placeholder="Ex: 5000.00" style={{...S.input}}/></div>
+                </div>
+                <button onClick={gerarTermo} disabled={loading||!simForm.cpf||!simForm.nome||!simForm.email||!simForm.dataNasc}
+                  style={{marginTop:16,width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.6:1}}>
+                  {loading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento →"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {simStep==="termo" && (
+            <div style={{...S.card,padding:"24px",maxWidth:600,margin:"0 auto"}}>
+              <div style={{color:C.ts,fontSize:14,fontWeight:700,marginBottom:16}}>📋 Termo de Autorização</div>
+              <div style={{background:C.deep,borderRadius:10,padding:"16px",marginBottom:16,maxHeight:260,overflowY:"auto",fontSize:11.5,color:C.tm,lineHeight:1.7}}>
+                <b style={{color:C.tp}}>TERMO DE AUTORIZAÇÃO</b><br/><br/>
+                Eu, <b style={{color:C.atxt}}>{simForm.nome}</b>, CPF <b style={{color:C.atxt}}>{fmtCPF(simForm.cpf)}</b>, autorizo o MTE/DATAPREV a disponibilizar as informações abaixo indicadas para apoiar a contratação/simulação de empréstimo consignado, a fim de subsidiar a proposta pelo Banco Credor.<br/><br/>
+                Informações: CPF, Matrícula, Inscrição do Empregador, Nome, Sexo, Data de Nascimento, Elegibilidade, Valor Total dos Vencimentos, Valor Base da Margem, Valor da Margem Disponível, Data de Admissão, Alertas de Afastamento.<br/><br/>
+                Este termo autoriza esta Instituição Financeira a consultar as informações acima descritas durante um período de 30 dias.
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setSimStep("form")} style={{flex:1,background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:9,padding:"11px",fontSize:13,cursor:"pointer"}}>← Voltar</button>
+                <button onClick={autorizarTermo} disabled={loading} style={{flex:2,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.6:1}}>
+                  {loading?"⏳ Autorizando...":"✅ Autorizar e Consultar Margem →"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {simStep==="aguardando" && (
+            <div style={{...S.card,padding:"40px",textAlign:"center"}}>
+              <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⏳</div>
+              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:6}}>Consultando margem CLT...</div>
+              <div style={{color:C.tm,fontSize:12}}>Aguardando resposta do Dataprev. Pode levar até 1 minuto.</div>
+            </div>
+          )}
+
+          {simStep==="simular" && (
+            <div style={{...S.card,padding:"24px",maxWidth:600,margin:"0 auto"}}>
+              <div style={{color:"#34D399",fontSize:13,fontWeight:700,marginBottom:16}}>✅ Margem consultada com sucesso!</div>
+              <div style={{display:"grid",gap:10,marginBottom:16}}>
+                <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Tabela</label>
+                  <select value={configSel?.id||""} onChange={e=>setConfigSel(configs.find(c=>c.id===e.target.value))} style={{...S.input}}>
+                    {configs.map(c=><option key={c.id} value={c.id}>{c.slug} — {c.monthly_interest_rate}% a.m.</option>)}
+                  </select>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Parcelas</label>
+                    <select value={simForm.installments} onChange={e=>setSimForm(p=>({...p,installments:e.target.value}))} style={{...S.input}}>
+                      {(configSel?.number_of_installments||["6","12","18","24","36","48","60","72"]).map(n=><option key={n} value={n}>{n}x</option>)}
+                    </select>
+                  </div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Valor Parcela</label><input value={simForm.valorParcela} onChange={e=>setSimForm(p=>({...p,valorParcela:e.target.value}))} placeholder="Ex: 350" style={{...S.input}}/></div>
+                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Desembolso</label><input value={simForm.valorDesembolso} onChange={e=>setSimForm(p=>({...p,valorDesembolso:e.target.value}))} placeholder="Ex: 5000" style={{...S.input}}/></div>
+                </div>
+              </div>
+              <button onClick={executarSimulacao} disabled={loading} style={{width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.6:1}}>
+                {loading?"⏳ Simulando...":"⚡ Executar Simulação →"}
+              </button>
+            </div>
+          )}
+
+          {simStep==="resultado" && simResult && (
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+                {[
+                  ["💰 Desembolso",    fmtBRL(simResult.disbursement_amount||simResult.disbursed_issue_amount), "#34D399"],
+                  ["📋 Valor da Parcela", fmtBRL(simResult.installment_value), C.atxt],
+                  ["🔢 Parcelas",       simResult.number_of_installments+"x",   C.atxt],
+                  ["📈 Taxa Mensal",     (simResult.monthly_interest_rate||0)+"%", "#FBBF24"],
+                  ["💵 Total da Op.",   fmtBRL(simResult.operation_amount),     C.atxt],
+                  ["📅 1ª Parcela",     simResult.disbursement_option?.first_due_date||"—", C.tm],
+                ].map(([label,val,color])=>(
+                  <div key={label} style={{...S.card,padding:"14px 16px",border:`1px solid ${color}33`}}>
+                    <div style={{color:C.td,fontSize:10,marginBottom:4}}>{label}</div>
+                    <div style={{color,fontSize:15,fontWeight:700}}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>{
+                  setDigForm(p=>({...p,cpf:simForm.cpf,nome:simForm.nome,email:simForm.email,telefone:simForm.telefone,dataNasc:simForm.dataNasc,genero:simForm.genero,simId:simResult.id_simulation||simResult.id||"",consultaId:consultId}));
+                  setAba("digitacao");
+                }} style={{flex:1,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"12px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ✍️ Digitar Proposta →
+                </button>
+                <button onClick={()=>{setSimStep("form");setSimResult(null);setConsultId(null);}} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:9,padding:"12px 18px",fontSize:12,cursor:"pointer"}}>
+                  🔄 Nova Simulação
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ LISTA DE OPERAÇÕES ══ */}
+      {aba==="clientes" && (
+        <div>
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            <input value={opsSearch} onChange={e=>setOpsSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscarOps()}
+              placeholder="🔍 Nome ou CPF..." style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
+            <select value={opsStatus} onChange={e=>setOpsStatus(e.target.value)} style={{...S.input,width:190,cursor:"pointer"}}>
+              <option value="">Todos os status</option>
+              {Object.entries(STATUS_CLT_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+            </select>
+            <button onClick={buscarOps} disabled={opsLoading} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:opsLoading?0.6:1}}>
+              {opsLoading?"⏳":"🔄"} {opsLoading?"Buscando...":"Atualizar"}
+            </button>
+          </div>
+
+          {ops.length===0&&!opsLoading&&<div style={{color:C.td,textAlign:"center",padding:"32px 0",fontSize:13}}>Nenhuma operação encontrada.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {ops.map(op=>{
+              const st = op.status||"";
+              const col = STATUS_CLT_COLOR[st]||C.td;
+              const isSel = opsDetalhe?.operationId===op.operationId;
+              return (
+                <div key={op.operationId||op.id} style={{...S.card,overflow:"hidden",border:`1px solid ${isSel?C.atxt+"44":C.b1}`}}>
+                  <div onClick={async()=>{
+                    if(isSel){setOpsDetalhe(null);return;}
+                    try{const d=await apiFetch(`/private-consignment/operation/${op.operationId||op.id}`);setOpsDetalhe(d);}catch{setOpsDetalhe(op);}
+                  }} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:C.tp,fontWeight:700,fontSize:13}}>{op.name||"—"}</div>
+                      <div style={{color:C.tm,fontSize:11,marginTop:2}}>{fmtCPF(op.documentNumber||"")} · Contrato: {op.contractNumber||"—"}</div>
+                    </div>
+                    <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0}}>{STATUS_CLT_LABEL[st]||st}</span>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{color:C.atxt,fontWeight:700,fontSize:13}}>{fmtBRL(op.disbursedIssueAmount||op.issueAmount)}</div>
+                    </div>
+                  </div>
+                  {isSel && opsDetalhe && (
+                    <div style={{borderTop:`1px solid ${C.b1}`,padding:"14px 16px",background:C.deep}}>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:12}}>
+                        {[
+                          ["Operação ID", (opsDetalhe.id||opsDetalhe.operationId||"").slice(0,16)+"…"],
+                          ["Parceiro", opsDetalhe.partnerId||opsDetalhe.partner_id||"—"],
+                          ["Valor Emissão", fmtBRL(opsDetalhe.issueAmount||opsDetalhe.operation_data?.issue_amount)],
+                          ["Valor Desembolso", fmtBRL(opsDetalhe.disbursedIssueAmount||opsDetalhe.operation_data?.disbursed_issue_amount)],
+                          ["Parcelas", opsDetalhe.operation_data?.number_of_installments||"—"],
+                          ["Taxa Mensal", opsDetalhe.operation_data?.monthly_interest_rate||"—"],
+                          ["Criado em", opsDetalhe.createdAt||opsDetalhe.created_at ? new Date(opsDetalhe.createdAt||opsDetalhe.created_at).toLocaleString("pt-BR"):"-"],
+                        ].map(([l,v])=>(
+                          <div key={l} style={{background:C.card,borderRadius:8,padding:"8px 12px"}}>
+                            <div style={{color:C.td,fontSize:10}}>{l}</div>
+                            <div style={{color:C.tp,fontWeight:600,fontSize:12,marginTop:2}}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Link de formalização */}
+                      {(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink) && (
+                        <div style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:10}}>
+                          <div style={{color:C.td,fontSize:10,marginBottom:6,textTransform:"uppercase"}}>🔗 Link de Formalização</div>
+                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                            <a href={opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink} target="_blank" rel="noreferrer"
+                              style={{color:C.atxt,fontSize:11,fontFamily:"monospace",wordBreak:"break-all",flex:1}}>
+                              {(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink).slice(0,60)}…
+                            </a>
+                            <button onClick={()=>copiarLink(opsDetalhe.id||opsDetalhe.operationId, opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink)}
+                              style={{background:C.abg,color:copied===(opsDetalhe.id||opsDetalhe.operationId)?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
+                              {copied===(opsDetalhe.id||opsDetalhe.operationId)?"✅ Copiado":"📋 Copiar"}
+                            </button>
+                            <button onClick={()=>window.open(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink,"_blank")}
+                              style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>🔗 Abrir</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══ DIGITAÇÃO ══ */}
+      {aba==="digitacao" && (
+        <div>
+          {digSucesso ? (
+            <div style={{...S.card,padding:"28px",textAlign:"center",border:"1px solid #34D39933"}}>
+              <div style={{fontSize:48,marginBottom:12}}>🎉</div>
+              <div style={{color:"#34D399",fontSize:16,fontWeight:700,marginBottom:8}}>Proposta CLT enviada com sucesso!</div>
+              <div style={{color:C.tm,fontSize:12,marginBottom:16}}>ID: {digSucesso.id}</div>
+              {digSucesso.formalization_url&&(
+                <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+                  <div style={{color:C.td,fontSize:10,marginBottom:6}}>🔗 Link de Formalização</div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <a href={digSucesso.formalization_url} target="_blank" rel="noreferrer" style={{color:C.atxt,fontSize:12,fontFamily:"monospace",wordBreak:"break-all",flex:1}}>{digSucesso.formalization_url}</a>
+                    <button onClick={()=>copiarLink("dig",digSucesso.formalization_url)} style={{background:C.abg,color:copied==="dig"?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
+                      {copied==="dig"?"✅ Copiado":"📋 Copiar"}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button onClick={()=>{setDigSucesso(null);setDigForm(p=>({...p,cpf:"",nome:"",email:"",simId:"",consultaId:""}));}} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"11px 24px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                ✍️ Nova Digitação
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{...S.card,padding:"16px 20px",marginBottom:14,border:"1px solid #FBBF2422"}}>
+                <div style={{color:"#FBBF24",fontSize:11.5,fontWeight:600}}>💡 Dica: Faça a simulação primeiro para preencher automaticamente o ID da simulação e dados do cliente.</div>
+              </div>
+              {digErr&&<div style={{color:"#F87171",background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:9,padding:"10px 14px",marginBottom:14,fontSize:12.5}}>⚠ {digErr}</div>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+
+                {/* Coluna 1 */}
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  <div style={{...S.card,padding:"18px 20px"}}>
+                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>🔑 IDs da Operação</div>
+                    <div style={{display:"grid",gap:10}}>
+                      {inp("ID da Simulação *", digForm.simId, "simId", {ph:"UUID da simulação"})}
+                      {inp("ID do Consentimento", digForm.consultaId, "consultaId", {ph:"UUID do consentimento"})}
+                    </div>
+                  </div>
+                  <div style={{...S.card,padding:"18px 20px"}}>
+                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>👤 Dados Pessoais</div>
+                    <div style={{display:"grid",gap:10}}>
+                      <div style={{display:"flex",gap:8}}>
+                        <div style={{flex:1}}>{inp("CPF *", digForm.cpf, "cpf", {ph:"000.000.000-00"})}</div>
+                        <button onClick={preencherDigitacao} style={{alignSelf:"flex-end",background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"9px 12px",fontSize:12,cursor:"pointer"}}>🔍</button>
+                      </div>
+                      {inp("Nome completo *", digForm.nome, "nome")}
+                      {inp("E-mail *", digForm.email, "email")}
+                      {inp("Telefone *", digForm.telefone, "telefone", {ph:"(84) 99999-9999"})}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                        {inp("Data Nascimento *", digForm.dataNasc, "dataNasc", {type:"date"})}
+                        {sel("Gênero", digForm.genero, "genero", [["male","Masculino"],["female","Feminino"]])}
+                      </div>
+                      {inp("Nome da Mãe *", digForm.nomeMae, "nomeMae")}
+                      {inp("Nacionalidade", digForm.nacionalidade, "nacionalidade", {ph:"Brasileiro"})}
+                      {sel("Estado Civil", digForm.estadoCivil, "estadoCivil", [["single","Solteiro"],["married","Casado"],["divorced","Divorciado"],["widowed","Viúvo"]])}
+                      <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:C.deep,borderRadius:8}}>
+                        <input type="checkbox" checked={digForm.pepolitica} onChange={e=>setDigForm(p=>({...p,pepolitica:e.target.checked}))} id="pep"/>
+                        <label htmlFor="pep" style={{color:C.tm,fontSize:12,cursor:"pointer"}}>Pessoa Politicamente Exposta (PEP)</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Coluna 2 */}
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  <div style={{...S.card,padding:"18px 20px"}}>
+                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>📄 Documento de Identidade</div>
+                    <div style={{display:"grid",gap:10}}>
+                      {sel("Tipo", digForm.docTipo, "docTipo", [["rg","RG"],["cnh","CNH"]])}
+                      {inp("Número", digForm.docNumero, "docNumero", {ph:"Número (000000 se não tiver)"})}
+                      {inp("Data de Emissão", digForm.docEmissao, "docEmissao", {type:"date"})}
+                    </div>
+                  </div>
+                  <div style={{...S.card,padding:"18px 20px"}}>
+                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>🏠 Endereço</div>
+                    <div style={{display:"grid",gap:10}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:10}}>
+                        {inp("CEP *", digForm.cep, "cep", {ph:"00000-000"})}
+                        {inp("Rua *", digForm.rua, "rua")}
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr",gap:10}}>
+                        {inp("Nº", digForm.numero, "numero")}
+                        {inp("Bairro", digForm.bairro, "bairro")}
+                        {inp("UF", digForm.uf, "uf", {ph:"SP"})}
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10}}>
+                        {inp("Cidade *", digForm.cidade, "cidade")}
+                        {inp("Complemento", digForm.complemento, "complemento")}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{...S.card,padding:"18px 20px"}}>
+                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>💳 Dados Bancários (PIX)</div>
+                    <div style={{display:"grid",gap:10}}>
+                      {sel("Tipo de Chave PIX *", digForm.pixTipo, "pixTipo", [["cpf","CPF"],["email","E-mail"],["phone","Telefone"],["random","Chave Aleatória"]])}
+                      {inp("Chave PIX *", digForm.pixChave, "pixChave", {ph:"Chave PIX do cliente"})}
+                    </div>
+                  </div>
+                  <button onClick={enviarDigitacao} disabled={digLoading||!digForm.simId||!digForm.cpf||!digForm.nome}
+                    style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"14px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:digLoading?0.6:1}}>
+                    {digLoading?"⏳ Enviando proposta...":"🚀 Enviar Proposta CLT →"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -14473,7 +15286,7 @@ function ApisBancosPage({ currentUser, contacts }) {
       {/* Conteúdo */}
       <div style={{ padding:"0 30px" }}>
         {abaBanco==="v8" && abaV8==="fgts"    && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
+        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
         {abaBanco==="c6"                      && <BancoC6Tab />}
       </div>
     </div>
@@ -17050,20 +17863,33 @@ export default function App() {
     // Marca online imediatamente ao logar
     setPresence(myId, nome, role);
 
-    // Heartbeat a cada 20s — sempre ativo independente da visibilidade da aba
-    const interval = setInterval(() => setPresence(myId, nome, role), 20000);
+    // Heartbeat a cada 20s para manter lastSeen atualizado
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "hidden") {
+        setPresence(myId, nome, role);
+      }
+    }, 20000);
 
-    // Só marca offline quando fechar/recarregar a página de verdade
+    // Aba/janela fechada → offline
     const handleUnload = () => removePresence(myId);
     window.addEventListener("beforeunload", handleUnload);
-    window.addEventListener("pagehide", handleUnload);
+
+    // Aba oculta (minimizada, troca de aba) → offline; visível → online
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        removePresence(myId);
+      } else {
+        setPresence(myId, nome, role);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
 
     const unsub = listenPresence((data) => setPresenceData(data));
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("beforeunload", handleUnload);
-      window.removeEventListener("pagehide", handleUnload);
+      document.removeEventListener("visibilitychange", handleVisibility);
       removePresence(myId);
       unsub();
     };
@@ -17381,7 +18207,7 @@ export default function App() {
           <LedsPage contacts={contacts} userRole={currentUser.role} />
         )}
         {page === "usuarios_page" && (
-          <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} presence={presence} />
+          <UsuariosPage users={users} setUsers={setUsers} currentUser={currentUser} sysConfig={sysConfig} onSysConfig={setSysConfig} />
         )}
         {page === "digitacao" && (
           <DigitacaoPage contacts={contacts} currentUser={currentUser} unreadExterno={unreadDigitacao} />
