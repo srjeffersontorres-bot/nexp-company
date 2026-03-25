@@ -14802,39 +14802,54 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setSimConfigSel(null);
     setErr("");
     try {
+      // Carrega tabelas de taxa
       const cfgList = configs.length ? configs : (await apiFetch("/private-consignment/simulation/configs"))?.configs||[];
       if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível.");
+
       const margem = parseFloat(termo.availableMarginValue)||0;
       const melhores = {};
-      // Usa apenas a primeira tabela (principal)
+
       for (const cfg of cfgList.slice(0,1)) {
         const resultados = [];
         for (const np of PARCELAS_PADRAO) {
           try {
-            // Se tem margem disponível: usa como installment_face_value (valor da parcela = margem)
-            // disbursed_amount = 0 quando installment_face_value > 0 (API calcula o desembolso)
+            // Monta body conforme documentação V8:
+            // - installment_face_value: valor da parcela (usa margem disponível)
+            // - disbursed_amount: valor desejado de desembolso (0 se usar parcela)
+            // Apenas UM dos dois deve ser > 0
             const body = {
               consult_id: termo.id,
               config_id: cfg.id,
               installment_face_value: margem > 0 ? margem : 0,
-              disbursed_amount: margem > 0 ? 0 : 1000,
+              disbursed_amount: 0,
               number_of_installments: np,
               provider: "QI",
             };
-            console.log(`[CLT SIM] ${np}x body:`, JSON.stringify(body));
+            console.log(`[CLT SIM] ${np}x →`, JSON.stringify(body));
             const sim = await apiFetch("/private-consignment/simulation","POST",body);
-            console.log(`[CLT SIM] ${np}x res:`, JSON.stringify(sim));
-            if(sim && (sim.id_simulation||sim.disbursement_amount||sim.installment_value||sim.disbursed_issue_amount)) {
+            console.log(`[CLT SIM] ${np}x ←`, JSON.stringify(sim));
+            // Aceita qualquer resposta sem erro — não filtra por campos específicos
+            if(sim && typeof sim === "object" && !sim.error) {
               resultados.push({ np, sim, cfg });
             }
-          } catch(e) { console.warn(`[CLT SIM] ${np}x erro:`, e.message); }
+          } catch(e) {
+            console.warn(`[CLT SIM] ${np}x erro:`, e.message);
+            // Se for erro de autenticação ou fatal, propaga
+            if(e.message?.includes("expirada") || e.message?.includes("Token")) throw e;
+          }
         }
         if(resultados.length) melhores[cfg.id] = { cfg, resultados };
       }
-      if(!Object.keys(melhores).length) throw new Error("API não retornou simulações válidas. Verifique se o termo foi aprovado e tem margem disponível.");
+
+      if(!Object.keys(melhores).length) {
+        throw new Error("Simulação sem resultado. Verifique no console (F12) os logs [CLT SIM] para detalhes do erro da API.");
+      }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
-    } catch(e) { setErr(e.message); if(!inline) setSimModal(null); }
+    } catch(e) {
+      setErr(e.message);
+      setSimModal(null);
+    }
     setSimLoading(false);
   };
 
