@@ -14467,7 +14467,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         birthDate: termoForm.dataNasc,
         signerName: termoForm.nome,
         signerEmail: termoForm.email,
-        signerPhone: { phoneNumber: tel.slice(-9), countryCode:"55", areaCode: tel.length>=11?tel.slice(0,2):tel.slice(0,2) },
+        signerPhone: { phoneNumber: tel.slice(2), countryCode:"55", areaCode: tel.slice(0,2) },
         provider: "QI",
       };
       const res = await apiFetch("/private-consignment/consult","POST",body);
@@ -14643,7 +14643,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const enviarDigitacao = async () => {
     setDigErr(""); setDigLoading(true);
     try {
-      const tel=(digForm.telefone||"").replace(/\D/g,"");
+      const tel=(digForm.telefone||"").replace(/\D/g,"").slice(0,11);
       const body = {
         simulation_id: digForm.simId,
         provider:"QI",
