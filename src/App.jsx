@@ -14651,13 +14651,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
   const fmtCPF = v => { const c=(v||"").replace(/\D/g,"").padStart(11,"0"); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
+  const fmtTel = v => { const d=(v||"").replace(/\D/g,""); if(d.length<=10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/,"($1) $2-$3"); return d.replace(/(\d{2})(\d{5})(\d{0,4})/,"($1) $2-$3"); };
 
   // Sessão compartilhada com FGTS
   const [token]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
   const [tokenExp] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.exp||null; } catch { return null; } });
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
-  const [aba, setAba] = useState("simulador"); // simulador | clientes | digitacao
+  const [aba, setAba] = useState("termo"); // termo | simulacao | clientes | digitacao
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(null);
@@ -14673,14 +14674,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     return data;
   };
 
-  // ── SIMULADOR ────────────────────────────────────────────────
+  // ── CONFIGS DE SIMULAÇÃO ─────────────────────────────────────
   const [configs, setConfigs] = useState([]);
   const [configSel, setConfigSel] = useState(null);
-  const [simForm, setSimForm] = useState({ cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male", installments:12, valorParcela:"", valorDesembolso:"" });
-  const [consultId, setConsultId] = useState(null);
-  const [simResult, setSimResult] = useState(null);
-  const [simStep, setSimStep] = useState("form"); // form | termo | aguardando | resultado
-
   useEffect(() => {
     if (!isTokenValid) return;
     apiFetch("/private-consignment/simulation/configs").then(d => {
@@ -14690,177 +14686,229 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     }).catch(()=>{});
   }, [isTokenValid]); // eslint-disable-line
 
-  // Pré-preencher com contato existente
-  const buscarContato = () => {
-    const cpfLimpo = simForm.cpf.replace(/\D/g,"");
-    const c = (contacts||[]).find(x => (x.cpf||"").replace(/\D/g,"") === cpfLimpo);
-    if (c) {
-      setSimForm(p => ({ ...p,
-        nome:    c.name||p.nome,
-        email:   c.email||p.email,
-        telefone:c.phone||p.telefone,
-        dataNasc:c.dataNasc||p.dataNasc,
-      }));
-    }
+  // ── GERADOR DE TERMO ─────────────────────────────────────────
+  const [termoForm, setTermoForm] = useState({
+    cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
+  });
+  const [termos, setTermos] = useState([]); // lista de termos gerados
+  const [termoLoading, setTermoLoading] = useState(false);
+  const [termoStep, setTermoStep] = useState("form"); // form | confirmar
+
+  const buscarContatoTermo = () => {
+    const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
+    const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
+    if (c) setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:c.phone||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
   };
 
   const gerarTermo = async () => {
-    setErr(""); setLoading(true);
+    setErr(""); setTermoLoading(true);
     try {
-      const tel = (simForm.telefone||"").replace(/\D/g,"");
+      const tel = (termoForm.telefone||"").replace(/\D/g,"");
       const body = {
-        borrowerDocumentNumber: simForm.cpf.replace(/\D/g,""),
-        gender: simForm.genero,
-        birthDate: simForm.dataNasc,
-        signerName: simForm.nome,
-        signerEmail: simForm.email,
-        signerPhone: { phoneNumber: tel.slice(-9), countryCode:"55", areaCode: tel.slice(0,2) },
+        borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""),
+        gender: termoForm.genero,
+        birthDate: termoForm.dataNasc,
+        signerName: termoForm.nome,
+        signerEmail: termoForm.email,
+        signerPhone: { phoneNumber: tel.slice(-9), countryCode:"55", areaCode: tel.length>=11?tel.slice(0,2):tel.slice(0,2) },
         provider: "QI",
       };
-      const res = await apiFetch("/private-consignment/consult","POST", body);
-      setConsultId(res.id);
-      setSimStep("termo");
-    } catch(e) { setErr(e.message); }
-    setLoading(false);
-  };
-
-  const autorizarTermo = async () => {
-    setErr(""); setLoading(true);
-    try {
-      await apiFetch(`/private-consignment/consult/${consultId}/authorize`,"POST",{});
-      setSimStep("aguardando");
-      // Aguarda processamento (polling até SUCCESS)
-      let tentativas = 0;
-      const poll = setInterval(async () => {
+      const res = await apiFetch("/private-consignment/consult","POST",body);
+      // Adiciona à lista de termos
+      const novoTermo = {
+        id: res.id,
+        nome: termoForm.nome,
+        cpf: termoForm.cpf,
+        status: "WAITING_CONSENT",
+        availableMarginValue: null,
+        link: `https://app.v8sistema.com/consignment/consult/${res.id}`,
+        criadoEm: new Date().toLocaleString("pt-BR"),
+        dataNasc: termoForm.dataNasc,
+        genero: termoForm.genero,
+        email: termoForm.email,
+        telefone: termoForm.telefone,
+      };
+      setTermos(p=>[novoTermo,...p]);
+      setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
+      setTermoStep("form");
+      // Inicia polling para verificar status
+      let tentativas=0;
+      const poll = setInterval(async()=>{
         try {
           tentativas++;
-          const r = await apiFetch(`/private-consignment/consult?search=${simForm.cpf.replace(/\D/g,"")}&page=1&limit=5&provider=QI&startDate=${new Date(Date.now()-86400000).toISOString()}&endDate=${new Date().toISOString()}`);
-          const item = (r?.data||[]).find(x=>x.id===consultId);
-          if (item?.status==="SUCCESS" || tentativas>18) {
-            clearInterval(poll);
-            setSimStep("simular");
-          } else if (["FAILED","REJECTED"].includes(item?.status)) {
-            clearInterval(poll);
-            setErr(`Consulta ${item.status}: ${item.description||"sem margem disponível"}`);
-            setSimStep("form");
-          }
-        } catch { if(tentativas>18) clearInterval(poll); }
-      }, 3000);
-    } catch(e) { setErr(e.message); setSimStep("form"); }
-    setLoading(false);
+          const end=new Date().toISOString();
+          const start=new Date(Date.now()-86400000).toISOString();
+          const r=await apiFetch(`/private-consignment/consult?search=${novoTermo.cpf.replace(/\D/g,"")}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
+          const item=(r?.data||[]).find(x=>x.id===novoTermo.id);
+          if(item){
+            setTermos(prev=>prev.map(t=>t.id===novoTermo.id?{...t,...item,link:t.link}:t));
+            if(["SUCCESS","FAILED","REJECTED"].includes(item.status)||tentativas>20) clearInterval(poll);
+          } else if(tentativas>20) clearInterval(poll);
+        } catch{ if(tentativas>20) clearInterval(poll); }
+      },4000);
+    } catch(e) { setErr(e.message); }
+    setTermoLoading(false);
   };
 
-  const executarSimulacao = async () => {
-    if (!configSel) { setErr("Selecione uma tabela."); return; }
-    setErr(""); setLoading(true);
+  const buscarTermos = async () => {
+    setLoading(true); setErr("");
     try {
-      const body = {
-        consult_id: consultId,
-        config_id: configSel.id,
-        installment_face_value: parseFloat(simForm.valorParcela)||0,
-        disbursed_amount: parseFloat(simForm.valorDesembolso)||0,
-        number_of_installments: parseInt(simForm.installments),
-        provider: "QI",
-      };
-      const res = await apiFetch("/private-consignment/simulation","POST",body);
-      setSimResult(res);
-      setSimStep("resultado");
+      const end=new Date().toISOString();
+      const start=new Date(Date.now()-30*86400000).toISOString();
+      const r=await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
+      const lista=(r?.data||[]).map(item=>({
+        ...item,
+        link:`https://app.v8sistema.com/consignment/consult/${item.id}`,
+      }));
+      setTermos(lista);
     } catch(e) { setErr(e.message); }
     setLoading(false);
   };
 
-  // ── LISTA DE CLIENTES (operações) ────────────────────────────
+  // Status badge colors
+  const STATUS_COR = {
+    WAITING_CONSENT:"#FBBF24",CONSENT_APPROVED:"#60A5FA",WAITING_CONSULT:"#C084FC",
+    WAITING_CREDIT_ANALYSIS:"#F97316",SUCCESS:"#34D399",FAILED:"#F87171",REJECTED:"#EF4444",
+  };
+  const STATUS_LABEL = {
+    WAITING_CONSENT:"⏳ Aguardando Aceite",CONSENT_APPROVED:"✅ Aceito",WAITING_CONSULT:"🔍 Consultando",
+    WAITING_CREDIT_ANALYSIS:"🧮 Analisando",SUCCESS:"✅ Aprovado",FAILED:"❌ Falhou",REJECTED:"🚫 Rejeitado",
+  };
+
+  // ── SIMULAÇÃO ────────────────────────────────────────────────
+  const [simModal, setSimModal] = useState(null); // { termo }
+  const [simConfigs, setSimConfigs] = useState(null); // resultados das simulações
+  const [simLoading, setSimLoading] = useState(false);
+  const [simConfigSel, setSimConfigSel] = useState(null);
+  const [digModal, setDigModal] = useState(null); // balão selecionado para digitar
+
+  const PARCELAS_PADRAO = [6,8,12,18,24,36];
+
+  const executarSimulacoes = async (termo) => {
+    setSimModal({termo});
+    setSimConfigs(null);
+    setSimLoading(true);
+    setErr("");
+    try {
+      const cfgList = configs.length ? configs : (await apiFetch("/private-consignment/simulation/configs"))?.configs||[];
+      if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível.");
+      const melhores = {};
+      for (const cfg of cfgList.slice(0,3)) {
+        const resultados = [];
+        for (const np of PARCELAS_PADRAO) {
+          try {
+            const body = {
+              consult_id: termo.id,
+              config_id: cfg.id,
+              installment_face_value: parseFloat(termo.availableMarginValue)||0,
+              disbursed_amount: 0,
+              number_of_installments: np,
+              provider:"QI",
+            };
+            const sim = await apiFetch("/private-consignment/simulation","POST",body);
+            resultados.push({ np, sim, cfg });
+          } catch {}
+        }
+        if(resultados.length) melhores[cfg.id] = { cfg, resultados };
+      }
+      setSimConfigs(melhores);
+      setSimConfigSel(cfgList[0]?.id);
+    } catch(e) { setErr(e.message); setSimModal(null); }
+    setSimLoading(false);
+  };
+
+  // ── LISTA DE OPERAÇÕES ───────────────────────────────────────
   const [ops, setOps] = useState([]);
   const [opsLoading, setOpsLoading] = useState(false);
   const [opsSearch, setOpsSearch] = useState("");
-  const [opsStatus, setOpsStatus] = useState("");
   const [opsDetalhe, setOpsDetalhe] = useState(null);
-
+  const STATUS_OP_COLOR = {
+    formalization:"#C084FC",analysis:"#60A5FA",manual_analysis:"#FBBF24",
+    processing:"#34D399",paid:"#10B981",canceled:"#F87171",pending:"#FBBF24",
+  };
+  const STATUS_OP_LABEL = {
+    formalization:"⏳ Formalização",analysis:"🔍 Análise",manual_analysis:"👤 Análise Manual",
+    processing:"⚙️ Processando",paid:"✅ Pago",canceled:"❌ Cancelado",pending:"⚠️ Pendente",
+  };
   const buscarOps = async () => {
-    setOpsLoading(true); setErr("");
+    setOpsLoading(true);
     try {
-      const end = new Date().toISOString();
-      const start = new Date(Date.now()-30*86400000).toISOString();
-      const params = new URLSearchParams({ startDate:start, endDate:end, limit:"50", page:"1", provider:"QI" });
-      if (opsSearch) params.set("search", opsSearch);
-      if (opsStatus) params.set("status", opsStatus);
-      const r = await apiFetch(`/private-consignment/operation?${params}`);
-      setOps(Array.isArray(r) ? r : (r?.data||r?.operations||[]));
+      const end=new Date().toISOString();
+      const start=new Date(Date.now()-30*86400000).toISOString();
+      const params=new URLSearchParams({startDate:start,endDate:end,limit:"50",page:"1",provider:"QI"});
+      if(opsSearch) params.set("search",opsSearch);
+      const r=await apiFetch(`/private-consignment/operation?${params}`);
+      setOps(Array.isArray(r)?r:(r?.data||[]));
     } catch(e) { setErr(e.message); }
     setOpsLoading(false);
   };
+  useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
 
-  useEffect(() => { if (aba==="clientes" && isTokenValid) buscarOps(); }, [aba, isTokenValid]); // eslint-disable-line
-
-  const STATUS_CLT_COLOR = {
-    formalization:"#C084FC", analysis:"#60A5FA", manual_analysis:"#FBBF24",
-    awaiting_call:"#F97316", processing:"#34D399", paid:"#10B981",
-    canceled:"#F87171", pending:"#FBBF24", refunded:"#94A3B8",
-  };
-  const STATUS_CLT_LABEL = {
-    formalization:"⏳ Formalização", analysis:"🔍 Análise", manual_analysis:"👤 Análise Manual",
-    awaiting_call:"📞 Aguardando Ligação", processing:"⚙️ Processando", paid:"✅ Pago",
-    canceled:"❌ Cancelado", pending:"⚠️ Pendente", refunded:"↩️ Reembolsado",
-  };
-
-  const copiarLink = (id, link) => {
-    navigator.clipboard.writeText(link).then(()=>{ setCopied(id); setTimeout(()=>setCopied(null),2500); }).catch(()=>{});
-  };
-
-  // ── DIGITAÇÃO AUTOMÁTICA ─────────────────────────────────────
+  // ── DIGITAÇÃO ────────────────────────────────────────────────
   const [digForm, setDigForm] = useState({
-    cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male",
-    nomeMae:"", nacionalidade:"Brasil", docTipo:"rg", docNumero:"", docEmissao:"",
-    estadoCivil:"single", pepolitica:false,
-    cep:"", rua:"", numero:"", complemento:"", bairro:"", cidade:"", uf:"",
-    pixChave:"", pixTipo:"cpf",
-    simId:"",
-    consultaId:"",
+    cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male",
+    nomeMae:"",nacionalidade:"Brasileiro",docTipo:"rg",docNumero:"",docEmissao:"",
+    estadoCivil:"single",pep:false,
+    cep:"",rua:"",numero:"",complemento:"",bairro:"",cidade:"",uf:"",
+    pixChave:"",pixTipo:"cpf",
+    simId:"",consultaId:"",
   });
   const [digLoading, setDigLoading] = useState(false);
   const [digErr, setDigErr] = useState("");
   const [digSucesso, setDigSucesso] = useState(null);
+  const [showBancoFacil, setShowBancoFacil] = useState(false);
 
-  // Pré-preencher da digitação FGTS/contatos
-  const preencherDigitacao = () => {
-    const cpfLimpo = digForm.cpf.replace(/\D/g,"");
+  const preencherDigitacao = (termo, simBalao) => {
+    const cpfLimpo = (termo?.cpf||"").replace(/\D/g,"");
     const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
-    if (c) {
-      setDigForm(p=>({...p,
-        nome:c.name||p.nome, email:c.email||p.email, telefone:c.phone||p.telefone,
-        dataNasc:c.dataNasc||p.dataNasc, nomeMae:c.nomeMae||p.nomeMae,
-        cep:c.cep||p.cep, rua:c.rua||p.rua, numero:c.numero||p.numero,
-        bairro:c.bairro||p.bairro, cidade:c.cidade||p.cidade, uf:c.uf||p.uf,
-        pixChave:c.pix1||c.cpf||p.pixChave,
-      }));
-    }
+    const base = {
+      cpf:termo?.cpf||"",
+      nome:termo?.nome||c?.name||"",
+      email:termo?.email||c?.email||"",
+      telefone:termo?.telefone||c?.phone||"",
+      dataNasc:termo?.dataNasc||c?.dataNasc||"",
+      genero:termo?.genero||"male",
+      nomeMae:c?.nomeMae||"",
+      cep:c?.cep||"",rua:c?.rua||"",numero:c?.numero||"",
+      bairro:c?.bairro||"",cidade:c?.cidade||"",uf:c?.uf||"",
+      pixChave:c?.pix1||(c?.cpf||"").replace(/\D/g,"")||"",
+      pixTipo:"cpf",
+      simId:simBalao?.sim?.id_simulation||"",
+      consultaId:termo?.id||"",
+    };
+    const temBanco = !!(c?.pix1||c?.bancoPagto||c?.pix2);
+    setDigForm(p=>({...p,...base}));
+    setShowBancoFacil(temBanco);
+    setDigModal(null);
+    setAba("digitacao");
   };
 
   const enviarDigitacao = async () => {
     setDigErr(""); setDigLoading(true);
     try {
-      const tel = (digForm.telefone||"").replace(/\D/g,"");
+      const tel=(digForm.telefone||"").replace(/\D/g,"");
       const body = {
         simulation_id: digForm.simId,
-        provider: "QI",
-        borrower: {
-          name: digForm.nome, email: digForm.email,
-          phone: { area_code: tel.slice(0,2), country_code:"55", number: tel.slice(2) },
-          political_exposition: digForm.pepolitica,
-          address: { city:digForm.cidade, state:digForm.uf, number:digForm.numero, street:digForm.rua,
-            complement:digForm.complemento, postal_code:digForm.cep.replace(/\D/g,""), neighborhood:digForm.bairro },
-          birth_date: digForm.dataNasc,
-          mother_name: digForm.nomeMae,
-          nationality: digForm.nacionalidade||"Brasileiro",
-          document_issuer: "SSP",
-          gender: digForm.genero,
-          person_type: "natural",
-          marital_status: digForm.estadoCivil,
-          individual_document_number: digForm.cpf.replace(/\D/g,""),
-          document_identification_date: digForm.docEmissao||new Date().toISOString().slice(0,10),
-          document_identification_type: digForm.docTipo,
-          document_identification_number: digForm.docNumero||"000000",
-          bank: { transfer_method:"pix", pix_key:digForm.pixChave, pix_key_type:digForm.pixTipo },
+        provider:"QI",
+        borrower:{
+          name:digForm.nome,email:digForm.email,
+          phone:{area_code:tel.slice(0,2),country_code:"55",number:tel.slice(2)},
+          political_exposition:digForm.pep,
+          address:{city:digForm.cidade,state:digForm.uf,number:digForm.numero,
+            street:digForm.rua,complement:digForm.complemento,
+            postal_code:digForm.cep.replace(/\D/g,""),neighborhood:digForm.bairro},
+          birth_date:digForm.dataNasc,
+          mother_name:digForm.nomeMae,
+          nationality:digForm.nacionalidade||"Brasileiro",
+          document_issuer:"SSP",
+          gender:digForm.genero,
+          person_type:"natural",
+          marital_status:digForm.estadoCivil,
+          individual_document_number:digForm.cpf.replace(/\D/g,""),
+          document_identification_date:digForm.docEmissao||new Date().toISOString().slice(0,10),
+          document_identification_type:digForm.docTipo,
+          document_identification_number:digForm.docNumero||"000000",
+          bank:{transfer_method:"pix",pix_key:digForm.pixChave,pix_key_type:digForm.pixTipo},
         },
       };
       const res = await apiFetch("/private-consignment/operation","POST",body);
@@ -14872,8 +14920,16 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const inp = (label, val, key, opts={}) => (
     <div>
       <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>{label}</label>
-      <input value={val} onChange={e=>setDigForm(p=>({...p,[key]:e.target.value}))}
-        style={{...S.input,...(opts.style||{})}} placeholder={opts.ph||""} type={opts.type||"text"}/>
+      <input value={val}
+        onChange={e=>{
+          let v=e.target.value;
+          if(opts.onlyDigits) v=v.replace(/\D/g,"");
+          if(opts.maxLen) v=v.slice(0,opts.maxLen);
+          setDigForm(p=>({...p,[key]:v}));
+        }}
+        style={{...S.input,...(opts.style||{})}} placeholder={opts.ph||""} type={opts.type||"text"}
+        maxLength={opts.maxLen}
+      />
     </div>
   );
   const sel = (label, val, key, options) => (
@@ -14889,22 +14945,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     <div style={{...S.card,padding:"32px",textAlign:"center"}}>
       <div style={{fontSize:36,marginBottom:12}}>🔐</div>
       <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:8}}>Login necessário</div>
-      <div style={{color:C.tm,fontSize:12}}>Faça login na aba <b style={{color:C.atxt}}>FGTS</b> com suas credenciais V8 Digital para usar o Crédito CLT.</div>
+      <div style={{color:C.tm,fontSize:12}}>Faça login na aba <b style={{color:C.atxt}}>FGTS</b> com suas credenciais V8 Digital.</div>
     </div>
   );
 
   return (
     <div style={{padding:"4px 0"}}>
-      {/* Header sessão */}
+      {/* Header */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,padding:"8px 14px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:9}}>
         <span style={{color:"#34D399"}}>🟢</span>
-        <span style={{color:"#34D399",fontSize:12,fontWeight:600}}>V8 Digital — CLT · Crédito do Trabalhador</span>
+        <span style={{color:"#34D399",fontSize:12,fontWeight:600}}>V8 Digital — Crédito do Trabalhador CLT</span>
         <span style={{color:C.td,fontSize:10.5,marginLeft:4}}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
       </div>
 
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["simulador","🧮 Simulador"],["clientes","📋 Lista de Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
+        {[["termo","📋 Gerador de Termo"],["simulacao","⚡ Simulação"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -14914,168 +14970,246 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         ))}
       </div>
 
-      {err && <div style={{color:"#F87171",background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:9,padding:"10px 14px",marginBottom:14,fontSize:12.5}}>⚠ {err}</div>}
+      {err&&<div style={{color:"#F87171",background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:9,padding:"10px 14px",marginBottom:14,fontSize:12.5}}>⚠ {err} <button onClick={()=>setErr("")} style={{background:"none",border:"none",color:"#F87171",cursor:"pointer",float:"right"}}>✕</button></div>}
 
-      {/* ══ SIMULADOR ══ */}
-      {aba==="simulador" && (
+      {/* ══════════════════════════════════════════════════════════
+          ABA: GERADOR DE TERMO
+      ══════════════════════════════════════════════════════════ */}
+      {aba==="termo" && (
         <div>
-          {simStep==="form" && (
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-              <div style={{...S.card,padding:"20px 22px"}}>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>👤 Dados do Cliente</div>
-                <div style={{display:"grid",gap:10}}>
-                  <div style={{display:"flex",gap:8}}>
-                    <div style={{flex:1}}>
-                      <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
-                      <input value={simForm.cpf} onChange={e=>setSimForm(p=>({...p,cpf:e.target.value}))}
-                        onBlur={buscarContato} placeholder="000.000.000-00" style={{...S.input}}/>
-                    </div>
-                    <button onClick={buscarContato} style={{alignSelf:"flex-end",background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"9px 12px",fontSize:12,cursor:"pointer"}}>🔍</button>
-                  </div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label><input value={simForm.nome} onChange={e=>setSimForm(p=>({...p,nome:e.target.value}))} style={{...S.input}}/></div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>E-mail *</label><input value={simForm.email} onChange={e=>setSimForm(p=>({...p,email:e.target.value}))} style={{...S.input}}/></div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone *</label><input value={simForm.telefone} onChange={e=>setSimForm(p=>({...p,telefone:e.target.value}))} placeholder="(84) 99999-9999" style={{...S.input}}/></div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                    <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Data de Nascimento *</label><input value={simForm.dataNasc} onChange={e=>setSimForm(p=>({...p,dataNasc:e.target.value}))} type="date" style={{...S.input}}/></div>
-                    <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Gênero</label>
-                      <select value={simForm.genero} onChange={e=>setSimForm(p=>({...p,genero:e.target.value}))} style={{...S.input}}>
-                        <option value="male">Masculino</option><option value="female">Feminino</option>
-                      </select>
-                    </div>
-                  </div>
+          {/* Formulário de geração */}
+          <div style={{...S.card,padding:"22px 24px",marginBottom:20}}>
+            <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:16}}>📋 Gerador de Termo de Consentimento</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+              {/* CPF com busca */}
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
+                <div style={{display:"flex",gap:6}}>
+                  <input value={termoForm.cpf}
+                    onChange={e=>setTermoForm(p=>({...p,cpf:e.target.value.replace(/\D/g,"").slice(0,11)}))}
+                    onBlur={buscarContatoTermo}
+                    placeholder="00000000000" style={{...S.input,flex:1}}/>
+                  <button onClick={buscarContatoTermo} style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>🔍</button>
                 </div>
               </div>
-
-              <div style={{...S.card,padding:"20px 22px"}}>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>💰 Parâmetros da Simulação</div>
-                <div style={{display:"grid",gap:10}}>
-                  <div>
-                    <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Tabela de Taxas *</label>
-                    <select value={configSel?.id||""} onChange={e=>setConfigSel(configs.find(c=>c.id===e.target.value))} style={{...S.input}}>
-                      {configs.map(c=><option key={c.id} value={c.id}>{c.slug} — {c.monthly_interest_rate}% a.m.</option>)}
-                    </select>
-                  </div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nº de Parcelas</label>
-                    <select value={simForm.installments} onChange={e=>setSimForm(p=>({...p,installments:e.target.value}))} style={{...S.input}}>
-                      {(configSel?.number_of_installments||["6","12","18","24","36","48","60","72"]).map(n=><option key={n} value={n}>{n}x</option>)}
-                    </select>
-                  </div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Valor da Parcela (R$)</label><input value={simForm.valorParcela} onChange={e=>setSimForm(p=>({...p,valorParcela:e.target.value}))} placeholder="Ex: 350.00" style={{...S.input}}/></div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Valor de Desembolso (R$)</label><input value={simForm.valorDesembolso} onChange={e=>setSimForm(p=>({...p,valorDesembolso:e.target.value}))} placeholder="Ex: 5000.00" style={{...S.input}}/></div>
-                </div>
-                <button onClick={gerarTermo} disabled={loading||!simForm.cpf||!simForm.nome||!simForm.email||!simForm.dataNasc}
-                  style={{marginTop:16,width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.6:1}}>
-                  {loading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento →"}
-                </button>
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label>
+                <input value={termoForm.nome} onChange={e=>setTermoForm(p=>({...p,nome:e.target.value}))} style={{...S.input}}/>
+              </div>
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>E-mail *</label>
+                <input value={termoForm.email} onChange={e=>setTermoForm(p=>({...p,email:e.target.value}))} placeholder="cliente@email.com" style={{...S.input}}/>
+              </div>
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone * (11 dígitos)</label>
+                <input value={termoForm.telefone}
+                  onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,11); setTermoForm(p=>({...p,telefone:v}));}}
+                  placeholder="84999999999" maxLength={11}
+                  style={{...S.input}}/>
+                <div style={{color:C.td,fontSize:10,marginTop:3}}>{(termoForm.telefone||"").length}/11 dígitos</div>
+              </div>
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Data de Nascimento *</label>
+                <input value={termoForm.dataNasc} onChange={e=>setTermoForm(p=>({...p,dataNasc:e.target.value}))} type="date" style={{...S.input}}/>
+              </div>
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Gênero</label>
+                <select value={termoForm.genero} onChange={e=>setTermoForm(p=>({...p,genero:e.target.value}))} style={{...S.input}}>
+                  <option value="male">Masculino</option>
+                  <option value="female">Feminino</option>
+                </select>
               </div>
             </div>
-          )}
+            <button onClick={gerarTermo}
+              disabled={termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email||!termoForm.dataNasc||(termoForm.telefone||"").length<11}
+              style={{width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:(termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email||!termoForm.dataNasc||(termoForm.telefone||"").length<11)?0.5:1,transition:"opacity 0.2s"}}>
+              {termoLoading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento"}
+            </button>
+          </div>
 
-          {simStep==="termo" && (
-            <div style={{...S.card,padding:"24px",maxWidth:600,margin:"0 auto"}}>
-              <div style={{color:C.ts,fontSize:14,fontWeight:700,marginBottom:16}}>📋 Termo de Autorização</div>
-              <div style={{background:C.deep,borderRadius:10,padding:"16px",marginBottom:16,maxHeight:260,overflowY:"auto",fontSize:11.5,color:C.tm,lineHeight:1.7}}>
-                <b style={{color:C.tp}}>TERMO DE AUTORIZAÇÃO</b><br/><br/>
-                Eu, <b style={{color:C.atxt}}>{simForm.nome}</b>, CPF <b style={{color:C.atxt}}>{fmtCPF(simForm.cpf)}</b>, autorizo o MTE/DATAPREV a disponibilizar as informações abaixo indicadas para apoiar a contratação/simulação de empréstimo consignado, a fim de subsidiar a proposta pelo Banco Credor.<br/><br/>
-                Informações: CPF, Matrícula, Inscrição do Empregador, Nome, Sexo, Data de Nascimento, Elegibilidade, Valor Total dos Vencimentos, Valor Base da Margem, Valor da Margem Disponível, Data de Admissão, Alertas de Afastamento.<br/><br/>
-                Este termo autoriza esta Instituição Financeira a consultar as informações acima descritas durante um período de 30 dias.
-              </div>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setSimStep("form")} style={{flex:1,background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:9,padding:"11px",fontSize:13,cursor:"pointer"}}>← Voltar</button>
-                <button onClick={autorizarTermo} disabled={loading} style={{flex:2,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.6:1}}>
-                  {loading?"⏳ Autorizando...":"✅ Autorizar e Consultar Margem →"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {simStep==="aguardando" && (
-            <div style={{...S.card,padding:"40px",textAlign:"center"}}>
-              <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⏳</div>
-              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:6}}>Consultando margem CLT...</div>
-              <div style={{color:C.tm,fontSize:12}}>Aguardando resposta do Dataprev. Pode levar até 1 minuto.</div>
-            </div>
-          )}
-
-          {simStep==="simular" && (
-            <div style={{...S.card,padding:"24px",maxWidth:600,margin:"0 auto"}}>
-              <div style={{color:"#34D399",fontSize:13,fontWeight:700,marginBottom:16}}>✅ Margem consultada com sucesso!</div>
-              <div style={{display:"grid",gap:10,marginBottom:16}}>
-                <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Tabela</label>
-                  <select value={configSel?.id||""} onChange={e=>setConfigSel(configs.find(c=>c.id===e.target.value))} style={{...S.input}}>
-                    {configs.map(c=><option key={c.id} value={c.id}>{c.slug} — {c.monthly_interest_rate}% a.m.</option>)}
-                  </select>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Parcelas</label>
-                    <select value={simForm.installments} onChange={e=>setSimForm(p=>({...p,installments:e.target.value}))} style={{...S.input}}>
-                      {(configSel?.number_of_installments||["6","12","18","24","36","48","60","72"]).map(n=><option key={n} value={n}>{n}x</option>)}
-                    </select>
-                  </div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Valor Parcela</label><input value={simForm.valorParcela} onChange={e=>setSimForm(p=>({...p,valorParcela:e.target.value}))} placeholder="Ex: 350" style={{...S.input}}/></div>
-                  <div><label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Desembolso</label><input value={simForm.valorDesembolso} onChange={e=>setSimForm(p=>({...p,valorDesembolso:e.target.value}))} placeholder="Ex: 5000" style={{...S.input}}/></div>
-                </div>
-              </div>
-              <button onClick={executarSimulacao} disabled={loading} style={{width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:loading?0.6:1}}>
-                {loading?"⏳ Simulando...":"⚡ Executar Simulação →"}
-              </button>
-            </div>
-          )}
-
-          {simStep==="resultado" && simResult && (
+          {/* Lista de termos gerados */}
+          {(termos.length>0||loading) && (
             <div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
-                {[
-                  ["💰 Desembolso",    fmtBRL(simResult.disbursement_amount||simResult.disbursed_issue_amount), "#34D399"],
-                  ["📋 Valor da Parcela", fmtBRL(simResult.installment_value), C.atxt],
-                  ["🔢 Parcelas",       simResult.number_of_installments+"x",   C.atxt],
-                  ["📈 Taxa Mensal",     (simResult.monthly_interest_rate||0)+"%", "#FBBF24"],
-                  ["💵 Total da Op.",   fmtBRL(simResult.operation_amount),     C.atxt],
-                  ["📅 1ª Parcela",     simResult.disbursement_option?.first_due_date||"—", C.tm],
-                ].map(([label,val,color])=>(
-                  <div key={label} style={{...S.card,padding:"14px 16px",border:`1px solid ${color}33`}}>
-                    <div style={{color:C.td,fontSize:10,marginBottom:4}}>{label}</div>
-                    <div style={{color,fontSize:15,fontWeight:700}}>{val}</div>
-                  </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Termos Gerados ({termos.length})</div>
+                <button onClick={buscarTermos} disabled={loading}
+                  style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
+                  {loading?"⏳":"🔄"} Atualizar
+                </button>
+              </div>
+              <div style={{...S.card,overflow:"hidden"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{background:C.deep}}>
+                      {["Cliente","CPF","Status","Margem Disponível","Link","Ação"].map(h=>(
+                        <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {termos.map(t=>{
+                      const col=STATUS_COR[t.status]||C.td;
+                      return (
+                        <tr key={t.id} style={{borderBottom:`1px solid ${C.b1}`}}>
+                          <td style={{padding:"10px 12px",color:C.tp,fontWeight:600}}>{t.name||t.nome||"—"}</td>
+                          <td style={{padding:"10px 12px",color:C.tm,fontFamily:"monospace",fontSize:11}}>{fmtCPF(t.documentNumber||t.cpf||"")}</td>
+                          <td style={{padding:"10px 12px"}}>
+                            <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{STATUS_LABEL[t.status]||t.status}</span>
+                          </td>
+                          <td style={{padding:"10px 12px",color:t.availableMarginValue?"#34D399":C.td,fontWeight:t.availableMarginValue?700:400}}>
+                            {t.availableMarginValue?fmtBRL(t.availableMarginValue):"—"}
+                          </td>
+                          <td style={{padding:"10px 12px"}}>
+                            {t.link&&(
+                              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                                <a href={t.link} target="_blank" rel="noreferrer" style={{color:C.atxt,fontSize:10,fontFamily:"monospace"}}>🔗 link</a>
+                                <button onClick={()=>{navigator.clipboard.writeText(t.link).then(()=>{setCopied(t.id);setTimeout(()=>setCopied(null),2500);});}}
+                                  style={{background:C.abg,color:copied===t.id?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:6,padding:"3px 8px",fontSize:10,cursor:"pointer"}}>
+                                  {copied===t.id?"✅":"📋"}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td style={{padding:"10px 12px"}}>
+                            {t.status==="SUCCESS"&&(
+                              <button onClick={()=>executarSimulacoes(t)}
+                                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                ⚡ Simular
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {termos.length===0&&!loading&&(
+            <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"24px 0"}}>Nenhum termo gerado ainda. Preencha o formulário acima.</div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+          ABA: SIMULAÇÃO
+      ══════════════════════════════════════════════════════════ */}
+      {aba==="simulacao" && (
+        <div>
+          <div style={{...S.card,padding:"20px 22px",marginBottom:16}}>
+            <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:14}}>⚡ Parâmetros da Simulação</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
+              <div>
+                <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Tabela de Taxas</label>
+                <select value={simConfigSel||""} onChange={e=>setSimConfigSel(e.target.value)} style={{...S.input,cursor:"pointer"}}>
+                  {configs.map(c=><option key={c.id} value={c.id}>{c.slug} — {c.monthly_interest_rate}% a.m.</option>)}
+                </select>
+              </div>
+              <div style={{display:"flex",alignItems:"flex-end"}}>
+                <div style={{color:C.tm,fontSize:11}}>Parcelas simuladas automaticamente:<br/><b style={{color:C.tp}}>6x · 8x · 12x · 18x · 24x · 36x</b></div>
+              </div>
+            </div>
+            <div style={{color:C.td,fontSize:11.5}}>💡 Gere um termo de consentimento e aguarde o status <b style={{color:"#34D399"}}>Aprovado</b> para simular. Clique em ⚡ Simular na lista da aba Gerador de Termo.</div>
+          </div>
+
+          {/* Modal de simulação */}
+          {simLoading&&(
+            <div style={{...S.card,padding:"40px",textAlign:"center"}}>
+              <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
+              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:6}}>Calculando simulações...</div>
+              <div style={{color:C.tm,fontSize:12}}>Simulando 6 cenários de prazo. Aguarde.</div>
+            </div>
+          )}
+
+          {simModal&&simConfigs&&!simLoading&&(
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+                <div style={{color:C.tp,fontSize:14,fontWeight:700}}>Simulações — {simModal.termo.name||simModal.termo.nome}</div>
+                <span style={{color:C.tm,fontSize:12,fontFamily:"monospace"}}>{fmtCPF(simModal.termo.documentNumber||simModal.termo.cpf||"")}</span>
+                {simModal.termo.availableMarginValue&&<span style={{background:"rgba(52,211,153,0.15)",color:"#34D399",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>Margem: {fmtBRL(simModal.termo.availableMarginValue)}</span>}
+                <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{marginLeft:"auto",background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>✕ Fechar</button>
+              </div>
+
+              {/* Seletor de tabela */}
+              <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                {Object.values(simConfigs).map(({cfg})=>(
+                  <button key={cfg.id} onClick={()=>setSimConfigSel(cfg.id)}
+                    style={{background:simConfigSel===cfg.id?C.abg:C.deep,color:simConfigSel===cfg.id?C.atxt:C.tm,border:`1px solid ${simConfigSel===cfg.id?C.atxt+"44":C.b2}`,borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:simConfigSel===cfg.id?700:400,cursor:"pointer"}}>
+                    {cfg.slug} ({cfg.monthly_interest_rate}% a.m.)
+                  </button>
                 ))}
               </div>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>{
-                  setDigForm(p=>({...p,cpf:simForm.cpf,nome:simForm.nome,email:simForm.email,telefone:simForm.telefone,dataNasc:simForm.dataNasc,genero:simForm.genero,simId:simResult.id_simulation||simResult.id||"",consultaId:consultId}));
-                  setAba("digitacao");
-                }} style={{flex:1,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"12px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  ✍️ Digitar Proposta →
-                </button>
-                <button onClick={()=>{setSimStep("form");setSimResult(null);setConsultId(null);}} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:9,padding:"12px 18px",fontSize:12,cursor:"pointer"}}>
-                  🔄 Nova Simulação
-                </button>
-              </div>
+
+              {simConfigSel&&simConfigs[simConfigSel]&&(()=>{
+                const {resultados} = simConfigs[simConfigSel];
+                // Melhor oferta = maior disbursement_amount
+                const melhorIdx = resultados.reduce((mi,r,i)=>
+                  (parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0))?i:mi, 0);
+                return (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
+                    {resultados.map((r,idx)=>{
+                      const isMelhor=idx===melhorIdx;
+                      const desembolso=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                      const parcela=parseFloat(r.sim?.installment_value||0);
+                      const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
+                      return (
+                        <div key={r.np} onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor})}
+                          style={{...S.card,padding:"18px",border:`2px solid ${isMelhor?"#34D399":"rgba(255,255,255,0.06)"}`,borderRadius:16,cursor:"pointer",position:"relative",transition:"transform 0.15s,box-shadow 0.15s",background:isMelhor?"rgba(52,211,153,0.06)":C.card}}
+                          onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 8px 24px ${isMelhor?"rgba(52,211,153,0.25)":"rgba(0,0,0,0.3)"}`}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
+                          {isMelhor&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR OFERTA</div>}
+                          <div style={{color:C.td,fontSize:10,marginBottom:4,marginTop:isMelhor?4:0}}>{r.np} parcelas</div>
+                          <div style={{color:isMelhor?"#34D399":C.tp,fontSize:22,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desembolso)}</div>
+                          <div style={{color:C.td,fontSize:10,marginBottom:10}}>Valor liberado</div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
+                            <span style={{color:C.tm}}>Parcela</span>
+                            <span style={{color:C.tp,fontWeight:700}}>{fmtBRL(parcela)}/mês</span>
+                          </div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:12}}>
+                            <span style={{color:C.tm}}>Taxa</span>
+                            <span style={{color:"#FBBF24",fontWeight:700}}>{taxa}% a.m.</span>
+                          </div>
+                          <button onClick={e=>{e.stopPropagation();setDigModal({r,termo:simModal.termo,isMelhor});}}
+                            style={{width:"100%",background:isMelhor?`linear-gradient(135deg,${C.lg1},${C.lg2})`:"rgba(255,255,255,0.08)",color:"#fff",border:"none",borderRadius:8,padding:"8px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
+                            ✍️ Digitar Proposta
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {!simModal&&!simLoading&&(
+            <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>
+              <div style={{fontSize:36,marginBottom:12,opacity:0.4}}>⚡</div>
+              Vá até <b style={{color:C.atxt}}>Gerador de Termo</b>, aguarde o status <b style={{color:"#34D399"}}>Aprovado</b> e clique em ⚡ Simular.
             </div>
           )}
         </div>
       )}
 
-      {/* ══ LISTA DE OPERAÇÕES ══ */}
+      {/* ══════════════════════════════════════════════════════════
+          ABA: OPERAÇÕES
+      ══════════════════════════════════════════════════════════ */}
       {aba==="clientes" && (
         <div>
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <input value={opsSearch} onChange={e=>setOpsSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscarOps()}
               placeholder="🔍 Nome ou CPF..." style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
-            <select value={opsStatus} onChange={e=>setOpsStatus(e.target.value)} style={{...S.input,width:190,cursor:"pointer"}}>
-              <option value="">Todos os status</option>
-              {Object.entries(STATUS_CLT_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-            </select>
-            <button onClick={buscarOps} disabled={opsLoading} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:opsLoading?0.6:1}}>
-              {opsLoading?"⏳":"🔄"} {opsLoading?"Buscando...":"Atualizar"}
+            <button onClick={buscarOps} disabled={opsLoading}
+              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:opsLoading?0.6:1}}>
+              {opsLoading?"⏳":"🔄"} Atualizar
             </button>
           </div>
-
-          {ops.length===0&&!opsLoading&&<div style={{color:C.td,textAlign:"center",padding:"32px 0",fontSize:13}}>Nenhuma operação encontrada.</div>}
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {ops.map(op=>{
-              const st = op.status||"";
-              const col = STATUS_CLT_COLOR[st]||C.td;
-              const isSel = opsDetalhe?.operationId===op.operationId;
+              const st=op.status||"";
+              const col=STATUS_OP_COLOR[st]||C.td;
+              const isSel=opsDetalhe?.operationId===op.operationId;
               return (
                 <div key={op.operationId||op.id} style={{...S.card,overflow:"hidden",border:`1px solid ${isSel?C.atxt+"44":C.b1}`}}>
                   <div onClick={async()=>{
@@ -15084,46 +15218,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   }} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{color:C.tp,fontWeight:700,fontSize:13}}>{op.name||"—"}</div>
-                      <div style={{color:C.tm,fontSize:11,marginTop:2}}>{fmtCPF(op.documentNumber||"")} · Contrato: {op.contractNumber||"—"}</div>
+                      <div style={{color:C.tm,fontSize:11,marginTop:2}}>{fmtCPF(op.documentNumber||"")} · {op.contractNumber||"—"}</div>
                     </div>
-                    <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0}}>{STATUS_CLT_LABEL[st]||st}</span>
+                    <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0}}>{STATUS_OP_LABEL[st]||st}</span>
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{color:C.atxt,fontWeight:700,fontSize:13}}>{fmtBRL(op.disbursedIssueAmount||op.issueAmount)}</div>
                     </div>
                   </div>
-                  {isSel && opsDetalhe && (
+                  {isSel&&opsDetalhe&&(
                     <div style={{borderTop:`1px solid ${C.b1}`,padding:"14px 16px",background:C.deep}}>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:12}}>
-                        {[
-                          ["Operação ID", (opsDetalhe.id||opsDetalhe.operationId||"").slice(0,16)+"…"],
-                          ["Parceiro", opsDetalhe.partnerId||opsDetalhe.partner_id||"—"],
-                          ["Valor Emissão", fmtBRL(opsDetalhe.issueAmount||opsDetalhe.operation_data?.issue_amount)],
-                          ["Valor Desembolso", fmtBRL(opsDetalhe.disbursedIssueAmount||opsDetalhe.operation_data?.disbursed_issue_amount)],
-                          ["Parcelas", opsDetalhe.operation_data?.number_of_installments||"—"],
-                          ["Taxa Mensal", opsDetalhe.operation_data?.monthly_interest_rate||"—"],
-                          ["Criado em", opsDetalhe.createdAt||opsDetalhe.created_at ? new Date(opsDetalhe.createdAt||opsDetalhe.created_at).toLocaleString("pt-BR"):"-"],
-                        ].map(([l,v])=>(
-                          <div key={l} style={{background:C.card,borderRadius:8,padding:"8px 12px"}}>
-                            <div style={{color:C.td,fontSize:10}}>{l}</div>
-                            <div style={{color:C.tp,fontWeight:600,fontSize:12,marginTop:2}}>{v}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Link de formalização */}
-                      {(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink) && (
+                      {(opsDetalhe.formalization_url||opsDetalhe.contract_url)&&(
                         <div style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:10}}>
-                          <div style={{color:C.td,fontSize:10,marginBottom:6,textTransform:"uppercase"}}>🔗 Link de Formalização</div>
+                          <div style={{color:C.td,fontSize:10,marginBottom:6}}>🔗 Link de Formalização</div>
                           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                            <a href={opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink} target="_blank" rel="noreferrer"
+                            <a href={opsDetalhe.formalization_url||opsDetalhe.contract_url} target="_blank" rel="noreferrer"
                               style={{color:C.atxt,fontSize:11,fontFamily:"monospace",wordBreak:"break-all",flex:1}}>
-                              {(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink).slice(0,60)}…
+                              {(opsDetalhe.formalization_url||opsDetalhe.contract_url).slice(0,55)}…
                             </a>
-                            <button onClick={()=>copiarLink(opsDetalhe.id||opsDetalhe.operationId, opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink)}
-                              style={{background:C.abg,color:copied===(opsDetalhe.id||opsDetalhe.operationId)?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
-                              {copied===(opsDetalhe.id||opsDetalhe.operationId)?"✅ Copiado":"📋 Copiar"}
+                            <button onClick={()=>{navigator.clipboard.writeText(opsDetalhe.formalization_url||opsDetalhe.contract_url).then(()=>{setCopied(opsDetalhe.id);setTimeout(()=>setCopied(null),2500);});}}
+                              style={{background:C.abg,color:copied===opsDetalhe.id?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
+                              {copied===opsDetalhe.id?"✅ Copiado":"📋 Copiar"}
                             </button>
-                            <button onClick={()=>window.open(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink,"_blank")}
-                              style={{background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>🔗 Abrir</button>
                           </div>
                         </div>
                       )}
@@ -15132,70 +15247,92 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </div>
               );
             })}
+            {ops.length===0&&!opsLoading&&<div style={{color:C.td,textAlign:"center",padding:"32px 0",fontSize:13}}>Nenhuma operação encontrada.</div>}
           </div>
         </div>
       )}
 
-      {/* ══ DIGITAÇÃO ══ */}
+      {/* ══════════════════════════════════════════════════════════
+          ABA: DIGITAÇÃO
+      ══════════════════════════════════════════════════════════ */}
       {aba==="digitacao" && (
         <div>
           {digSucesso ? (
             <div style={{...S.card,padding:"28px",textAlign:"center",border:"1px solid #34D39933"}}>
               <div style={{fontSize:48,marginBottom:12}}>🎉</div>
-              <div style={{color:"#34D399",fontSize:16,fontWeight:700,marginBottom:8}}>Proposta CLT enviada com sucesso!</div>
+              <div style={{color:"#34D399",fontSize:16,fontWeight:700,marginBottom:8}}>Proposta CLT enviada!</div>
               <div style={{color:C.tm,fontSize:12,marginBottom:16}}>ID: {digSucesso.id}</div>
               {digSucesso.formalization_url&&(
                 <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
                   <div style={{color:C.td,fontSize:10,marginBottom:6}}>🔗 Link de Formalização</div>
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                    <a href={digSucesso.formalization_url} target="_blank" rel="noreferrer" style={{color:C.atxt,fontSize:12,fontFamily:"monospace",wordBreak:"break-all",flex:1}}>{digSucesso.formalization_url}</a>
-                    <button onClick={()=>copiarLink("dig",digSucesso.formalization_url)} style={{background:C.abg,color:copied==="dig"?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
-                      {copied==="dig"?"✅ Copiado":"📋 Copiar"}
+                    <a href={digSucesso.formalization_url} target="_blank" rel="noreferrer" style={{color:C.atxt,fontSize:12,wordBreak:"break-all",flex:1}}>{digSucesso.formalization_url}</a>
+                    <button onClick={()=>{navigator.clipboard.writeText(digSucesso.formalization_url).then(()=>{setCopied("suc");setTimeout(()=>setCopied(null),2500);});}}
+                      style={{background:C.abg,color:copied==="suc"?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
+                      {copied==="suc"?"✅ Copiado":"📋 Copiar"}
                     </button>
                   </div>
                 </div>
               )}
-              <button onClick={()=>{setDigSucesso(null);setDigForm(p=>({...p,cpf:"",nome:"",email:"",simId:"",consultaId:""}));}} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"11px 24px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              <button onClick={()=>{setDigSucesso(null);}} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"11px 24px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 ✍️ Nova Digitação
               </button>
             </div>
           ) : (
             <div>
-              <div style={{...S.card,padding:"16px 20px",marginBottom:14,border:"1px solid #FBBF2422"}}>
-                <div style={{color:"#FBBF24",fontSize:11.5,fontWeight:600}}>💡 Dica: Faça a simulação primeiro para preencher automaticamente o ID da simulação e dados do cliente.</div>
-              </div>
+              {/* Banner preenchimento fácil */}
+              {showBancoFacil&&(
+                <div style={{...S.card,padding:"14px 18px",marginBottom:14,border:"1px solid #34D39933",display:"flex",alignItems:"center",gap:12}}>
+                  <span style={{fontSize:20}}>💳</span>
+                  <div style={{flex:1}}>
+                    <div style={{color:"#34D399",fontSize:12.5,fontWeight:700}}>Dados bancários encontrados!</div>
+                    <div style={{color:C.tm,fontSize:11}}>Informações pré-preenchidas dos cadastros anteriores. Verifique e edite se necessário.</div>
+                  </div>
+                  <button onClick={()=>setShowBancoFacil(false)} style={{background:"none",border:"none",color:C.td,cursor:"pointer",fontSize:16}}>✕</button>
+                </div>
+              )}
               {digErr&&<div style={{color:"#F87171",background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:9,padding:"10px 14px",marginBottom:14,fontSize:12.5}}>⚠ {digErr}</div>}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
 
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
                 {/* Coluna 1 */}
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
                   <div style={{...S.card,padding:"18px 20px"}}>
                     <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>🔑 IDs da Operação</div>
                     <div style={{display:"grid",gap:10}}>
-                      {inp("ID da Simulação *", digForm.simId, "simId", {ph:"UUID da simulação"})}
-                      {inp("ID do Consentimento", digForm.consultaId, "consultaId", {ph:"UUID do consentimento"})}
+                      {inp("ID da Simulação *",digForm.simId,"simId",{ph:"UUID da simulação"})}
+                      {inp("ID do Consentimento",digForm.consultaId,"consultaId",{ph:"UUID do consentimento"})}
                     </div>
                   </div>
                   <div style={{...S.card,padding:"18px 20px"}}>
                     <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>👤 Dados Pessoais</div>
                     <div style={{display:"grid",gap:10}}>
-                      <div style={{display:"flex",gap:8}}>
-                        <div style={{flex:1}}>{inp("CPF *", digForm.cpf, "cpf", {ph:"000.000.000-00"})}</div>
-                        <button onClick={preencherDigitacao} style={{alignSelf:"flex-end",background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"9px 12px",fontSize:12,cursor:"pointer"}}>🔍</button>
+                      <div style={{display:"flex",gap:6}}>
+                        <div style={{flex:1}}>{inp("CPF *",digForm.cpf,"cpf",{ph:"00000000000",maxLen:11,onlyDigits:true})}</div>
+                        <button onClick={()=>{
+                          const cpfL=digForm.cpf.replace(/\D/g,"");
+                          const c=(contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfL);
+                          if(c){const hasBanco=!!(c.pix1||c.bancoPagto);setDigForm(p=>({...p,nome:c.name||p.nome,email:c.email||p.email,telefone:(c.phone||"").replace(/\D/g,"").slice(0,11)||p.telefone,dataNasc:c.dataNasc||p.dataNasc,nomeMae:c.nomeMae||p.nomeMae,cep:c.cep||p.cep,rua:c.rua||p.rua,numero:c.numero||p.numero,bairro:c.bairro||p.bairro,cidade:c.cidade||p.cidade,uf:c.uf||p.uf,pixChave:c.pix1||(c.cpf||"").replace(/\D/g,"")||p.pixChave}));setShowBancoFacil(hasBanco);}
+                        }} style={{alignSelf:"flex-end",background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"9px 12px",fontSize:12,cursor:"pointer"}}>🔍</button>
                       </div>
-                      {inp("Nome completo *", digForm.nome, "nome")}
-                      {inp("E-mail *", digForm.email, "email")}
-                      {inp("Telefone *", digForm.telefone, "telefone", {ph:"(84) 99999-9999"})}
+                      {inp("Nome completo *",digForm.nome,"nome")}
+                      {inp("E-mail *",digForm.email,"email")}
+                      <div>
+                        <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone * (11 dígitos)</label>
+                        <input value={digForm.telefone}
+                          onChange={e=>setDigForm(p=>({...p,telefone:e.target.value.replace(/\D/g,"").slice(0,11)}))}
+                          placeholder="84999999999" maxLength={11} style={{...S.input}}/>
+                        <div style={{color:C.td,fontSize:10,marginTop:3}}>{(digForm.telefone||"").length}/11</div>
+                      </div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                        {inp("Data Nascimento *", digForm.dataNasc, "dataNasc", {type:"date"})}
-                        {sel("Gênero", digForm.genero, "genero", [["male","Masculino"],["female","Feminino"]])}
+                        {inp("Data Nascimento *",digForm.dataNasc,"dataNasc",{type:"date"})}
+                        {sel("Gênero",digForm.genero,"genero",[["male","Masculino"],["female","Feminino"]])}
                       </div>
-                      {inp("Nome da Mãe *", digForm.nomeMae, "nomeMae")}
-                      {inp("Nacionalidade", digForm.nacionalidade, "nacionalidade", {ph:"Brasileiro"})}
-                      {sel("Estado Civil", digForm.estadoCivil, "estadoCivil", [["single","Solteiro"],["married","Casado"],["divorced","Divorciado"],["widowed","Viúvo"]])}
+                      {inp("Nome da Mãe *",digForm.nomeMae,"nomeMae")}
+                      {inp("Nacionalidade",digForm.nacionalidade,"nacionalidade",{ph:"Brasileiro"})}
+                      {sel("Estado Civil",digForm.estadoCivil,"estadoCivil",[["single","Solteiro"],["married","Casado"],["divorced","Divorciado"],["widowed","Viúvo"]])}
                       <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:C.deep,borderRadius:8}}>
-                        <input type="checkbox" checked={digForm.pepolitica} onChange={e=>setDigForm(p=>({...p,pepolitica:e.target.checked}))} id="pep"/>
-                        <label htmlFor="pep" style={{color:C.tm,fontSize:12,cursor:"pointer"}}>Pessoa Politicamente Exposta (PEP)</label>
+                        <input type="checkbox" checked={digForm.pep} onChange={e=>setDigForm(p=>({...p,pep:e.target.checked}))} id="pep_clt"/>
+                        <label htmlFor="pep_clt" style={{color:C.tm,fontSize:12,cursor:"pointer"}}>Pessoa Politicamente Exposta (PEP)</label>
                       </div>
                     </div>
                   </div>
@@ -15204,40 +15341,44 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 {/* Coluna 2 */}
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
                   <div style={{...S.card,padding:"18px 20px"}}>
-                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>📄 Documento de Identidade</div>
+                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>📄 Documento</div>
                     <div style={{display:"grid",gap:10}}>
-                      {sel("Tipo", digForm.docTipo, "docTipo", [["rg","RG"],["cnh","CNH"]])}
-                      {inp("Número", digForm.docNumero, "docNumero", {ph:"Número (000000 se não tiver)"})}
-                      {inp("Data de Emissão", digForm.docEmissao, "docEmissao", {type:"date"})}
+                      {sel("Tipo",digForm.docTipo,"docTipo",[["rg","RG"],["cnh","CNH"]])}
+                      {inp("Número",digForm.docNumero,"docNumero",{ph:"Número (000000 se não tiver)"})}
+                      {inp("Data de Emissão",digForm.docEmissao,"docEmissao",{type:"date"})}
                     </div>
                   </div>
                   <div style={{...S.card,padding:"18px 20px"}}>
                     <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>🏠 Endereço</div>
                     <div style={{display:"grid",gap:10}}>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:10}}>
-                        {inp("CEP *", digForm.cep, "cep", {ph:"00000-000"})}
-                        {inp("Rua *", digForm.rua, "rua")}
+                        {inp("CEP *",digForm.cep,"cep",{ph:"00000-000"})}
+                        {inp("Rua *",digForm.rua,"rua")}
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr",gap:10}}>
-                        {inp("Nº", digForm.numero, "numero")}
-                        {inp("Bairro", digForm.bairro, "bairro")}
-                        {inp("UF", digForm.uf, "uf", {ph:"SP"})}
+                        {inp("Nº",digForm.numero,"numero")}
+                        {inp("Bairro",digForm.bairro,"bairro")}
+                        {inp("UF",digForm.uf,"uf",{ph:"SP"})}
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10}}>
-                        {inp("Cidade *", digForm.cidade, "cidade")}
-                        {inp("Complemento", digForm.complemento, "complemento")}
+                        {inp("Cidade *",digForm.cidade,"cidade")}
+                        {inp("Complemento",digForm.complemento,"complemento")}
                       </div>
                     </div>
                   </div>
-                  <div style={{...S.card,padding:"18px 20px"}}>
-                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>💳 Dados Bancários (PIX)</div>
+                  <div style={{...S.card,padding:"18px 20px",border:showBancoFacil?"1px solid #34D39944":undefined}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                      <div style={{color:C.ts,fontSize:12,fontWeight:700}}>💳 Dados Bancários (PIX)</div>
+                      {showBancoFacil&&<span style={{background:"rgba(52,211,153,0.12)",color:"#34D399",fontSize:10,padding:"2px 8px",borderRadius:99}}>✅ Pré-preenchido</span>}
+                    </div>
                     <div style={{display:"grid",gap:10}}>
-                      {sel("Tipo de Chave PIX *", digForm.pixTipo, "pixTipo", [["cpf","CPF"],["email","E-mail"],["phone","Telefone"],["random","Chave Aleatória"]])}
-                      {inp("Chave PIX *", digForm.pixChave, "pixChave", {ph:"Chave PIX do cliente"})}
+                      {sel("Tipo de Chave PIX *",digForm.pixTipo,"pixTipo",[["cpf","CPF"],["email","E-mail"],["phone","Telefone"],["random","Chave Aleatória"]])}
+                      {inp("Chave PIX *",digForm.pixChave,"pixChave",{ph:"Chave PIX"})}
                     </div>
                   </div>
-                  <button onClick={enviarDigitacao} disabled={digLoading||!digForm.simId||!digForm.cpf||!digForm.nome}
-                    style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"14px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:digLoading?0.6:1}}>
+                  <button onClick={enviarDigitacao}
+                    disabled={digLoading||!digForm.simId||!digForm.cpf||!digForm.nome||(digForm.telefone||"").length<11}
+                    style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"14px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:(digLoading||!digForm.simId||!digForm.cpf||!digForm.nome||(digForm.telefone||"").length<11)?0.5:1}}>
                     {digLoading?"⏳ Enviando proposta...":"🚀 Enviar Proposta CLT →"}
                   </button>
                 </div>
@@ -15246,9 +15387,58 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           )}
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════
+          POPUP: DETALHES DO BALÃO DE SIMULAÇÃO
+      ══════════════════════════════════════════════════════════ */}
+      {digModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:`linear-gradient(135deg,#0f1f3d,#162a50)`,border:"1px solid rgba(79,142,247,0.3)",borderRadius:22,padding:"32px 36px",width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{textAlign:"center",marginBottom:24}}>
+              <div style={{color:"rgba(255,255,255,0.5)",fontSize:11,letterSpacing:"2px",textTransform:"uppercase",marginBottom:8}}>CRÉDITO DO TRABALHADOR</div>
+              {digModal.isMelhor&&<div style={{background:"rgba(52,211,153,0.15)",border:"1px solid #34D39933",borderRadius:99,padding:"4px 14px",fontSize:11,color:"#34D399",fontWeight:700,display:"inline-block",marginBottom:12}}>🏆 Melhor Oferta</div>}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:24}}>
+              {[
+                ["VALOR LIBERADO",fmtBRL(digModal.r.sim?.disbursement_amount||digModal.r.sim?.disbursed_issue_amount||0),"#34D399"],
+                ["PRAZO",`${digModal.r.np}x`,C.atxt],
+                ["VALOR DA PARCELA",fmtBRL(digModal.r.sim?.installment_value||0),"#FBBF24"],
+              ].map(([l,v,col])=>(
+                <div key={l} style={{textAlign:"center"}}>
+                  <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,letterSpacing:"0.8px",textTransform:"uppercase",marginBottom:6}}>{l}</div>
+                  <div style={{color:col,fontSize:l==="VALOR LIBERADO"?22:18,fontWeight:900,letterSpacing:"-0.5px"}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:12,padding:"12px 16px",marginBottom:20,display:"flex",gap:14}}>
+              <div style={{textAlign:"center",flex:1}}>
+                <div style={{fontSize:18}}>💰</div>
+                <div style={{color:"#34D399",fontSize:11,fontWeight:700,marginTop:4}}>Valor pré-liberado</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:10}}>Desembolso garantido</div>
+              </div>
+              <div style={{textAlign:"center",flex:1}}>
+                <div style={{fontSize:18}}>✅</div>
+                <div style={{color:"#34D399",fontSize:11,fontWeight:700,marginTop:4}}>Análise facilitada</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:10}}>Aprovação via CLT</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setDigModal(null)}
+                style={{flex:1,background:"rgba(255,255,255,0.07)",color:"rgba(255,255,255,0.6)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"12px",fontSize:13,cursor:"pointer"}}>
+                Fechar
+              </button>
+              <button onClick={()=>preencherDigitacao(digModal.termo, digModal.r)}
+                style={{flex:2,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                ✍️ Digitar Proposta →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 function ApisBancosPage({ currentUser, contacts }) {
   const [abaBanco, setAbaBanco] = useState("v8");
@@ -15286,7 +15476,7 @@ function ApisBancosPage({ currentUser, contacts }) {
       {/* Conteúdo */}
       <div style={{ padding:"0 30px" }}>
         {abaBanco==="v8" && abaV8==="fgts"    && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
+        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
         {abaBanco==="c6"                      && <BancoC6Tab />}
       </div>
     </div>
