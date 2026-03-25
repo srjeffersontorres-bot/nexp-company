@@ -14690,6 +14690,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
   });
   const [termos, setTermos] = useState([]); // lista de termos gerados
+  const [termosPage, setTermosPage] = useState(1);
+  const [termosPages, setTermosPages] = useState(null);
   const [showLoteCLT, setShowLoteCLT] = useState(false);
   const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
   const [loteCLTItems, setLoteCLTItems] = useState([]);
@@ -14754,17 +14756,20 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
-  const buscarTermos = async () => {
+  const buscarTermos = async (pg=1) => {
     setLoading(true); setErr("");
     try {
       const end=new Date().toISOString();
-      const start=new Date(Date.now()-30*86400000).toISOString();
-      const r=await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
+      const start=new Date(Date.now()-365*86400000).toISOString(); // 1 ano
+      const r=await apiFetch(`/private-consignment/consult?page=${pg}&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
       const lista=(r?.data||[]).map(item=>({
         ...item,
-        link:`https://app.v8sistema.com/consignment/consult/${item.id}`,
+        link: item.consent_url||item.url||item.link||item.authorization_url
+          ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
       }));
       setTermos(lista);
+      setTermosPage(pg);
+      setTermosPages(r?.pages||null);
     } catch(e) { setErr(e.message); }
     setLoading(false);
   };
@@ -14788,7 +14793,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [inlineSimId, setInlineSimId] = useState(null);
   const [avisoModal, setAvisoModal] = useState(null);
 
-  const PARCELAS_PADRAO = [6,8,12,18,24,36];
+  const PARCELAS_PADRAO = [6,8,10,12,18,24,36];
 
   const executarSimulacoes = async (termo, inline=false) => {
     if(inline) setInlineSimId(t=>t===termo.id?null:termo.id);
@@ -15133,9 +15138,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {/* Lista de termos gerados */}
           {(true) && (
             <div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Termos Gerados ({termos.length})</div>
-                <button onClick={buscarTermos} disabled={loading}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
+                  📄 Consultas CLT
+                  {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
+                    · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
+                  </span>}
+                  {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
+                </div>
+                <button onClick={()=>buscarTermos(termosPage)} disabled={loading}
                   style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
                   {loading?"⏳":"🔄"} Atualizar
                 </button>
@@ -15215,7 +15226,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                               const mi=resultados.reduce((mi,r,i)=>parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0)?i:mi,0);
                               return (
                                 <div style={{padding:"12px 14px"}}>
-                                  <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
+                                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8}}>
                                     {resultados.map((r,idx)=>{
                                       const isB=idx===mi;
                                       const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
@@ -15248,10 +15259,29 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </tbody>
                 </table>
               </div>
+              {/* Paginação */}
+              {(termosPages&&(termosPages.hasNext||termosPages.hasPrev)) && (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
+                  <button onClick={()=>buscarTermos(termosPage-1)} disabled={!termosPages.hasPrev||loading}
+                    style={{background:termosPages.hasPrev?C.abg:C.deep,color:termosPages.hasPrev?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:termosPages.hasPrev?"pointer":"not-allowed"}}>
+                    ← Anterior
+                  </button>
+                  <span style={{color:C.tm,fontSize:12}}>
+                    Página {termosPage} de {termosPages.totalPages||1} · {termosPages.total||termos.length} consultas
+                  </span>
+                  <button onClick={()=>buscarTermos(termosPage+1)} disabled={!termosPages.hasNext||loading}
+                    style={{background:termosPages.hasNext?C.abg:C.deep,color:termosPages.hasNext?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:termosPages.hasNext?"pointer":"not-allowed"}}>
+                    Próxima →
+                  </button>
+                </div>
+              )}
+              {termos.length===0&&!loading&&(
+                <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>Nenhuma consulta encontrada.</div>
+              )}
+              {loading&&termos.length===0&&(
+                <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>⏳ Carregando consultas...</div>
+              )}
             </div>
-          )}
-          {termos.length===0&&!loading&&(
-            <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"24px 0"}}>Nenhum termo gerado ainda. Preencha o formulário acima.</div>
           )}
         </div>
       )}
@@ -15547,7 +15577,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               return (
                 <div>
                   {cfgKeys.length>1&&<div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{cfgKeys.map(k=>{const {cfg}=simConfigs[k];return(<button key={k} onClick={()=>setSimConfigSel(k)} style={{background:cur===k?"rgba(79,142,247,0.2)":"rgba(255,255,255,0.05)",color:cur===k?"#60A5FA":"rgba(255,255,255,0.5)",border:`1px solid ${cur===k?"#3B6EF544":"rgba(255,255,255,0.1)"}`,borderRadius:20,padding:"5px 14px",fontSize:11,cursor:"pointer"}}>{cfg.slug} ({cfg.monthly_interest_rate}% a.m.)</button>);})}</div>}
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:14}}>
                     {resultados.map((r,idx)=>{
                       const isB=idx===mi;
                       const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
