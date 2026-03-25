@@ -14828,8 +14828,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               number_of_installments: np,
               provider: "QI",
               ...(margem > 0
-                ? { installment_face_value: margem, disbursed_amount: 0 }
-                : { installment_face_value: 0, disbursed_amount: 1000 }
+                ? { installment_face_value: margem }
+                : { disbursed_amount: 1000 }
               ),
             };
             console.log(`[CLT SIM] ${np}x →`, JSON.stringify(body));
