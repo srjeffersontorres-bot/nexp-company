@@ -1264,81 +1264,62 @@ function LoginPage({ onLogin }) {
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
       `}</style>
 
-      {/* ── Fundo preto com arte geométrica branca ── */}
+      {/* ── Fundo preto com flores brancas animadas ── */}
       <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
         viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-
-        {/* Grade fina de pontos */}
         <defs>
-          <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="0.8" fill="rgba(255,255,255,0.12)"/>
-          </pattern>
-          <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.06)"/>
-            <stop offset="100%" stopColor="rgba(0,0,0,0)"/>
+          <radialGradient id="flowerGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.08)"/>
+            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
           </radialGradient>
-          <filter id="softBlur"><feGaussianBlur stdDeviation="1.2"/></filter>
         </defs>
-        <rect width="1440" height="900" fill="url(#dots)"/>
-        <ellipse cx="720" cy="450" rx="520" ry="380" fill="url(#centerGlow)"/>
 
-        {/* Linhas geométricas — obra de arte */}
-        {/* Linhas diagonais largas */}
-        <line x1="0" y1="0" x2="520" y2="900" stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
-        <line x1="80" y1="0" x2="600" y2="900" stroke="rgba(255,255,255,0.03)" strokeWidth="1"/>
-        <line x1="1440" y1="0" x2="920" y2="900" stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
-        <line x1="1360" y1="0" x2="840" y2="900" stroke="rgba(255,255,255,0.03)" strokeWidth="1"/>
-
-        {/* Círculo grande — arte */}
-        <circle cx="200" cy="160" r="220" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1">
-          <animate attributeName="r" values="220;228;220" dur="8s" repeatCount="indefinite"/>
-        </circle>
-        <circle cx="200" cy="160" r="150" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.8"/>
-        <circle cx="200" cy="160" r="80" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8"/>
-
-        <circle cx="1240" cy="740" r="180" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1">
-          <animate attributeName="r" values="180;188;180" dur="10s" repeatCount="indefinite"/>
-        </circle>
-        <circle cx="1240" cy="740" r="110" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.8"/>
-
-        {/* Triângulo superior direito */}
-        <polygon points="1440,0 1440,340 1100,0" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
-        <polygon points="1440,0 1440,200 1240,0" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.8"/>
-
-        {/* Cruz minimalista esquerda */}
-        <line x1="120" y1="480" x2="320" y2="480" stroke="rgba(255,255,255,0.08)" strokeWidth="0.8"/>
-        <line x1="220" y1="380" x2="220" y2="580" stroke="rgba(255,255,255,0.08)" strokeWidth="0.8"/>
-        <circle cx="220" cy="480" r="3" fill="rgba(255,255,255,0.2)"/>
-        <circle cx="220" cy="480" r="12" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="0.8"/>
-
-        {/* Cruz direita */}
-        <line x1="1120" y1="200" x2="1320" y2="200" stroke="rgba(255,255,255,0.08)" strokeWidth="0.8"/>
-        <line x1="1220" y1="100" x2="1220" y2="300" stroke="rgba(255,255,255,0.08)" strokeWidth="0.8"/>
-        <circle cx="1220" cy="200" r="3" fill="rgba(255,255,255,0.2)"/>
-
-        {/* Linhas horizontais finas */}
-        {[180, 360, 540, 720].map((y,i) => (
-          <line key={i} x1="0" y1={y} x2="1440" y2={y} stroke="rgba(255,255,255,0.025)" strokeWidth="0.6"/>
+        {/* Flores brancas espalhadas — cada flor tem 6 pétalas elípticas */}
+        {[
+          [120,120,38,0.13,22], [380,80,28,0.09,15],  [700,60,44,0.11,30],
+          [1050,110,32,0.10,18],[1310,90,40,0.12,25],  [60,400,36,0.09,10],
+          [280,320,50,0.14,35],[550,450,30,0.10,20],   [820,380,46,0.13,28],
+          [1100,420,34,0.09,12],[1380,350,42,0.12,22], [180,700,44,0.11,18],
+          [450,760,32,0.09,30],[730,720,50,0.14,8],    [980,700,36,0.10,25],
+          [1220,750,40,0.12,15],[1420,680,28,0.09,35], [320,560,38,0.11,20],
+          [600,580,46,0.13,12],[900,540,30,0.09,28],   [1150,560,44,0.12,5],
+        ].map(([cx,cy,r,op,delay],fi) => (
+          <g key={fi} transform={`translate(${cx},${cy})`}>
+            <animateTransform attributeName="transform" type="rotate"
+              from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
+              dur={`${18+fi*3}s`} begin={`${delay*0.3}s`} repeatCount="indefinite" additive="sum"/>
+            {[0,60,120,180,240,300].map((angle,pi) => (
+              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
+                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}>
+                <animate attributeName="opacity"
+                  values={`${op};${op*1.8};${op}`}
+                  dur={`${4+fi%3}s`} begin={`${pi*0.3+delay*0.1}s`} repeatCount="indefinite"/>
+              </ellipse>
+            ))}
+            {/* Centro da flor */}
+            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}>
+              <animate attributeName="r" values={`${r*0.12};${r*0.18};${r*0.12}`}
+                dur={`${3+fi%2}s`} repeatCount="indefinite"/>
+            </circle>
+          </g>
         ))}
 
-        {/* Quadrados rotacionados — arte abstrata */}
-        <rect x="60" y="620" width="80" height="80" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8"
-          transform="rotate(22, 100, 660)">
-          <animateTransform attributeName="transform" type="rotate" from="22 100 660" to="382 100 660" dur="40s" repeatCount="indefinite"/>
-        </rect>
-        <rect x="70" y="630" width="60" height="60" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.6"
-          transform="rotate(22, 100, 660)"/>
-
-        <rect x="1280" y="80" width="100" height="100" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8"
-          transform="rotate(-15, 1330, 130)">
-          <animateTransform attributeName="transform" type="rotate" from="-15 1330 130" to="-375 1330 130" dur="50s" repeatCount="indefinite"/>
-        </rect>
-
-        {/* Partículas brilhantes */}
-        {[[140,90],[380,210],[1060,380],[1310,560],[760,820],[90,750],[1400,120],[500,50]].map(([x,y],i)=>(
-          <circle key={i} cx={x} cy={y} r="1.4" fill="white">
-            <animate attributeName="opacity" values={i%2===0?"0.1;0.6;0.1":"0.05;0.4;0.05"} dur={`${3+i*0.7}s`} repeatCount="indefinite"/>
-          </circle>
+        {/* Flores pequenas de fundo — mais sutis */}
+        {[
+          [200,240,18,0.06,5],[500,180,14,0.05,12],[850,200,20,0.07,3],
+          [1200,160,16,0.05,18],[90,600,15,0.06,8],[400,650,19,0.07,25],
+          [670,630,13,0.05,0],[950,600,17,0.06,14],[1300,620,21,0.07,9],
+        ].map(([cx,cy,r,op,delay],fi) => (
+          <g key={`s${fi}`} transform={`translate(${cx},${cy})`}>
+            <animateTransform attributeName="transform" type="rotate"
+              from={`0 ${cx} ${cy}`} to={`-360 ${cx} ${cy}`}
+              dur={`${25+fi*4}s`} begin={`${delay*0.5}s`} repeatCount="indefinite" additive="sum"/>
+            {[0,60,120,180,240,300].map((angle,pi) => (
+              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
+                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}/>
+            ))}
+            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}/>
+          </g>
         ))}
       </svg>
 
@@ -1354,18 +1335,8 @@ function LoginPage({ onLogin }) {
           boxShadow:"0 32px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}>
           {/* Logo */}
-          <div style={{ display:"flex", justifyContent:"center", alignItems:"center", marginBottom:32 }}>
-            <svg width="220" height="48" viewBox="0 0 220 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* N estilizado */}
-              <path d="M8 38 L8 10 L16 10 L30 28 L30 10 L38 10 L38 38 L30 38 L16 20 L16 38 Z" fill="white"/>
-              {/* traço diagonal do /N */}
-              <line x1="4" y1="44" x2="18" y2="4" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              {/* exp */}
-              <text x="46" y="35" fontFamily="'Inter','Segoe UI',system-ui,sans-serif" fontWeight="300" fontSize="28" fill="white" letterSpacing="-0.5">exp</text>
-              {/* Badge "Consultas" */}
-              <rect x="122" y="10" width="90" height="28" rx="14" fill="none" stroke="white" strokeWidth="1.8"/>
-              <text x="167" y="29" fontFamily="'Inter','Segoe UI',system-ui,sans-serif" fontWeight="600" fontSize="13" fill="white" textAnchor="middle" letterSpacing="0.2">Consultas</text>
-            </svg>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:32 }}>
+            <div style={{ fontWeight:800, fontSize:26, letterSpacing:"-0.8px", color:"#fff" }}>Nexp Consultas</div>
           </div>
 
           {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
