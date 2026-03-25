@@ -14651,7 +14651,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
   const fmtCPF = v => { const c=(v||"").replace(/\D/g,"").padStart(11,"0"); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
-  const fmtTel = v => { const d=(v||"").replace(/\D/g,""); if(d.length<=10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/,"($1) $2-$3"); return d.replace(/(\d{2})(\d{5})(\d{0,4})/,"($1) $2-$3"); };
 
   // Sessão compartilhada com FGTS
   const [token]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
@@ -14676,7 +14675,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   // ── CONFIGS DE SIMULAÇÃO ─────────────────────────────────────
   const [configs, setConfigs] = useState([]);
-  const [configSel, setConfigSel] = useState(null);
+  const [configSel, setConfigSel] = useState(null); // eslint-disable-line no-unused-vars
   useEffect(() => {
     if (!isTokenValid) return;
     apiFetch("/private-consignment/simulation/configs").then(d => {
@@ -14692,7 +14691,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   });
   const [termos, setTermos] = useState([]); // lista de termos gerados
   const [termoLoading, setTermoLoading] = useState(false);
-  const [termoStep, setTermoStep] = useState("form"); // form | confirmar
+  const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
 
   const buscarContatoTermo = () => {
     const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
@@ -15476,7 +15475,7 @@ function ApisBancosPage({ currentUser, contacts }) {
       {/* Conteúdo */}
       <div style={{ padding:"0 30px" }}>
         {abaBanco==="v8" && abaV8==="fgts"    && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
+        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
         {abaBanco==="c6"                      && <BancoC6Tab />}
       </div>
     </div>
