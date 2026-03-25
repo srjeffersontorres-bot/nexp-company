@@ -14795,7 +14795,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [inlineSimId, setInlineSimId] = useState(null);
   const [avisoModal, setAvisoModal] = useState(null);
   const [simCustomParcela, setSimCustomParcela] = useState("");
-  const [simTermoAtivo, setSimTermoAtivo] = useState(null); // termo sendo simulado
+  const [simTermoAtivo, setSimTermoAtivo] = useState(null); // eslint-disable-line no-unused-vars
   const [limparModal, setLimparModal] = useState(false);
 
   const PARCELAS_PADRAO = [6,8,10,12,18,24,36];
