@@ -1143,7 +1143,28 @@ function LoginPage({ onLogin }) {
   const [twoFAErr,     setTwoFAErr]     = useState("");
   const ROLES_2FA = ["administrador","mestre"];              // roles que exigem 2FA
 
+  // Previsão do tempo em tempo real
+  const [weather, setWeather]   = useState(null);
+  const [cityName, setCityName] = useState(null);
 
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&forecast_days=5`);
+        const d = await r.json();
+        setWeather(d);
+        try {
+          const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
+          const gd  = await geo.json();
+          const city  = gd.address?.city || gd.address?.town || gd.address?.village || "";
+          const state = gd.address?.state_code || "";
+          setCityName(city && state ? `${city}, ${state}` : city || state || null);
+        } catch {}
+      } catch {}
+    }, () => {});
+  }, []);
 
   const doLoginReset = async () => {
     if (!resetEmail.trim()) { setResetMsg("Digite seu e-mail de acesso."); return; }
@@ -1219,11 +1240,33 @@ function LoginPage({ onLogin }) {
   };
 
   // Determinar cenário baseado no clima real
-
+  const wcode   = weather?.current_weather?.weathercode ?? -1;
+  const temp    = weather?.current_weather?.temperature ?? null;
+  const hour    = new Date().getHours();
+  const isNight = hour >= 20 || hour < 6;
+  const isRain  = wcode >= 51 && wcode <= 82;
+  const isSnow  = wcode >= 71 && wcode <= 77;
+  const isCloud = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
+  const isThunder = wcode >= 95;
+  const isClear = wcode === 0 || wcode === 1;
 
   // Gradiente de fundo dinâmico
+  const getBg = () => {
+    if (isThunder) return "linear-gradient(180deg,#050a12 0%,#0a1020 50%,#0d1428 100%)";
+    if (isRain && isNight) return "linear-gradient(180deg,#060c18 0%,#0c1830 50%,#101e38 100%)";
+    if (isRain)  return "linear-gradient(180deg,#101828 0%,#1a2c42 50%,#233450 100%)";
+    if (isSnow && isNight) return "linear-gradient(180deg,#0d1520 0%,#1a2535 50%,#243040 100%)";
+    if (isSnow)  return "linear-gradient(180deg,#1a2535 0%,#2a3f55 50%,#3a5070 100%)";
+    if (isNight) return "linear-gradient(180deg,#020510 0%,#050d22 40%,#080f28 100%)";
+    if (isCloud) return "linear-gradient(180deg,#1c2f48 0%,#2a4060 50%,#364e70 100%)";
+    if (hour < 9) return "linear-gradient(180deg,#1a2c50 0%,#2a4a80 40%,#e07030 85%,#f0a050 100%)"; // manhã
+    if (hour > 17) return "linear-gradient(180deg,#2a1040 0%,#5a1a6a 35%,#c04020 70%,#f06030 100%)"; // tarde/pôr
+    return "linear-gradient(180deg,#0a1828 0%,#1040a0 40%,#2060d0 75%,#80b8f0 100%)"; // dia claro
+  };
 
-
+  // WMO icons
+  const WMO = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"};
+  const wxIcon = WMO[wcode] || (isNight ? "🌙" : "☀️");
 
   // ── Tela 2FA ─────────────────────────────────────────────────
   if (twoFAStep) return (
@@ -1258,146 +1301,346 @@ function LoginPage({ onLogin }) {
   );
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:"#000", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
+    <div style={{ width:"100vw", height:"100vh", background:getBg(), display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
+
       <style>{`
-        @keyframes fadeIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes fadeIn      { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes floatUp     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes twinkle     { 0%,100%{opacity:0.3} 50%{opacity:1} }
+        @keyframes cloudDrift  { 0%{transform:translateX(0)} 100%{transform:translateX(60px)} }
+        @keyframes cloudDriftR { 0%{transform:translateX(0)} 100%{transform:translateX(-50px)} }
+        @keyframes rainFall    { from{transform:translateY(-30px)} to{transform:translateY(102vh)} }
+        @keyframes snowFall    { from{transform:translateY(-20px) rotate(0deg)} to{transform:translateY(102vh) rotate(360deg)} }
+        @keyframes lightning1  { 0%,91%,100%{opacity:0} 92%,94%{opacity:1} 93%,95%{opacity:0} 96%{opacity:0.6} 97%{opacity:0} }
+        @keyframes lightning2  { 0%,74%,100%{opacity:0} 75%,77%{opacity:0.9} 76%,78%{opacity:0} 82%{opacity:0.4} 83%{opacity:0} }
+        @keyframes skyFlash    { 0%,90%,100%{opacity:0} 91%,93%{opacity:0.07} 92%,94%{opacity:0} }
+        @keyframes sunRays     { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes sunPulse    { 0%,100%{r:58} 50%{r:62} }
+        @keyframes moonGlow    { 0%,100%{opacity:0.06} 50%{opacity:0.14} }
+        @keyframes splashRing  { from{r:1;opacity:0.5} to{r:8;opacity:0} }
       `}</style>
 
-      {/* ── Flores brancas animadas em SVG ── */}
-      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
+      {/* ══ FUNDO SVG DINÂMICO ══ */}
+      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0, pointerEvents:"none" }}
         viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <radialGradient id="flowerGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.07)"/>
-            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+          <radialGradient id="lgSunGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FFF7D4" stopOpacity="1"/>
+            <stop offset="50%" stopColor="#FDE68A" stopOpacity="0.6"/>
+            <stop offset="100%" stopColor="#F59E0B" stopOpacity="0"/>
           </radialGradient>
+          <radialGradient id="lgMoonGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#EEF2FF" stopOpacity="0.15"/>
+            <stop offset="100%" stopColor="#C7D2FE" stopOpacity="0"/>
+          </radialGradient>
+          <filter id="lgGlow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="lgGlow2"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="lgRoad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a2234"/>
+            <stop offset="100%" stopColor="#0f1520"/>
+          </linearGradient>
+          <linearGradient id="lgGrass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={isRain||isThunder?"#0a1a0f":"#112a14"}/>
+            <stop offset="100%" stopColor={isRain||isThunder?"#060d08":"#0a1a0c"}/>
+          </linearGradient>
         </defs>
-        <ellipse cx="720" cy="450" rx="600" ry="420" fill="url(#flowerGlow)"/>
-        {[
-          [120,120,38,0.13,22],[380,80,28,0.09,15],[700,60,44,0.11,30],
-          [1050,110,32,0.10,18],[1310,90,40,0.12,25],[60,400,36,0.09,10],
-          [280,320,50,0.14,35],[550,450,30,0.10,20],[820,380,46,0.13,28],
-          [1100,420,34,0.09,12],[1380,350,42,0.12,22],[180,700,44,0.11,18],
-          [450,760,32,0.09,30],[730,720,50,0.14,8],[980,700,36,0.10,25],
-          [1220,750,40,0.12,15],[1420,680,28,0.09,35],[320,560,38,0.11,20],
-          [600,580,46,0.13,12],[900,540,30,0.09,28],[1150,560,44,0.12,5],
-        ].map(([cx,cy,r,op,delay],fi) => (
-          <g key={fi} transform={`translate(${cx},${cy})`}>
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
-              dur={`${18+fi*3}s`} begin={`${delay*0.3}s`} repeatCount="indefinite" additive="sum"/>
-            {[0,60,120,180,240,300].map((angle,pi) => (
-              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
-                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}>
-                <animate attributeName="opacity" values={`${op};${op*1.8};${op}`}
-                  dur={`${4+fi%3}s`} begin={`${pi*0.3+delay*0.1}s`} repeatCount="indefinite"/>
-              </ellipse>
-            ))}
-            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}>
-              <animate attributeName="r" values={`${r*0.12};${r*0.18};${r*0.12}`} dur={`${3+fi%2}s`} repeatCount="indefinite"/>
+
+        {/* Flash céu (trovão) */}
+        {(isThunder||isRain) && <>
+          <rect width="1440" height="900" fill="#6EA8FF" style={{ animation:"skyFlash 7s ease-in-out infinite" }}/>
+          <rect width="1440" height="900" fill="#A0C4FF" style={{ animation:"skyFlash 11s ease-in-out infinite 4s" }}/>
+        </>}
+
+        {/* ── ESTRELAS (noite) ── */}
+        {isNight && [
+          [80,40],[200,25],[380,55],[560,30],[740,45],[920,20],[1100,50],[1300,35],[1420,60],
+          [140,100],[320,80],[500,110],[680,90],[860,120],[1040,85],[1220,105],[1390,95],
+          [60,160],[240,140],[440,170],[620,155],[800,175],[980,145],[1160,165],[1360,150],
+          [170,220],[350,200],[530,230],[710,210],[890,235],[1070,205],[1250,225],[1430,215],
+          [100,280],[280,260],[460,290],[640,270],[820,295],[1000,265],[1180,285],[1380,275],
+        ].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r={i%7===0?2.2:i%3===0?1.4:0.9}
+            fill={i%5===0?"#FEF9C3":i%3===0?"#C7D2FE":"#fff"}
+            opacity={0.3+(i%4)*0.15}>
+            <animate attributeName="opacity"
+              values={`${0.2+(i%3)*0.2};${0.9};${0.2+(i%3)*0.2}`}
+              dur={`${1.8+(i%5)*0.6}s`} begin={`${i*0.13}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+
+        {/* ── LUA (noite, não chuva intensa) ── */}
+        {isNight && !isThunder && (
+          <g filter="url(#lgGlow)">
+            <circle cx="1080" cy="120" r="100" fill="url(#lgMoonGlow)">
+              <animate attributeName="opacity" values="0.06;0.14;0.06" dur="4s" repeatCount="indefinite"/>
             </circle>
+            <circle cx="1080" cy="120" r="62" fill="#F5E878"/>
+            <circle cx="1080" cy="120" r="62" fill="#C8B030" opacity="0.2"/>
+            <circle cx="1108" cy="112" r="55" fill="#04081a" opacity="0.93"/>
+            <circle cx="1080" cy="120" r="62" fill="none" stroke="#FDE68A" strokeWidth="1.5" opacity="0.4"/>
+            <circle cx="1062" cy="108" r="7" fill="#B8960A" opacity="0.45"/>
+            <circle cx="1075" cy="135" r="5" fill="#B8960A" opacity="0.4"/>
+            <circle cx="1090" cy="108" r="3.5" fill="#A07808" opacity="0.35"/>
+            <circle cx="1064" cy="100" r="9" fill="#FFFDE7" opacity="0.2"/>
           </g>
+        )}
+
+        {/* ── SOL (dia claro ou parcialmente nublado) ── */}
+        {!isNight && !isRain && !isThunder && (
+          <g filter="url(#lgGlow)">
+            <circle cx="200" cy="110" r="110" fill="url(#lgSunGlow)" opacity="0.4">
+              <animate attributeName="opacity" values="0.3;0.55;0.3" dur="5s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="200" cy="110" r="85" fill="url(#lgSunGlow)" opacity="0.55"/>
+            <g style={{ transformOrigin:"200px 110px", animation:"sunRays 80s linear infinite" }}>
+              {Array.from({length:18}).map((_,ri)=>{
+                const a = ri*20 * Math.PI/180;
+                return <line key={ri}
+                  x1={200+Math.cos(a)*70} y1={110+Math.sin(a)*70}
+                  x2={200+Math.cos(a)*100} y2={110+Math.sin(a)*100}
+                  stroke="#FDE68A" strokeWidth="2.5" strokeLinecap="round" opacity="0.5"/>;
+              })}
+            </g>
+            <circle cx="200" cy="110" r="58" fill="#FDE68A"/>
+            <circle cx="200" cy="110" r="46" fill="#FFFDE7"/>
+            <circle cx="182" cy="92" r="13" fill="#fff" opacity="0.3"/>
+          </g>
+        )}
+
+        {/* ── NUVENS ── */}
+        {/* Nuvens escuras (chuva/trovão) */}
+        {(isRain||isThunder||isCloud) && [
+          {cx:160,cy:72,rx:155,ry:58,f:"#1c2535"},{cx:340,cy:52,rx:118,ry:48,f:"#1a2030"},
+          {cx:520,cy:82,rx:175,ry:62,f:"#151e2d"},{cx:720,cy:50,rx:195,ry:68,f:"#1c2535"},
+          {cx:950,cy:68,rx:165,ry:58,f:"#1a2030"},{cx:1130,cy:46,rx:148,ry:56,f:"#151e2d"},
+          {cx:1310,cy:80,rx:128,ry:50,f:"#1c2535"},{cx:80,cy:125,rx:98,ry:38,f:"#1a2030"},
+          {cx:620,cy:118,rx:138,ry:46,f:"#151e2d"},{cx:1050,cy:128,rx:118,ry:43,f:"#1c2535"},
+        ].map((cl,i)=>(
+          <ellipse key={i} cx={cl.cx} cy={cl.cy} rx={cl.rx} ry={cl.ry} fill={cl.f} opacity={0.85+(i%3)*0.04}>
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;${i%2===0?30:-22} 0;0 0`} dur={`${20+(i*4)}s`} repeatCount="indefinite"/>
+          </ellipse>
         ))}
+        {/* Nuvens brancas/claras (dia) */}
+        {!isRain && !isThunder && !isNight && (
+          <>
+            <g opacity={isCloud?0.9:0.55}>
+              <ellipse cx="600" cy="130" rx="110" ry="44" fill="white" opacity="0.9">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="530" cy="148" rx="74" ry="34" fill="white" opacity="0.85">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="668" cy="152" rx="64" ry="30" fill="white" opacity="0.78">
+                <animateTransform attributeName="transform" type="translate" values="0 0;35 0;0 0" dur="28s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+            <g opacity={isCloud?0.8:0.42}>
+              <ellipse cx="1100" cy="95" rx="95" ry="38" fill="white" opacity="0.82">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+              <ellipse cx="1038" cy="112" rx="65" ry="30" fill="white" opacity="0.74">
+                <animateTransform attributeName="transform" type="translate" values="0 0;-25 0;0 0" dur="35s" repeatCount="indefinite"/>
+              </ellipse>
+            </g>
+          </>
+        )}
+
+        {/* ── RELÂMPAGOS (trovão/chuva forte) ── */}
+        {(isThunder||isRain) && <>
+          <g filter="url(#lgGlow2)" style={{ animation:"lightning1 8s ease-in-out infinite" }}>
+            <polyline points="310,95 284,218 306,218 272,382 296,382 258,525" fill="none" stroke="#E8F4FF" strokeWidth="3.5" strokeLinejoin="round"/>
+            <polyline points="310,95 284,218 306,218 272,382 296,382 258,525" fill="none" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" opacity="0.9"/>
+          </g>
+          <g filter="url(#lgGlow2)" style={{ animation:"lightning2 11s ease-in-out infinite 3s" }}>
+            <polyline points="1095,75 1068,198 1090,198 1050,348 1076,348 1036,492" fill="none" stroke="#CCE8FF" strokeWidth="2.8" strokeLinejoin="round"/>
+            <polyline points="1095,75 1068,198 1090,198 1050,348 1076,348 1036,492" fill="none" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" opacity="0.82"/>
+          </g>
+        </>}
+
+        {/* ── FLOCOS DE NEVE ── */}
+        {isSnow && Array.from({length:60}).map((_,i)=>(
+          <circle key={i} cx={(i*24+12)%1440} cy="-10" r={i%4===0?3.5:i%3===0?2.5:1.8} fill="white" opacity={0.6+(i%3)*0.13}>
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;${(i%7-3)*18} 920`}
+              dur={`${3+(i%5)*0.8}s`} begin={`${(i*0.18)%3.5}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+
+        {/* ── CHUVA ── */}
+        {(isRain||isThunder) && Array.from({length:130}).map((_,i)=>(
+          <line key={i} x1={(i*11+5)%1440} y1="-12" x2={(i*11+10)%1440} y2="28"
+            stroke={i%4===0?"rgba(147,197,253,0.55)":"rgba(147,197,253,0.38)"} strokeWidth={i%5===0?1.7:1.1} strokeLinecap="round">
+            <animateTransform attributeName="transform" type="translate"
+              values={`0 0;4 940`} dur={`${0.44+(i%7)*0.055}s`} begin={`${(i*0.036)%1.1}s`} repeatCount="indefinite"/>
+          </line>
+        ))}
+
+        {/* ── PRÉDIOS ── */}
         {[
-          [200,240,18,0.06,5],[500,180,14,0.05,12],[850,200,20,0.07,3],
-          [1200,160,16,0.05,18],[90,600,15,0.06,8],[400,650,19,0.07,25],
-          [670,630,13,0.05,0],[950,600,17,0.06,14],[1300,620,21,0.07,9],
-        ].map(([cx,cy,r,op,delay],fi) => (
-          <g key={`s${fi}`} transform={`translate(${cx},${cy})`}>
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`-360 ${cx} ${cy}`}
-              dur={`${25+fi*4}s`} begin={`${delay*0.5}s`} repeatCount="indefinite" additive="sum"/>
-            {[0,60,120,180,240,300].map((angle,pi) => (
-              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
-                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}/>
-            ))}
-            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}/>
+          {x:0,  w:55,h:165},{x:65, w:42,h:122},{x:117,w:62,h:205},{x:189,w:36,h:145},
+          {x:235,w:58,h:178},{x:303,w:44,h:132},{x:357,w:68,h:225},{x:435,w:40,h:158},
+          {x:485,w:60,h:188},{x:555,w:46,h:148},{x:611,w:72,h:244},{x:693,w:38,h:162},
+          {x:741,w:56,h:198},{x:807,w:44,h:152},{x:861,w:64,h:214},{x:935,w:40,h:168},
+          {x:985,w:57,h:183},{x:1052,w:42,h:143},{x:1104,w:70,h:234},{x:1184,w:38,h:158},
+          {x:1232,w:54,h:188},{x:1296,w:46,h:148},{x:1352,w:62,h:204},{x:1424,w:40,h:162},
+        ].map((b,i)=>(
+          <g key={i}>
+            <rect x={b.x} y={710-b.h} width={b.w} height={b.h}
+              fill={isNight||isRain||isThunder?(i%2===0?"#0c1520":"#0e1828"):(i%2===0?"#1a2535":"#1e2d42")}/>
+            {Array.from({length:Math.floor(b.h/28)}).map((_,row)=>
+              Array.from({length:Math.max(1,Math.floor(b.w/18))}).map((_,col)=>{
+                const lit = isNight ? (i*7+row*3+col*5)%9 < 4 : false;
+                const dusk = !isNight && (hour > 17 || hour < 8) ? (i*5+row*2+col*4)%11 < 3 : false;
+                return <rect key={`${row}-${col}`} x={b.x+4+col*18} y={710-b.h+8+row*28} width={12} height={8} rx={1}
+                  fill={lit?"#FDE68A":dusk?"#FBBF24":"#0a1320"} opacity={lit?0.75:dusk?0.5:0.4}/>;
+              })
+            )}
+            <line x1={b.x+b.w/2} y1={710-b.h} x2={b.x+b.w/2} y2={710-b.h-14} stroke="#475569" strokeWidth="1.8"/>
+            {isNight && <circle cx={b.x+b.w/2} cy={710-b.h-16} r="2.2" fill="#EF4444" opacity="0.85">
+              <animate attributeName="opacity" values="0.85;0.12;0.85" dur={`${1.6+(i%4)*0.3}s`} repeatCount="indefinite"/>
+            </circle>}
           </g>
         ))}
+
+        {/* ── ESTRADA ── */}
+        <rect x="0" y="710" width="1440" height="38" fill="url(#lgRoad)"/>
+        <rect x="0" y="727" width="1440" height="2" fill="#252f40" opacity="0.8"/>
+        {Array.from({length:14}).map((_,i)=>(
+          <rect key={i} x={i*110} y="727" width="55" height="2" rx="1" fill="#2d3a50" opacity="0.6">
+            <animateTransform attributeName="transform" type="translate" values="0 0;-110 0" dur="5s" begin={`${i*0.35}s`} repeatCount="indefinite"/>
+          </rect>
+        ))}
+        {/* Reflexo molhado na estrada */}
+        {(isRain||isThunder) && <rect x="0" y="710" width="1440" height="38" fill="#4F8EF7" opacity="0.07"/>}
+
+        {/* ── GRAMA ── */}
+        <rect x="0" y="748" width="1440" height="152" fill="url(#lgGrass)"/>
+
+        {/* ── POSTES (noite) ── */}
+        {isNight && [120,360,600,840,1080,1320].map((x,i)=>(
+          <g key={i} transform={`translate(${x},710)`}>
+            <rect x="-3" y="-68" width="6" height="68" rx="2" fill="#2d3a50"/>
+            <rect x="-15" y="-71" width="30" height="5" rx="2" fill="#3a4a60"/>
+            <ellipse cx="0" cy="-74" rx="6.5" ry="4.5" fill="#FDE68A" opacity="0.9" filter="url(#lgGlow2)"/>
+            <path d="M -6,-71 L -26,-12 L 26,-12 L 6,-71 Z" fill="#FDE68A" opacity="0.07"/>
+          </g>
+        ))}
+
+        {/* Respingos de chuva no chão */}
+        {(isRain||isThunder) && Array.from({length:28}).map((_,i)=>(
+          <circle key={i} cx={(i*52+18)%1440} cy="750" fill="none" stroke="rgba(147,197,253,0.28)" strokeWidth="0.8">
+            <animate attributeName="r" values="1;7;0" dur={`${0.55+(i%4)*0.1}s`} begin={`${(i*0.09)%1.0}s`} repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.4;0;0" dur={`${0.55+(i%4)*0.1}s`} begin={`${(i*0.09)%1.0}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+        {/* Neve no chão */}
+        {isSnow && <rect x="0" y="745" width="1440" height="8" fill="white" opacity="0.25" rx="2"/>}
       </svg>
 
-      {/* ── Card central estilo Apple fosco ── */}
-      <div style={{ position:"relative", zIndex:1, width:"100%", maxWidth:400, padding:"0 20px", animation:"fadeIn 0.7s ease" }}>
-        <div style={{
-          background:"rgba(18,18,18,0.72)",
-          backdropFilter:"blur(40px) saturate(180%)",
-          WebkitBackdropFilter:"blur(40px) saturate(180%)",
-          border:"1px solid rgba(255,255,255,0.1)",
-          borderRadius:28,
-          padding:"40px 36px",
-          boxShadow:"0 32px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
-        }}>
-          {/* Nome */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:32 }}>
-            <div style={{ fontWeight:800, fontSize:26, letterSpacing:"-0.8px", color:"#fff" }}>Nexp Consultas</div>
+      {/* ══ CONTEÚDO CENTRAL ══ */}
+      <div style={{ position:"relative", zIndex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:18, animation:"fadeIn 0.7s ease", width:"100%", maxWidth:380, padding:"0 20px" }}>
+
+        {/* Clima em tempo real (compacto, acima do card) */}
+        {weather?.current_weather && (
+          <div style={{ background:"rgba(8,12,22,0.55)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"10px 18px", display:"flex", alignItems:"center", gap:12, width:"100%", animation:"fadeIn 0.9s ease 0.2s both" }}>
+            <span style={{ fontSize:26 }}>{wxIcon}</span>
+            <div style={{ flex:1 }}>
+              {cityName && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:1 }}>📍 {cityName}</div>}
+              <div style={{ color:"#fff", fontSize:18, fontWeight:800, lineHeight:1 }}>{Math.round(temp)}°C</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:1 }}>
+                {isThunder?"Tempestade":isRain?"Chuva":isSnow?"Neve":isCloud?"Nublado":isClear?(isNight?"Céu limpo":"Ensolarado"):"—"}
+              </div>
+            </div>
+            {/* Mini previsão 3 dias */}
+            <div style={{ display:"flex", gap:8 }}>
+              {(weather.daily?.time||[]).slice(1,4).map((d,i)=>{
+                const wc2 = weather.daily.weathercode[i+1];
+                const tmax = Math.round(weather.daily.temperature_2m_max[i+1]);
+                const day = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d+"T12:00:00").getDay()];
+                return (
+                  <div key={i} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                    <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9 }}>{day}</div>
+                    <div style={{ fontSize:13 }}>{WMO[wc2]||"🌡"}</div>
+                    <div style={{ color:"rgba(255,255,255,0.65)", fontSize:9.5, fontWeight:600 }}>{tmax}°</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Card de login centralizado */}
+        <div style={{ background:"rgba(8,12,22,0.75)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:22, padding:"32px 28px", width:"100%", boxShadow:"0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)", animation:"fadeIn 0.7s ease" }}>
+          {/* Logo */}
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:26 }}>
+            <NexpRobot size={34} showFaceOnly />
+            <div>
+              <div style={{ fontWeight:900, fontSize:19, letterSpacing:"-0.6px", background:"linear-gradient(135deg,#4F8EF7,#7C3AED)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Nexp Consultas</div>
+              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10.5 }}>Sistema de Leads</div>
+            </div>
           </div>
 
-          {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
+          {err && <div style={{ background:"rgba(45,21,21,0.8)", border:"1px solid #EF444433", borderRadius:9, padding:"9px 13px", marginBottom:16, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
 
-          {/* E-mail */}
-          <div style={{ marginBottom:14 }}>
-            <label style={{ color:"rgba(255,255,255,0.45)", fontSize:11, display:"block", marginBottom:6, letterSpacing:"0.4px", textTransform:"uppercase" }}>E-mail</label>
+          <div style={{ marginBottom:13 }}>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, display:"block", marginBottom:5 }}>E-mail</label>
             <input value={un} onChange={e=>setUn(e.target.value)} placeholder="seu@email.com" onKeyDown={e=>e.key==="Enter"&&go()}
-              style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, color:"#fff", fontSize:14, padding:"13px 18px", boxSizing:"border-box", outline:"none", transition:"border 0.2s" }}
-              onFocus={e=>e.target.style.border="1px solid rgba(255,255,255,0.35)"}
-              onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.12)"}
-            />
+              style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF" }} />
           </div>
-
-          {/* Senha */}
-          <div style={{ marginBottom:26 }}>
-            <label style={{ color:"rgba(255,255,255,0.45)", fontSize:11, display:"block", marginBottom:6, letterSpacing:"0.4px", textTransform:"uppercase" }}>Senha</label>
+          <div style={{ marginBottom:22 }}>
+            <label style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, display:"block", marginBottom:5 }}>Senha</label>
             <div style={{ position:"relative" }}>
               <input value={pw} onChange={e=>setPw(e.target.value)} type={show?"text":"password"} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()}
-                style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, color:"#fff", fontSize:14, padding:"13px 18px", paddingRight:46, boxSizing:"border-box", outline:"none", transition:"border 0.2s" }}
-                onFocus={e=>e.target.style.border="1px solid rgba(255,255,255,0.35)"}
-                onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.12)"}
-              />
-              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:14 }}>
+                style={{ ...S.input, paddingRight:42, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF" }} />
+              <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:14 }}>
                 {show?"🙈":"👁"}
               </button>
             </div>
           </div>
-
-          {/* Botão entrar */}
           <button onClick={go} disabled={loading}
-            style={{ width:"100%", background:loading?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.92)", color:loading?"rgba(255,255,255,0.4)":"#000", border:"none", borderRadius:99, padding:"14px", fontSize:14, fontWeight:700, cursor:loading?"not-allowed":"pointer", letterSpacing:"-0.2px", transition:"all 0.2s", boxShadow:loading?"none":"0 4px 24px rgba(255,255,255,0.15)" }}>
+            style={{ ...S.btn("#3B6EF5","#fff"), width:"100%", padding:"12px", fontSize:14, opacity:loading?0.7:1, cursor:loading?"not-allowed":"pointer", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", boxShadow:"0 4px 24px rgba(59,110,245,0.35)", borderRadius:12 }}>
             {loading ? "Entrando..." : "Entrar →"}
           </button>
 
-          {/* Redefinir senha */}
-          <div style={{ marginTop:18, borderTop:"1px solid rgba(255,255,255,0.06)", paddingTop:16 }}>
+          {/* Esqueci minha senha */}
+          <div style={{ marginTop:12, borderTop:"1px solid rgba(255,255,255,0.07)", paddingTop:12 }}>
             <button onClick={()=>{ setShowResetLogin(p=>!p); setResetMsg(""); setResetEmail(""); }}
               style={{ width:"100%", display:"flex", alignItems:"center", gap:8, background:"transparent", border:"none", cursor:"pointer", padding:"4px 0" }}>
               <span style={{ fontSize:13 }}>🔑</span>
-              <span style={{ color:"rgba(255,255,255,0.3)", fontSize:11.5 }}>Esqueci minha senha</span>
-              <span style={{ color:"rgba(255,255,255,0.15)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
+              <span style={{ color:"rgba(255,255,255,0.38)", fontSize:11.5 }}>Esqueci minha senha</span>
+              <span style={{ color:"rgba(255,255,255,0.2)", fontSize:11, marginLeft:"auto" }}>{showResetLogin?"▲":"▼"}</span>
             </button>
             {showResetLogin && (
-              <div style={{ marginTop:10 }}>
+              <div style={{ marginTop:8 }}>
                 <input value={resetEmail} onChange={e=>{setResetEmail(e.target.value);setResetMsg("");}}
                   onKeyDown={e=>e.key==="Enter"&&doLoginReset()} placeholder="seu@email.com"
-                  style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, color:"#fff", fontSize:13, padding:"12px 18px", boxSizing:"border-box", outline:"none", marginBottom:10, transition:"border 0.2s" }}
-                  onFocus={e=>e.target.style.border="1px solid rgba(255,255,255,0.35)"}
-                  onBlur={e=>e.target.style.border="1px solid rgba(255,255,255,0.12)"}
-                />
+                  style={{ ...S.input, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#E8EAEF", marginBottom:7 }} />
                 <button onClick={doLoginReset} disabled={resetBusy}
-                  style={{ width:"100%", background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.8)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:99, padding:"12px", fontSize:12.5, cursor:resetBusy?"not-allowed":"pointer", opacity:resetBusy?0.6:1, transition:"all 0.2s" }}>
+                  style={{ ...S.btn("linear-gradient(135deg,#3B6EF5,#7C3AED)","#fff"), width:"100%", padding:"8px", fontSize:12.5, opacity:resetBusy?0.7:1 }}>
                   {resetBusy ? "Enviando..." : "📧 Enviar link de redefinição"}
                 </button>
-                {resetMsg && <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:8, textAlign:"center" }}>{resetMsg}</div>}
+                {resetMsg && <div style={{ color:resetMsg.startsWith("✅")?"#34D399":"#F87171", fontSize:11, marginTop:6, textAlign:"center" }}>{resetMsg}</div>}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Suporte WhatsApp */}
-      <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer" title="Suporte WhatsApp"
-        style={{ position:"fixed", right:22, bottom:22, zIndex:10, width:48, height:48, borderRadius:"50%", background:"rgba(0,0,0,0.6)", backdropFilter:"blur(12px)", border:"1px solid rgba(37,211,102,0.3)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 4px 20px rgba(0,0,0,0.5)", textDecoration:"none", transition:"transform 0.2s" }}
-        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
-        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+      {/* ══ BOTÃO DE SUPORTE — direita, circular e discreto ══ */}
+      <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
+        title="Suporte WhatsApp"
+        style={{
+          position:"fixed", right:22, bottom:22, zIndex:10,
+          width:48, height:48, borderRadius:"50%",
+          background:"rgba(10,35,20,0.55)", backdropFilter:"blur(12px)",
+          border:"1px solid rgba(37,211,102,0.28)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.4)",
+          textDecoration:"none", transition:"transform 0.2s, box-shadow 0.2s",
+        }}
+        onMouseEnter={e=>{ e.currentTarget.style.transform="scale(1.1)"; e.currentTarget.style.boxShadow="0 6px 28px rgba(37,211,102,0.25)"; }}
+        onMouseLeave={e=>{ e.currentTarget.style.transform="scale(1)";   e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,0.4)"; }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366">
           <path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
         </svg>
@@ -1405,6 +1648,8 @@ function LoginPage({ onLogin }) {
     </div>
   );
 }
+
+
 
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   return (
@@ -8612,7 +8857,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                           }
                         </div>
                       </div>
-                      <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:isOnline?"#16A34A":"#FBBF24", border:`2px solid ${C.sb}`, zIndex:3, animation:"pulse 1.5s infinite", boxShadow:isOnline?"0 0 6px #16A34A99":"0 0 6px #FBBF2499" }} />
+                      {isOnline && <div style={{ position:"absolute", bottom:0, right:0, width:10, height:10, borderRadius:"50%", background:"#16A34A", border:`2px solid ${C.sb}`, zIndex:3 }} />}
                     </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", display:"flex", alignItems:"center", gap:5 }}>
@@ -8624,13 +8869,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                             <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 1.5s infinite" }} />
                             online agora
                           </div>
-                        ) : (
-                          <div style={{ color:"#FBBF24", fontSize:11, display:"flex", alignItems:"center", gap:4 }}>
-                            <span style={{ width:6, height:6, borderRadius:"50%", background:"#FBBF24", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                            {presence[uid]?.lastSeen?.seconds
-                              ? <span>offline · <span style={{color:"#fff"}}>visto às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span></span>
-                              : "offline"}
+                        ) : presence[uid]?.lastSeen?.seconds ? (
+                          <div style={{ color:C.td, fontSize:10.5 }}>
+                            👁 Visto {new Date(presence[uid].lastSeen.seconds*1000).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})} às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
                           </div>
+                        ) : (
+                          <div style={{ color:C.tm, fontSize:11 }}>{roleLabel[u.role]}</div>
                         )}
                       </div>
                     {unread > 0 && !muted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
@@ -8697,14 +8941,12 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                         <div style={{ width:50, height:50, borderRadius:"50%", overflow:"hidden", background:C.deep, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, color:C.atxt, border:`2px solid ${C.b1}` }}>
                           {tabUser.photo ? <img src={tabUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : ini(tabUser.name||"?")}
                         </div>
-                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3, animation:"pulse 1.5s infinite", boxShadow:tabOnline?"0 0 7px #16A34A99":"0 0 7px #FBBF2499" }} />
+                        <div style={{ position:"absolute", bottom:1, right:1, width:12, height:12, borderRadius:"50%", background: tabOnline ? "#16A34A" : "#FBBF24", border:`2px solid ${C.card}`, zIndex:3 }} />
                       </div>
                       <div>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
-                        <div style={{ color: tabOnline ? "#16A34A" : "#FBBF24", fontSize:11.5, marginTop:2 }}>
-                          {tabOnline
-                            ? <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Online agora</span>
-                            : <span style={{display:"flex",alignItems:"center",gap:5,color:"#FBBF24"}}><span style={{width:7,height:7,borderRadius:"50%",background:"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Offline{lastMsgTime(tabUid)?<span style={{color:"#fff"}}> · visto às {lastMsgTime(tabUid)}</span>:""}</span>}
+                        <div style={{ color: tabOnline ? "#16A34A" : C.tm, fontSize:11.5, marginTop:2 }}>
+                          {tabOnline ? "🟢 Online agora" : lastMsgTime(tabUid) ? `👁 Visto por último às ${lastMsgTime(tabUid)}` : "Nunca visto"}
                         </div>
                       </div>
                     </div>
@@ -14409,6 +14651,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
   const fmtCPF = v => { const c=(v||"").replace(/\D/g,"").padStart(11,"0"); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
+  const fmtTel = v => { const d=(v||"").replace(/\D/g,""); if(d.length<=10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/,"($1) $2-$3"); return d.replace(/(\d{2})(\d{5})(\d{0,4})/,"($1) $2-$3"); };
 
   // Sessão compartilhada com FGTS
   const [token]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
@@ -14433,7 +14676,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   // ── CONFIGS DE SIMULAÇÃO ─────────────────────────────────────
   const [configs, setConfigs] = useState([]);
-  const [configSel, setConfigSel] = useState(null); // eslint-disable-line no-unused-vars
+  const [configSel, setConfigSel] = useState(null);
   useEffect(() => {
     if (!isTokenValid) return;
     apiFetch("/private-consignment/simulation/configs").then(d => {
@@ -14448,56 +14691,42 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
   });
   const [termos, setTermos] = useState([]); // lista de termos gerados
-  const [termosPages, setTermosPages] = useState(null); // paginação da API
-  const [termosPage, setTermosPage] = useState(1); // página atual
-  const TERMOS_LIMIT = 30;
+  const [showLoteCLT, setShowLoteCLT] = useState(false);
+  const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
+  const [loteCLTItems, setLoteCLTItems] = useState([]);
+  const [loteCLTRunning, setLoteCLTRunning] = useState(false);
+  const loteCLTAbort = {current:false};
   const [termoLoading, setTermoLoading] = useState(false);
-  const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
+  const [termoStep, setTermoStep] = useState("form"); // form | confirmar
 
   const buscarContatoTermo = () => {
     const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
     const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
-    if (c) {
-      const rawTel = (c.phone||"").replace(/\D/g,"").slice(0,11);
-      setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:rawTel||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
-    }
+    if (c) setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:c.phone||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
   };
 
   const gerarTermo = async () => {
     setErr(""); setTermoLoading(true);
     try {
-      const tel = (termoForm.telefone||"").replace(/\D/g,"").slice(0,11);
-      if (tel.length !== 11) { setErr("Telefone deve ter exatamente 11 dígitos (DDD + 9 dígitos). Ex: 84999999999"); setTermoLoading(false); return; }
-      const areaCode = tel.slice(0,2);
-      const phoneNum = tel.slice(2); // 9 dígitos
-      if (phoneNum.length !== 9 || !phoneNum.startsWith("9")) { setErr("O número após o DDD deve ter 9 dígitos iniciando com 9. Ex: 84999999999"); setTermoLoading(false); return; }
+      const tel = (termoForm.telefone||"").replace(/\D/g,"");
       const body = {
         borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""),
         gender: termoForm.genero,
         birthDate: termoForm.dataNasc,
         signerName: termoForm.nome,
         signerEmail: termoForm.email,
-        signerPhone: { phoneNumber: phoneNum, countryCode:"55", areaCode },
+        signerPhone: { phoneNumber: tel.slice(-9), countryCode:"55", areaCode: tel.length>=11?tel.slice(0,2):tel.slice(0,2) },
         provider: "QI",
       };
       const res = await apiFetch("/private-consignment/consult","POST",body);
-      console.log("[CLT] Resposta POST consult completa:", JSON.stringify(res));
-      // Usa URL da API se disponível — tenta todos os campos possíveis
-      const consultId = res.id || res.consultId || res.consult_id;
-      const consultLink = res.consent_url || res.consentUrl || res.url || res.link
-        || res.authorization_url || res.authorizationUrl || res.formalization_url
-        || res.formalizationUrl || res.signUrl || res.sign_url
-        || `https://app.v8sistema.com/termos-de-autorizacao/${consultId}`;
-      console.log("[CLT] Link gerado:", consultLink);
       // Adiciona à lista de termos
       const novoTermo = {
-        id: consultId,
+        id: res.id,
         nome: termoForm.nome,
         cpf: termoForm.cpf,
         status: "WAITING_CONSENT",
         availableMarginValue: null,
-        link: consultLink,
-        resCompleto: res,
+        link: `https://app.v8sistema.com/consignment/consult/${res.id}`,
         criadoEm: new Date().toLocaleString("pt-BR"),
         dataNasc: termoForm.dataNasc,
         genero: termoForm.genero,
@@ -14507,8 +14736,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       setTermos(p=>[novoTermo,...p]);
       setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
       setTermoStep("form");
-      // Recarrega lista imediatamente
-      setTimeout(() => buscarTermos(1), 1500);
       // Inicia polling para verificar status
       let tentativas=0;
       const poll = setInterval(async()=>{
@@ -14528,56 +14755,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
-  const buscarTermos = async (page=1) => {
+  const buscarTermos = async () => {
     setLoading(true); setErr("");
     try {
       const end=new Date().toISOString();
-      const start=new Date(Date.now()-365*86400000).toISOString(); // 1 ano
-      const r=await apiFetch(`/private-consignment/consult?page=${page}&limit=${TERMOS_LIMIT}&provider=QI&startDate=${start}&endDate=${end}`);
+      const start=new Date(Date.now()-30*86400000).toISOString();
+      const r=await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
       const lista=(r?.data||[]).map(item=>({
         ...item,
-        link: item.consent_url || item.url || item.link || item.authorization_url || `https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
+        link:`https://app.v8sistema.com/consignment/consult/${item.id}`,
       }));
       setTermos(lista);
-      setTermosPages(r?.pages||null);
-      setTermosPage(page);
     } catch(e) { setErr(e.message); }
-    setLoading(false);
-  };
-
-  const exportarTermos = async () => {
-    setLoading(true);
-    try {
-      const end=new Date().toISOString();
-      const start=new Date(Date.now()-365*86400000).toISOString();
-      // Busca todas as páginas
-      let allData = [];
-      let pg = 1;
-      while (true) {
-        const r = await apiFetch(`/private-consignment/consult?page=${pg}&limit=100&provider=QI&startDate=${start}&endDate=${end}`);
-        const items = r?.data||[];
-        allData = [...allData, ...items];
-        if (!r?.pages?.hasNext || pg >= (r?.pages?.totalPages||1)) break;
-        pg++;
-      }
-      // Gera CSV
-      const headers = ["ID","Nome","CPF","Parceiro","Status","Margem Disponível","Criado em"];
-      const rows = allData.map(item => [
-        item.id||"",
-        `"${(item.name||item.signerName||"").replace(/"/g,'""')}"`,
-        item.documentNumber||item.borrowerDocumentNumber||"",
-        item.partnerId||item.partner_id||"",
-        item.status||"",
-        item.availableMarginValue||"",
-        item.createdAt||item.created_at||"",
-      ]);
-      const csv = [headers.join(";"), ...rows.map(r=>r.join(";"))].join("\n");
-      const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href=url; a.download=`consultas_clt_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`;
-      a.click(); URL.revokeObjectURL(url);
-    } catch(e) { setErr("Erro ao exportar: "+e.message); }
     setLoading(false);
   };
 
@@ -14597,45 +14786,52 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [simLoading, setSimLoading] = useState(false);
   const [simConfigSel, setSimConfigSel] = useState(null);
   const [digModal, setDigModal] = useState(null); // balão selecionado para digitar
-  const [avisoModal, setAvisoModal] = useState(null); // motivo rejeição
-  const [inlineSimId, setInlineSimId] = useState(null); // id do termo com sim inline aberta
+  const [inlineSimId, setInlineSimId] = useState(null);
+  const [avisoModal, setAvisoModal] = useState(null);
 
   const PARCELAS_PADRAO = [6,8,12,18,24,36];
 
   const executarSimulacoes = async (termo, inline=false) => {
-    if(inline) {
-      setInlineSimId(termo.id);
-    } else {
-      setSimModal({termo});
-    }
+    if(inline) setInlineSimId(t=>t===termo.id?null:termo.id);
+    setSimModal(inline?null:{termo});
     setSimConfigs(null);
     setSimLoading(true);
+    setSimConfigSel(null);
     setErr("");
     try {
       const cfgList = configs.length ? configs : (await apiFetch("/private-consignment/simulation/configs"))?.configs||[];
       if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível.");
+      const margem = parseFloat(termo.availableMarginValue)||0;
       const melhores = {};
-      for (const cfg of cfgList.slice(0,3)) {
+      // Usa apenas a primeira tabela (principal)
+      for (const cfg of cfgList.slice(0,1)) {
         const resultados = [];
         for (const np of PARCELAS_PADRAO) {
           try {
+            // Se tem margem disponível: usa como installment_face_value (valor da parcela = margem)
+            // disbursed_amount = 0 quando installment_face_value > 0 (API calcula o desembolso)
             const body = {
               consult_id: termo.id,
               config_id: cfg.id,
-              installment_face_value: parseFloat(termo.availableMarginValue)||0,
-              disbursed_amount: 0,
+              installment_face_value: margem > 0 ? margem : 0,
+              disbursed_amount: margem > 0 ? 0 : 1000,
               number_of_installments: np,
-              provider:"QI",
+              provider: "QI",
             };
+            console.log(`[CLT SIM] ${np}x body:`, JSON.stringify(body));
             const sim = await apiFetch("/private-consignment/simulation","POST",body);
-            resultados.push({ np, sim, cfg });
-          } catch {}
+            console.log(`[CLT SIM] ${np}x res:`, JSON.stringify(sim));
+            if(sim && (sim.id_simulation||sim.disbursement_amount||sim.installment_value||sim.disbursed_issue_amount)) {
+              resultados.push({ np, sim, cfg });
+            }
+          } catch(e) { console.warn(`[CLT SIM] ${np}x erro:`, e.message); }
         }
         if(resultados.length) melhores[cfg.id] = { cfg, resultados };
       }
+      if(!Object.keys(melhores).length) throw new Error("API não retornou simulações válidas. Verifique se o termo foi aprovado e tem margem disponível.");
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
-    } catch(e) { setErr(e.message); setSimModal(null); }
+    } catch(e) { setErr(e.message); if(!inline) setSimModal(null); }
     setSimLoading(false);
   };
 
@@ -14665,7 +14861,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setOpsLoading(false);
   };
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
-  useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(); },[aba,isTokenValid]); // eslint-disable-line
 
   // ── DIGITAÇÃO ────────────────────────────────────────────────
   const [digForm, setDigForm] = useState({
@@ -14709,7 +14904,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const enviarDigitacao = async () => {
     setDigErr(""); setDigLoading(true);
     try {
-      const tel=(digForm.telefone||"").replace(/\D/g,"").slice(0,11);
+      const tel=(digForm.telefone||"").replace(/\D/g,"");
       const body = {
         simulation_id: digForm.simId,
         provider:"QI",
@@ -14783,7 +14978,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","📋 Gerador de Termo"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -14801,9 +14996,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       {aba==="termo" && (
         <div>
           {/* Formulário de geração */}
-          <div style={{...S.card,padding:"22px 24px",marginBottom:20}}>
-            <div style={{color:C.ts,fontSize:13,fontWeight:700,marginBottom:16}}>📋 Gerador de Termo de Consentimento</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+          <div style={{...S.card,padding:"14px 16px",marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{color:C.ts,fontSize:12,fontWeight:700}}>📋 Gerar Termo de Consentimento</div>
+              <button onClick={()=>setShowLoteCLT(p=>!p)}
+                style={{background:"rgba(79,142,247,0.12)",color:"#60A5FA",border:"1px solid #3B6EF533",borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                ⚡ Lote
+              </button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
               {/* CPF com busca */}
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
@@ -14827,13 +15028,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone * (11 dígitos)</label>
                 <input value={termoForm.telefone}
                   onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,11); setTermoForm(p=>({...p,telefone:v}));}}
-                  placeholder="84999999999 (DDD + 9 dígitos)" maxLength={11}
+                  placeholder="84999999999" maxLength={11}
                   style={{...S.input}}/>
-                <div style={{color:(termoForm.telefone||"").length===11&&termoForm.telefone[2]==="9"?"#34D399":(termoForm.telefone||"").length>0?"#FBBF24":C.td,fontSize:10,marginTop:3}}>
-                  {(termoForm.telefone||"").length}/11 dígitos
-                  {(termoForm.telefone||"").length===11&&termoForm.telefone[2]!=="9"&&<span style={{color:"#F87171",marginLeft:6}}>⚠ 3º dígito deve ser 9</span>}
-                  {(termoForm.telefone||"").length===11&&termoForm.telefone[2]==="9"&&<span style={{marginLeft:6}}>✅</span>}
-                </div>
+                <div style={{color:C.td,fontSize:10,marginTop:3}}>{(termoForm.telefone||"").length}/11 dígitos</div>
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Data de Nascimento *</label>
@@ -14854,32 +15051,104 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             </button>
           </div>
 
+          {/* Lote CLT */}
+          {showLoteCLT&&(
+            <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
+              <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,marginBottom:10}}>⚡ Lote — Gerar Termos em Massa</div>
+              <textarea value={loteCLTCpfs} onChange={e=>setLoteCLTCpfs(e.target.value)}
+                placeholder={"Cole os CPFs aqui, um por linha:
+84999999999,Nome,email@email.com,1990-01-01
+ou apenas CPFs (buscará nos contatos):
+12345678901
+98765432100"}
+                style={{...S.input,height:90,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <button onClick={async()=>{
+                  const linhas = loteCLTCpfs.split(/\n/).map(l=>l.trim()).filter(Boolean);
+                  if(!linhas.length){ setErr("Cole ao menos um CPF."); return; }
+                  setLoteCLTRunning(true); loteCLTAbort.current=false;
+                  const novos = linhas.map(linha=>{
+                    const partes = linha.split(/[,;\t]+/).map(s=>s.trim());
+                    const cpf = partes[0].replace(/\D/g,"").slice(0,11);
+                    const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpf);
+                    return {
+                      cpf, id:null, status:"PENDENTE",
+                      nome:partes[1]||contato?.name||"",
+                      email:partes[2]||contato?.email||"",
+                      dataNasc:partes[3]||contato?.dataNasc||"",
+                      telefone:(contato?.phone||"").replace(/\D/g,"").slice(0,11),
+                      genero:"male", link:null, availableMarginValue:null,
+                    };
+                  });
+                  setLoteCLTItems(novos);
+                  for(let i=0;i<novos.length;i++){
+                    if(loteCLTAbort.current) break;
+                    const item=novos[i];
+                    if(!item.nome||!item.email||!item.dataNasc||item.telefone.length<11){
+                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"DADOS_INCOMPLETOS",erro:"Faltam dados (nome/email/nascimento/telefone)"}:x));
+                      continue;
+                    }
+                    setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"GERANDO"}:x));
+                    try{
+                      const tel=item.telefone;
+                      const body={
+                        borrowerDocumentNumber:item.cpf,gender:item.genero,birthDate:item.dataNasc,
+                        signerName:item.nome,signerEmail:item.email,
+                        signerPhone:{phoneNumber:tel.slice(2),countryCode:"55",areaCode:tel.slice(0,2)},
+                        provider:"QI",
+                      };
+                      const res=await apiFetch("/private-consignment/consult","POST",body);
+                      const id=res.id||res.consultId;
+                      const link=res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${id}`;
+                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,id,status:"AGUARDANDO",link}:x));
+                    }catch(e){
+                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"ERRO",erro:e.message}:x));
+                    }
+                    await new Promise(r=>setTimeout(r,600));
+                  }
+                  setLoteCLTRunning(false);
+                  buscarTermos(1);
+                }} disabled={loteCLTRunning}
+                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",opacity:loteCLTRunning?0.6:1}}>
+                  {loteCLTRunning?"⏳ Gerando...":"▶ Iniciar Lote"}
+                </button>
+                {loteCLTRunning&&<button onClick={()=>{loteCLTAbort.current=true;setLoteCLTRunning(false);}} style={{background:"rgba(239,68,68,0.12)",color:"#F87171",border:"1px solid #EF444433",borderRadius:8,padding:"8px 14px",fontSize:12,cursor:"pointer"}}>⏹ Parar</button>}
+                <span style={{color:C.td,fontSize:11}}>{loteCLTItems.length>0&&`${loteCLTItems.filter(x=>x.status==="AGUARDANDO"||x.link).length}/${loteCLTItems.length} gerados`}</span>
+              </div>
+              {loteCLTItems.length>0&&(
+                <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:4,maxHeight:200,overflowY:"auto"}}>
+                  {loteCLTItems.map((x,i)=>{
+                    const sc={PENDENTE:C.td,GERANDO:"#FBBF24",AGUARDANDO:"#34D399",ERRO:"#F87171",DADOS_INCOMPLETOS:"#F87171"}[x.status]||C.td;
+                    return(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",background:C.deep,borderRadius:7,fontSize:11}}>
+                        <span style={{color:sc,width:12}}>{x.status==="GERANDO"?"⏳":x.status==="AGUARDANDO"?"✅":x.status==="ERRO"||x.status==="DADOS_INCOMPLETOS"?"❌":"○"}</span>
+                        <span style={{color:C.tp,fontFamily:"monospace"}}>{fmtCPF(x.cpf)}</span>
+                        <span style={{color:C.tm,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.nome||"—"}</span>
+                        {x.link&&<button onClick={()=>{navigator.clipboard.writeText(x.link).then(()=>{setCopied("lote"+i);setTimeout(()=>setCopied(null),2000);});}} style={{background:C.abg,color:copied==="lote"+i?"#34D399":C.atxt,border:`1px solid ${C.atxt}22`,borderRadius:5,padding:"2px 8px",fontSize:10,cursor:"pointer"}}>{copied==="lote"+i?"✅":"🔗 LINK"}</button>}
+                        {x.erro&&<span style={{color:"#F87171",fontSize:9,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{x.erro}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Lista de termos gerados */}
-          {(
+          {(termos.length>0||loading) && (
             <div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
-                  📄 Consultas CLT
-                  {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
-                    · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
-                  </span>}
-                </div>
-                <div style={{display:"flex",gap:8}}>
-                  <button onClick={exportarTermos} disabled={loading}
-                    style={{background:"rgba(52,211,153,0.1)",color:"#34D399",border:"1px solid #34D39933",borderRadius:8,padding:"6px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                    📥 Exportar Lista
-                  </button>
-                  <button onClick={()=>buscarTermos(termosPage)} disabled={loading}
-                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
-                    {loading?"⏳":"🔄"} Atualizar
-                  </button>
-                </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Termos Gerados ({termos.length})</div>
+                <button onClick={buscarTermos} disabled={loading}
+                  style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
+                  {loading?"⏳":"🔄"} Atualizar
+                </button>
               </div>
               <div style={{...S.card,overflow:"hidden"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
-                      {["Cliente","CPF","Parceiro","Status","Margem Disponível","Link","Ação"].map(h=>(
+                      {["Cliente","CPF","Parceiro","Status","Margem Disp.","Link","Probabilidade","Ação"].map(h=>(
                         <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
                       ))}
                     </tr>
@@ -14889,106 +15158,93 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const col=STATUS_COR[t.status]||C.td;
                       return (
                         <React.Fragment key={t.id}>
-                        <tr onClick={()=>{ if(t.status==="SUCCESS") { setInlineSimId(prev=>prev===t.id?null:t.id); if(inlineSimId!==t.id) executarSimulacoes(t,true); } }}
-                          style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}44`:`1px solid ${C.b1}`,cursor:t.status==="SUCCESS"?"pointer":"default",background:inlineSimId===t.id?C.abg:"transparent",transition:"background 0.15s"}}
-                          onMouseEnter={e=>{ if(t.status==="SUCCESS") e.currentTarget.style.background=C.deep; }}
-                          onMouseLeave={e=>{ e.currentTarget.style.background=inlineSimId===t.id?C.abg:"transparent"; }}>
-                          <td style={{padding:"10px 12px",color:C.tp,fontWeight:600}}>{t.name||t.nome||"—"}</td>
-                          <td style={{padding:"10px 12px",color:C.tm,fontFamily:"monospace",fontSize:11}}>{fmtCPF(t.documentNumber||t.cpf||"")}</td>
-                          <td style={{padding:"10px 12px",color:C.td,fontSize:11}}>{t.partnerId||t.partner_id||"—"}</td>
-                          <td style={{padding:"10px 12px"}}>
-                            <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{STATUS_LABEL[t.status]||t.status}</span>
+                        <tr
+                          onClick={()=>{ if(t.status==="SUCCESS"||t.availableMarginValue){ setInlineSimId(p=>p===t.id?null:t.id); if(inlineSimId!==t.id) executarSimulacoes(t,true); } }}
+                          style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}33`:`1px solid ${C.b1}`,cursor:(t.status==="SUCCESS"||t.availableMarginValue)?"pointer":"default",transition:"background 0.1s"}}
+                          onMouseEnter={e=>e.currentTarget.style.background=C.deep}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <td style={{padding:"8px 10px",color:C.tp,fontWeight:600,fontSize:12}}>{t.name||t.nome||"—"}</td>
+                          <td style={{padding:"8px 10px",color:C.tm,fontFamily:"monospace",fontSize:11}}>{fmtCPF(t.documentNumber||t.cpf||"")}</td>
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:10}}>{t.partnerId||t.partner_id||"—"}</td>
+                          <td style={{padding:"8px 10px"}}>
+                            <span style={{background:col+"22",color:col,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{STATUS_LABEL[t.status]||t.status}</span>
                           </td>
-                          <td style={{padding:"10px 12px",color:t.availableMarginValue?"#34D399":C.td,fontWeight:t.availableMarginValue?700:400}}>
+                          <td style={{padding:"8px 10px",color:t.availableMarginValue?"#34D399":C.td,fontWeight:t.availableMarginValue?700:400,fontSize:12}}>
                             {t.availableMarginValue?fmtBRL(t.availableMarginValue):"—"}
                           </td>
-                          <td style={{padding:"10px 12px"}}>
+                          <td style={{padding:"8px 10px"}}>
                             {t.link ? (
-                              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                                <button
-                                  onClick={()=>{navigator.clipboard.writeText(t.link).then(()=>{setCopied(t.id);setTimeout(()=>setCopied(null),2500);});}}
-                                  style={{background:copied===t.id?"rgba(52,211,153,0.15)":C.abg,color:copied===t.id?"#34D399":C.atxt,border:`1px solid ${copied===t.id?"#34D39944":C.atxt+"33"}`,borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5,transition:"all 0.2s"}}>
-                                  {copied===t.id?"✅ Copiado":"🔗 LINK"}
-                                </button>
-                                <a href={t.link} target="_blank" rel="noreferrer"
-                                  style={{color:C.td,fontSize:10,textDecoration:"none",opacity:0.6}}
-                                  title={t.link}>↗</a>
-                              </div>
-                            ) : <span style={{color:C.td,fontSize:11}}>—</span>}
+                              <button onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(t.link).then(()=>{setCopied(t.id);setTimeout(()=>setCopied(null),2500);});}}
+                                style={{background:copied===t.id?"rgba(52,211,153,0.15)":C.abg,color:copied===t.id?"#34D399":C.atxt,border:`1px solid ${copied===t.id?"#34D39944":C.atxt+"33"}`,borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                {copied===t.id?"✅ Copiado":"🔗 LINK"}
+                              </button>
+                            ):<span style={{color:C.td,fontSize:10}}>—</span>}
                           </td>
-                          <td style={{padding:"10px 12px"}}>
-                            {t.status==="SUCCESS"&&(
-                              <button onClick={e=>{e.stopPropagation();setInlineSimId(prev=>prev===t.id?null:t.id);if(inlineSimId!==t.id)executarSimulacoes(t,true);}}
-                                style={{background:inlineSimId===t.id?C.abg:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                                {inlineSimId===t.id?"▼ Fechar":"⚡ Simular"}
-                              </button>
-                            )}
-                            {["FAILED","REJECTED"].includes(t.status)&&(
-                              <button onClick={e=>{e.stopPropagation();setAvisoModal(t);}}
-                                style={{background:"rgba(239,68,68,0.12)",color:"#F87171",border:"1px solid #EF444433",borderRadius:7,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                                ⚠ AVISO
-                              </button>
-                            )}
-                            {!["SUCCESS","FAILED","REJECTED"].includes(t.status)&&(
+                          <td style={{padding:"8px 10px"}}>
+                            {t.status==="SUCCESS"&&t.availableMarginValue ? (
+                              <span style={{color:"#34D399",fontSize:10,fontWeight:700}}>🟢 Alta</span>
+                            ) : t.status==="SUCCESS" ? (
+                              <span style={{color:"#FBBF24",fontSize:10,fontWeight:700}}>🟡 Média</span>
+                            ) : ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(t.status) ? (
+                              <span style={{color:"#60A5FA",fontSize:10}}>🔵 Em análise</span>
+                            ) : (
                               <span style={{color:C.td,fontSize:10}}>—</span>
                             )}
+                          </td>
+                          <td style={{padding:"8px 10px"}} onClick={e=>e.stopPropagation()}>
+                            {(t.status==="SUCCESS"||t.availableMarginValue) ? (
+                              <button onClick={()=>executarSimulacoes(t,false)}
+                                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                ⚡ Simular
+                              </button>
+                            ) : ["FAILED","REJECTED"].includes(t.status) ? (
+                              <button onClick={()=>setAvisoModal(t)}
+                                style={{background:"rgba(239,68,68,0.12)",color:"#F87171",border:"1px solid #EF444433",borderRadius:7,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                                ⚠ AVISO
+                              </button>
+                            ) : <span style={{color:C.td,fontSize:10}}>—</span>}
                           </td>
                         </tr>
                         {/* Inline simulação */}
                         {inlineSimId===t.id&&(
-                          <tr>
-                            <td colSpan={7} style={{padding:0,background:"linear-gradient(135deg,rgba(15,31,61,0.98),rgba(22,42,80,0.98))",borderBottom:`2px solid ${C.atxt}44`}}>
-                              {(simLoading&&simModal?.termo?.id===t.id)||(!simConfigs&&inlineSimId===t.id&&simLoading) ? (
-                                <div style={{padding:"24px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:13}}>
-                                  <div style={{fontSize:28,marginBottom:8,animation:"pulse 1.5s infinite"}}>⚡</div>
-                                  Calculando simulações em 6x · 8x · 12x · 18x · 24x · 36x...
-                                </div>
-                              ) : simConfigs&&Object.keys(simConfigs).length>0 ? (
-                                <div style={{padding:"16px 18px"}}>
-                                  {/* Tab de tabelas */}
-                                  <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                                    {Object.values(simConfigs).map(({cfg})=>(
-                                      <button key={cfg.id} onClick={()=>setSimConfigSel(cfg.id)}
-                                        style={{background:simConfigSel===cfg.id?C.abg:"rgba(255,255,255,0.06)",color:simConfigSel===cfg.id?C.atxt:"rgba(255,255,255,0.5)",border:`1px solid ${simConfigSel===cfg.id?C.atxt+"44":"rgba(255,255,255,0.1)"}`,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:simConfigSel===cfg.id?700:400,cursor:"pointer"}}>
-                                        {cfg.slug} ({cfg.monthly_interest_rate}% a.m.)
-                                      </button>
-                                    ))}
+                          <tr><td colSpan={8} style={{padding:0,background:"linear-gradient(135deg,rgba(10,22,45,0.98),rgba(15,30,60,0.98))"}}>
+                            {simLoading ? (
+                              <div style={{padding:"20px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontSize:12}}>
+                                <div style={{animation:"pulse 1.5s infinite",marginBottom:6}}>⚡</div>Calculando simulações...
+                              </div>
+                            ) : simConfigs&&Object.keys(simConfigs).length>0 ? (()=>{
+                              const cfgKeys=Object.keys(simConfigs);
+                              const cur=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:cfgKeys[0];
+                              const {resultados}=simConfigs[cur];
+                              const mi=resultados.reduce((mi,r,i)=>parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0)?i:mi,0);
+                              return (
+                                <div style={{padding:"12px 14px"}}>
+                                  <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
+                                    {resultados.map((r,idx)=>{
+                                      const isB=idx===mi;
+                                      const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                                      const parc=parseFloat(r.sim?.installment_value||0);
+                                      return (
+                                        <div key={r.np} onClick={()=>setDigModal({r,termo:t,isMelhor:isB})}
+                                          style={{background:isB?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"10px 8px",cursor:"pointer",textAlign:"center",position:"relative",transition:"all 0.15s"}}
+                                          onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";}}
+                                          onMouseLeave={e=>{e.currentTarget.style.transform="none";}}>
+                                          {isB&&<div style={{position:"absolute",top:-7,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:7,fontWeight:800,padding:"1px 6px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
+                                          <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,marginBottom:2,marginTop:isB?2:0}}>{r.np}x</div>
+                                          <div style={{color:isB?"#34D399":"#fff",fontSize:15,fontWeight:900,lineHeight:1}}>{fmtBRL(desemb)}</div>
+                                          <div style={{color:"rgba(255,255,255,0.4)",fontSize:8,marginBottom:4}}>liberado</div>
+                                          <div style={{color:"rgba(255,255,255,0.7)",fontSize:9}}>{fmtBRL(parc)}/mês</div>
+                                          <div style={{marginTop:6,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:5,padding:"3px 0",fontSize:9,fontWeight:700,color:"#fff"}}>✍️ DIGITAR</div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                  {simConfigSel&&simConfigs[simConfigSel]&&(()=>{
-                                    const {resultados}=simConfigs[simConfigSel];
-                                    const melhorIdx=resultados.reduce((mi,r,i)=>
-                                      (parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0))?i:mi,0);
-                                    return (
-                                      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>
-                                        {resultados.map((r,idx)=>{
-                                          const isMelhor=idx===melhorIdx;
-                                          const desembolso=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
-                                          const parcela=parseFloat(r.sim?.installment_value||0);
-                                          const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
-                                          return (
-                                            <div key={r.np} onClick={()=>setDigModal({r,termo:t,isMelhor})}
-                                              style={{background:isMelhor?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.04)",border:`2px solid ${isMelhor?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:12,padding:"12px",cursor:"pointer",position:"relative",transition:"all 0.15s"}}
-                                              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 6px 20px ${isMelhor?"rgba(52,211,153,0.25)":"rgba(0,0,0,0.3)"}`}}
-                                              onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                                              {isMelhor&&<div style={{position:"absolute",top:-8,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:8,fontWeight:800,padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
-                                              <div style={{color:C.td,fontSize:9,marginBottom:3,marginTop:isMelhor?4:0}}>{r.np}x</div>
-                                              <div style={{color:isMelhor?"#34D399":"rgba(255,255,255,0.9)",fontSize:16,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desembolso)}</div>
-                                              <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,marginBottom:6}}>liberado</div>
-                                              <div style={{color:"rgba(255,255,255,0.7)",fontSize:10,marginBottom:2}}>{fmtBRL(parcela)}/mês</div>
-                                              <div style={{color:"#FBBF24",fontSize:9}}>{taxa}% a.m.</div>
-                                              <div style={{marginTop:8,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:6,padding:"4px 0",textAlign:"center",fontSize:10,fontWeight:700,color:"#fff"}}>✍️ DIGITAR</div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    );
-                                  })()}
                                 </div>
-                              ) : (
-                                <div style={{padding:"20px",textAlign:"center",color:"rgba(255,255,255,0.4)",fontSize:12}}>Nenhuma simulação disponível.</div>
-                              )}
-                            </td>
-                          </tr>
+                              );
+                            })() : (
+                              <div style={{padding:"16px",textAlign:"center",color:"rgba(255,255,255,0.35)",fontSize:11}}>Sem simulações disponíveis.</div>
+                            )}
+                          </td></tr>
                         )}
                         </React.Fragment>
                       );
@@ -14996,137 +15252,16 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </tbody>
                 </table>
               </div>
-              {/* Paginação */}
-              {termosPages&&(termosPages.hasNext||termosPages.hasPrev)&&(
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
-                  <button onClick={()=>buscarTermos(termosPage-1)} disabled={!termosPages.hasPrev||loading}
-                    style={{background:termosPages.hasPrev?C.abg:C.deep,color:termosPages.hasPrev?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 16px",fontSize:12,cursor:termosPages.hasPrev?"pointer":"not-allowed",fontWeight:600}}>
-                    ← Anterior
-                  </button>
-                  <span style={{color:C.tm,fontSize:12}}>
-                    Página {termosPage} de {termosPages.totalPages||1} · {termosPages.total||termos.length} consultas
-                  </span>
-                  <button onClick={()=>buscarTermos(termosPage+1)} disabled={!termosPages.hasNext||loading}
-                    style={{background:termosPages.hasNext?C.abg:C.deep,color:termosPages.hasNext?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"6px 16px",fontSize:12,cursor:termosPages.hasNext?"pointer":"not-allowed",fontWeight:600}}>
-                    Próxima →
-                  </button>
-                </div>
-              )}
-              {termos.length===0&&!loading&&(
-                <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>Nenhuma consulta encontrada.</div>
-              )}
             </div>
+          )}
+          {termos.length===0&&!loading&&(
+            <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"24px 0"}}>Nenhum termo gerado ainda. Preencha o formulário acima.</div>
           )}
         </div>
       )}
 
-      {/* ══ POPUP SIMULAÇÃO — botão Simular ══ */}
-      {simModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);}}>
-          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:780,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>e.stopPropagation()}>
-            {/* Header popup */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div>
-                <div style={{color:"#fff",fontSize:15,fontWeight:800}}>⚡ Simulação — {simModal.termo?.name||simModal.termo?.nome||"Cliente"}</div>
-                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:2}}>{fmtCPF(simModal.termo?.documentNumber||simModal.termo?.cpf||"")} · Margem: {simModal.termo?.availableMarginValue?fmtBRL(simModal.termo.availableMarginValue):"—"}</div>
-              </div>
-              <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,padding:"6px 14px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>✕ Fechar</button>
-            </div>
-
-            {simLoading&&(
-              <div style={{textAlign:"center",padding:"40px 0"}}>
-                <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
-                <div style={{color:"rgba(255,255,255,0.7)",fontSize:13}}>Calculando 6 simulações...</div>
-              </div>
-            )}
-
-            {!simLoading&&simConfigs&&(()=>{
-              const cfgKeys = Object.keys(simConfigs);
-              const currentCfg = simConfigSel && simConfigs[simConfigSel] ? simConfigSel : cfgKeys[0];
-              return (
-                <div>
-                  {/* Seletor tabela */}
-                  {cfgKeys.length>1&&(
-                    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-                      {cfgKeys.map(k=>{const {cfg}=simConfigs[k]; return (
-                        <button key={k} onClick={()=>setSimConfigSel(k)}
-                          style={{background:currentCfg===k?"rgba(79,142,247,0.2)":"rgba(255,255,255,0.05)",color:currentCfg===k?"#60A5FA":"rgba(255,255,255,0.5)",border:`1px solid ${currentCfg===k?"#3B6EF544":"rgba(255,255,255,0.1)"}`,borderRadius:20,padding:"5px 14px",fontSize:11,fontWeight:currentCfg===k?700:400,cursor:"pointer"}}>
-                          {cfg.slug} ({cfg.monthly_interest_rate}% a.m.)
-                        </button>
-                      );})}
-                    </div>
-                  )}
-                  {simConfigs[currentCfg]&&(()=>{
-                    const {resultados}=simConfigs[currentCfg];
-                    const melhorIdx=resultados.reduce((mi,r,i)=>
-                      (parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0))?i:mi,0);
-                    return (
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
-                        {resultados.map((r,idx)=>{
-                          const isMelhor=idx===melhorIdx;
-                          const desembolso=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
-                          const parcela=parseFloat(r.sim?.installment_value||0);
-                          const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
-                          return (
-                            <div key={r.np} onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor})}
-                              style={{background:isMelhor?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.04)",border:`2px solid ${isMelhor?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:16,padding:"18px",cursor:"pointer",position:"relative",transition:"all 0.15s"}}
-                              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 8px 28px ${isMelhor?"rgba(52,211,153,0.25)":"rgba(0,0,0,0.4)"}`}}
-                              onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                              {isMelhor&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR OFERTA</div>}
-                              <div style={{color:"rgba(255,255,255,0.4)",fontSize:10,marginBottom:4,marginTop:isMelhor?4:0}}>{r.np} parcelas</div>
-                              <div style={{color:isMelhor?"#34D399":"#fff",fontSize:26,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desembolso)}</div>
-                              <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:12}}>Valor liberado</div>
-                              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
-                                <span style={{color:"rgba(255,255,255,0.5)"}}>Parcela</span>
-                                <span style={{color:"#fff",fontWeight:700}}>{fmtBRL(parcela)}/mês</span>
-                              </div>
-                              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:14}}>
-                                <span style={{color:"rgba(255,255,255,0.5)"}}>Taxa</span>
-                                <span style={{color:"#FBBF24",fontWeight:700}}>{taxa}% a.m.</span>
-                              </div>
-                              <div style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:8,padding:"8px",textAlign:"center",fontSize:12,fontWeight:700,color:"#fff"}}>✍️ Digitar Proposta</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            })()}
-
-            {!simLoading&&(!simConfigs||Object.keys(simConfigs).length===0)&&(
-              <div style={{textAlign:"center",color:"rgba(255,255,255,0.4)",padding:"32px 0",fontSize:13}}>Nenhum resultado disponível.</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* AVISO MODAL — motivo rejeição */}
-      {avisoModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"rgba(45,15,15,0.97)",border:"1px solid #EF444444",borderRadius:18,padding:"28px 32px",width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-              <span style={{fontSize:28}}>⚠️</span>
-              <div>
-                <div style={{color:"#F87171",fontSize:15,fontWeight:800}}>Consulta {avisoModal.status==="FAILED"?"Falhou":"Rejeitada"}</div>
-                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:2}}>{avisoModal.name||avisoModal.nome} · {fmtCPF(avisoModal.documentNumber||avisoModal.cpf||"")}</div>
-              </div>
-            </div>
-            <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:10,padding:"14px 16px",marginBottom:20}}>
-              <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Motivo</div>
-              <div style={{color:"#FCA5A5",fontSize:13,lineHeight:1.6}}>{avisoModal.description||avisoModal.reason||avisoModal.detail||"Sem descrição disponível. Verifique os dados do cliente ou entre em contato com a V8 Digital."}</div>
-            </div>
-            <button onClick={()=>setAvisoModal(null)}
-              style={{width:"100%",background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
-
-
-            {/* ══════════════════════════════════════════════════════════
+      
+      {/* ══════════════════════════════════════════════════════════
           ABA: OPERAÇÕES
       ══════════════════════════════════════════════════════════ */}
       {aba==="clientes" && (
@@ -15370,6 +15505,81 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         </div>
       )}
     </div>
+
+      {/* ══ AVISO MODAL ══ */}
+      {typeof avisoModal!=="undefined"&&avisoModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"rgba(45,15,15,0.97)",border:"1px solid #EF444444",borderRadius:18,padding:"28px 32px",width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><span style={{fontSize:28}}>⚠️</span>
+              <div><div style={{color:"#F87171",fontSize:15,fontWeight:800}}>Consulta {avisoModal.status==="FAILED"?"Falhou":"Rejeitada"}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>{avisoModal.name||avisoModal.nome} · {fmtCPF(avisoModal.documentNumber||avisoModal.cpf||"")}</div>
+              </div>
+            </div>
+            <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:10,padding:"14px",marginBottom:20}}>
+              <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,textTransform:"uppercase",marginBottom:6}}>Motivo</div>
+              <div style={{color:"#FCA5A5",fontSize:13,lineHeight:1.6}}>{avisoModal.description||avisoModal.reason||avisoModal.detail||"Sem descrição. Contate a V8 Digital."}</div>
+            </div>
+            <button onClick={()=>setAvisoModal(null)} style={{width:"100%",background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Fechar</button>
+          </div>
+        </div>
+      )}
+      {/* ══ POPUP SIMULAÇÃO ══ */}
+      {simLoading&&simModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"40px",textAlign:"center",minWidth:320}}>
+            <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
+            <div style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:6}}>Calculando 6 simulações...</div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>{simModal.termo?.name||simModal.termo?.nome}</div>
+          </div>
+        </div>
+      )}
+      {simModal&&!simLoading&&simConfigs&&Object.keys(simConfigs).length>0&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div>
+                <div style={{color:"#fff",fontSize:15,fontWeight:800}}>⚡ Simulação — {simModal.termo?.name||simModal.termo?.nome||"Cliente"}</div>
+                <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginTop:2}}>{fmtCPF(simModal.termo?.documentNumber||simModal.termo?.cpf||"")} · Margem: {simModal.termo?.availableMarginValue?fmtBRL(simModal.termo.availableMarginValue):"—"}</div>
+              </div>
+              <button onClick={()=>{setSimModal(null);setSimConfigs(null);}} style={{background:"rgba(255,255,255,0.07)",border:"none",borderRadius:8,padding:"6px 14px",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>✕ Fechar</button>
+            </div>
+            {(()=>{
+              const cfgKeys=Object.keys(simConfigs);
+              const cur=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:cfgKeys[0];
+              if(!simConfigs[cur]) return null;
+              const {resultados}=simConfigs[cur];
+              const mi=resultados.reduce((mi,r,i)=>parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0)?i:mi,0);
+              return (
+                <div>
+                  {cfgKeys.length>1&&<div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{cfgKeys.map(k=>{const {cfg}=simConfigs[k];return(<button key={k} onClick={()=>setSimConfigSel(k)} style={{background:cur===k?"rgba(79,142,247,0.2)":"rgba(255,255,255,0.05)",color:cur===k?"#60A5FA":"rgba(255,255,255,0.5)",border:`1px solid ${cur===k?"#3B6EF544":"rgba(255,255,255,0.1)"}`,borderRadius:20,padding:"5px 14px",fontSize:11,cursor:"pointer"}}>{cfg.slug} ({cfg.monthly_interest_rate}% a.m.)</button>);})}</div>}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+                    {resultados.map((r,idx)=>{
+                      const isB=idx===mi;
+                      const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                      const parc=parseFloat(r.sim?.installment_value||0);
+                      const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
+                      return(
+                        <div key={r.np} onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor:isB})}
+                          style={{background:isB?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:16,padding:"18px",cursor:"pointer",position:"relative",transition:"all 0.15s"}}
+                          onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform="none";}}>
+                          {isB&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR OFERTA</div>}
+                          <div style={{color:"rgba(255,255,255,0.4)",fontSize:10,marginBottom:4,marginTop:isB?4:0}}>{r.np} parcelas</div>
+                          <div style={{color:isB?"#34D399":"#fff",fontSize:26,fontWeight:900,lineHeight:1,marginBottom:2}}>{fmtBRL(desemb)}</div>
+                          <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:12}}>Valor liberado</div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"rgba(255,255,255,0.5)"}}>Parcela</span><span style={{color:"#fff",fontWeight:700}}>{fmtBRL(parc)}/mês</span></div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:14}}><span style={{color:"rgba(255,255,255,0.5)"}}>Taxa</span><span style={{color:"#FBBF24",fontWeight:700}}>{taxa}% a.m.</span></div>
+                          <div style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:8,padding:"8px",textAlign:"center",fontSize:12,fontWeight:700,color:"#fff"}}>✍️ Digitar Proposta</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
   );
 }
 
@@ -15410,7 +15620,7 @@ function ApisBancosPage({ currentUser, contacts }) {
       {/* Conteúdo */}
       <div style={{ padding:"0 30px" }}>
         {abaBanco==="v8" && abaV8==="fgts"    && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
+        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
         {abaBanco==="c6"                      && <BancoC6Tab />}
       </div>
     </div>
