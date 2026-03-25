@@ -15500,7 +15500,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           </div>
         </div>
       )}
-    </div>
 
       {/* ══ AVISO MODAL ══ */}
       {typeof avisoModal!=="undefined"&&avisoModal&&(
@@ -15576,6 +15575,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           </div>
         </div>
       )}
+    </div>
   );
 }
 
