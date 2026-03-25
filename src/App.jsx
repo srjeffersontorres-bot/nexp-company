@@ -14657,7 +14657,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [tokenExp] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.exp||null; } catch { return null; } });
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
-  const [aba, setAba] = useState("termo"); // termo | simulacao | clientes | digitacao
+  const [aba, setAbaRaw] = useState(() => localStorage.getItem("nexp_clt_aba")||"termo");
+  const setAba = (v) => { setAbaRaw(v); localStorage.setItem("nexp_clt_aba",v); };
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(null);
@@ -14789,9 +14790,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [simConfigs, setSimConfigs] = useState(null); // resultados das simulações
   const [simLoading, setSimLoading] = useState(false);
   const [simConfigSel, setSimConfigSel] = useState(null);
+  const [simError, setSimError] = useState("");
   const [digModal, setDigModal] = useState(null); // balão selecionado para digitar
   const [inlineSimId, setInlineSimId] = useState(null);
   const [avisoModal, setAvisoModal] = useState(null);
+  const [limparModal, setLimparModal] = useState(false);
 
   const PARCELAS_PADRAO = [6,8,10,12,18,24,36];
 
@@ -14800,55 +14803,60 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setSimConfigs(null);
     setSimLoading(true);
     setSimConfigSel(null);
+    setSimError("");
     setErr("");
     try {
       // Carrega tabelas de taxa
-      const cfgList = configs.length ? configs : (await apiFetch("/private-consignment/simulation/configs"))?.configs||[];
-      if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível.");
+      let cfgList = configs.length ? configs : [];
+      if(!cfgList.length) {
+        const cfgRes = await apiFetch("/private-consignment/simulation/configs");
+        cfgList = cfgRes?.configs || [];
+      }
+      if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível na API.");
 
       const margem = parseFloat(termo.availableMarginValue)||0;
       const melhores = {};
+      let lastErrMsg = "";
 
       for (const cfg of cfgList.slice(0,1)) {
         const resultados = [];
         for (const np of PARCELAS_PADRAO) {
           try {
-            // Monta body conforme documentação V8:
-            // - installment_face_value: valor da parcela (usa margem disponível)
-            // - disbursed_amount: valor desejado de desembolso (0 se usar parcela)
-            // Apenas UM dos dois deve ser > 0
             const body = {
               consult_id: termo.id,
               config_id: cfg.id,
-              installment_face_value: margem > 0 ? margem : 0,
-              disbursed_amount: 0,
               number_of_installments: np,
               provider: "QI",
+              ...(margem > 0
+                ? { installment_face_value: margem, disbursed_amount: 0 }
+                : { installment_face_value: 0, disbursed_amount: 1000 }
+              ),
             };
             console.log(`[CLT SIM] ${np}x →`, JSON.stringify(body));
             const sim = await apiFetch("/private-consignment/simulation","POST",body);
             console.log(`[CLT SIM] ${np}x ←`, JSON.stringify(sim));
-            // Aceita qualquer resposta sem erro — não filtra por campos específicos
-            if(sim && typeof sim === "object" && !sim.error) {
+            if(sim && typeof sim === "object") {
               resultados.push({ np, sim, cfg });
             }
           } catch(e) {
+            lastErrMsg = e.message;
             console.warn(`[CLT SIM] ${np}x erro:`, e.message);
-            // Se for erro de autenticação ou fatal, propaga
-            if(e.message?.includes("expirada") || e.message?.includes("Token")) throw e;
+            if(e.message?.includes("expirada") || e.message?.includes("401")) throw e;
           }
         }
         if(resultados.length) melhores[cfg.id] = { cfg, resultados };
       }
 
       if(!Object.keys(melhores).length) {
-        throw new Error("Simulação sem resultado. Verifique no console (F12) os logs [CLT SIM] para detalhes do erro da API.");
+        const msg = lastErrMsg || "Sem resposta da API";
+        throw new Error(`Simulação falhou: ${msg}`);
       }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
     } catch(e) {
-      setErr(e.message);
-      setSimModal(null);
+      console.error("[CLT SIM] ERRO FINAL:", e.message);
+      setSimError(e.message);
+      if(!inline) setSimModal(null);
     }
     setSimLoading(false);
   };
@@ -14866,6 +14874,40 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     formalization:"⏳ Formalização",analysis:"🔍 Análise",manual_analysis:"👤 Análise Manual",
     processing:"⚙️ Processando",paid:"✅ Pago",canceled:"❌ Cancelado",pending:"⚠️ Pendente",
   };
+  const exportarTermos = async () => {
+    setLoading(true);
+    try {
+      const end = new Date().toISOString();
+      const start = new Date(Date.now()-365*86400000).toISOString();
+      let allData = []; let pg = 1;
+      while(true) {
+        const r = await apiFetch(`/private-consignment/consult?page=${pg}&limit=100&provider=QI&startDate=${start}&endDate=${end}`);
+        const items = r?.data||[];
+        allData = [...allData, ...items];
+        if(!r?.pages?.hasNext || pg>=(r?.pages?.totalPages||1)) break;
+        pg++;
+      }
+      const headers = ["ID","Nome","CPF","Parceiro","Status","Margem Disponível","Criado em"];
+      const rows = allData.map(item=>[
+        item.id||"",
+        `"${(item.name||"").replace(/"/g,'""')}"`,
+        item.documentNumber||"",
+        item.partnerId||item.partner_id||"",
+        item.status||"",
+        item.availableMarginValue||"",
+        item.createdAt||item.created_at||"",
+      ]);
+      const csv = [headers.join(";"), ...rows.map(r=>r.join(";"))].join("
+");
+      const blob = new Blob(["﻿"+csv], {type:"text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href=url; a.download=`consultas_clt_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.csv`;
+      a.click(); URL.revokeObjectURL(url);
+    } catch(e) { setErr("Erro ao exportar: "+e.message); }
+    setLoading(false);
+  };
+
   const buscarOps = async () => {
     setOpsLoading(true);
     try {
@@ -15160,10 +15202,20 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </span>}
                   {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
                 </div>
-                <button onClick={()=>buscarTermos(termosPage)} disabled={loading}
-                  style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:11.5,cursor:"pointer"}}>
-                  {loading?"⏳":"🔄"} Atualizar
-                </button>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={exportarTermos} disabled={loading}
+                    style={{background:"rgba(52,211,153,0.1)",color:"#34D399",border:"1px solid #34D39933",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                    📥 Exportar
+                  </button>
+                  <button onClick={()=>setLimparModal(true)} disabled={loading||termos.length===0}
+                    style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"1px solid #EF444422",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:termos.length===0?"not-allowed":"pointer",opacity:termos.length===0?0.4:1}}>
+                    🗑 Limpar
+                  </button>
+                  <button onClick={()=>buscarTermos(termosPage)} disabled={loading}
+                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>
+                    {loading?"⏳":"🔄"}
+                  </button>
+                </div>
               </div>
               <div style={{...S.card,overflow:"hidden"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -15268,7 +15320,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                 </div>
                               );
                             })() : (
-                              <div style={{padding:"16px",textAlign:"center",color:"rgba(255,255,255,0.35)",fontSize:11}}>Sem simulações disponíveis.</div>
+                              <div style={{padding:"16px",textAlign:"center",fontSize:11}}>
+                                {simError
+                                  ? <div style={{color:"#F87171",background:"rgba(239,68,68,0.1)",border:"1px solid #EF444433",borderRadius:8,padding:"10px 14px",textAlign:"left"}}>⚠ {simError}</div>
+                                  : <span style={{color:"rgba(255,255,255,0.35)"}}>Sem simulações disponíveis.</span>
+                                }
+                              </div>
                             )}
                           </td></tr>
                         )}
@@ -15550,6 +15607,30 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         </div>
       )}
 
+      {/* ══ LIMPAR MODAL ══ */}
+      {limparModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:C.card,border:`1px solid ${C.b1}`,borderRadius:18,padding:"28px 32px",width:"100%",maxWidth:400,boxShadow:"0 20px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{fontSize:32,textAlign:"center",marginBottom:12}}>⚠️</div>
+            <div style={{color:C.tp,fontSize:15,fontWeight:800,textAlign:"center",marginBottom:8}}>Limpar consultas visíveis?</div>
+            <div style={{color:C.tm,fontSize:12.5,textAlign:"center",lineHeight:1.6,marginBottom:24}}>
+              Isso vai remover as <b style={{color:"#F87171"}}>{termos.length} consultas</b> exibidas da tela.<br/>
+              <span style={{color:C.td,fontSize:11}}>Os dados continuam salvos na plataforma V8 Digital.</span>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setLimparModal(false)}
+                style={{flex:1,background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"11px",fontSize:13,cursor:"pointer"}}>
+                Cancelar
+              </button>
+              <button onClick={()=>{setTermos([]);setTermosPages(null);setTermosPage(1);setLimparModal(false);}}
+                style={{flex:1,background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🗑 Limpar lista
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ AVISO MODAL ══ */}
       {typeof avisoModal!=="undefined"&&avisoModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -15630,8 +15711,10 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
 
 function ApisBancosPage({ currentUser, contacts }) {
-  const [abaBanco, setAbaBanco] = useState("v8");
-  const [abaV8,    setAbaV8]    = useState("fgts");
+  const [abaBanco, setAbaBancoRaw] = useState(() => localStorage.getItem("nexp_abaBanco")||"v8");
+  const setAbaBanco = (v) => { setAbaBancoRaw(v); localStorage.setItem("nexp_abaBanco",v); };
+  const [abaV8, setAbaV8Raw] = useState(() => localStorage.getItem("nexp_abaV8")||"fgts");
+  const setAbaV8 = (v) => { setAbaV8Raw(v); localStorage.setItem("nexp_abaV8",v); };
 
   const tabBtn = (ativa, label, onClick, accent=false) => (
     <button onClick={onClick}
@@ -18098,7 +18181,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
-  const [page, setPage] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
+  const [page, setPageRaw] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
+  const setPage = (p) => { setPageRaw(p); sessionStorage.setItem("nexp_page", p); };
   const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
   const [shake, setShake] = useState(false);
