@@ -1143,28 +1143,7 @@ function LoginPage({ onLogin }) {
   const [twoFAErr,     setTwoFAErr]     = useState("");
   const ROLES_2FA = ["administrador","mestre"];              // roles que exigem 2FA
 
-  // Previsão do tempo em tempo real
-  const [weather, setWeather]   = useState(null);
-  const [cityName, setCityName] = useState(null);
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(async pos => {
-      try {
-        const { latitude: lat, longitude: lon } = pos.coords;
-        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&forecast_days=5`);
-        const d = await r.json();
-        setWeather(d);
-        try {
-          const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=pt`);
-          const gd  = await geo.json();
-          const city  = gd.address?.city || gd.address?.town || gd.address?.village || "";
-          const state = gd.address?.state_code || "";
-          setCityName(city && state ? `${city}, ${state}` : city || state || null);
-        } catch {}
-      } catch {}
-    }, () => {});
-  }, []);
 
   const doLoginReset = async () => {
     if (!resetEmail.trim()) { setResetMsg("Digite seu e-mail de acesso."); return; }
@@ -1239,34 +1218,7 @@ function LoginPage({ onLogin }) {
     setLoading(false);
   };
 
-  // Determinar cenário baseado no clima real
-  const wcode   = weather?.current_weather?.weathercode ?? -1;
-  const temp    = weather?.current_weather?.temperature ?? null;
-  const hour    = new Date().getHours();
-  const isNight = hour >= 20 || hour < 6;
-  const isRain  = wcode >= 51 && wcode <= 82;
-  const isSnow  = wcode >= 71 && wcode <= 77;
-  const isCloud = (wcode >= 2 && wcode <= 3) || wcode === 45 || wcode === 48;
-  const isThunder = wcode >= 95;
-  const isClear = wcode === 0 || wcode === 1;
 
-  // Gradiente de fundo dinâmico
-  const getBg = () => {
-    if (isThunder) return "linear-gradient(180deg,#050a12 0%,#0a1020 50%,#0d1428 100%)";
-    if (isRain && isNight) return "linear-gradient(180deg,#060c18 0%,#0c1830 50%,#101e38 100%)";
-    if (isRain)  return "linear-gradient(180deg,#101828 0%,#1a2c42 50%,#233450 100%)";
-    if (isSnow && isNight) return "linear-gradient(180deg,#0d1520 0%,#1a2535 50%,#243040 100%)";
-    if (isSnow)  return "linear-gradient(180deg,#1a2535 0%,#2a3f55 50%,#3a5070 100%)";
-    if (isNight) return "linear-gradient(180deg,#020510 0%,#050d22 40%,#080f28 100%)";
-    if (isCloud) return "linear-gradient(180deg,#1c2f48 0%,#2a4060 50%,#364e70 100%)";
-    if (hour < 9) return "linear-gradient(180deg,#1a2c50 0%,#2a4a80 40%,#e07030 85%,#f0a050 100%)"; // manhã
-    if (hour > 17) return "linear-gradient(180deg,#2a1040 0%,#5a1a6a 35%,#c04020 70%,#f06030 100%)"; // tarde/pôr
-    return "linear-gradient(180deg,#0a1828 0%,#1040a0 40%,#2060d0 75%,#80b8f0 100%)"; // dia claro
-  };
-
-  // WMO icons
-  const WMO = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",48:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",71:"❄️",73:"❄️",75:"❄️",80:"🌦",81:"🌧",82:"⛈",95:"⛈",96:"⛈",99:"⛈"};
-  const wxIcon = WMO[wcode] || (isNight ? "🌙" : "☀️");
 
   // ── Tela 2FA ─────────────────────────────────────────────────
   if (twoFAStep) return (
