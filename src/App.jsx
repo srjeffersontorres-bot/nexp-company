@@ -1354,12 +1354,18 @@ function LoginPage({ onLogin }) {
           boxShadow:"0 32px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}>
           {/* Logo */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:32 }}>
-            <div style={{ marginBottom:14 }}>
-              <NexpRobot size={42} showFaceOnly />
-            </div>
-            <div style={{ fontWeight:800, fontSize:22, letterSpacing:"-0.8px", color:"#fff", marginBottom:4 }}>Nexp Consultas</div>
-            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11.5, letterSpacing:"0.3px" }}>Sistema de Leads</div>
+          <div style={{ display:"flex", justifyContent:"center", alignItems:"center", marginBottom:32 }}>
+            <svg width="220" height="48" viewBox="0 0 220 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* N estilizado */}
+              <path d="M8 38 L8 10 L16 10 L30 28 L30 10 L38 10 L38 38 L30 38 L16 20 L16 38 Z" fill="white"/>
+              {/* traço diagonal do /N */}
+              <line x1="4" y1="44" x2="18" y2="4" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              {/* exp */}
+              <text x="46" y="35" fontFamily="'Inter','Segoe UI',system-ui,sans-serif" fontWeight="300" fontSize="28" fill="white" letterSpacing="-0.5">exp</text>
+              {/* Badge "Consultas" */}
+              <rect x="122" y="10" width="90" height="28" rx="14" fill="none" stroke="white" strokeWidth="1.8"/>
+              <text x="167" y="29" fontFamily="'Inter','Segoe UI',system-ui,sans-serif" fontWeight="600" fontSize="13" fill="white" textAnchor="middle" letterSpacing="0.2">Consultas</text>
+            </svg>
           </div>
 
           {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
