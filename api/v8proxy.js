@@ -67,7 +67,9 @@ export default async function handler(req, res) {
 
       const url = `${BFF_URL}${path}`;
       const meth = method.toUpperCase();
-      const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json", "Accept": "application/json" };
+      const headers = { "Authorization": `Bearer ${token}`, "Accept": "application/json" };
+      // Só adiciona Content-Type se tiver body — evita erro "Body cannot be empty"
+      if (reqBody && meth !== "GET") headers["Content-Type"] = "application/json";
 
       if (path === "/fgts/proposal" && meth === "POST" && reqBody?.payment) {
         const variants = paymentVariants(reqBody.payment);

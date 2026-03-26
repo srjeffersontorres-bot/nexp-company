@@ -14476,11 +14476,42 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const loteCLTAbort = {current:false};
   const [termoLoading, setTermoLoading] = useState(false);
   const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
+  const [termosSearch, setTermosSearch] = useState("");
 
-  const buscarContatoTermo = () => {
+  const [termoBuscando, setTermoBuscando] = useState(false);
+  const [termoAutoPreenchido, setTermoAutoPreenchido] = useState(false);
+
+  const buscarContatoTermo = async () => {
     const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
+    if(cpfLimpo.length < 11) return;
+    // 1. Busca local nos contatos
     const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
-    if (c) setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:c.phone||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
+    if (c) {
+      setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:(c.phone||"").replace(/\D/g,"").slice(0,11)||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
+      setTermoAutoPreenchido(true);
+    }
+    // 2. Cruzamento com API V8
+    if(!isTokenValid) return;
+    setTermoBuscando(true);
+    try {
+      const end=new Date().toISOString();
+      const start=new Date(Date.now()-180*86400000).toISOString();
+      const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
+      const item=(r?.data||[])[0];
+      if(item) {
+        const telefoneApi=(item.phone||item.phoneNumber||"").replace(/\D/g,"").slice(0,11);
+        setTermoForm(p=>({
+          ...p,
+          nome: item.name||item.signerName||p.nome||"",
+          email: item.email||item.signerEmail||p.email||"",
+          telefone: telefoneApi||p.telefone||"",
+          dataNasc: item.birthDate||item.birth_date||p.dataNasc||"",
+          genero: item.gender||p.genero||"male",
+        }));
+        setTermoAutoPreenchido(true);
+      }
+    } catch(e) { /* silencioso */ }
+    setTermoBuscando(false);
   };
 
   const gerarTermo = async () => {
@@ -14592,7 +14623,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setSimError("");
     setErr("");
     try {
-      // Carrega todas as tabelas de taxa
+      // Carrega todas as tabelas de taxa (com cache — evita chamada extra)
       let cfgList = configs.length ? configs : [];
       if(!cfgList.length) {
         const cfgRes = await apiFetch("/private-consignment/simulation/configs");
@@ -14601,44 +14632,38 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       }
       if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível na API.");
 
-      // Se pediu tabela específica, filtra; senão simula todas
       const cfgsToRun = cfgIdOnly ? cfgList.filter(c=>c.id===cfgIdOnly) : cfgList;
       const margem = parcelaOverride ? parseFloat(parcelaOverride) : parseFloat(termo.availableMarginValue)||0;
       const melhores = {};
-      let lastErrMsg = "";
 
-      for (const cfg of cfgsToRun) {
-        const resultados = [];
-        for (const np of PARCELAS_PADRAO) {
-          try {
-            const body = {
-              consult_id: termo.id,
-              config_id: cfg.id,
-              number_of_installments: np,
-              provider: "QI",
-              ...(margem > 0
-                ? { installment_face_value: margem }
-                : { disbursed_amount: 1000 }
-              ),
-            };
-            console.log(`[CLT SIM] ${cfg.slug} ${np}x →`, JSON.stringify(body));
-            const sim = await apiFetch("/private-consignment/simulation","POST",body);
-            console.log(`[CLT SIM] ${cfg.slug} ${np}x ←`, JSON.stringify(sim));
-            if(sim && typeof sim === "object") {
-              resultados.push({ np, sim, cfg });
-            }
-          } catch(e) {
-            lastErrMsg = e.message;
-            console.warn(`[CLT SIM] ${cfg.slug} ${np}x erro:`, e.message);
-            if(e.message?.includes("expirada") || e.message?.includes("401")) throw e;
-          }
+      // ⚡ PARALELO — todas as combinações cfg × parcela ao mesmo tempo
+      await Promise.all(cfgsToRun.map(async (cfg) => {
+        const tasks = PARCELAS_PADRAO.map(async (np) => {
+          const body = {
+            consult_id: termo.id,
+            config_id: cfg.id,
+            number_of_installments: np,
+            provider: "QI",
+            ...(margem > 0
+              ? { installment_face_value: margem }
+              : { disbursed_amount: 1000 }
+            ),
+          };
+          const sim = await apiFetch("/private-consignment/simulation","POST",body);
+          if(sim && typeof sim === "object") return { np, sim, cfg };
+          return null;
+        });
+        const results = await Promise.allSettled(tasks);
+        // Verifica se algum erro é de sessão expirada
+        for(const r of results) {
+          if(r.status==="rejected" && (r.reason?.message?.includes("expirada")||r.reason?.message?.includes("401"))) throw r.reason;
         }
+        const resultados = results.filter(r=>r.status==="fulfilled"&&r.value).map(r=>r.value);
         if(resultados.length) melhores[cfg.id] = { cfg, resultados };
-      }
+      }));
 
       if(!Object.keys(melhores).length) {
-        const msg = lastErrMsg || "Sem resposta da API";
-        throw new Error(`Simulação falhou: ${msg}`);
+        throw new Error("Simulação falhou: sem resposta da API para nenhuma combinação.");
       }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
@@ -14868,11 +14893,19 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
                 <div style={{display:"flex",gap:6}}>
                   <input value={termoForm.cpf}
-                    onChange={e=>setTermoForm(p=>({...p,cpf:e.target.value.replace(/\D/g,"").slice(0,11)}))}
+                    onChange={e=>{
+                      const v=e.target.value.replace(/\D/g,"").slice(0,11);
+                      setTermoForm(p=>({...p,cpf:v}));
+                      setTermoAutoPreenchido(false);
+                      if(v.length===11) setTimeout(()=>buscarContatoTermo(),100);
+                    }}
                     onBlur={buscarContatoTermo}
-                    placeholder="00000000000" style={{...S.input,flex:1}}/>
-                  <button onClick={buscarContatoTermo} style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>🔍</button>
+                    placeholder="00000000000" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
+                  <button onClick={buscarContatoTermo} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
+                    {termoBuscando?"⏳":"🔍"}
+                  </button>
                 </div>
+                {termoAutoPreenchido&&<div style={{color:"#34D399",fontSize:10,marginTop:3}}>✓ Dados encontrados e preenchidos automaticamente</div>}
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label>
@@ -14992,12 +15025,20 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {(true) && (
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
-                  📄 Consultas CLT
-                  {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
-                    · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
-                  </span>}
-                  {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
+                    📄 Consultas CLT
+                    {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
+                      · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
+                    </span>}
+                    {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
+                  </div>
+                  <input
+                    value={termosSearch||""}
+                    onChange={e=>setTermosSearch(e.target.value)}
+                    placeholder="🔍 Pesquisar consultas..."
+                    style={{...S.input,fontSize:12,padding:"5px 10px",width:200,minWidth:140}}
+                  />
                 </div>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={exportarTermos} disabled={loading}
@@ -15024,7 +15065,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {termos.map(t=>{
+                    {termos.filter(t=>{
+                      if(!termosSearch) return true;
+                      const s=termosSearch.toLowerCase();
+                      return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
+                    }).map(t=>{
                       const col=STATUS_COR[t.status]||C.td;
                       return (
                         <React.Fragment key={t.id}>
@@ -15450,7 +15495,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"40px",textAlign:"center",minWidth:320}}>
             <div style={{fontSize:36,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
-            <div style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:6}}>Calculando 7 simulações...</div>
+            <div style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:6}}>Calculando 8 simulações em paralelo...</div>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,marginBottom:4}}>6x · 8x · 10x · 12x · 18x · 24x · 36x · 48x</div>
             <div style={{color:"rgba(255,255,255,0.4)",fontSize:12}}>{simModal.termo?.name||simModal.termo?.nome}</div>
           </div>
         </div>
@@ -17688,7 +17734,7 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
       novas.forEach(async p => {
         await setDoc(doc(db,"propostas",p.id),{viewedBy:[...(p.viewedBy||[]),myId]},{merge:true});
       });
-      setPropostas(all); setLoading(false);
+      setPropostas(relevant); setLoading(false);
     });
     return ()=>unsub();
   }, []); // eslint-disable-line
