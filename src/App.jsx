@@ -366,46 +366,56 @@ const ACCENT_THEMES = {
   },
 };
 
-// Fixed dark colour tokens (mutable so theme can override accent)
+// Fixed dark colour tokens — Glassmorphism portfolio theme
 const C = {
-  bg: "#080A10",
-  sb: "#08090F",
-  card: "#0F1320",
-  deep: "#0B0D14",
-  b1: "#13161F",
-  b2: "#1A1F2E",
-  tp: "#E8EAEF",
-  ts: "#9CA3AF",
-  tm: "#525870",
-  td: "#2D3348",
-  acc: "#3B6EF5",
-  abg: "#141A2E",
-  atxt: "#4F8EF7",
-  lg1: "#3B6EF5",
-  lg2: "#7C3AED",
+  bg:   "#0d0f1a",
+  sb:   "#0a0c16",
+  card: "rgba(255,255,255,0.04)",
+  deep: "rgba(255,255,255,0.025)",
+  b1:   "rgba(255,255,255,0.08)",
+  b2:   "rgba(255,255,255,0.12)",
+  tp:   "#f0f2ff",
+  ts:   "#a0a8cc",
+  tm:   "#606480",
+  td:   "#363952",
+  acc:  "#3B6EF5",
+  abg:  "rgba(59,110,245,0.12)",
+  atxt: "#6898FF",
+  lg1:  "#3B6EF5",
+  lg2:  "#7C3AED",
 };
 
 const S = {
-  card: { background: C.card, borderRadius: 12, border: `1px solid ${C.b1}` },
+  card: {
+    background: "rgba(255,255,255,0.04)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    borderRadius: 20,
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+  },
   input: {
-    background: C.deep,
-    border: `1px solid ${C.b2}`,
-    borderRadius: 8,
-    color: C.tp,
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    color: "#f0f2ff",
     fontSize: 13,
-    padding: "9px 12px",
+    padding: "10px 14px",
     boxSizing: "border-box",
     width: "100%",
+    outline: "none",
+    transition: "border-color 0.2s, box-shadow 0.2s",
   },
   btn: (bg, color) => ({
     background: bg,
     color,
     border: "none",
-    borderRadius: 8,
-    padding: "9px 18px",
+    borderRadius: 12,
+    padding: "10px 20px",
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
+    transition: "all 0.2s",
   }),
 };
 
@@ -1125,6 +1135,140 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) { /
   );
 }
 
+// ── RainCanvas — animated rain drops background ────────────────
+function RainCanvas() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let w = canvas.width = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+    const resize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
+    window.addEventListener("resize", resize);
+
+    const DROPS = 180;
+    const drops = Array.from({ length: DROPS }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      len: 10 + Math.random() * 20,
+      speed: 4 + Math.random() * 8,
+      opacity: 0.08 + Math.random() * 0.22,
+      width: 0.5 + Math.random() * 1,
+    }));
+
+    let raf;
+    const draw = () => {
+      ctx.clearRect(0, 0, w, h);
+      drops.forEach(d => {
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 1, d.y + d.len);
+        ctx.strokeStyle = `rgba(100,160,255,${d.opacity})`;
+        ctx.lineWidth = d.width;
+        ctx.lineCap = "round";
+        ctx.stroke();
+        d.y += d.speed;
+        if (d.y > h + d.len) {
+          d.y = -d.len;
+          d.x = Math.random() * w;
+        }
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+  return (
+    <canvas ref={canvasRef} style={{ position:"fixed", inset:0, zIndex:0, pointerEvents:"none", opacity:0.6 }} />
+  );
+}
+
+// ── TopBar — profile + notifications top right ────────────────
+function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unreadChat, users, presence, stories }) {
+  const pageTitles = {
+    dashboard:"Relatório de Leads", contacts:"Contatos", add:"Adicionar", import:"Importar",
+    review:"Ver Clientes", cstatus:"Status", leds:"Leds", atalhos:"Atalhos", premium:"Premium Nexp",
+    config:"Configurações", notificacoes:"Notificações", stories:"Stories", chat:"Nexp Chat",
+    digitacao:"Digitação", propostas:"Propostas", simulador:"Simulador", usuarios_page:"Usuários",
+    calendario:"Agenda", pagamentos:"Pagamentos", apis:"Bancos",
+  };
+  const title = pageTitles[page] || "NXP 9!";
+  const uid = currentUser?.uid || currentUser?.id;
+  const isOnline = presence?.[uid]?.online;
+
+  return (
+    <div style={{
+      position:"sticky", top:0, zIndex:100,
+      display:"flex", alignItems:"center", justifyContent:"space-between",
+      padding:"14px 28px 14px 28px",
+      background:"rgba(8,9,20,0.7)",
+      backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
+      borderBottom:"1px solid rgba(255,255,255,0.05)",
+    }}>
+      {/* Page title */}
+      <div>
+        <h1 style={{ color:"#f0f2ff", fontSize:20, fontWeight:800, letterSpacing:"-0.5px", margin:0, lineHeight:1 }}>{title}</h1>
+        <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:3 }}>NXP 9! — Nexp Consultas</div>
+      </div>
+
+      {/* Right side */}
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        {/* Stories bell */}
+        <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
+          <span style={{ fontSize:16 }}>◎</span>
+          {unreadStories > 0 && <span style={{ position:"absolute", top:6, right:6, width:8, height:8, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block" }} />}
+        </button>
+
+        {/* Notification bell */}
+        <button onClick={()=>setPage("notificacoes")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
+          <span style={{ fontSize:16 }}>🔔</span>
+          {unreadNotif > 0 && (
+            <span style={{ position:"absolute", top:4, right:4, background:"#F59E0B", color:"#000", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1 }}>{unreadNotif}</span>
+          )}
+        </button>
+
+        {/* Chat */}
+        <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
+          <svg width="17" height="14" viewBox="0 0 22 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="11" cy="5" r="3.2" fill="currentColor"/>
+            <path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            <circle cx="3.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/>
+            <path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+            <circle cx="18.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/>
+            <path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+          </svg>
+          {unreadChat > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#16A34A", color:"#fff", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadChat}</span>}
+        </button>
+
+        {/* Profile avatar */}
+        <button onClick={()=>setPage("config")} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"6px 14px 6px 6px", cursor:"pointer", transition:"all 0.18s" }}
+          onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
+          onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}>
+          <div style={{ position:"relative" }}>
+            <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff" }}>
+              {currentUser?.photo
+                ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                : <span>{(currentUser?.name||"U").charAt(0).toUpperCase()}</span>}
+            </div>
+            <div style={{ position:"absolute", bottom:0, right:0, width:9, height:9, borderRadius:"50%", background:"#16A34A", border:"2px solid rgba(8,9,20,0.95)" }} />
+          </div>
+          <div style={{ textAlign:"left" }}>
+            <div style={{ color:"#f0f2ff", fontSize:12.5, fontWeight:700, lineHeight:1.2, maxWidth:90, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentUser?.name || "Usuário"}</div>
+            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>{currentUser?.role}</div>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function LoginPage({ onLogin }) {
   const [un, setUn] = useState("");
   const [pw, setPw] = useState("");
@@ -1252,39 +1396,38 @@ function LoginPage({ onLogin }) {
   );
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:"#000", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
+    <div style={{ width:"100vw", height:"100vh", background:"linear-gradient(135deg,#060810,#0d0f1e,#060810)", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
       <style>{`
         @keyframes fadeIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.4} }
       `}</style>
 
-      {/* Flores brancas animadas */}
-      <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 }}
-        viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <radialGradient id="flwGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.07)"/>
-            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
-          </radialGradient>
-        </defs>
-        <ellipse cx="720" cy="450" rx="600" ry="420" fill="url(#flwGlow)"/>
-        {[
-          [120,120,38,0.13,22],[380,80,28,0.09,15],[700,60,44,0.11,30],
-          [1050,110,32,0.10,18],[1310,90,40,0.12,25],[60,400,36,0.09,10],
-          [280,320,50,0.14,35],[550,450,30,0.10,20],[820,380,46,0.13,28],
-          [1100,420,34,0.09,12],[1380,350,42,0.12,22],[180,700,44,0.11,18],
-          [450,760,32,0.09,30],[730,720,50,0.14,8],[980,700,36,0.10,25],
-          [1220,750,40,0.12,15],[1420,680,28,0.09,35],[320,560,38,0.11,20],
-          [600,580,46,0.13,12],[900,540,30,0.09,28],[1150,560,44,0.12,5],
-        ].map(([cx,cy,r,op,delay],fi) => (
-          <g key={fi} transform={`translate(${cx},${cy})`}>
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`}
-              dur={`${18+fi*3}s`} begin={`${delay*0.3}s`} repeatCount="indefinite" additive="sum"/>
-            {[0,60,120,180,240,300].map((angle,pi) => (
-              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
-                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}>
-                <animate attributeName="opacity" values={`${op};${op*1.8};${op}`}
+      {/* Rain animation */}
+      <RainCanvas />
+
+      {/* Glow orbs */}
+      <div style={{ position:"absolute", top:"20%", left:"30%", width:400, height:400, borderRadius:"50%", background:"radial-gradient(circle,rgba(59,110,245,0.12) 0%,transparent 70%)", pointerEvents:"none", zIndex:1 }} />
+      <div style={{ position:"absolute", bottom:"20%", right:"25%", width:300, height:300, borderRadius:"50%", background:"radial-gradient(circle,rgba(124,58,237,0.10) 0%,transparent 70%)", pointerEvents:"none", zIndex:1 }} />
+
+      {/* Card */}
+      <div style={{ position:"relative", zIndex:2, width:"100%", maxWidth:400, padding:"0 20px", animation:"fadeIn 0.7s ease" }}>
+        <div style={{
+          background:"rgba(12,14,26,0.75)",
+          backdropFilter:"blur(40px) saturate(180%)",
+          WebkitBackdropFilter:"blur(40px) saturate(180%)",
+          border:"1px solid rgba(255,255,255,0.08)",
+          borderRadius:28,
+          padding:"40px 36px",
+          boxShadow:"0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
+        }}>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:28 }}>
+            {/* NXP 9! logo */}
+            <div style={{ width:60, height:60, borderRadius:18, background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, boxShadow:"0 8px 32px rgba(59,110,245,0.5)" }}>
+              <span style={{ color:"#fff", fontSize:16, fontWeight:900, letterSpacing:"-1px" }}>NXP</span>
+            </div>
+            <div style={{ color:"#f0f2ff", fontSize:22, fontWeight:900, letterSpacing:"-0.5px", marginBottom:4 }}>NXP 9!</div>
+            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>Nexp Consultas — Sistema de Leads</div>
+          </div>
                   dur={`${4+fi%3}s`} begin={`${pi*0.3+delay*0.1}s`} repeatCount="indefinite"/>
               </ellipse>
             ))}
@@ -1311,19 +1454,8 @@ function LoginPage({ onLogin }) {
         ))}
       </svg>
 
-      {/* Card Apple fosco */}
-      <div style={{ position:"relative", zIndex:1, width:"100%", maxWidth:400, padding:"0 20px", animation:"fadeIn 0.7s ease" }}>
-        <div style={{
-          background:"rgba(18,18,18,0.72)",
-          backdropFilter:"blur(40px) saturate(180%)",
-          WebkitBackdropFilter:"blur(40px) saturate(180%)",
-          border:"1px solid rgba(255,255,255,0.1)",
-          borderRadius:28,
-          padding:"40px 36px",
-          boxShadow:"0 32px 80px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
-        }}>
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:28 }}>
-            <img src="data:image/png;base64,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4/YquIgmTUriV1Xzmhkt1VeILPb5W8stNaYjAJB4F5c6Tb1c2x7wobREBeq031Dy/Tq5VNyw66R22sqYhFLMaOCdxZvvsPKsdy9e3bbfYb9i8qiCZJuKDXSWF8T86dyvaWnltdG07HwIh3HtCh6aWSaZ800j5JJHFz3vO7nE9SST2lfhEBERAXudNdXNQtOKGrosMyD8FwVkglnZ8Tgm53AbA7yMcR08F4ZEEkZ7rnqnneOS49lWUfhC2SyMkfB8Qpot3NO7TzRxtd0PrUboiCU8V4hNYMWx6ix+xZf8UttDGIqeH8G0j+Ro7uZ8Rcf2krzWpepWa6kVdHVZpevwpNRRujp3fFYYeRriCRtExoPUDt3XkUQEREBERAREQFybVXVNrudNcqN0bamllbNE6SJsjQ5p3BLXAtd1HYQQuMiCZhxR66gbDOf/AEmi/wDhUfaiZ5luoV6jvGYXmW6VscQhje6JkbWMBJ2DI2taOp7h1715pEBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQf/9k=" alt="Nexp Consultas" style={{ height:56, objectFit:"contain" }}/>
+
+
           </div>
 
           {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
@@ -1395,24 +1527,59 @@ function LoginPage({ onLogin }) {
 }
 
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
+  const canEdit = user.role === "mestre";
+  const [cover, setCover] = useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
+  const coverRef = useRef(null);
+  const handleCover = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = (ev) => { setCover(ev.target.result); localStorage.setItem("nexp_sidebar_cover", ev.target.result); };
+    r.readAsDataURL(f);
+  };
   return (
-    <div style={{ flexShrink: 0 }}>
-      <div style={{ padding: "12px 14px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:7, minWidth:0 }}>
-          <img src="data:image/png;base64,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4/YquIgmTUriV1Xzmhkt1VeILPb5W8stNaYjAJB4F5c6Tb1c2x7wobREBeq031Dy/Tq5VNyw66R22sqYhFLMaOCdxZvvsPKsdy9e3bbfYb9i8qiCZJuKDXSWF8T86dyvaWnltdG07HwIh3HtCh6aWSaZ800j5JJHFz3vO7nE9SST2lfhEBERAXudNdXNQtOKGrosMyD8FwVkglnZ8Tgm53AbA7yMcR08F4ZEEkZ7rnqnneOS49lWUfhC2SyMkfB8Qpot3NO7TzRxtd0PrUboiCU8V4hNYMWx6ix+xZf8UttDGIqeH8G0j+Ro7uZ8Rcf2krzWpepWa6kVdHVZpevwpNRRujp3fFYYeRriCRtExoPUDt3XkUQEREBERAREQFybVXVNrudNcqN0bamllbNE6SJsjQ5p3BLXAtd1HYQQuMiCZhxR66gbDOf/AEmi/wDhUfaiZ5luoV6jvGYXmW6VscQhje6JkbWMBJ2DI2taOp7h1715pEBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQf/9k=" alt="Nexp Consultas" style={{ height:26, objectFit:"contain", maxWidth:140 }}/>
+    <div style={{ flexShrink: 0, position:"relative" }}>
+      {/* Cover strip */}
+      {cover && (
+        <div style={{ height:80, overflow:"hidden", borderRadius:"16px 16px 0 0" }}>
+          <img src={cover} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", opacity:0.6 }} />
+          <div style={{ position:"absolute", inset:0, background:"linear-gradient(to bottom, rgba(10,12,22,0) 40%, rgba(10,12,22,0.95) 100%)" }} />
         </div>
-        <button onClick={() => setSidebarOpen(o => !o)}
-          style={{ background:"transparent", border:"none", color:C.tm, fontSize:13, cursor:"pointer", padding:"3px 5px", borderRadius:6, opacity:0.7, transition:"opacity 0.15s", flexShrink:0 }}
-          onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-          onMouseLeave={e => e.currentTarget.style.opacity = "0.7"}>
-          ◀
-        </button>
+      )}
+      <div style={{ padding: sidebarOpen ? "14px 16px 10px" : "14px 10px 10px", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center", gap: 8 }}>
+        {sidebarOpen ? (
+          <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+            <div style={{ width:34, height:34, borderRadius:10, background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 4px 14px rgba(59,110,245,0.5)" }}>
+              <span style={{ color:"#fff", fontSize:10.5, fontWeight:900, letterSpacing:"-0.5px" }}>NXP</span>
+            </div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ color:"#f0f2ff", fontSize:15, fontWeight:800, letterSpacing:"-0.4px", lineHeight:1 }}>NXP 9!</div>
+              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9 }}>Nexp Consultas</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ width:34, height:34, borderRadius:10, background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 4px 14px rgba(59,110,245,0.5)" }}>
+            <span style={{ color:"#fff", fontSize:10, fontWeight:900, letterSpacing:"-0.5px" }}>NXP</span>
+          </div>
+        )}
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          {canEdit && sidebarOpen && (
+            <>
+              <button onClick={() => coverRef.current?.click()} style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.3)", borderRadius:7, padding:"3px 7px", fontSize:9, cursor:"pointer" }} title="Trocar capa">🖼</button>
+              <input ref={coverRef} type="file" accept="image/*" onChange={handleCover} style={{ display: "none" }} />
+            </>
+          )}
+          <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? "Fechar" : "Abrir"}
+            style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.35)", fontSize:9, cursor:"pointer", padding:"4px 7px", borderRadius:7, transition:"all 0.15s", flexShrink:0 }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background="rgba(255,255,255,0.12)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; e.currentTarget.style.background="rgba(255,255,255,0.06)"; }}>
+            {sidebarOpen ? "◀" : "▶"}
+          </button>
+        </div>
       </div>
-      <div style={{ height:1, background:C.b1, margin:"0 12px 4px" }} />
+      <div style={{ height:1, background:"rgba(255,255,255,0.05)", margin:"0 12px 6px" }} />
     </div>
   );
 }
-
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
   const all = [
@@ -1477,9 +1644,9 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     <>
       {/* Sidebar */}
       <div className={sidebarOpen ? "nexp-sidebar nexp-sidebar-open" : "nexp-sidebar"} style={{
-        width: sidebarOpen ? 222 : 0, background: C.sb, height: "100vh",
+        width: sidebarOpen ? 222 : 0, background: "rgba(8,9,20,0.95)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", height: "100vh",
         display: "flex", flexDirection: "column", flexShrink: 0,
-        borderRight: `1px solid ${C.b1}`, overflow: "hidden",
+        borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "hidden",
         transition: "width 0.25s cubic-bezier(.4,0,.2,1)", position: "relative",
       }}>
         <div style={{ width: 222, display: "flex", flexDirection: "column", height: "100%" }}>
@@ -1504,19 +1671,19 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                     onClick={() => { setPage(it.id); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 10,
-                      padding: "9px 13px", borderRadius: 10, cursor: "pointer",
+                      padding: "9px 13px", borderRadius: 12, cursor: "pointer",
                       textAlign: "left", width: "100%",
-                      background: active ? C.acc : isOver ? C.abg : C.deep,
+                      background: active ? `linear-gradient(135deg,${C.acc},${C.lg2})` : isOver ? "rgba(255,255,255,0.06)" : "transparent",
                       color: active ? "#fff" : isOver ? C.atxt : C.ts,
-                      border: active ? "none" : isOver ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+                      border: active ? "none" : "none",
                       fontSize: 12.5, fontWeight: active ? 700 : 400,
                       opacity: isDragging ? 0.35 : 1,
-                      transform: isOver ? "translateY(-2px) scale(1.02)" : "none",
-                      transition: "all 0.14s cubic-bezier(.4,0,.2,1)",
-                      boxShadow: active ? `0 3px 12px ${C.acc}55` : "none",
+                      transform: isOver ? "translateX(4px)" : "none",
+                      transition: "all 0.18s cubic-bezier(.4,0,.2,1)",
+                      boxShadow: active ? `0 4px 16px ${C.acc}44` : "none",
                     }}
-                    onMouseEnter={e => { if (!active) { e.currentTarget.style.background = C.abg; e.currentTarget.style.color = C.atxt; e.currentTarget.style.borderColor = C.atxt + "44"; e.currentTarget.style.transform = "scale(1.02)"; e.currentTarget.style.boxShadow = `0 2px 8px ${C.acc}22`; }}}
-                    onMouseLeave={e => { if (!active) { e.currentTarget.style.background = C.deep; e.currentTarget.style.color = C.ts; e.currentTarget.style.borderColor = C.b2; e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}}
+                    onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.transform = "translateX(4px)"; }}}
+                    onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.ts; e.currentTarget.style.transform = "none"; }}}
                   >
                     <span style={{ fontSize: 14, width: 18, textAlign: "center", flexShrink: 0 }}>{it.icon}</span>
                     <span style={{ flex: 1 }}>{it.label}</span>
@@ -1556,16 +1723,16 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
               }).map(item => (
                 <button key={item.id} onClick={() => setPage(item.id)} style={{
                   display: "flex", alignItems: "center", gap: 9,
-                  padding: "9px 13px", borderRadius: 10, width: "100%",
-                  border: page === item.id ? `1px solid ${C.atxt}44` : `1px solid ${C.b2}`,
+                  padding: "9px 13px", borderRadius: 12, width: "100%",
+                  border: "none",
                   cursor: "pointer", textAlign: "left",
-                  background: page === item.id ? C.abg : C.deep,
-                  color: page === item.id ? C.atxt : C.tm,
-                  fontSize: 12.5, fontWeight: page === item.id ? 600 : 400, transition: "all 0.14s",
-                  boxShadow: page === item.id ? `0 2px 8px ${C.acc}33` : "none",
+                  background: page === item.id ? `linear-gradient(135deg,${C.acc},${C.lg2})` : "transparent",
+                  color: page === item.id ? "#fff" : C.tm,
+                  fontSize: 12.5, fontWeight: page === item.id ? 700 : 400, transition: "all 0.18s",
+                  boxShadow: page === item.id ? `0 4px 16px ${C.acc}44` : "none",
                 }}
-                  onMouseEnter={e => { if (page !== item.id) { e.currentTarget.style.background = C.abg; e.currentTarget.style.color = C.atxt; e.currentTarget.style.borderColor = C.atxt + "44"; e.currentTarget.style.transform = "scale(1.01)"; }}}
-                  onMouseLeave={e => { if (page !== item.id) { e.currentTarget.style.background = C.deep; e.currentTarget.style.color = C.tm; e.currentTarget.style.borderColor = C.b2; e.currentTarget.style.transform = "none"; }}}
+                  onMouseEnter={e => { if (page !== item.id) { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; }}}
+                  onMouseLeave={e => { if (page !== item.id) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.tm; }}}
                 >
                   {item.id === "chat" ? (
                     <svg width="17" height="14" viewBox="0 0 22 18" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink:0 }}>
@@ -1594,7 +1761,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
             </div>
 
             {/* User card */}
-            <div style={{ background: C.deep, borderRadius: 10, padding: "11px 12px", border: `1px solid ${C.b1}` }}>
+            <div style={{ background: "rgba(255,255,255,0.04)", backdropFilter:"blur(12px)", borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
                 <div style={{ position: "relative", flexShrink: 0 }}>
                   {/* Story ring on profile */}
@@ -1646,7 +1813,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                 </div>
                 <button onClick={() => setPage("stories")} title="Criar story" style={{ width: 20, height: 20, borderRadius: "50%", background: C.acc, color: "#fff", border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: 0 }}>+</button>
               </div>
-              <button onClick={onLogout} style={{ background: "transparent", border: `1px solid ${C.b2}`, color: C.tm, borderRadius: 7, padding: "5px 10px", fontSize: 11, cursor: "pointer", width: "100%" }}>Sair</button>
+              <button onClick={onLogout} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#F87171", borderRadius: 10, padding: "7px 12px", fontSize: 11.5, cursor: "pointer", width: "100%", fontWeight:600, transition:"all 0.15s" }} onMouseEnter={e=>{e.currentTarget.style.background="rgba(239,68,68,0.15)"}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(239,68,68,0.08)"}}>Sair</button>
             </div>
 
             {/* WhatsApp */}
@@ -6937,7 +7104,7 @@ function StoriesPage({ currentUser, users, onGoToDM }) {
             {/* Gap between ring and photo */}
             <div style={{
               width:"100%", height:"100%", borderRadius:"50%",
-              background: C.bg,
+              background: "linear-gradient(135deg,#080a12 0%,#0d0f1e 50%,#080a12 100%)",
               padding: hasStories && !allViewed ? 2 : 0,
               boxSizing:"border-box",
             }}>
@@ -18633,7 +18800,7 @@ export default function App() {
         mobileOpen={mobileSidebarOpen}
         onMobileClose={()=>setMobileSidebarOpen(false)}
       />
-      <div className="nexp-main" style={{ flex: 1, overflowY: "auto", height: "100vh", position:"relative", scrollbarWidth:"none" }}>
+      <div className="nexp-main" style={{ flex: 1, overflowY: "auto", height: "100vh", position:"relative", scrollbarWidth:"none", display:"flex", flexDirection:"column" }}>
         <style>{`.nexp-main::-webkit-scrollbar { display: none; }`}</style>
         {/* Botão hamburguer mobile */}
         <button className="nexp-mobile-fab" onClick={()=>setMobileSidebarOpen(p=>!p)}
@@ -18643,8 +18810,21 @@ export default function App() {
             fontSize:18, color:"#fff" }}>
           ☰
         </button>
+        {/* Top bar with profile + notifications */}
+        <TopBar
+          currentUser={currentUser}
+          page={page}
+          setPage={setPageAndSave}
+          unreadNotif={unreadNotif}
+          unreadStories={unreadStories}
+          unreadChat={unreadChat}
+          users={users}
+          presence={presence}
+          stories={chatStories}
+        />
         {/* Widget tempo + calculadora */}
         <WeatherCalcWidget />
+        <div style={{ flex:1, position:"relative" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
           <ContactsPage contacts={contacts} setContacts={setContacts} />
@@ -18703,6 +18883,7 @@ export default function App() {
         {page === "simulador" && <SimuladorPage />}
         {page === "apis" && <ApisBancosPage currentUser={currentUser} contacts={contacts} />}
         {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
+        </div>
       </div>
 
       {/* ── Chat Flutuante + FAB ── */}
