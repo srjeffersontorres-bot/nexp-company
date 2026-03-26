@@ -1227,7 +1227,11 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   const calcPress = (v) => {
     if (v==="C") { setCalcVal(""); setCalcResult(null); return; }
     if (v==="=") {
-      try { const r=new Function("return "+calcVal.replace(/×/g,"*").replace(/÷/g,"/"))(); setCalcResult(String(parseFloat(r.toFixed(10)))); setCalcVal(String(parseFloat(r.toFixed(10)))); } catch { setCalcResult("Erro"); } return;
+      try {
+        // eslint-disable-next-line no-new-func
+        const r=new Function("return "+calcVal.replace(/×/g,"*").replace(/÷/g,"/"))();
+        setCalcResult(String(parseFloat(r.toFixed(10)))); setCalcVal(String(parseFloat(r.toFixed(10))));
+      } catch { setCalcResult("Erro"); } return;
     }
     if (v==="⌫") { setCalcVal(p=>p.slice(0,-1)); setCalcResult(null); return; }
     setCalcResult(null); setCalcVal(p=>p+v);
@@ -9887,6 +9891,7 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
 }
 
 // ── Weather + Calculadora Widget ──────────────────────────────
+// eslint-disable-next-line no-unused-vars
 function WeatherCalcWidget() {
   const [weather, setWeather] = useState(null);
   const [loading, setLoading] = useState(false);
