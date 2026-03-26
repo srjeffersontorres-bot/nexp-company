@@ -14482,16 +14482,25 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [termoAutoPreenchido, setTermoAutoPreenchido] = useState(false);
 
   const buscarContatoTermo = async () => {
-    const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
-    if(cpfLimpo.length < 11) return;
+    const cpfLimpo = (termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0");
+    if(cpfLimpo.replace(/0/g,"").length===0) return;
     // 1. Busca local nos contatos
-    const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo);
+    const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpfLimpo);
+    let dadosAcc = { nome:"", email:"", telefone:"", dataNasc:"", genero:"male" };
     if (c) {
-      setTermoForm(p=>({...p, nome:c.name||p.nome, email:c.email||p.email, telefone:(c.phone||"").replace(/\D/g,"").slice(0,11)||p.telefone, dataNasc:c.dataNasc||p.dataNasc}));
+      const tel=(c.phone||"").replace(/\D/g,"").slice(0,11);
+      dadosAcc = { nome:c.name||"", email:c.email||"", telefone:tel, dataNasc:c.dataNasc||"", genero:c.genero||"male" };
+      setTermoForm(p=>({...p, ...Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v))}));
       setTermoAutoPreenchido(true);
     }
     // 2. Cruzamento com API V8
-    if(!isTokenValid) return;
+    if(!isTokenValid) {
+      // Verifica se dados locais são suficientes para auto-gerar
+      if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=11) {
+        _autoGerarTermo(cpfLimpo, dadosAcc);
+      }
+      return;
+    }
     setTermoBuscando(true);
     try {
       const end=new Date().toISOString();
@@ -14500,18 +14509,74 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const item=(r?.data||[])[0];
       if(item) {
         const telefoneApi=(item.phone||item.phoneNumber||"").replace(/\D/g,"").slice(0,11);
-        setTermoForm(p=>({
-          ...p,
-          nome: item.name||item.signerName||p.nome||"",
-          email: item.email||item.signerEmail||p.email||"",
-          telefone: telefoneApi||p.telefone||"",
-          dataNasc: item.birthDate||item.birth_date||p.dataNasc||"",
-          genero: item.gender||p.genero||"male",
-        }));
+        const merged = {
+          nome: item.name||item.signerName||dadosAcc.nome||"",
+          email: item.email||item.signerEmail||dadosAcc.email||"",
+          telefone: telefoneApi||dadosAcc.telefone||"",
+          dataNasc: item.birthDate||item.birth_date||dadosAcc.dataNasc||"",
+          genero: item.gender||dadosAcc.genero||"male",
+        };
+        setTermoForm(p=>({...p,...Object.fromEntries(Object.entries(merged).filter(([,v])=>v))}));
         setTermoAutoPreenchido(true);
+        dadosAcc = merged;
       }
     } catch(e) { /* silencioso */ }
     setTermoBuscando(false);
+    // 3. Auto-gerar termo se todos os campos foram encontrados
+    if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=11) {
+      _autoGerarTermo(cpfLimpo, dadosAcc);
+    }
+  };
+
+  const _autoGerarTermo = async (cpfLimpo, dados) => {
+    setErr(""); setTermoLoading(true);
+    try {
+      const tel=(dados.telefone||"").replace(/\D/g,"");
+      const body={
+        borrowerDocumentNumber:cpfLimpo,
+        gender:dados.genero||"male",
+        birthDate:dados.dataNasc,
+        signerName:dados.nome,
+        signerEmail:dados.email,
+        signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.slice(0,2)},
+        provider:"QI",
+      };
+      const res=await apiFetch("/private-consignment/consult","POST",body);
+      const cpfFmt=cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+      const novoTermo={
+        id:res.id,
+        nome:dados.nome,
+        cpf:cpfFmt,
+        status:"WAITING_CONSENT",
+        availableMarginValue:null,
+        link:`https://app.v8sistema.com/consignment/consult/${res.id}`,
+        criadoEm:new Date().toLocaleString("pt-BR"),
+        dataNasc:dados.dataNasc,
+        genero:dados.genero||"male",
+        email:dados.email,
+        telefone:dados.telefone,
+        _autoGerado:true,
+      };
+      setTermos(prev=>[novoTermo,...prev]);
+      setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
+      setTermoAutoPreenchido(false);
+      // Polling de status
+      let tentativas=0;
+      const poll=setInterval(async()=>{
+        try{
+          tentativas++;
+          const end=new Date().toISOString();
+          const start=new Date(Date.now()-86400000).toISOString();
+          const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
+          const found=(r?.data||[]).find(x=>x.id===res.id);
+          if(found){
+            setTermos(prev=>prev.map(t=>t.id===res.id?{...t,...found,link:novoTermo.link}:t));
+            if(["SUCCESS","FAILED","REJECTED"].includes(found.status)||tentativas>20) clearInterval(poll);
+          } else if(tentativas>20) clearInterval(poll);
+        }catch{ if(tentativas>20) clearInterval(poll); }
+      },4000);
+    } catch(e){ setErr(e.message); }
+    setTermoLoading(false);
   };
 
   const gerarTermo = async () => {
@@ -14894,13 +14959,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <div style={{display:"flex",gap:6}}>
                   <input value={termoForm.cpf}
                     onChange={e=>{
-                      const v=e.target.value.replace(/\D/g,"").slice(0,11);
-                      setTermoForm(p=>({...p,cpf:v}));
+                      const raw=e.target.value.replace(/\D/g,"").slice(0,11);
+                      const fmt=raw.length===11?raw.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"):raw;
+                      setTermoForm(p=>({...p,cpf:fmt}));
                       setTermoAutoPreenchido(false);
-                      if(v.length===11) setTimeout(()=>buscarContatoTermo(),100);
+                      if(raw.length===11) setTimeout(()=>buscarContatoTermo(),100);
                     }}
-                    onBlur={buscarContatoTermo}
-                    placeholder="00000000000" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
+                    onBlur={()=>{
+                      const raw=(termoForm.cpf||"").replace(/\D/g,"");
+                      if(raw.length>0&&raw.length<11){
+                        const padded=raw.padStart(11,"0");
+                        const fmt=padded.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+                        setTermoForm(p=>({...p,cpf:fmt}));
+                        setTimeout(()=>buscarContatoTermo(),100);
+                      } else { buscarContatoTermo(); }
+                    }}
+                    placeholder="000.000.000-00" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
                   <button onClick={buscarContatoTermo} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
                     {termoBuscando?"⏳":"🔍"}
                   </button>
@@ -15075,12 +15149,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         <React.Fragment key={t.id}>
                         <tr
                           onClick={()=>{
+                            if(["FAILED","REJECTED"].includes(t.status)){ setAvisoModal(t); return; }
                             if(!(t.status==="SUCCESS"||t.availableMarginValue)) return;
                             if(inlineSimId===t.id){ setInlineSimId(null); return; }
                             setInlineSimId(t.id);
                             executarSimulacoes(t,true);
                           }}
-                          style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}33`:`1px solid ${C.b1}`,cursor:(t.status==="SUCCESS"||t.availableMarginValue)?"pointer":"default",transition:"background 0.1s"}}
+                          style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}33`:`1px solid ${C.b1}`,cursor:(t.status==="SUCCESS"||t.availableMarginValue||["FAILED","REJECTED"].includes(t.status))?"pointer":"default",transition:"background 0.1s"}}
                           onMouseEnter={e=>e.currentTarget.style.background=C.deep}
                           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                           <td style={{padding:"8px 10px",color:C.tp,fontWeight:600,fontSize:12}}>{t.name||t.nome||"—"}</td>
@@ -15240,8 +15315,39 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </div>
                   {isSel&&opsDetalhe&&(
                     <div style={{borderTop:`1px solid ${C.b1}`,padding:"14px 16px",background:C.deep}}>
+                      {/* ── Resumo financeiro ── */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
+                        {[
+                          ["💰 Valor Liberado", fmtBRL(opsDetalhe.disbursedIssueAmount||opsDetalhe.disbursement_amount||opsDetalhe.issueAmount||0), "#34D399"],
+                          ["📋 Parcela", fmtBRL(opsDetalhe.installmentValue||opsDetalhe.installment_value||opsDetalhe.installmentFaceValue||0), "#FBBF24"],
+                          ["🔢 Parcelas", opsDetalhe.numberOfInstallments||opsDetalhe.number_of_installments||opsDetalhe.installments||"—", C.atxt],
+                          ["📊 Tabela", opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.table||opsDetalhe.configName||"—", "#C084FC"],
+                        ].map(([l,v,cor])=>(
+                          <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
+                            <div style={{color:cor,fontWeight:700,fontSize:13}}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* ── Dados da contratação ── */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
+                        {[
+                          ["👤 Cliente", opsDetalhe.name||opsDetalhe.borrowerName||"—", C.tp],
+                          ["🪪 CPF", fmtCPF(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||""), C.tm],
+                          ["📝 Contrato", opsDetalhe.contractNumber||"—", C.tm],
+                          ["📅 Criado em", opsDetalhe.createdAt||opsDetalhe.created_at ? new Date(opsDetalhe.createdAt||opsDetalhe.created_at).toLocaleDateString("pt-BR") : "—", C.td],
+                          ["📡 Provider", (opsDetalhe.provider||"—").toUpperCase(), C.td],
+                          ["🏦 Status", STATUS_OP_LABEL[opsDetalhe.status||""]||opsDetalhe.status||"—", STATUS_OP_COLOR[opsDetalhe.status||""]||C.td],
+                        ].map(([l,v,cor])=>(
+                          <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
+                            <div style={{color:cor,fontWeight:600,fontSize:12}}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* ── Link de Formalização ── */}
                       {(opsDetalhe.formalization_url||opsDetalhe.contract_url)&&(
-                        <div style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:10}}>
+                        <div style={{background:C.card,borderRadius:8,padding:"10px 14px"}}>
                           <div style={{color:C.td,fontSize:10,marginBottom:6}}>🔗 Link de Formalização</div>
                           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                             <a href={opsDetalhe.formalization_url||opsDetalhe.contract_url} target="_blank" rel="noreferrer"
@@ -15309,11 +15415,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
                 {/* Coluna 1 */}
                 <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                  <div style={{...S.card,padding:"18px 20px"}}>
-                    <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>🔑 IDs da Operação</div>
-                    <div style={{display:"grid",gap:10}}>
-                      {inp("ID da Simulação *",digForm.simId,"simId",{ph:"UUID da simulação"})}
-                      {inp("ID do Consentimento",digForm.consultaId,"consultaId",{ph:"UUID do consentimento"})}
+                  <div style={{display:"none"}}>
+                    <div style={{...S.card,padding:"18px 20px"}}>
+                      <div style={{color:C.ts,fontSize:12,fontWeight:700,marginBottom:12}}>🔑 IDs da Operação</div>
+                      <div style={{display:"grid",gap:10}}>
+                        {inp("ID da Simulação *",digForm.simId,"simId",{ph:"UUID da simulação"})}
+                        {inp("ID do Consentimento",digForm.consultaId,"consultaId",{ph:"UUID do consentimento"})}
+                      </div>
                     </div>
                   </div>
                   <div style={{...S.card,padding:"18px 20px"}}>
