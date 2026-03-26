@@ -1195,6 +1195,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   };
   const title = pageTitles[page] || "NXP 9!";
   const uid = currentUser?.uid || currentUser?.id;
+  // eslint-disable-next-line no-unused-vars
   const isOnline = presence?.[uid]?.online;
 
   return (
