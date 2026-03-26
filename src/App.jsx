@@ -1428,35 +1428,6 @@ function LoginPage({ onLogin }) {
             <div style={{ color:"#f0f2ff", fontSize:22, fontWeight:900, letterSpacing:"-0.5px", marginBottom:4 }}>NXP 9!</div>
             <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>Nexp Consultas — Sistema de Leads</div>
           </div>
-                  dur={`${4+fi%3}s`} begin={`${pi*0.3+delay*0.1}s`} repeatCount="indefinite"/>
-              </ellipse>
-            ))}
-            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}>
-              <animate attributeName="r" values={`${r*0.12};${r*0.18};${r*0.12}`} dur={`${3+fi%2}s`} repeatCount="indefinite"/>
-            </circle>
-          </g>
-        ))}
-        {[
-          [200,240,18,0.06,5],[500,180,14,0.05,12],[850,200,20,0.07,3],
-          [1200,160,16,0.05,18],[90,600,15,0.06,8],[400,650,19,0.07,25],
-          [670,630,13,0.05,0],[950,600,17,0.06,14],[1300,620,21,0.07,9],
-        ].map(([cx,cy,r,op,delay],fi) => (
-          <g key={`s${fi}`} transform={`translate(${cx},${cy})`}>
-            <animateTransform attributeName="transform" type="rotate"
-              from={`0 ${cx} ${cy}`} to={`-360 ${cx} ${cy}`}
-              dur={`${25+fi*4}s`} begin={`${delay*0.5}s`} repeatCount="indefinite" additive="sum"/>
-            {[0,60,120,180,240,300].map((angle,pi) => (
-              <ellipse key={pi} cx={0} cy={-r*0.65} rx={r*0.28} ry={r*0.52}
-                fill={`rgba(255,255,255,${op})`} transform={`rotate(${angle})`}/>
-            ))}
-            <circle cx={0} cy={0} r={r*0.15} fill={`rgba(255,255,255,${op*1.5})`}/>
-          </g>
-        ))}
-      </svg>
-
-
-
-          </div>
 
           {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
 
