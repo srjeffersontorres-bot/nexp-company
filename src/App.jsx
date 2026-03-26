@@ -795,7 +795,7 @@ function CommSim({ compact = false }) {
 // ── NexpRobot — robô SVG com corpo animado e 12 poses ─────────
 
 
-function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) {
+function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) { // eslint-disable-line no-unused-vars
   const [pose, setPose] = useState(0);
   const [animKey, setAnimKey] = useState(0);
   const timerRef = useRef(null);
