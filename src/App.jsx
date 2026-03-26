@@ -366,14 +366,14 @@ const ACCENT_THEMES = {
   },
 };
 
-// Fixed dark colour tokens — Glassmorphism portfolio theme
+// Fixed dark colour tokens — Glassmorphism portfolio theme (true black)
 const C = {
-  bg:   "#0d0f1a",
-  sb:   "#0a0c16",
+  bg:   "#000000",
+  sb:   "#050507",
   card: "rgba(255,255,255,0.04)",
   deep: "rgba(255,255,255,0.025)",
-  b1:   "rgba(255,255,255,0.08)",
-  b2:   "rgba(255,255,255,0.12)",
+  b1:   "rgba(255,255,255,0.07)",
+  b2:   "rgba(255,255,255,0.11)",
   tp:   "#f0f2ff",
   ts:   "#a0a8cc",
   tm:   "#606480",
@@ -1184,7 +1184,6 @@ function RainCanvas() {
   );
 }
 
-// ── TopBar — profile + notifications top right ────────────────
 function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unreadChat, users, presence, stories }) {
   const pageTitles = {
     dashboard:"Relatório de Leads", contacts:"Contatos", add:"Adicionar", import:"Importar",
@@ -1193,29 +1192,144 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
     digitacao:"Digitação", propostas:"Propostas", simulador:"Simulador", usuarios_page:"Usuários",
     calendario:"Agenda", pagamentos:"Pagamentos", apis:"Bancos",
   };
-  const title = pageTitles[page] || "NXP 9!";
+  const title = pageTitles[page] || "NEXP CONSULTAS";
   const uid = currentUser?.uid || currentUser?.id;
   // eslint-disable-next-line no-unused-vars
   const isOnline = presence?.[uid]?.online;
+
+  // ── Inline weather + calc state ───────────────────────────────
+  const [showWeather, setShowWeather] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);
+  const [weather, setWeather] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [calcVal, setCalcVal] = useState("");
+  const [calcResult, setCalcResult] = useState(null);
+
+  useEffect(() => {
+    if (!showWeather || weather) return;
+    setWeatherLoading(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+          const { latitude: lat, longitude: lon } = pos.coords;
+          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&current_weather=true&timezone=auto&forecast_days=5`);
+          setWeather(await res.json());
+        } catch {}
+        setWeatherLoading(false);
+      }, () => setWeatherLoading(false));
+    } else setWeatherLoading(false);
+  }, [showWeather]); // eslint-disable-line
+
+  const WMO_ICON = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",80:"🌦",81:"🌧",82:"⛈",95:"⛈",99:"⛈"};
+  const WMO_DESC = {0:"Céu limpo",1:"Princ. limpo",2:"Parc. nublado",3:"Nublado",45:"Névoa",51:"Garoa leve",53:"Garoa",55:"Garoa forte",61:"Chuva leve",63:"Chuva",65:"Chuva forte",80:"Pancadas",81:"Pancadas",82:"Pancadas fortes",95:"Trovoada",99:"Trovoada"};
+  const weekDay = (d) => new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"});
+
+  const calcPress = (v) => {
+    if (v==="C") { setCalcVal(""); setCalcResult(null); return; }
+    if (v==="=") {
+      try { const r=new Function("return "+calcVal.replace(/×/g,"*").replace(/÷/g,"/"))(); setCalcResult(String(parseFloat(r.toFixed(10)))); setCalcVal(String(parseFloat(r.toFixed(10)))); } catch { setCalcResult("Erro"); } return;
+    }
+    if (v==="⌫") { setCalcVal(p=>p.slice(0,-1)); setCalcResult(null); return; }
+    setCalcResult(null); setCalcVal(p=>p+v);
+  };
+  const calcBtns = [["C","⌫","%","÷"],["7","8","9","×"],["4","5","6","-"],["1","2","3","+"],[" ","0",".","="]];
+
+  const PopoverWrap = ({ children }) => (
+    <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, zIndex:500, minWidth:240, background:"rgba(0,0,0,0.95)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:16, boxShadow:"0 8px 40px rgba(0,0,0,0.7)", overflow:"hidden", animation:"fadeIn 0.15s ease" }}>
+      {children}
+    </div>
+  );
 
   return (
     <div style={{
       position:"sticky", top:0, zIndex:100,
       display:"flex", alignItems:"center", justifyContent:"space-between",
       padding:"14px 28px 14px 28px",
-      background:"rgba(8,9,20,0.7)",
+      background:"rgba(0,0,0,0.85)",
       backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
       borderBottom:"1px solid rgba(255,255,255,0.05)",
     }}>
       {/* Page title */}
       <div>
         <h1 style={{ color:"#f0f2ff", fontSize:20, fontWeight:800, letterSpacing:"-0.5px", margin:0, lineHeight:1 }}>{title}</h1>
-        <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:3 }}>NXP 9! — Nexp Consultas</div>
+        <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:3 }}>NEXP CONSULTAS</div>
       </div>
 
       {/* Right side */}
-      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-        {/* Stories bell */}
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+
+        {/* Weather button */}
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>{ setShowWeather(p=>!p); setShowCalc(false); }}
+            style={{ background:showWeather?"rgba(59,110,245,0.2)":"rgba(255,255,255,0.05)", border:`1px solid ${showWeather?"rgba(59,110,245,0.4)":"rgba(255,255,255,0.08)"}`, borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", fontSize:16 }}
+            title="Previsão do Tempo">
+            {weather?.current_weather ? WMO_ICON[weather.current_weather.weathercode]||"🌤" : "🌤"}
+          </button>
+          {showWeather && (
+            <PopoverWrap>
+              <div style={{ padding:"12px 14px" }}>
+                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:10, textTransform:"uppercase", letterSpacing:"0.5px" }}>Previsão do Tempo</div>
+                {weatherLoading && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, textAlign:"center", padding:"12px 0" }}>Carregando...</div>}
+                {weather?.current_weather && (
+                  <>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                      <span style={{ fontSize:32 }}>{WMO_ICON[weather.current_weather.weathercode]||"🌡"}</span>
+                      <div>
+                        <div style={{ color:"#f0f2ff", fontSize:24, fontWeight:700 }}>{Math.round(weather.current_weather.temperature)}°C</div>
+                        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5 }}>{WMO_DESC[weather.current_weather.weathercode]||"—"}</div>
+                      </div>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:4 }}>
+                      {(weather.daily?.time||[]).map((d,i)=>(
+                        <div key={d} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"6px 4px", textAlign:"center" }}>
+                          <div style={{ color:"rgba(255,255,255,0.35)", fontSize:9 }}>{i===0?"Hoje":weekDay(d)}</div>
+                          <div style={{ fontSize:14, margin:"3px 0" }}>{WMO_ICON[weather.daily.weathercode[i]]||"🌡"}</div>
+                          <div style={{ color:"#f0f2ff", fontSize:9.5, fontWeight:700 }}>{Math.round(weather.daily.temperature_2m_max[i])}°</div>
+                          <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9 }}>{Math.round(weather.daily.temperature_2m_min[i])}°</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </PopoverWrap>
+          )}
+        </div>
+
+        {/* Calculator button */}
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>{ setShowCalc(p=>!p); setShowWeather(false); }}
+            style={{ background:showCalc?"rgba(59,110,245,0.2)":"rgba(255,255,255,0.05)", border:`1px solid ${showCalc?"rgba(59,110,245,0.4)":"rgba(255,255,255,0.08)"}`, borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", fontSize:16 }}
+            title="Calculadora">
+            🧮
+          </button>
+          {showCalc && (
+            <PopoverWrap>
+              <div style={{ padding:"12px" }}>
+                <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"12px 14px", marginBottom:10, textAlign:"right", minHeight:56 }}>
+                  <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10.5, wordBreak:"break-all" }}>{calcVal||"0"}</div>
+                  {calcResult!==null && <div style={{ color:"#6898FF", fontSize:22, fontWeight:700 }}>{calcResult}</div>}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:5 }}>
+                  {calcBtns.flat().map((btn,i)=>{
+                    const isEq=btn==="="; const isOp=["÷","×","-","+"].includes(btn);
+                    const isClear=btn==="C"; const isSpec=["⌫","%"].includes(btn);
+                    return (
+                      <button key={i} onClick={()=>calcPress(btn.trim()||"0")}
+                        style={{ background:isEq?`linear-gradient(135deg,#3B6EF5,#7C3AED)`:isClear?"rgba(239,68,68,0.15)":isSpec||isOp?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.05)", color:isEq?"#fff":isClear?"#F87171":isOp?"#6898FF":"#f0f2ff", border:"none", borderRadius:8, padding:"10px 0", fontSize:isEq?16:13, fontWeight:600, cursor:"pointer", transition:"all 0.1s" }}
+                        onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.25)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.filter="none";}}>
+                        {btn||"0"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </PopoverWrap>
+          )}
+        </div>
+
+        {/* Stories */}
         <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
@@ -1228,23 +1342,14 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
           <span style={{ fontSize:16 }}>🔔</span>
-          {unreadNotif > 0 && (
-            <span style={{ position:"absolute", top:4, right:4, background:"#F59E0B", color:"#000", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", lineHeight:1 }}>{unreadNotif}</span>
-          )}
+          {unreadNotif > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#F59E0B", color:"#000", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadNotif}</span>}
         </button>
 
         {/* Chat */}
         <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
-          <svg width="17" height="14" viewBox="0 0 22 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="11" cy="5" r="3.2" fill="currentColor"/>
-            <path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            <circle cx="3.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/>
-            <path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-            <circle cx="18.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/>
-            <path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-          </svg>
+          <svg width="17" height="14" viewBox="0 0 22 18" fill="none"><circle cx="11" cy="5" r="3.2" fill="currentColor"/><path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="3.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/><circle cx="18.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/></svg>
           {unreadChat > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#16A34A", color:"#fff", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadChat}</span>}
         </button>
 
@@ -1256,9 +1361,9 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
             <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff" }}>
               {currentUser?.photo
                 ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                : <span>{(currentUser?.name||"U").charAt(0).toUpperCase()}</span>}
+                : <span style={{ fontSize:18 }}>🙂</span>}
             </div>
-            <div style={{ position:"absolute", bottom:0, right:0, width:9, height:9, borderRadius:"50%", background:"#16A34A", border:"2px solid rgba(8,9,20,0.95)" }} />
+            <div style={{ position:"absolute", bottom:0, right:0, width:9, height:9, borderRadius:"50%", background:"#16A34A", border:"2px solid rgba(0,0,0,0.98)", animation:"pulse 2s infinite" }} />
           </div>
           <div style={{ textAlign:"left" }}>
             <div style={{ color:"#f0f2ff", fontSize:12.5, fontWeight:700, lineHeight:1.2, maxWidth:90, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentUser?.name || "Usuário"}</div>
@@ -1397,7 +1502,7 @@ function LoginPage({ onLogin }) {
   );
 
   return (
-    <div style={{ width:"100vw", height:"100vh", background:"linear-gradient(135deg,#060810,#0d0f1e,#060810)", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
+    <div style={{ width:"100vw", height:"100vh", background:"#000000", display:"flex", alignItems:"center", justifyContent:"center", position:"fixed", inset:0, overflow:"hidden" }}>
       <style>{`
         @keyframes fadeIn { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.4} }
@@ -1426,8 +1531,8 @@ function LoginPage({ onLogin }) {
             <div style={{ width:60, height:60, borderRadius:18, background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:14, boxShadow:"0 8px 32px rgba(59,110,245,0.5)" }}>
               <span style={{ color:"#fff", fontSize:16, fontWeight:900, letterSpacing:"-1px" }}>NXP</span>
             </div>
-            <div style={{ color:"#f0f2ff", fontSize:22, fontWeight:900, letterSpacing:"-0.5px", marginBottom:4 }}>NXP 9!</div>
-            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:12 }}>Nexp Consultas — Sistema de Leads</div>
+            <div style={{ color:"#f0f2ff", fontSize:18, fontWeight:900, letterSpacing:"1px", textTransform:"uppercase", marginBottom:4 }}>NEXP CONSULTAS</div>
+            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>Sistema de Leads</div>
           </div>
 
           {err && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:14, padding:"10px 14px", marginBottom:18, color:"#F87171", fontSize:12.5 }}>⚠ {err}</div>}
@@ -1524,8 +1629,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
               <span style={{ color:"#fff", fontSize:10.5, fontWeight:900, letterSpacing:"-0.5px" }}>NXP</span>
             </div>
             <div style={{ minWidth:0 }}>
-              <div style={{ color:"#f0f2ff", fontSize:15, fontWeight:800, letterSpacing:"-0.4px", lineHeight:1 }}>NXP 9!</div>
-              <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9 }}>Nexp Consultas</div>
+              <div style={{ color:"#f0f2ff", fontSize:12, fontWeight:900, letterSpacing:"0.5px", lineHeight:1, textTransform:"uppercase" }}>NEXP CONSULTAS</div>
             </div>
           </div>
         ) : (
@@ -1616,7 +1720,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     <>
       {/* Sidebar */}
       <div className={sidebarOpen ? "nexp-sidebar nexp-sidebar-open" : "nexp-sidebar"} style={{
-        width: sidebarOpen ? 222 : 0, background: "rgba(8,9,20,0.95)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", height: "100vh",
+        width: sidebarOpen ? 222 : 0, background: "rgba(0,0,0,0.98)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", height: "100vh",
         display: "flex", flexDirection: "column", flexShrink: 0,
         borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "hidden",
         transition: "width 0.25s cubic-bezier(.4,0,.2,1)", position: "relative",
@@ -1760,7 +1864,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                         <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: iHaveStory ? C.sb : "transparent", padding: iHaveStory ? 1 : 0, boxSizing:"border-box" }}>
                           {uObj.photo
                             ? <img src={uObj.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block", border: !iHaveStory ? `1.5px solid ${C.atxt}33` : "none" }} />
-                            : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg, color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>{ini(uObj.name || "OP")}</div>
+                            : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg, color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: flashUserId === (uObj.uid || uObj.id) ? 10 : 16, fontWeight: 700, animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>{flashUserId === (uObj.uid || uObj.id) ? ini(uObj.name || "OP") : "🙂"}</div>
                           }
                         </div>
                       </div>
@@ -1772,9 +1876,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                   <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
                   <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4, flexWrap:"wrap" }}>
                     {roleLabel[user.role]}
-                    <span style={{ color: "#16A34A", fontSize: 9, display:"flex", alignItems:"center", gap:2 }}>
-                      <span style={{ width:6, height:6, borderRadius:"50%", background:"#16A34A", display:"inline-block", animation:"pulse 2s infinite" }} />🟢 online
-                    </span>
                     {(() => {
                       const uid2 = uObj.uid||uObj.id;
                       const override = sysConfig?.userOverrides?.[uid2];
@@ -7076,7 +7177,7 @@ function StoriesPage({ currentUser, users, onGoToDM }) {
             {/* Gap between ring and photo */}
             <div style={{
               width:"100%", height:"100%", borderRadius:"50%",
-              background: "linear-gradient(135deg,#080a12 0%,#0d0f1e 50%,#080a12 100%)",
+              background: "#000000",
               padding: hasStories && !allViewed ? 2 : 0,
               boxSizing:"border-box",
             }}>
@@ -7810,6 +7911,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   const myId = currentUser.uid || currentUser.id;
   const [activeTab, setActiveTab] = useState(null);
   const [allMessages, setAllMessages] = useState([]);
+  const [chatW, setChatW] = useState(380);
+  const [chatH, setChatH] = useState(580);
   const [text, setText] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [attachment, setAttachment] = useState(null);
@@ -8380,7 +8483,24 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
   }
 
   return (
-    <div ref={dragRef} style={{ position:"fixed", left, top, width:380, height:580, zIndex:400, display:"flex", flexDirection:"column", background:C.sb, borderRadius:16, border:`1px solid ${C.b1}`, boxShadow:"0 8px 40px rgba(0,0,0,0.6)", overflow:"hidden", animation:"fadeIn 0.22s ease" }}>
+    <div ref={dragRef} style={{ position:"fixed", left, top, width:chatW, height:chatH, zIndex:400, display:"flex", flexDirection:"column", background:C.sb, borderRadius:16, border:`1px solid ${C.b1}`, boxShadow:"0 8px 40px rgba(0,0,0,0.6)", overflow:"hidden", animation:"fadeIn 0.22s ease" }}>
+      {/* Resize handle — bottom-right corner */}
+      <div
+        onMouseDown={e => {
+          e.preventDefault();
+          const startX = e.clientX, startY = e.clientY;
+          const startW = chatW, startH = chatH;
+          const onMove = (ev) => {
+            setChatW(Math.max(320, Math.min(700, startW + ev.clientX - startX)));
+            setChatH(Math.max(400, Math.min(900, startH + ev.clientY - startY)));
+          };
+          const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        }}
+        style={{ position:"absolute", bottom:0, right:0, width:16, height:16, cursor:"se-resize", zIndex:10, display:"flex", alignItems:"flex-end", justifyContent:"flex-end", padding:"3px" }}>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 7L7 1M4 7L7 4M7 7L7 7" stroke="rgba(255,255,255,0.3)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+      </div>
 
       {/* ── Header ── */}
       <div onMouseDown={startDrag} onTouchStart={startTouchDrag}
@@ -8447,9 +8567,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
               : tabUser
               ? (
                 <span style={{ display:"flex", alignItems:"center", gap:4 }}>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background: isReallyOnline(presence[activeTab]) ? "#16A34A" : "#FBBF24", display:"inline-block", flexShrink:0, boxShadow: isReallyOnline(presence[activeTab])?"0 0 5px #16A34A88":"0 0 5px #FBBF2488" }} />
-                  <span style={{ color: isReallyOnline(presence[activeTab]) ? "#16A34A" : "#FBBF24" }}>
-                    {isReallyOnline(presence[activeTab]) ? "online agora" : "offline"}
+                  <span style={{ width:7, height:7, borderRadius:"50%", background: isReallyOnline(presence[activeTab]) ? "#16A34A" : "#FBBF24", display:"inline-block", flexShrink:0, animation:"pulse 2s infinite" }} />
+                  <span style={{ color: isReallyOnline(presence[activeTab]) ? "#16A34A" : "rgba(255,255,255,0.25)", fontSize:10 }}>
+                    {isReallyOnline(presence[activeTab]) ? "online" : "offline"}
                   </span>
                 </span>
               )
@@ -13085,7 +13205,14 @@ function V8DigitalTab({ currentUser, contacts }) {
     const PAGE_SIZE    = 50;
 
     const setProviderPersist = (p) => { setLoteProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
-    const setCpfBoxPersist   = (v) => { setLoteCpfBox(v);  localStorage.setItem("nexp_v8_lote_cpfbox", v); };
+    const setCpfBoxPersist   = (v) => {
+      setLoteCpfBox(v);
+      // Debounce localStorage write to avoid re-render on every keystroke
+      clearTimeout(window._cpfBoxTimer);
+      window._cpfBoxTimer = setTimeout(() => {
+        try { localStorage.setItem("nexp_v8_lote_cpfbox", v); } catch {}
+      }, 500);
+    };
 
     const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
     const saveState = (newItems, prog) => localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, progress:prog }));
@@ -13106,16 +13233,17 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 1. Dispara consulta assíncrona
         await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
 
-        // 2. Polling GET até ter resultado (max 45s)
+        // 2. Polling GET até ter resultado (max 45s) — filter by CPF to avoid picking wrong result
         let bal = null;
         for (let i=0; i<18; i++) {
           await new Promise(r=>setTimeout(r,2500));
           try {
             const res = await apiFetch(`/fgts/balance?search=${c}`);
-            const registros = res?.data || (Array.isArray(res)?res:[res]).filter(Boolean);
-            const sucesso = registros.find(r=>r && (r.status==="success"||r.amount!=null));
+            const registros = (res?.data || (Array.isArray(res)?res:[res]).filter(Boolean))
+              .filter(r => r && (!r.documentNumber || r.documentNumber.replace(/\D/g,"").padStart(11,"0") === c));
+            const sucesso = registros.find(r=>(r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) >= 0);
             if (sucesso) { bal=sucesso; break; }
-            const falha = registros.find(r=>r && (r.status==="fail"||r.status==="error"||r.status==="failed"));
+            const falha = registros.find(r=>(r.status==="fail"||r.status==="error"||r.status==="failed"));
             if (falha) {
               const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
               const diag = diagnosticarErroV8(rawMsg, c);
@@ -14627,14 +14755,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpfLimpo);
     let dadosAcc = { nome:"", email:"", telefone:"", dataNasc:"", genero:"male" };
     if (c) {
-      const tel=(c.phone||"").replace(/\D/g,"").slice(0,11);
-      dadosAcc = { nome:c.name||"", email:c.email||"", telefone:tel, dataNasc:c.dataNasc||"", genero:c.genero||"male" };
+      // Pull from all possible field name variants
+      const tel = (c.phone||c.telefone||c.phone1||"").replace(/\D/g,"").slice(0,11);
+      const nascimento = c.dataNasc||c.dataNascimento||c.birthDate||c.birth_date||c.nascimento||"";
+      const genero = c.genero||c.gender||c.sexo||"male";
+      dadosAcc = {
+        nome: c.name||c.nome||"",
+        email: c.email||c.emailAddress||"",
+        telefone: tel,
+        dataNasc: nascimento,
+        genero,
+      };
       setTermoForm(p=>({...p, ...Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v))}));
       setTermoAutoPreenchido(true);
     }
     // 2. Cruzamento com API V8
     if(!isTokenValid) {
-      // Verifica se dados locais são suficientes para auto-gerar
       if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=11) {
         _autoGerarTermo(cpfLimpo, dadosAcc);
       }
@@ -14647,13 +14783,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
       const item=(r?.data||[])[0];
       if(item) {
-        const telefoneApi=(item.phone||item.phoneNumber||"").replace(/\D/g,"").slice(0,11);
+        const telefoneApi=(item.phone||item.phoneNumber||item.signerPhone?.phoneNumber||"").replace(/\D/g,"").slice(0,11);
         const merged = {
-          nome: item.name||item.signerName||dadosAcc.nome||"",
+          nome: item.name||item.signerName||item.borrowerName||dadosAcc.nome||"",
           email: item.email||item.signerEmail||dadosAcc.email||"",
           telefone: telefoneApi||dadosAcc.telefone||"",
-          dataNasc: item.birthDate||item.birth_date||dadosAcc.dataNasc||"",
-          genero: item.gender||dadosAcc.genero||"male",
+          dataNasc: item.birthDate||item.birth_date||item.borrowerBirthDate||dadosAcc.dataNasc||"",
+          genero: item.gender||item.signerGender||dadosAcc.genero||"male",
         };
         setTermoForm(p=>({...p,...Object.fromEntries(Object.entries(merged).filter(([,v])=>v))}));
         setTermoAutoPreenchido(true);
@@ -14661,7 +14797,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       }
     } catch(e) { /* silencioso */ }
     setTermoBuscando(false);
-    // 3. Auto-gerar termo se todos os campos foram encontrados
     if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=11) {
       _autoGerarTermo(cpfLimpo, dadosAcc);
     }
@@ -15169,15 +15304,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   setLoteCLTRunning(true); loteCLTAbort.current=false;
                   const novos = linhas.map(linha=>{
                     const partes = linha.split(/[,;\t]+/).map(s=>s.trim());
-                    const cpf = partes[0].replace(/\D/g,"").slice(0,11);
-                    const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpf);
+                    const cpf = partes[0].replace(/\D/g,"").padStart(11,"0").slice(0,11);
+                    const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpf);
+                    // Cross-reference all field name variants
+                    const nome = partes[1]||contato?.name||contato?.nome||"";
+                    const email = partes[2]||contato?.email||contato?.emailAddress||"";
+                    const dataNasc = partes[3]||contato?.dataNasc||contato?.dataNascimento||contato?.birthDate||contato?.birth_date||contato?.nascimento||"";
+                    const telefone = (contato?.phone||contato?.telefone||contato?.phone1||"").replace(/\D/g,"").slice(0,11);
+                    const genero = contato?.genero||contato?.gender||contato?.sexo||"male";
                     return {
                       cpf, id:null, status:"PENDENTE",
-                      nome:partes[1]||contato?.name||"",
-                      email:partes[2]||contato?.email||"",
-                      dataNasc:partes[3]||contato?.dataNasc||"",
-                      telefone:(contato?.phone||"").replace(/\D/g,"").slice(0,11),
-                      genero:"male", link:null, availableMarginValue:null,
+                      nome, email, dataNasc, telefone, genero,
+                      link:null, availableMarginValue:null,
                     };
                   });
                   setLoteCLTItems(novos);
@@ -15190,11 +15328,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     }
                     setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"GERANDO"}:x));
                     try{
-                      const tel=item.telefone;
+                      const tel=item.telefone.replace(/\D/g,"");
                       const body={
-                        borrowerDocumentNumber:item.cpf,gender:item.genero,birthDate:item.dataNasc,
+                        borrowerDocumentNumber:item.cpf,gender:item.genero||"male",birthDate:item.dataNasc,
                         signerName:item.nome,signerEmail:item.email,
-                        signerPhone:{phoneNumber:tel.slice(2),countryCode:"55",areaCode:tel.slice(0,2)},
+                        signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.length>=11?tel.slice(0,2):tel.slice(0,2)},
                         provider:"QI",
                       };
                       const res=await apiFetch("/private-consignment/consult","POST",body);
@@ -18794,8 +18932,7 @@ export default function App() {
           presence={presence}
           stories={chatStories}
         />
-        {/* Widget tempo + calculadora */}
-        <WeatherCalcWidget />
+        {/* Widget tempo + calculadora — moved to TopBar */}
         <div style={{ flex:1, position:"relative" }}>
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
