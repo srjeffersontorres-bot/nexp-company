@@ -16042,126 +16042,190 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               const col=STATUS_OP_COLOR[st]||C.td;
               const isSel=opsDetalhe?.operationId===op.operationId;
               return (
-                <div key={op.operationId||op.id} style={{...S.card,overflow:"hidden",border:`1px solid ${isSel?C.atxt+"44":C.b1}`}}>
+                <div key={op.operationId||op.id} style={{...S.card,overflow:"hidden",border:`1px solid ${C.b1}`,transition:"all 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=C.atxt+"44"}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=C.b1}>
                   <div onClick={async()=>{
-                    if(isSel){setOpsDetalhe(null);return;}
-                    try{const d=await apiFetch(`/private-consignment/operation/${op.operationId||op.id}`);setOpsDetalhe(d);}catch{setOpsDetalhe(op);}
-                  }} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer"}}>
+                    try{
+                      setOpsDetalhe({...op,_loading:true});
+                      const d=await apiFetch(`/private-consignment/operation/${op.operationId||op.id}`);
+                      setOpsDetalhe({...d,_loading:false});
+                    }catch{setOpsDetalhe({...op,_loading:false});}
+                  }} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",cursor:"pointer"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{color:C.tp,fontWeight:700,fontSize:13}}>{op.name||"—"}</div>
                       <div style={{color:C.tm,fontSize:11,marginTop:2}}>{fmtCPF(op.documentNumber||"")} · {op.contractNumber||"—"}</div>
                     </div>
-                    <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0}}>{STATUS_OP_LABEL[st]||st}</span>
+                    <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{STATUS_OP_LABEL[st]||st}</span>
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{color:C.atxt,fontWeight:700,fontSize:13}}>{fmtBRL(op.disbursedIssueAmount||op.issueAmount)}</div>
+                      <div style={{color:C.td,fontSize:10,marginTop:2}}>Ver detalhes →</div>
                     </div>
                   </div>
-                  {isSel&&opsDetalhe&&(
-                    <div style={{borderTop:`1px solid ${C.b1}`,padding:"14px 16px",background:C.deep}}>
-                      {/* ── Resumo financeiro ── */}
-                      <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>💰 Financeiro</div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
-                        {[
-                          ["💰 Valor Liberado", fmtBRL(opsDetalhe.disbursedIssueAmount||opsDetalhe.disbursement_amount||opsDetalhe.issueAmount||0), "#34D399"],
-                          ["📋 Parcela", fmtBRL(opsDetalhe.installmentValue||opsDetalhe.installment_value||opsDetalhe.installmentFaceValue||0), "#FBBF24"],
-                          ["🔢 Qtd Parcelas", opsDetalhe.numberOfInstallments||opsDetalhe.number_of_installments||opsDetalhe.installments||"—", C.atxt],
-                          ["📊 Tabela/Prazo", opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.configName||"—", "#C084FC"],
-                          ["📈 Taxa Mensal", opsDetalhe.monthlyInterestRate||opsDetalhe.monthly_interest_rate||opsDetalhe.rate ? `${parseFloat(opsDetalhe.monthlyInterestRate||opsDetalhe.monthly_interest_rate||opsDetalhe.rate||0).toFixed(2)}%` : "—", "#F97316"],
-                          ["📈 CET Anual", opsDetalhe.annualCet||opsDetalhe.annual_cet ? `${parseFloat(opsDetalhe.annualCet||opsDetalhe.annual_cet||0).toFixed(2)}%` : "—", "#F97316"],
-                          ["💵 Valor Total", fmtBRL(opsDetalhe.totalAmount||opsDetalhe.total_amount||0), C.td],
-                          ["💸 IOF", fmtBRL(opsDetalhe.iof||opsDetalhe.iofValue||0), C.td],
-                        ].filter(([,v])=>v&&v!=="—").map(([l,v,cor])=>(
-                          <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
-                            <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
-                            <div style={{color:cor,fontWeight:700,fontSize:13}}>{v}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {/* ── Dados do cliente ── */}
-                      <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>👤 Cliente</div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
-                        {[
-                          ["👤 Nome", opsDetalhe.name||opsDetalhe.borrowerName||opsDetalhe.borrower?.name||"—", C.tp],
-                          ["🪪 CPF", fmtCPF(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||opsDetalhe.borrower?.documentNumber||""), C.tm],
-                          ["📅 Nascimento", opsDetalhe.birthDate||opsDetalhe.birth_date ? new Date(opsDetalhe.birthDate||opsDetalhe.birth_date).toLocaleDateString("pt-BR") : "—", C.td],
-                          ["📧 Email", opsDetalhe.email||opsDetalhe.borrower?.email||"—", C.td],
-                          ["📱 Telefone", (()=>{const t=opsDetalhe.phone||opsDetalhe.borrower?.phone||""; const ddd=opsDetalhe.phoneRegionCode||opsDetalhe.borrower?.phoneRegionCode||""; return t?(ddd+t):"—";})(), C.td],
-                          ["📝 Contrato", opsDetalhe.contractNumber||"—", C.tm],
-                          ["📅 Criado em", opsDetalhe.createdAt||opsDetalhe.created_at ? new Date(opsDetalhe.createdAt||opsDetalhe.created_at).toLocaleDateString("pt-BR") : "—", C.td],
-                          ["📡 Provider", (opsDetalhe.provider||"—").toUpperCase(), C.td],
-                          ["🏦 Status", STATUS_OP_LABEL[opsDetalhe.status||""]||opsDetalhe.status||"—", STATUS_OP_COLOR[opsDetalhe.status||""]||C.td],
-                        ].filter(([,v])=>v&&v!=="—").map(([l,v,cor])=>(
-                          <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
-                            <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
-                            <div style={{color:cor,fontWeight:600,fontSize:12}}>{v}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {/* ── Endereço ── */}
-                      {(opsDetalhe.street||opsDetalhe.address?.street||opsDetalhe.borrower?.street)&&(
-                        <>
-                        <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>📍 Endereço</div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
-                          {[
-                            ["Rua", opsDetalhe.street||opsDetalhe.borrower?.street||"—"],
-                            ["Número", opsDetalhe.addressNumber||opsDetalhe.borrower?.addressNumber||"—"],
-                            ["Complemento", opsDetalhe.complement||opsDetalhe.borrower?.complement||"—"],
-                            ["Bairro", opsDetalhe.neighborhood||opsDetalhe.borrower?.neighborhood||"—"],
-                            ["Cidade", opsDetalhe.city||opsDetalhe.borrower?.city||"—"],
-                            ["UF", opsDetalhe.state||opsDetalhe.borrower?.state||"—"],
-                            ["CEP", opsDetalhe.postalCode||opsDetalhe.borrower?.postalCode||"—"],
-                          ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
-                            <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
-                              <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
-                              <div style={{color:C.tm,fontWeight:500,fontSize:12}}>{v}</div>
-                            </div>
-                          ))}
-                        </div>
-                        </>
-                      )}
-                      {/* ── Dados bancários ── */}
-                      {(opsDetalhe.payment||opsDetalhe.bank||opsDetalhe.pixKey||opsDetalhe.bankAccount)&&(
-                        <>
-                        <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>🏦 Pagamento</div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
-                          {[
-                            ["Tipo", opsDetalhe.payment?.type||opsDetalhe.paymentType||"—"],
-                            ["Banco", opsDetalhe.bank?.name||opsDetalhe.bankName||opsDetalhe.payment?.bankName||"—"],
-                            ["Agência", opsDetalhe.agency||opsDetalhe.payment?.agency||"—"],
-                            ["Conta", opsDetalhe.account||opsDetalhe.payment?.account||"—"],
-                            ["Dígito", opsDetalhe.digit||opsDetalhe.payment?.digit||"—"],
-                            ["Chave PIX", opsDetalhe.pixKey||opsDetalhe.payment?.pix||opsDetalhe.payment?.data?.pix||"—"],
-                          ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
-                            <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
-                              <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
-                              <div style={{color:"#FBBF24",fontWeight:600,fontSize:12}}>{v}</div>
-                            </div>
-                          ))}
-                        </div>
-                        </>
-                      )}
-                      {/* ── Link de Formalização ── */}
-                      {(opsDetalhe.formalization_url||opsDetalhe.contract_url)&&(
-                        <div style={{background:C.card,borderRadius:8,padding:"10px 14px"}}>
-                          <div style={{color:C.td,fontSize:10,marginBottom:6}}>🔗 Link de Formalização</div>
-                          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                            <a href={opsDetalhe.formalization_url||opsDetalhe.contract_url} target="_blank" rel="noreferrer"
-                              style={{color:C.atxt,fontSize:11,fontFamily:"monospace",wordBreak:"break-all",flex:1}}>
-                              {(opsDetalhe.formalization_url||opsDetalhe.contract_url).slice(0,55)}…
-                            </a>
-                            <button onClick={()=>{navigator.clipboard.writeText(opsDetalhe.formalization_url||opsDetalhe.contract_url).then(()=>{setCopied(opsDetalhe.id);setTimeout(()=>setCopied(null),2500);});}}
-                              style={{background:C.abg,color:copied===opsDetalhe.id?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>
-                              {copied===opsDetalhe.id?"✅ Copiado":"📋 Copiar"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
             {ops.length===0&&!opsLoading&&<div style={{color:C.td,textAlign:"center",padding:"32px 0",fontSize:13}}>Nenhuma operação encontrada.</div>}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+          POPUP: DETALHE DA OPERAÇÃO CLT
+      ══════════════════════════════════════════════════════════ */}
+      {opsDetalhe && (
+        <div onClick={()=>setOpsDetalhe(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,rgba(15,18,35,0.99),rgba(10,12,28,0.99))",border:"1px solid rgba(255,255,255,0.09)",borderRadius:22,width:"100%",maxWidth:660,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,0.8)"}}>
+
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 24px 16px",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:0,background:"rgba(15,18,35,0.98)",zIndex:1,borderRadius:"22px 22px 0 0"}}>
+              <div>
+                <div style={{color:C.tp,fontSize:15,fontWeight:800}}>{opsDetalhe.name||opsDetalhe.borrowerName||"Operação"}</div>
+                <div style={{color:C.tm,fontSize:11.5,marginTop:3}}>
+                  {fmtCPF(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||"")}
+                  {opsDetalhe.contractNumber ? ` · Contrato: ${opsDetalhe.contractNumber}` : ""}
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {opsDetalhe._loading && <span style={{color:C.atxt,fontSize:12,animation:"pulse 1.5s infinite"}}>⏳ Carregando...</span>}
+                {(() => {
+                  const st=opsDetalhe.status||"";
+                  const col=STATUS_OP_COLOR[st]||C.td;
+                  return <span style={{background:col+"22",color:col,fontSize:11,padding:"4px 12px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{STATUS_OP_LABEL[st]||st}</span>;
+                })()}
+                <button onClick={()=>setOpsDetalhe(null)} style={{background:"rgba(255,255,255,0.08)",border:"none",color:"rgba(255,255,255,0.5)",borderRadius:50,width:30,height:30,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              </div>
+            </div>
+
+            <div style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:18}}>
+
+              {/* ── Financeiro ── */}
+              <div>
+                <div style={{color:C.ts,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>💰 Financeiro</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+                  {[
+                    ["Valor Liberado",    fmtBRL(opsDetalhe.disbursedIssueAmount||opsDetalhe.disbursement_amount||opsDetalhe.issueAmount||0), "#34D399"],
+                    ["Valor Bruto",       fmtBRL(opsDetalhe.totalAmount||opsDetalhe.total_amount||opsDetalhe.emissionAmount||0), C.td],
+                    ["Parcela",           fmtBRL(opsDetalhe.installmentValue||opsDetalhe.installment_value||opsDetalhe.installmentFaceValue||0), "#FBBF24"],
+                    ["Qtd Parcelas",      String(opsDetalhe.numberOfInstallments||opsDetalhe.number_of_installments||opsDetalhe.installments||"—"), C.atxt],
+                    ["Tabela / Config",   opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.configName||"—", "#C084FC"],
+                    ["Taxa Mensal",       opsDetalhe.monthlyInterestRate||opsDetalhe.monthly_interest_rate||opsDetalhe.rate ? `${parseFloat(opsDetalhe.monthlyInterestRate||opsDetalhe.monthly_interest_rate||opsDetalhe.rate||0).toFixed(2)}%` : "—", "#F97316"],
+                    ["CET Anual",         opsDetalhe.annualCet||opsDetalhe.annual_cet ? `${parseFloat(opsDetalhe.annualCet||opsDetalhe.annual_cet||0).toFixed(2)}%` : "—", "#F97316"],
+                    ["IOF",               fmtBRL(opsDetalhe.iof||opsDetalhe.iofValue||0), C.td],
+                    ["Score",             opsDetalhe.score ? `${opsDetalhe.score}` : "—", "#60A5FA"],
+                  ].filter(([,v])=>v&&v!=="—"&&v!==fmtBRL(0)).map(([l,v,cor])=>(
+                    <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"11px 14px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                      <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:4}}>{l}</div>
+                      <div style={{color:cor,fontWeight:700,fontSize:14}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Cliente ── */}
+              <div>
+                <div style={{color:C.ts,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>👤 Cliente</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+                  {[
+                    ["Nome",          opsDetalhe.name||opsDetalhe.borrowerName||opsDetalhe.borrower?.name||"—", C.tp],
+                    ["CPF",           fmtCPF(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||opsDetalhe.borrower?.documentNumber||""), C.tm],
+                    ["Nascimento",    opsDetalhe.birthDate||opsDetalhe.birth_date ? new Date(opsDetalhe.birthDate||opsDetalhe.birth_date).toLocaleDateString("pt-BR") : "—", C.td],
+                    ["Email",         opsDetalhe.email||opsDetalhe.borrower?.email||"—", C.td],
+                    ["Telefone",      (()=>{const t=opsDetalhe.phone||opsDetalhe.borrower?.phone||""; const ddd=opsDetalhe.phoneRegionCode||opsDetalhe.borrower?.phoneRegionCode||""; return t?(ddd+t):"—";})(), C.td],
+                    ["Estado Civil",  opsDetalhe.maritalStatus||opsDetalhe.borrower?.maritalStatus||"—", C.td],
+                    ["Nacionalidade", opsDetalhe.nationality||opsDetalhe.borrower?.nationality||"—", C.td],
+                    ["PEP",           opsDetalhe.isPEP!=null ? (opsDetalhe.isPEP?"Sim":"Não") : "—", opsDetalhe.isPEP?"#F87171":C.td],
+                  ].filter(([,v])=>v&&v!=="—").map(([l,v,cor])=>(
+                    <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"11px 14px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                      <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:4}}>{l}</div>
+                      <div style={{color:cor,fontWeight:600,fontSize:12}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Endereço ── */}
+              {(opsDetalhe.street||opsDetalhe.postalCode||opsDetalhe.borrower?.street) && (
+                <div>
+                  <div style={{color:C.ts,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>📍 Endereço</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+                    {[
+                      ["Rua",          opsDetalhe.street||opsDetalhe.borrower?.street||"—"],
+                      ["Número",       opsDetalhe.addressNumber||opsDetalhe.borrower?.addressNumber||"—"],
+                      ["Bairro",       opsDetalhe.neighborhood||opsDetalhe.borrower?.neighborhood||"—"],
+                      ["Cidade",       opsDetalhe.city||opsDetalhe.borrower?.city||"—"],
+                      ["UF",           opsDetalhe.state||opsDetalhe.borrower?.state||"—"],
+                      ["CEP",          opsDetalhe.postalCode||opsDetalhe.borrower?.postalCode||"—"],
+                      ["Complemento",  opsDetalhe.complement||opsDetalhe.borrower?.complement||"—"],
+                    ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
+                      <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"11px 14px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                        <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:4}}>{l}</div>
+                        <div style={{color:C.tm,fontWeight:500,fontSize:12}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Pagamento ── */}
+              {(opsDetalhe.payment||opsDetalhe.pixKey||opsDetalhe.bank) && (
+                <div>
+                  <div style={{color:C.ts,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>🏦 Pagamento</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+                    {[
+                      ["Tipo",        opsDetalhe.payment?.type||opsDetalhe.paymentType||"—"],
+                      ["Banco",       opsDetalhe.bank?.name||opsDetalhe.bankName||opsDetalhe.payment?.bankName||"—"],
+                      ["Agência",     opsDetalhe.agency||opsDetalhe.payment?.agency||"—"],
+                      ["Conta",       opsDetalhe.account||opsDetalhe.payment?.account||"—"],
+                      ["Dígito",      opsDetalhe.digit||opsDetalhe.payment?.digit||"—"],
+                      ["Chave PIX",   opsDetalhe.pixKey||opsDetalhe.payment?.pix||opsDetalhe.payment?.data?.pix||"—"],
+                    ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
+                      <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"11px 14px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                        <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:4}}>{l}</div>
+                        <div style={{color:"#FBBF24",fontWeight:600,fontSize:12}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Contrato ── */}
+              <div>
+                <div style={{color:C.ts,fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>📋 Contrato</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+                  {[
+                    ["Nº Contrato",   opsDetalhe.contractNumber||"—", C.tm],
+                    ["Provider",      (opsDetalhe.provider||"—").toUpperCase(), C.td],
+                    ["Criado em",     opsDetalhe.createdAt ? new Date(opsDetalhe.createdAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—", C.td],
+                    ["Atualizado",    opsDetalhe.updatedAt ? new Date(opsDetalhe.updatedAt).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"}) : "—", C.td],
+                    ["Parceiro",      opsDetalhe.partnerId||opsDetalhe.user?.partnerId||"—", C.td],
+                  ].filter(([,v])=>v&&v!=="—").map(([l,v,cor])=>(
+                    <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"11px 14px",border:"1px solid rgba(255,255,255,0.06)"}}>
+                      <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:4}}>{l}</div>
+                      <div style={{color:cor||C.td,fontWeight:500,fontSize:12}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Link de Formalização ── */}
+              {(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink) && (
+                <div style={{background:"rgba(59,110,245,0.08)",border:"1px solid rgba(59,110,245,0.2)",borderRadius:12,padding:"14px 16px"}}>
+                  <div style={{color:C.atxt,fontSize:10,fontWeight:700,marginBottom:8}}>🔗 Link de Formalização</div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <a href={opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink} target="_blank" rel="noreferrer"
+                      style={{color:C.atxt,fontSize:11,wordBreak:"break-all",flex:1}}>
+                      {(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink).slice(0,60)}…
+                    </a>
+                    <button onClick={()=>{navigator.clipboard.writeText(opsDetalhe.formalization_url||opsDetalhe.contract_url||opsDetalhe.formalizationLink).then(()=>{setCopied("ops_link");setTimeout(()=>setCopied(null),2500);});}}
+                      style={{background:C.abg,color:copied==="ops_link"?"#34D399":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:7,padding:"6px 14px",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",fontWeight:700}}>
+                      {copied==="ops_link"?"✅ Copiado":"📋 Copiar"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
           </div>
         </div>
       )}
