@@ -1136,6 +1136,15 @@ function NexpRobot({ size = 44, showFaceOnly = false, poseOverride = null }) { /
 }
 
 // ── RainCanvas — animated rain drops background ────────────────
+
+// ── CPF mask helper — global ─────────────────────────────────
+function applyCPFMask(raw) {
+  const d = raw.replace(/\D/g,"").slice(0,11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return d.slice(0,3)+"."+d.slice(3);
+  if (d.length <= 9) return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6);
+  return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6,9)+"-"+d.slice(9);
+}
 function RainCanvas() {
   const canvasRef = useRef(null);
   useEffect(() => {
@@ -2107,7 +2116,7 @@ function CCard({ contact, onUpdate, onDelete }) {
     setForm({ ...contact });
   }, [contact.id]); // eslint-disable-line
 
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: k==="cpf"?applyCPFMask(v):v }));
   const save = () => { onUpdate({ ...form, reactions, extraLeads }); setEd(false); };
 
   // Emojis — máx 3
@@ -2413,7 +2422,7 @@ function CCard({ contact, onUpdate, onDelete }) {
                       {l}
                     </label>
                     <input
-                      value={form[k] || ""}
+                      key={k} defaultValue={form[k] || ""}
                       onChange={(e) => setF(k, e.target.value)}
                       type={t}
                       style={{
@@ -2552,7 +2561,7 @@ function ContactsPage({ contacts, setContacts }) {
           🔍
         </span>
         <input
-          value={q}
+          defaultValue={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar por nome, CPF, telefone, email ou matrícula..."
           style={{
@@ -2621,7 +2630,7 @@ function AddClient({ setContacts, setPage }) {
   const [form, setForm] = useState(makeBlank());
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState("");
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: k==="cpf"?applyCPFMask(v):v }));
   const save = async () => {
     if (!form.name.trim()) {
       setErr("Nome é obrigatório.");
@@ -2652,7 +2661,7 @@ function AddClient({ setContacts, setPage }) {
         {req && <span style={{ color: "#EF4444", marginLeft: 3 }}>*</span>}
       </label>
       <input
-        value={form[k]}
+        key={k} defaultValue={form[k]}
         onChange={(e) => setF(k, e.target.value)}
         type={t}
         placeholder={ph}
@@ -4219,7 +4228,7 @@ function PremiumNexp({ contacts, setContacts }) {
           🔍
         </span>
         <input
-          value={q}
+          defaultValue={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Pesquisar por CPF, nome, telefone, email, matrícula ou CNPJ…"
           style={{
@@ -4942,7 +4951,7 @@ function PerfisTab({ users, setUsers, currentUser }) {
           </button>
         )}
       </div>
-      <input value={editData?.[k] || ""} onChange={e => EF(k, e.target.value)}
+      <input key={k} defaultValue={editData?.[k] || ""} onChange={e => EF(k, e.target.value)}
         type={type} placeholder={placeholder}
         style={{ ...S.input, fontSize: 12.5 }} />
     </div>
@@ -5829,6 +5838,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
     });
   };
 
+  // Field uses defaultValue to avoid 1-char re-render bug from Firestore listener re-renders
   const Field = ({ label, value, onChange, placeholder, type = "text", readOnly = false }) => (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
@@ -5841,7 +5851,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
           </button>
         )}
       </div>
-      <input value={value} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
+      <input key={label} defaultValue={value} onBlur={e => onChange && onChange(e.target.value)} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
         type={type} readOnly={readOnly || !canEdit}
         style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }} />
     </div>
@@ -5896,7 +5906,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field label="Nome completo *" value={name} onChange={setName} placeholder="Nome completo" />
-          <Field label="CPF *" value={cpf} onChange={setCpf} placeholder="000.000.000-00" />
+          <Field label="CPF *" value={cpf} onChange={v=>setCpf(applyCPFMask(v))} placeholder="000.000.000-00" />
           <Field label="Usuário (login)" value={uObj.email} readOnly placeholder="" />
         </div>
       </div>
@@ -6268,7 +6278,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
           </div>
           <div style={{ position:"relative", flex:1, maxWidth:220 }}>
             <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-50%)", color:C.td, fontSize:13, pointerEvents:"none" }}>🔍</span>
-            <input value={searchUser} onChange={e=>setSearchUser(e.target.value)} placeholder="Buscar usuário..."
+            <input defaultValue={searchUser} onChange={e=>setSearchUser(e.target.value)} placeholder="Buscar usuário..."
               style={{ ...S.input, paddingLeft:30, fontSize:12, padding:"6px 10px 6px 28px" }} />
             {searchUser && <button onClick={()=>setSearchUser("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:13 }}>✕</button>}
           </div>
@@ -6319,7 +6329,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             {[["Nome *","name","text"],["CPF *","cpf","text"],["E-mail *","email","email"],["Senha inicial *","password","password"]].map(([l,k,t])=>(
               <div key={k}>
                 <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:4 }}>{l}</label>
-                <input value={form[k]} onChange={e=>setF(k,e.target.value)} type={t} style={{ ...S.input }} />
+                <input key={k} defaultValue={form[k]} onChange={e=>setF(k,e.target.value)} type={t} style={{ ...S.input }} />
               </div>
             ))}
           </div>
@@ -6414,7 +6424,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       {[["Nome","name","text"],["CPF","cpf","text"],["E-mail","email","email"]].map(([l,k,t])=>(
                         <div key={k}>
                           <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>{l}</label>
-                          <input value={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
+                          <input key={k} defaultValue={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
                         </div>
                       ))}
                       {/* Senha — Ver/Ocultar */}
@@ -12261,7 +12271,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>CPF do cliente</label>
               <input
                 value={cpf}
-                onChange={e=>{ const v=e.target.value; setCpf(v); }}
+                onChange={e=>{ const v=applyCPFMask(e.target.value); setCpf(v); }}
                 onKeyDown={e=>e.key==="Enter"&&!loading&&buscarSaldo()}
                 placeholder="000.000.000-00"
                 autoComplete="off"
@@ -13240,36 +13250,52 @@ function V8DigitalTab({ currentUser, contacts }) {
     const simularUm = async (item) => {
       const c = padCPF(item.cpf);
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
+      const FATAIS = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"];
+      const MAX_TENTATIVAS = 3; // retry até 3x em erros transitórios
+      let bal = null;
+      let ultimoDiag = null;
       try {
-        // 1. Dispara consulta assíncrona
-        await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+        for (let tentativa=1; tentativa<=MAX_TENTATIVAS; tentativa++) {
+          // 1. Dispara consulta assíncrona (nova a cada retry)
+          await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
 
-        // 2. Polling GET até ter resultado (max 45s) — filter by CPF to avoid picking wrong result
-        let bal = null;
-        for (let i=0; i<18; i++) {
-          await new Promise(r=>setTimeout(r,2500));
-          try {
-            const res = await apiFetch(`/fgts/balance?search=${c}`);
-            const registros = (res?.data || (Array.isArray(res)?res:[res]).filter(Boolean))
-              .filter(r => r && (!r.documentNumber || r.documentNumber.replace(/\D/g,"").padStart(11,"0") === c));
-            const sucesso = registros.find(r=>(r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) >= 0);
-            if (sucesso) { bal=sucesso; break; }
-            const falha = registros.find(r=>(r.status==="fail"||r.status==="error"||r.status==="failed"));
-            if (falha) {
-              const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
-              const diag = diagnosticarErroV8(rawMsg, c);
-              addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
-              // Use specific erroTipo as status (like individual FGTS) for better display
-              const statusLote = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"].includes(diag.tipo)
-                ? diag.tipo : "erro";
-              return { ...item, cpf:fmtCPF(c), status:statusLote, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
-            }
-          } catch {}
+          // 2. Polling GET até ter resultado (max 45s) — filter by CPF
+          bal = null;
+          let erroFatal = false;
+          for (let i=0; i<18; i++) {
+            await new Promise(r=>setTimeout(r,2500));
+            try {
+              const res = await apiFetch(`/fgts/balance?search=${c}`);
+              const registros = (res?.data || (Array.isArray(res)?res:[res]).filter(Boolean))
+                .filter(r => r && (!r.documentNumber || r.documentNumber.replace(/\D/g,"").padStart(11,"0") === c));
+              const sucesso = registros.find(r=>(r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) >= 0);
+              if (sucesso) { bal=sucesso; break; }
+              const falha = registros.find(r=>(r.status==="fail"||r.status==="error"||r.status==="failed"));
+              if (falha) {
+                const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
+                ultimoDiag = diagnosticarErroV8(rawMsg, c);
+                addLog(`❌ ${fmtCPF(c)}: ${ultimoDiag.titulo}${FATAIS.includes(ultimoDiag.tipo)?"":" (tentativa "+tentativa+"/"+MAX_TENTATIVAS+")"}`, false);
+                if (FATAIS.includes(ultimoDiag.tipo)) { erroFatal=true; }
+                break; // sai do polling, decide se retry
+              }
+            } catch {}
+          }
+          if (bal) break; // sucesso — sai do loop de tentativas
+          if (erroFatal && ultimoDiag) {
+            // Erro fatal — não tenta de novo, retorna status específico
+            const statusLote = FATAIS.includes(ultimoDiag.tipo) ? ultimoDiag.tipo : "erro";
+            return { ...item, cpf:fmtCPF(c), status:statusLote, erro:ultimoDiag.titulo, erroTipo:ultimoDiag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+          }
+          // Erro transitório ou timeout — aguarda e tenta novamente
+          if (tentativa < MAX_TENTATIVAS) {
+            addLog(`⚠ ${fmtCPF(c)}: Erro transitório, retentando (${tentativa}/${MAX_TENTATIVAS})...`, false);
+            await new Promise(r=>setTimeout(r,3000));
+          }
         }
 
         if (!bal) {
-          addLog(`⏳ ${fmtCPF(c)}: Timeout`, false);
-          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:"Timeout — sem resposta em 45s", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+          addLog(`⏳ ${fmtCPF(c)}: Timeout após ${MAX_TENTATIVAS} tentativas`, false);
+          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:"Timeout — sem resposta após 3 tentativas", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
         }
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
@@ -14041,7 +14067,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(false);
     };
 
-    // (auto-load is triggered at render start below)
+
 
     const gerarNovoLink = async (id) => {
       setAcompLinkLoading(true);
@@ -14802,53 +14828,83 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const buscarContatoTermo = async () => {
     const cpfLimpo = (termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0");
     if(cpfLimpo.replace(/0/g,"").length===0) return;
-    // 1. Busca local nos contatos
+
+    // Helper: extrai telefone de um objeto com múltiplos campos possíveis
+    const extractTel = (obj) => {
+      if (!obj) return "";
+      const raw = obj.phone||obj.telefone||obj.phone1||obj.phoneNumber||
+        (obj.signerPhone?.phoneNumber ? (obj.signerPhone.areaCode||"")+(obj.signerPhone.phoneNumber||"") : "")||
+        (obj.phones?.[0]?.number||"");
+      return raw.replace(/\D/g,"").slice(0,11);
+    };
+    const extractNasc = (obj) => obj?.dataNasc||obj?.dataNascimento||obj?.birthDate||obj?.birth_date||obj?.nascimento||obj?.borrowerBirthDate||obj?.signerBirthDate||"";
+    const extractNome = (obj) => obj?.name||obj?.nome||obj?.signerName||obj?.borrowerName||obj?.clientName||"";
+    const extractEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
+    const extractGenero = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
+
+    // 1. Busca local nos contatos (Nexp)
     const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpfLimpo);
     let dadosAcc = { nome:"", email:"", telefone:"", dataNasc:"", genero:"male" };
     if (c) {
-      // Pull from all possible field name variants
-      const tel = (c.phone||c.telefone||c.phone1||"").replace(/\D/g,"").slice(0,11);
-      const nascimento = c.dataNasc||c.dataNascimento||c.birthDate||c.birth_date||c.nascimento||"";
-      const genero = c.genero||c.gender||c.sexo||"male";
       dadosAcc = {
-        nome: c.name||c.nome||"",
-        email: c.email||c.emailAddress||"",
-        telefone: tel,
-        dataNasc: nascimento,
-        genero,
+        nome:    extractNome(c),
+        email:   extractEmail(c),
+        telefone:extractTel(c),
+        dataNasc:extractNasc(c),
+        genero:  extractGenero(c),
       };
       setTermoForm(p=>({...p, ...Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v))}));
       setTermoAutoPreenchido(true);
     }
-    // 2. Cruzamento com API V8
+
     if(!isTokenValid) {
-      if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=11) {
+      if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=10) {
         _autoGerarTermo(cpfLimpo, dadosAcc);
       }
       return;
     }
+
     setTermoBuscando(true);
     try {
+      // 2a. Cruzamento com /private-consignment/consult (histório de termos)
       const end=new Date().toISOString();
-      const start=new Date(Date.now()-180*86400000).toISOString();
+      const start=new Date(Date.now()-365*86400000).toISOString();
       const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
       const item=(r?.data||[])[0];
       if(item) {
-        const telefoneApi=(item.phone||item.phoneNumber||item.signerPhone?.phoneNumber||"").replace(/\D/g,"").slice(0,11);
         const merged = {
-          nome: item.name||item.signerName||item.borrowerName||dadosAcc.nome||"",
-          email: item.email||item.signerEmail||dadosAcc.email||"",
-          telefone: telefoneApi||dadosAcc.telefone||"",
-          dataNasc: item.birthDate||item.birth_date||item.borrowerBirthDate||dadosAcc.dataNasc||"",
-          genero: item.gender||item.signerGender||dadosAcc.genero||"male",
+          nome:     extractNome(item)||dadosAcc.nome,
+          email:    extractEmail(item)||dadosAcc.email,
+          telefone: extractTel(item)||dadosAcc.telefone,
+          dataNasc: extractNasc(item)||dadosAcc.dataNasc,
+          genero:   extractGenero(item)||dadosAcc.genero,
         };
         setTermoForm(p=>({...p,...Object.fromEntries(Object.entries(merged).filter(([,v])=>v))}));
         setTermoAutoPreenchido(true);
         dadosAcc = merged;
       }
     } catch(e) { /* silencioso */ }
+
+    // 2b. Cruzamento com /fgts/proposal (propostas FGTS — rich client data)
+    if (!dadosAcc.nome||!dadosAcc.email||!dadosAcc.dataNasc||!dadosAcc.telefone) {
+      try {
+        const rFgts = await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`);
+        const fgtsItem = (rFgts?.data||rFgts||[])[0];
+        if (fgtsItem) {
+          const fgtsDetail = fgtsItem.id ? await apiFetch(`/fgts/proposal/${fgtsItem.id}`) : fgtsItem;
+          if (!dadosAcc.nome)     dadosAcc.nome     = extractNome(fgtsDetail)||dadosAcc.nome;
+          if (!dadosAcc.email)    dadosAcc.email    = extractEmail(fgtsDetail)||dadosAcc.email;
+          if (!dadosAcc.telefone) dadosAcc.telefone = extractTel(fgtsDetail)||dadosAcc.telefone;
+          if (!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(fgtsDetail)||dadosAcc.dataNasc;
+          if (dadosAcc.genero==="male") dadosAcc.genero = extractGenero(fgtsDetail)||"male";
+          setTermoForm(p=>({...p,...Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v))}));
+          setTermoAutoPreenchido(true);
+        }
+      } catch(e) { /* silencioso */ }
+    }
+
     setTermoBuscando(false);
-    if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=11) {
+    if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=10) {
       _autoGerarTermo(cpfLimpo, dadosAcc);
     }
   };
@@ -15284,8 +15340,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <div style={{display:"flex",gap:6}}>
                   <input value={termoForm.cpf}
                     onChange={e=>{
-                      const raw=e.target.value.replace(/\D/g,"").slice(0,11);
-                      const fmt=raw.length===11?raw.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"):raw;
+                      const fmt=applyCPFMask(e.target.value);
+                      const raw=fmt.replace(/\D/g,"");
                       setTermoForm(p=>({...p,cpf:fmt}));
                       setTermoAutoPreenchido(false);
                       if(raw.length===11) setTimeout(()=>buscarContatoTermo(),100);
@@ -15359,16 +15415,26 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   const linhas = rawVal.split(/\n/).map(l=>l.trim()).filter(Boolean);
                   if(!linhas.length){ setErr("Cole ao menos um CPF."); return; }
                   setLoteCLTRunning(true); loteCLTAbort.current=false;
+                  const exTel = (obj) => {
+                    if (!obj) return "";
+                    const raw = obj.phone||obj.telefone||obj.phone1||obj.phoneNumber||
+                      (obj.signerPhone?.phoneNumber?(obj.signerPhone.areaCode||"")+(obj.signerPhone.phoneNumber||""):"")||"";
+                    return raw.replace(/\D/g,"").slice(0,11);
+                  };
+                  const exNasc = (obj) => obj?.dataNasc||obj?.dataNascimento||obj?.birthDate||obj?.birth_date||obj?.nascimento||obj?.borrowerBirthDate||"";
+                  const exNome = (obj) => obj?.name||obj?.nome||obj?.signerName||obj?.borrowerName||obj?.clientName||"";
+                  const exEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
+                  const exGen = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
+
                   const novos = linhas.map(linha=>{
                     const partes = linha.split(/[,;\t]+/).map(s=>s.trim());
                     const cpf = partes[0].replace(/\D/g,"").padStart(11,"0").slice(0,11);
                     const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpf);
-                    // Cross-reference all field name variants
-                    const nome = partes[1]||contato?.name||contato?.nome||"";
-                    const email = partes[2]||contato?.email||contato?.emailAddress||"";
-                    const dataNasc = partes[3]||contato?.dataNasc||contato?.dataNascimento||contato?.birthDate||contato?.birth_date||contato?.nascimento||"";
-                    const telefone = (contato?.phone||contato?.telefone||contato?.phone1||"").replace(/\D/g,"").slice(0,11);
-                    const genero = contato?.genero||contato?.gender||contato?.sexo||"male";
+                    const nome = partes[1]||exNome(contato);
+                    const email = partes[2]||exEmail(contato);
+                    const dataNasc = partes[3]||exNasc(contato);
+                    const telefone = exTel(contato);
+                    const genero = exGen(contato);
                     return {
                       cpf, id:null, status:"PENDENTE",
                       nome, email, dataNasc, telefone, genero,
@@ -16781,6 +16847,7 @@ function DigitacaoPage({ contacts, currentUser, unreadExterno=0 }) {
 
   // Busca automática por CPF
   const buscarCPF = (cpf) => {
+    cpf = applyCPFMask(cpf);
     setF("cpf", cpf);
     const clean = cpf.replace(/\D/g,"");
     if (clean.length !== 11) { setClienteEncontrado(false); return; }
