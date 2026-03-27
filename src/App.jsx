@@ -13280,38 +13280,55 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 1. POST — dispara consulta (igual ao individual)
         try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
 
-        // 2. Polling GET — 18 x 2.5s = 45s max (idêntico ao individual)
+        // 2. Polling GET — aguarda resultado da API
         for (let i=0; i<18; i++) {
           if (abortRef.current) return { ...item, status:"pendente" };
           await new Promise(r=>setTimeout(r,1500));
           try {
             const cSemZero = c.replace(/^0+/,"");
-            // Busca pelos dois formatos de CPF em paralelo
+            // Busca pelos dois formatos em paralelo
             const [r1, r2] = await Promise.allSettled([
               apiFetch(`/fgts/balance?search=${c}&limit=50`),
               cSemZero !== c ? apiFetch(`/fgts/balance?search=${cSemZero}&limit=50`) : Promise.resolve(null),
             ]);
-            const toArr = (r) => {
-              if (r.status !== "fulfilled" || !r.value) return [];
-              const v = r.value;
-              return v?.data || (Array.isArray(v) ? v : [v]);
+            const toArr = (rv) => {
+              if (rv.status !== "fulfilled" || !rv.value) return [];
+              const v = rv.value;
+              return v?.data || (Array.isArray(v) ? v : (v && typeof v === "object" ? [v] : []));
             };
-            // Filtra SEMPRE pelo CPF — nunca usa resultados de outros clientes
-            const matchCPF = (r) => {
+            const allFromSearch = [...toArr(r1), ...toArr(r2)].filter(Boolean);
+
+            // Log na 1ª tentativa para debug de formato
+            if (i === 0 && allFromSearch.length > 0) {
+              addLog(`🔍 ${fmtCPF(c)} docNum sample: ${JSON.stringify(allFromSearch[0]?.documentNumber||allFromSearch[0]?.cpf||"?")}`);
+            }
+
+            // Filtro por CPF — aceita qualquer campo que contenha os dígitos do CPF
+            const cpfDigits = c.replace(/\D/g,"");
+            const matchesCPF = (r) => {
               if (!r) return false;
-              const d = (r.documentNumber||r.cpf||r.document||"").replace(/\D/g,"");
-              return d === c || d === cSemZero || d.endsWith(cSemZero.slice(-8));
+              const fields = [r.documentNumber, r.cpf, r.document, r.individual_document_number, r.individualDocumentNumber];
+              return fields.some(f => f && String(f).replace(/\D/g,"").endsWith(cpfDigits.slice(-9)));
             };
-            const registros = [...toArr(r1), ...toArr(r2)].filter(matchCPF);
-            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${registros.length} reg próprios`);
 
-            const sucesso  = registros.find(r => r && (r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) >= 0);
-            const qualquer = registros.find(r => r && r.status==="success");
-            const encontrado = sucesso || qualquer;
+            // Primeiro: registros que matcham o CPF
+            let registros = allFromSearch.filter(matchesCPF);
 
-            if (encontrado) { bal=encontrado; addLog(`✅ ${fmtCPF(c)}: saldo ${fmtBRL(parseFloat(bal.amount||0))}`); break; }
+            // Se a busca por CPF retornou poucos resultados e nenhum matchou,
+            // a API retorna os registros pelo CPF buscado mesmo sem documentNumber no body
+            // Então usamos o que veio da busca diretamente (são do CPF certo)
+            if (registros.length === 0 && allFromSearch.length > 0 && allFromSearch.length <= 5) {
+              registros = allFromSearch; // busca foi por CPF, resultado é do CPF
+            }
 
-            const falha = registros.find(r => r && (r.status==="fail"||r.status==="error"||r.status==="failed"));
+            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${registros.length}/${allFromSearch.length} reg`);
+
+            const sucesso  = registros.find(r => r.status==="success" || (r.amount!=null && parseFloat(r.amount||0) >= 0));
+            const qualquer = registros.find(r => r.status==="success");
+            const bal_ = sucesso || qualquer;
+            if (bal_) { bal=bal_; addLog(`✅ ${fmtCPF(c)}: saldo ${fmtBRL(parseFloat(bal.amount||0))}`); break; }
+
+            const falha = registros.find(r => r.status==="fail"||r.status==="error"||r.status==="failed");
             if (falha) {
               const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"";
               const diag = diagnosticarErroV8(rawMsg, c);
@@ -13321,7 +13338,6 @@ function V8DigitalTab({ currentUser, contacts }) {
               }
               await new Promise(r=>setTimeout(r,2000));
             }
-            // Se 0 registros próprios, aguarda mais (API ainda processando)
           } catch {}
         }
 
