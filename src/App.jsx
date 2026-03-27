@@ -13394,15 +13394,22 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
 
-        // 3. Simular tabelas (melhor oferta)
+        // Helper: erro transitório (rate limit, servidor, "tente novamente")
+        const isTransientErr = (msg) => {
+          const m = (msg||"").toLowerCase();
+          return m.includes("tente novamente") || m.includes("limite") || m.includes("rate")
+            || m.includes("429") || m.includes("503") || m.includes("502") || m.includes("500")
+            || m.includes("servidor") || m.includes("timeout") || m.includes("indisponível")
+            || m.includes("too many") || m.includes("exceeded");
+        };
+
+        // 3. Simular tabelas — retry infinito em erros transitórios, para apenas em abort
         const feesList = await carregarFees();
         let melhorSim=null; let melhorVal=0; let melhorLabel=""; let melhorFeeId=""; let melhorAnos="—"; let allSims=[];
-        const anosItem = item._anosForcar || null; // anos forçado pelo botão (1-5)
-
-        // balanceId pode vir em bal.id ou bal.balanceId
+        const anosItem = item._anosForcar || null;
         const balanceId = bal.id || bal.balanceId || null;
+
         if (feesList.length) {
-          // Monta installments: API exige mínimo 2 parcelas
           const rawPeriods = (bal.periods||bal.installments||[]);
           let installments;
           if (anosItem) {
@@ -13415,17 +13422,46 @@ function V8DigitalTab({ currentUser, contacts }) {
               { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
             ];
           }
+
+          // Tenta simular cada tabela com retry infinito em erros transitórios
           for (const fee of feesList) {
-            try {
-              const simBody = { simulationFeesId:fee.simulation_fees?.id_simulation_fees, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider };
-              if (balanceId) simBody.balanceId = balanceId;
-              const sim = await apiFetch("/fgts/simulations","POST", simBody);
-              const v = parseFloat(sim?.availableBalance||0);
-              const label = fee.simulation_fees?.label||"";
-              allSims.push({ label, sim, ok:true });
-              if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=calcAnos(sim); }
-            } catch(e) {
-              allSims.push({ label:fee.simulation_fees?.label||"", err:e.message, ok:false });
+            if (abortRef.current) break;
+            const label = fee.simulation_fees?.label||"";
+            let simOk = false;
+            let simTentativa = 0;
+            let simTempoTotal = 0;
+            const SIM_MAX_MS = 120000; // 2 minutos máximo
+            const simWaits = [3000, 6000, 8000]; // 3s, 6s, 8s — depois 4s cada
+            while (!simOk && simTempoTotal < SIM_MAX_MS) {
+              if (abortRef.current) break;
+              simTentativa++;
+              try {
+                const simBody = { simulationFeesId:fee.simulation_fees?.id_simulation_fees, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider };
+                if (balanceId) simBody.balanceId = balanceId;
+                const sim = await apiFetch("/fgts/simulations","POST", simBody);
+                const v = parseFloat(sim?.availableBalance||0);
+                allSims.push({ label, sim, ok:true });
+                if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=calcAnos(sim); }
+                simOk = true;
+              } catch(e) {
+                if (isTransientErr(e.message)) {
+                  const wait = simTentativa <= simWaits.length
+                    ? simWaits[simTentativa-1]
+                    : 4000; // após 3ª tentativa: 4s fixo
+                  simTempoTotal += wait;
+                  const restante = Math.max(0, Math.round((SIM_MAX_MS - simTempoTotal)/1000));
+                  addLog(`⏳ ${fmtCPF(c)}: Tabela ${label} erro transitório (${simTentativa}ª vez) — aguardando ${wait/1000}s... restam ~${restante}s`, false);
+                  await new Promise(r => setTimeout(r, wait));
+                } else {
+                  addLog(`⚠ ${fmtCPF(c)}: Tabela ${label} — ${e.message}`, false);
+                  allSims.push({ label, err:e.message, ok:false });
+                  break;
+                }
+              }
+            }
+            if (!simOk && simTempoTotal >= SIM_MAX_MS) {
+              addLog(`❌ ${fmtCPF(c)}: Tabela ${label} — 2 min esgotados sem resposta`, false);
+              allSims.push({ label, err:"Timeout 2min", ok:false });
             }
           }
           if (anosItem) melhorAnos = anosItem+" ano"+(anosItem>1?"s":"");
@@ -13486,7 +13522,17 @@ function V8DigitalTab({ currentUser, contacts }) {
           ts, erro:null, erroTipo:null,
         };
       } catch(e) {
-        const diag = diagnosticarErroV8(e.message, c);
+        const msg = e.message || "";
+        const isTransient = msg.toLowerCase().includes("tente novamente") || msg.toLowerCase().includes("limite")
+          || msg.toLowerCase().includes("rate") || msg.toLowerCase().includes("429")
+          || msg.toLowerCase().includes("503") || msg.toLowerCase().includes("502")
+          || msg.toLowerCase().includes("servidor") || msg.toLowerCase().includes("too many");
+        if (isTransient && !abortRef.current) {
+          addLog(`⏳ ${fmtCPF(c)}: Erro transitório (${msg.slice(0,60)}), retentando CPF em 6s...`, false);
+          await new Promise(r => setTimeout(r, 6000));
+          return simularUm(item); // recursão — retenta do início
+        }
+        const diag = diagnosticarErroV8(msg, c);
         addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
         const statusLote = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante","timeout"].includes(diag.tipo)
           ? diag.tipo : "erro";
