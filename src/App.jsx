@@ -13263,13 +13263,13 @@ function V8DigitalTab({ currentUser, contacts }) {
           // 1. Dispara consulta assíncrona (POST — nova a cada tentativa)
           try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
 
-          // 2. Polling GET até ter resultado — 18 x 2.5s = 45s por tentativa
+          // 2. Polling GET até ter resultado — 30 x 1s = 30s por tentativa
           bal = null;
           let erroFatal = false;
           let ultimoDiag = null;
-          for (let i=0; i<18; i++) {
+          for (let i=0; i<30; i++) {
             if (abortRef.current) return { ...item, status:"pendente" };
-            await new Promise(r=>setTimeout(r,2500));
+            await new Promise(r=>setTimeout(r,1000));
             try {
               const res = await apiFetch(`/fgts/balance?search=${c}`);
               const registros = (res?.data || (Array.isArray(res)?res:[res]).filter(Boolean))
@@ -13294,8 +13294,8 @@ function V8DigitalTab({ currentUser, contacts }) {
             const statusLote = FATAIS.includes(ultimoDiag.tipo) ? ultimoDiag.tipo : "erro";
             return { ...item, cpf:fmtCPF(c), status:statusLote, erro:ultimoDiag.titulo, erroTipo:ultimoDiag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
           }
-          // Erro transitório ou timeout — aguarda 5s e tenta de novo automaticamente
-          await new Promise(r=>setTimeout(r,5000));
+          // Erro transitório ou timeout — aguarda 2s e tenta de novo automaticamente
+          await new Promise(r=>setTimeout(r,2000));
         }
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
@@ -13403,7 +13403,7 @@ function V8DigitalTab({ currentUser, contacts }) {
         lista[i]=updated; done++;
         const prog=Math.round(done/lista.length*100);
         setProgress(prog); setItems([...lista]); saveState(lista,prog);
-        await new Promise(r=>setTimeout(r,200));
+        await new Promise(r=>setTimeout(r,0));
       }
       setRunning(false); setPaused(false);
     };
@@ -13552,15 +13552,44 @@ function V8DigitalTab({ currentUser, contacts }) {
           )}
 
           {/* Filtros */}
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end", marginBottom:10 }}>
             <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Saldo mín (R$)</label><input value={filterSaldo} onChange={e=>{setFilterSaldo(e.target.value);setPage(0);}} placeholder="Ex: 1000" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
             <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Oferta mín (R$)</label><input value={filterMargem} onChange={e=>{setFilterMargem(e.target.value);setPage(0);}} placeholder="Ex: 500" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
-            <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label>
-              <select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(0);}} style={{ ...S.input, width:120, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
-                {["Todos","pendente","ok","simulando","saldo_zero","sem_adesao","inst_nao_autorizada","aniversariante","sem_saldo","cpf_invalido","timeout","erro"].map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div style={{ paddingBottom:2, color:C.td, fontSize:11 }}>{filtered.length} resultado{filtered.length!==1?"s":""}</div>
+            <div style={{ paddingBottom:2, color:C.td, fontSize:11, marginLeft:"auto" }}>{filtered.length} / {items.length}</div>
+            {/* Apagar tudo */}
+            {!running && items.length > 0 && (
+              <button onClick={()=>{ if(!window.confirm("Apagar todas as consultas do lote?")) return; setItems([]); setProgress(0); setLogs([]); setDetalheItem(null); localStorage.removeItem("nexp_v8_lote_state"); }}
+                style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                🗑 Apagar tudo
+              </button>
+            )}
+          </div>
+          {/* Filtro por status — badges clicáveis */}
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+            {[
+              { s:"Todos",              col:"#94A3B8", bg:"rgba(148,163,184,0.12)" },
+              { s:"ok",                 col:"#34D399", bg:"rgba(52,211,153,0.12)"  },
+              { s:"pendente",           col:"#FBBF24", bg:"rgba(251,191,36,0.12)"  },
+              { s:"simulando",          col:"#60A5FA", bg:"rgba(96,165,250,0.12)"  },
+              { s:"saldo_zero",         col:"#FBBF24", bg:"rgba(251,191,36,0.10)"  },
+              { s:"sem_adesao",         col:"#FBBF24", bg:"rgba(251,191,36,0.10)"  },
+              { s:"inst_nao_autorizada",col:"#F87171", bg:"rgba(248,113,113,0.10)" },
+              { s:"aniversariante",     col:"#FBBF24", bg:"rgba(251,191,36,0.10)"  },
+              { s:"sem_saldo",          col:"#F87171", bg:"rgba(248,113,113,0.10)" },
+              { s:"cpf_invalido",       col:"#F87171", bg:"rgba(248,113,113,0.10)" },
+              { s:"timeout",            col:"#FBBF24", bg:"rgba(251,191,36,0.10)"  },
+              { s:"erro",               col:"#F87171", bg:"rgba(248,113,113,0.10)" },
+            ].map(({s,col,bg})=>{
+              const cnt = s==="Todos" ? items.length : items.filter(x=>x.status===s).length;
+              if (s!=="Todos" && cnt===0) return null;
+              const active = filterStatus===s;
+              return (
+                <button key={s} onClick={()=>{ setFilterStatus(s); setPage(0); }}
+                  style={{ background:active?bg:"transparent", color:active?col:C.td, border:`1px solid ${active?col+"55":C.b1}`, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:active?700:400, cursor:"pointer", transition:"all 0.15s", whiteSpace:"nowrap" }}>
+                  {STATUS_LABEL[s]||s} {cnt>0&&<span style={{opacity:0.7}}>({cnt})</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
