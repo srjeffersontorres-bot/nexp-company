@@ -13283,15 +13283,36 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 2. Polling GET — 18 x 2.5s = 45s max (idêntico ao individual)
         for (let i=0; i<18; i++) {
           if (abortRef.current) return { ...item, status:"pendente" };
-          await new Promise(r=>setTimeout(r,2500));
+          await new Promise(r=>setTimeout(r,1500));
           try {
-            const res = await apiFetch(`/fgts/balance?search=${c}`);
-            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${JSON.stringify(res).slice(0,80)}`);
+            // Tenta múltiplos formatos de busca em paralelo para achar o resultado mais rápido
+            const cSemZero = c.replace(/^0+/,""); // sem zeros à esquerda
+            const [r1, r2, r3] = await Promise.allSettled([
+              apiFetch(`/fgts/balance?search=${c}&limit=10`),
+              cSemZero !== c ? apiFetch(`/fgts/balance?search=${cSemZero}&limit=10`) : Promise.resolve(null),
+              apiFetch(`/fgts/balance?limit=20`), // resultados recentes sem filtro
+            ]);
 
-            // Sem filtro por documentNumber — igual ao individual
-            const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
-            const sucesso   = registros.find(r => r && (r.status==="success" || r.amount!=null) && parseFloat(r.amount||0) > 0);
-            const qualquer  = registros.find(r => r && r.status==="success"); // fallback: sucesso sem amount
+            // Coleta todos os registros de todas as respostas
+            const toArr = (r) => {
+              if (r.status !== "fulfilled" || !r.value) return [];
+              const v = r.value;
+              return v?.data || (Array.isArray(v) ? v : [v]);
+            };
+            const todos = [...toArr(r1), ...toArr(r2), ...toArr(r3)].filter(Boolean);
+            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${todos.length} registros`);
+
+            // Primeiro tenta achar pelo CPF exato no documentNumber
+            const matchCPF = (r) => {
+              const d = (r.documentNumber||r.cpf||"").replace(/\D/g,"");
+              return d === c || d === cSemZero;
+            };
+            let registros = todos.filter(matchCPF);
+            // Fallback: se não achou por CPF, usa tudo (igual ao individual)
+            if (registros.length === 0) registros = todos;
+
+            const sucesso  = registros.find(r => r && (r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) > 0);
+            const qualquer = registros.find(r => r && r.status==="success");
             const encontrado = sucesso || qualquer;
 
             if (encontrado) { bal=encontrado; addLog(`✅ ${fmtCPF(c)}: saldo ${fmtBRL(parseFloat(bal.amount||0))}`); break; }
@@ -13301,12 +13322,10 @@ function V8DigitalTab({ currentUser, contacts }) {
               const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"";
               const diag = diagnosticarErroV8(rawMsg, c);
               addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
-              const isFatal = FATAIS.includes(diag.tipo);
-              if (isFatal) {
+              if (FATAIS.includes(diag.tipo)) {
                 return { ...item, cpf:fmtCPF(c), status:diag.tipo, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
               }
-              // Erro transitório — aguarda 3s e continua o polling
-              await new Promise(r=>setTimeout(r,3000));
+              await new Promise(r=>setTimeout(r,2000));
             }
           } catch {}
         }
@@ -13439,8 +13458,12 @@ function V8DigitalTab({ currentUser, contacts }) {
       const val = getCpfBoxValue();
       const linhas = val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
       const novos = linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf:padCPF(cpf), saldo:null, margem:null, status:"pendente", erro:null, sim:null, ts:null }));
-      setItems(p=>[...p,...novos]);
-      saveCpfBox(val); // persist current value to state/localStorage on click only
+      setItems(p=>{
+        const updated = [...p, ...novos];
+        saveState(updated, progress, false); // persiste imediatamente no localStorage
+        return updated;
+      });
+      saveCpfBox(val);
       setShowCpfBox(false);
     };
 
@@ -13635,7 +13658,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                     const ri=items.findIndex(x=>x.id===detalheItem.id);
                     if(ri<0) return;
                     const updated=await simularUm({...items[ri],status:"pendente"});
-                    setItems(p=>{const n=[...p];n[ri]=updated;return n;});
+                    setItems(p=>{const n=[...p];n[ri]=updated; saveState(n,progress,false); return n;});
                     setDetalheItem(updated);
                   }}
                   style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}>
@@ -13811,7 +13834,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       <td style={{ color:C.tm, padding:"8px 10px", fontSize:11 }}>{it.sim?.anos||"—"}</td>
                       <td style={{ color:C.td, padding:"8px 10px", fontSize:10.5 }}>{it.ts||"—"}</td>
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
-                        <button onClick={()=>{ const n=[...items]; const novo={...n[ri],status:"simulando"}; n[ri]=novo; setItems([...n]); simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); }); }}
+                        <button onClick={()=>{ const n=[...items]; const novo={...n[ri],status:"simulando"}; n[ri]=novo; setItems([...n]); simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); saveState(l,progress,false); }); }}
                           disabled={running||isSim}
                           style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>
                           {isSim ? "⏳" : it.status==="ok"?"🔄":"▶"}
@@ -13890,7 +13913,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                           const novo={...items[ri],_anosForcar:a,status:"simulando"};
                           const lista=[...items]; lista[ri]=novo; setItems([...lista]);
                           setCardSim(null);
-                          simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); });
+                          simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); saveState(l,progress,false); });
                         }
                       }}
                       style={{ background:sel?"rgba(59,110,245,0.35)":"rgba(255,255,255,0.08)", color:sel?"#93C5FD":"rgba(255,255,255,0.7)", border:`1px solid ${sel?"rgba(59,110,245,0.7)":"rgba(255,255,255,0.15)"}`, borderRadius:10, padding:"6px 14px", fontSize:13, fontWeight:sel?800:500, cursor:"pointer", transition:"all 0.15s", letterSpacing:"0.2px" }}>
