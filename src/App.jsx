@@ -13323,18 +13323,27 @@ function V8DigitalTab({ currentUser, contacts }) {
         let melhorSim=null; let melhorVal=0; let melhorLabel=""; let melhorFeeId=""; let melhorAnos="—"; let allSims=[];
         const anosItem = item._anosForcar || null; // anos forçado pelo botão (1-5)
 
-        if (feesList.length && bal.id) {
-          const installments = anosItem
-            ? makeInstallments(bal, anosItem, saldoVal)
-            : (bal.periods||bal.installments||[]).length
-              ? (bal.periods||bal.installments).map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }))
-              : [
-                  { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
-                  { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
-                ];
+        // balanceId pode vir em bal.id ou bal.balanceId
+        const balanceId = bal.id || bal.balanceId || null;
+        if (feesList.length) {
+          // Monta installments: API exige mínimo 2 parcelas
+          const rawPeriods = (bal.periods||bal.installments||[]);
+          let installments;
+          if (anosItem) {
+            installments = makeInstallments(bal, anosItem, saldoVal);
+          } else if (rawPeriods.length >= 2) {
+            installments = rawPeriods.map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }));
+          } else {
+            installments = [
+              { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
+              { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
+            ];
+          }
           for (const fee of feesList) {
             try {
-              const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
+              const simBody = { simulationFeesId:fee.simulation_fees?.id_simulation_fees, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider };
+              if (balanceId) simBody.balanceId = balanceId;
+              const sim = await apiFetch("/fgts/simulations","POST", simBody);
               const v = parseFloat(sim?.availableBalance||0);
               const label = fee.simulation_fees?.label||"";
               allSims.push({ label, sim, ok:true });
@@ -13744,9 +13753,31 @@ function V8DigitalTab({ currentUser, contacts }) {
                 </div>
               </div>
             ) : (
-              <div style={{ background:"rgba(251,191,36,0.1)", border:"1px solid rgba(251,191,36,0.2)", borderRadius:10, padding:"12px 16px" }}>
-                <div style={{ color:"#FBBF24", fontSize:12.5, fontWeight:600 }}>⚠ Dados de tabelas não disponíveis para este item</div>
-                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11.5, marginTop:4 }}>Clique em 🔄 Re-simular para buscar todas as tabelas.</div>
+              <div style={{ textAlign:"center", padding:"16px 0" }}>
+                {(()=>{
+                  // Auto-trigger simulation se tem saldo mas sem tabelas
+                  const ri = items.findIndex(x=>x.id===detalheItem.id);
+                  if (ri>=0 && detalheItem.status==="ok" && detalheItem.balance && !running) {
+                    setTimeout(()=>{
+                      const novo={...items[ri],status:"simulando"};
+                      const lista=[...items]; lista[ri]=novo; setItems([...lista]);
+                      simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
+                    },100);
+                    return <div style={{color:C.atxt,fontSize:13}}>⏳ Carregando simulações...</div>;
+                  }
+                  return (
+                    <button
+                      onClick={()=>{
+                        if(ri<0) return;
+                        const novo={...items[ri],status:"simulando"};
+                        const lista=[...items]; lista[ri]=novo; setItems([...lista]);
+                        simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
+                      }}
+                      style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 24px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      🔄 Simular este CPF
+                    </button>
+                  );
+                })()}
               </div>
             )}
 
