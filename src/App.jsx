@@ -13268,56 +13268,52 @@ function V8DigitalTab({ currentUser, contacts }) {
       return installs;
     };
 
-    // simularUm — retry infinito em erros transitórios
+    // simularUm — lógica idêntica ao individual (que funciona)
     const simularUm = async (item) => {
       const c = padCPF(item.cpf);
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
       const FATAIS = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"];
       let bal = null;
-      let tentativa = 0;
       try {
-        // Loop infinito — sai só com sucesso, erro fatal, ou abort
-        while (true) {
+        if (abortRef.current) return { ...item, status:"pendente" };
+
+        // 1. POST — dispara consulta (igual ao individual)
+        try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
+
+        // 2. Polling GET — 18 x 2.5s = 45s max (idêntico ao individual)
+        for (let i=0; i<18; i++) {
           if (abortRef.current) return { ...item, status:"pendente" };
-          tentativa++;
-          addLog(`🔄 ${fmtCPF(c)}: Tentativa ${tentativa}...`);
+          await new Promise(r=>setTimeout(r,2500));
+          try {
+            const res = await apiFetch(`/fgts/balance?search=${c}`);
+            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${JSON.stringify(res).slice(0,80)}`);
 
-          // 1. Dispara consulta assíncrona (POST — nova a cada tentativa)
-          try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
+            // Sem filtro por documentNumber — igual ao individual
+            const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
+            const sucesso   = registros.find(r => r && (r.status==="success" || r.amount!=null) && parseFloat(r.amount||0) > 0);
+            const qualquer  = registros.find(r => r && r.status==="success"); // fallback: sucesso sem amount
+            const encontrado = sucesso || qualquer;
 
-          // 2. Polling GET até ter resultado — 30 x 1s = 30s por tentativa
-          bal = null;
-          let erroFatal = false;
-          let ultimoDiag = null;
-          for (let i=0; i<30; i++) {
-            if (abortRef.current) return { ...item, status:"pendente" };
-            await new Promise(r=>setTimeout(r,1000));
-            try {
-              const res = await apiFetch(`/fgts/balance?search=${c}`);
-              const registros = (res?.data || (Array.isArray(res)?res:[res]).filter(Boolean))
-                .filter(r => r && (!r.documentNumber || r.documentNumber.replace(/\D/g,"").padStart(11,"0") === c));
-              const sucesso = registros.find(r=>(r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) >= 0);
-              if (sucesso) { bal=sucesso; break; }
-              const falha = registros.find(r=>(r.status==="fail"||r.status==="error"||r.status==="failed"));
-              if (falha) {
-                const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
-                ultimoDiag = diagnosticarErroV8(rawMsg, c);
-                if (FATAIS.includes(ultimoDiag.tipo)) { erroFatal=true; }
-                addLog(`${erroFatal?"❌":"⚠"} ${fmtCPF(c)}: ${ultimoDiag.titulo}${erroFatal?"":" — retentando..."}`, false);
-                break;
+            if (encontrado) { bal=encontrado; addLog(`✅ ${fmtCPF(c)}: saldo ${fmtBRL(parseFloat(bal.amount||0))}`); break; }
+
+            const falha = registros.find(r => r && (r.status==="fail"||r.status==="error"||r.status==="failed"));
+            if (falha) {
+              const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"";
+              const diag = diagnosticarErroV8(rawMsg, c);
+              addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
+              const isFatal = FATAIS.includes(diag.tipo);
+              if (isFatal) {
+                return { ...item, cpf:fmtCPF(c), status:diag.tipo, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
               }
-            } catch {}
-          }
+              // Erro transitório — aguarda 3s e continua o polling
+              await new Promise(r=>setTimeout(r,3000));
+            }
+          } catch {}
+        }
 
-          if (bal) break; // ✅ sucesso — sai do while
-
-          if (erroFatal && ultimoDiag) {
-            // Erro fatal — para imediatamente
-            const statusLote = FATAIS.includes(ultimoDiag.tipo) ? ultimoDiag.tipo : "erro";
-            return { ...item, cpf:fmtCPF(c), status:statusLote, erro:ultimoDiag.titulo, erroTipo:ultimoDiag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
-          }
-          // Erro transitório ou timeout — aguarda 2s e tenta de novo automaticamente
-          await new Promise(r=>setTimeout(r,2000));
+        if (!bal) {
+          addLog(`⏳ ${fmtCPF(c)}: Timeout — sem resposta em 45s`, false);
+          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:"Timeout — sem resposta em 45s", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
         }
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
