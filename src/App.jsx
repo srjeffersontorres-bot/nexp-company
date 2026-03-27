@@ -15024,18 +15024,7 @@ function V8DigitalTab({ currentUser, contacts }) {
 
 
 // ── APIs Bancos ────────────────────────────────────────────────
-function BancoC6Tab() {
-  return (
-    <div style={{ padding:"32px 0", textAlign:"center" }}>
-      <div style={{ fontSize:48, marginBottom:16 }}>🏦</div>
-      <div style={{ color:C.tp, fontSize:16, fontWeight:700, marginBottom:8 }}>Banco C6</div>
-      <div style={{ color:C.tm, fontSize:13, maxWidth:400, margin:"0 auto" }}>
-        Integração com o Banco C6 em breve.<br/>
-        Configure as credenciais em <b>Configurações → Configurar API</b>.
-      </div>
-    </div>
-  );
-}
+
 
 function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
