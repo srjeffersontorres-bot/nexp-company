@@ -11863,6 +11863,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [loteSearch,       setLoteSearch]        = useState("");
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
+  const loteCpfBoxRef = useRef(null); // textarea DOM ref — never triggers re-render
 
   // ── Estados OperacoesTab elevados ──
   const [opsSearch,   setOpsSearch]   = useState("");
@@ -12862,7 +12863,9 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:160 }}>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (CPF, nome ou contrato)</label>
-              <input defaultValue={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
+              <input value={search}
+                onBlur={e=>setSearch(e.target.value)}
+                onKeyDown={e=>{setSearch(e.target.value); if(e.key==="Enter")buscar(1);}}
                 placeholder="CPF, nome ou nº contrato" autoComplete="off" style={{ ...S.input }} />
             </div>
             <div>
@@ -13207,16 +13210,15 @@ function V8DigitalTab({ currentUser, contacts }) {
     const cardSim      = loteCardSim;     const setCardSim      = setLoteCardSim;
     const abortRef     = loteAbortRef;
     const pauseRef     = lotePauseRef;
+    const cpfBoxRef    = loteCpfBoxRef;
     const PAGE_SIZE    = 50;
 
     const setProviderPersist = (p) => { setLoteProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
-    const setCpfBoxPersist   = (v) => {
+    // Read CPF box value from DOM ref — NEVER call setState on keystroke to avoid re-render bug
+    const getCpfBoxValue = () => cpfBoxRef.current ? cpfBoxRef.current.value : loteCpfBox;
+    const saveCpfBox = (v) => {
       setLoteCpfBox(v);
-      // Debounce localStorage write to avoid re-render on every keystroke
-      clearTimeout(window._cpfBoxTimer);
-      window._cpfBoxTimer = setTimeout(() => {
-        try { localStorage.setItem("nexp_v8_lote_cpfbox", v); } catch {}
-      }, 500);
+      try { localStorage.setItem("nexp_v8_lote_cpfbox", v); } catch {}
     };
 
     const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
@@ -13348,7 +13350,9 @@ function V8DigitalTab({ currentUser, contacts }) {
       } catch(e) {
         const diag = diagnosticarErroV8(e.message, c);
         addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
-        return { ...item, cpf:fmtCPF(c), status:"erro", erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+        const statusLote = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante","timeout"].includes(diag.tipo)
+          ? diag.tipo : "erro";
+        return { ...item, cpf:fmtCPF(c), status:statusLote, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
       }
     };
 
@@ -13371,11 +13375,17 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     // Adiciona CPFs SEM limpar a caixa
     const adicionarCPFs = () => {
-      const linhas=cpfBox.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
-      const novos=linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf:padCPF(cpf), saldo:null, margem:null, status:"pendente", erro:null, sim:null, ts:null }));
+      const val = getCpfBoxValue();
+      const linhas = val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
+      const novos = linhas.map(cpf=>({ id:"manual_"+Date.now()+Math.random(), nome:"Manual", cpf:padCPF(cpf), saldo:null, margem:null, status:"pendente", erro:null, sim:null, ts:null }));
       setItems(p=>[...p,...novos]);
-      // NÃO limpa cpfBox — só fecha o painel
+      saveCpfBox(val); // persist current value to state/localStorage on click only
       setShowCpfBox(false);
+    };
+
+    const limparCpfBox = () => {
+      if (cpfBoxRef.current) cpfBoxRef.current.value = "";
+      saveCpfBox("");
     };
 
     const exportar = () => {
@@ -13483,20 +13493,22 @@ function V8DigitalTab({ currentUser, contacts }) {
                 <span style={{ color:C.td, fontSize:11 }}>Os CPFs digitados são mantidos até você limpar manualmente.</span>
               </div>
               <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>Um por linha ou separados por vírgula. CPFs com menos de 11 dígitos serão completados com zeros.</div>
-              <textarea defaultValue={cpfBox}
-                onChange={e=>{ clearTimeout(window._cpfBoxTimer); window._cpfBoxTimer=setTimeout(()=>setCpfBoxPersist(e.target.value),0); }}
-                rows={6} placeholder={"12345678901\n98765432100"}
+              <textarea
+                ref={cpfBoxRef}
+                defaultValue={loteCpfBox}
+                rows={6}
+                placeholder={"12345678901\n98765432100"}
                 style={{ ...S.input, resize:"vertical", fontFamily:"monospace", fontSize:12, width:"100%", marginBottom:8 }} />
               <div style={{ display:"flex", gap:8 }}>
-                <button onClick={adicionarCPFs} disabled={!cpfBox.trim()}
-                  style={{ background:cpfBox.trim()?C.acc:C.deep, color:cpfBox.trim()?"#fff":C.td, border:"none", borderRadius:8, padding:"7px 16px", fontSize:12.5, fontWeight:600, cursor:cpfBox.trim()?"pointer":"not-allowed" }}>
-                  ➕ Adicionar {cpfBox.trim().split(/[\n,;]+/).filter(Boolean).length} CPFs
+                <button onClick={adicionarCPFs}
+                  style={{ background:C.acc, color:"#fff", border:"none", borderRadius:8, padding:"7px 16px", fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
+                  ➕ Adicionar CPFs
                 </button>
-                <button onClick={()=>setCpfBoxPersist("")}
+                <button onClick={limparCpfBox}
                   style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"7px 12px", fontSize:12.5, cursor:"pointer" }}>
                   🗑 Limpar caixa
                 </button>
-                <button onClick={()=>setShowCpfBox(false)}
+                <button onClick={()=>{ saveCpfBox(getCpfBoxValue()); setShowCpfBox(false); }}
                   style={{ background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px 14px", fontSize:12.5, cursor:"pointer" }}>
                   Fechar
                 </button>
@@ -13631,7 +13643,9 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         {/* Barra de pesquisa + apagar cache */}
         <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
-          <input defaultValue={loteSearch} onChange={e=>{setLoteSearch(e.target.value);setPage(0);}}
+          <input value={loteSearch}
+            onBlur={e=>{ setLoteSearch(e.target.value); setPage(0); }}
+            onKeyDown={e=>{ if(e.key==="Enter"){ setLoteSearch(e.target.value); setPage(0); } }}
             placeholder="🔍 Pesquisar CPF ou nome..."
             style={{ ...S.input, flex:1, minWidth:200, fontSize:12.5, padding:"7px 12px" }}/>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -14122,7 +14136,9 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:180 }}>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (nome, CPF ou contrato)</label>
-              <input defaultValue={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
+              <input value={search}
+                onBlur={e=>setSearch(e.target.value)}
+                onKeyDown={e=>{setSearch(e.target.value); if(e.key==="Enter")buscar(1);}}
                 placeholder="Nome, CPF (com ou sem pontos) ou nº contrato" autoComplete="off" style={{ ...S.input }} />
             </div>
             <div>
@@ -14697,10 +14713,10 @@ function V8DigitalTab({ currentUser, contacts }) {
         </div>
       )}
 
-      {isTokenValid && aba === "individual"      && <IndividualTab />}
-      {isTokenValid && aba === "lote"             && <LoteTab />}
-      {isTokenValid && aba === "operacoes"        && <OperacoesTab />}
-      {isTokenValid && aba === "acompanhamento"   && <AcompanhamentoTab />}
+      {isTokenValid && aba === "individual"      && IndividualTab()}
+      {isTokenValid && aba === "lote"             && LoteTab()}
+      {isTokenValid && aba === "operacoes"        && OperacoesTab()}
+      {isTokenValid && aba === "acompanhamento"   && AcompanhamentoTab()}
     </div>
   );
 }
@@ -15325,12 +15341,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {showLoteCLT&&(
             <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
               <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,marginBottom:10}}>⚡ Lote — Gerar Termos em Massa</div>
-              <textarea defaultValue={loteCLTCpfs} onChange={e=>setLoteCLTCpfs(e.target.value)}
+              <textarea
+                ref={el => { if(el) window._cltCpfTextarea = el; }}
+                defaultValue={loteCLTCpfs}
+                onBlur={e=>setLoteCLTCpfs(e.target.value)}
                 placeholder={"Cole os CPFs aqui, um por linha:\n84999999999,Nome,email@email.com,1990-01-01\nou apenas CPFs (buscará nos contatos):\n12345678901\n98765432100"}
                 style={{...S.input,height:90,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={async()=>{
-                  const linhas = loteCLTCpfs.split(/\n/).map(l=>l.trim()).filter(Boolean);
+                  // Read from DOM directly to avoid stale state
+                  const rawVal = window._cltCpfTextarea ? window._cltCpfTextarea.value : loteCLTCpfs;
+                  setLoteCLTCpfs(rawVal);
+                  const linhas = rawVal.split(/\n/).map(l=>l.trim()).filter(Boolean);
                   if(!linhas.length){ setErr("Cole ao menos um CPF."); return; }
                   setLoteCLTRunning(true); loteCLTAbort.current=false;
                   const novos = linhas.map(linha=>{
@@ -15416,8 +15438,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
                   </div>
                   <input
-                    defaultValue={termosSearch||""}
-                    onChange={e=>setTermosSearch(e.target.value)}
+                    value={termosSearch||""}
+                    onBlur={e=>setTermosSearch(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==="Enter") setTermosSearch(e.target.value); }}
                     placeholder="🔍 Pesquisar consultas..."
                     style={{...S.input,fontSize:12,padding:"5px 10px",width:200,minWidth:140}}
                   />
@@ -15594,7 +15617,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       {aba==="clientes" && (
         <div>
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-            <input defaultValue={opsSearch} onChange={e=>setOpsSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscarOps()}
+            <input value={opsSearch}
+              onBlur={e=>setOpsSearch(e.target.value)}
+              onKeyDown={e=>{setOpsSearch(e.target.value);if(e.key==="Enter")buscarOps();}}
               placeholder="🔍 Nome ou CPF..." style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
             <button onClick={buscarOps} disabled={opsLoading}
               style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:opsLoading?0.6:1}}>
@@ -17772,7 +17797,7 @@ function RelatorioProposta({ propostas, canSeeAll, myId }) {
           {mMes.valorCanc>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.b1}`}}><span style={{color:C.td,fontSize:11.5}}>❌ Canceladas</span><span style={{color:"#F87171",fontWeight:700,fontSize:13}}>{fmtBRL(mMes.valorCanc)}</span></div>}
           <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0"}}><span style={{color:C.tm,fontSize:11.5,fontWeight:700}}>Total em carteira</span><span style={{color:C.atxt,fontWeight:800,fontSize:14}}>{fmtBRL(mMes.valor+mMes.valorPend)}</span></div>
         </div>
-        <SalesChart />
+        {SalesChart()}
       </div>
 
       {/* ── Anual ── */}
@@ -18309,7 +18334,7 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
       {abaProp==="lista" && (
         <>
           <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-            <input defaultValue={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
               style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               {["Todos",...STATUS_PROPOSTA].map(s=>{
