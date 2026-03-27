@@ -1340,7 +1340,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
           style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:C.td, fontSize:12, transition:"all 0.18s" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color=C.td;}}>
-          {topBarCollapsed ? "▶" : "◀"}
+          {topBarCollapsed ? "▼" : "▲"}
         </button>
         {!topBarCollapsed && <>
         {/* Stories */}
@@ -1621,13 +1621,7 @@ function LoginPage({ onLogin }) {
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   const canEdit = user.role === "mestre";
   const [cover, setCover] = useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
-  const coverRef = useRef(null);
-  const handleCover = (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = (ev) => { setCover(ev.target.result); localStorage.setItem("nexp_sidebar_cover", ev.target.result); };
-    r.readAsDataURL(f);
-  };
+
   return (
     <div style={{ flexShrink: 0, position:"relative" }}>
       {/* Cover strip */}
@@ -1653,12 +1647,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
           </div>
         )}
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          {canEdit && sidebarOpen && (
-            <>
-              <button onClick={() => coverRef.current?.click()} style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.3)", borderRadius:7, padding:"3px 7px", fontSize:9, cursor:"pointer" }} title="Trocar capa">🖼</button>
-              <input ref={coverRef} type="file" accept="image/*" onChange={handleCover} style={{ display: "none" }} />
-            </>
-          )}
+
           <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? "Fechar" : "Abrir"}
             style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.35)", fontSize:9, cursor:"pointer", padding:"4px 7px", borderRadius:7, transition:"all 0.15s", flexShrink:0 }}
             onMouseEnter={e => { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background="rgba(255,255,255,0.12)"; }}
@@ -4948,22 +4937,25 @@ function PerfisTab({ users, setUsers, currentUser }) {
     });
   };
 
-  const Field = ({ label, k, type = "text", placeholder = "" }) => (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-        <label style={{ color: C.tm, fontSize: 11 }}>{label}</label>
-        {editData?.[k] && (
-          <button onClick={() => copyVal(k, editData[k])}
-            style={{ background: "none", border: "none", color: copiedKey === k ? "#34D399" : C.td, cursor: "pointer", fontSize: 10, padding: "1px 5px" }}>
-            {copiedKey === k ? "✓ Copiado" : "⎘ Copiar"}
-          </button>
-        )}
+  const Field = ({ label, k, type = "text", placeholder = "" }) => {
+    const [local, setLocal] = React.useState(editData?.[k] || "");
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <label style={{ color: C.tm, fontSize: 11 }}>{label}</label>
+          {local && (
+            <button onClick={() => copyVal(k, local)}
+              style={{ background: "none", border: "none", color: copiedKey === k ? "#34D399" : C.td, cursor: "pointer", fontSize: 10, padding: "1px 5px" }}>
+              {copiedKey === k ? "✓ Copiado" : "⎘ Copiar"}
+            </button>
+          )}
+        </div>
+        <input value={local} onChange={e => { setLocal(e.target.value); EF(k, e.target.value); }}
+          type={type} placeholder={placeholder}
+          style={{ ...S.input, fontSize: 12.5 }} />
       </div>
-      <input key={k} defaultValue={editData?.[k] || ""} onChange={e => EF(k, e.target.value)}
-        type={type} placeholder={placeholder}
-        style={{ ...S.input, fontSize: 12.5 }} />
-    </div>
-  );
+    );
+  };
 
   return (
     <div>
@@ -6351,7 +6343,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             {[["Nome *","name","text"],["CPF *","cpf","text"],["E-mail *","email","email"],["Senha inicial *","password","password"]].map(([l,k,t])=>(
               <div key={k}>
                 <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:4 }}>{l}</label>
-                <input key={k} defaultValue={form[k]} onChange={e=>setF(k,e.target.value)} type={t} style={{ ...S.input }} />
+                <input defaultValue={form[k]} onChange={e=>setF(k,e.target.value)} type={t} style={{ ...S.input }} />
               </div>
             ))}
           </div>
@@ -6446,7 +6438,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       {[["Nome","name","text"],["CPF","cpf","text"],["E-mail","email","email"]].map(([l,k,t])=>(
                         <div key={k}>
                           <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>{l}</label>
-                          <input key={k} defaultValue={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
+                          <input defaultValue={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
                         </div>
                       ))}
                       {/* Senha — Ver/Ocultar */}
@@ -16054,35 +16046,87 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   {isSel&&opsDetalhe&&(
                     <div style={{borderTop:`1px solid ${C.b1}`,padding:"14px 16px",background:C.deep}}>
                       {/* ── Resumo financeiro ── */}
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
+                      <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>💰 Financeiro</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
                         {[
                           ["💰 Valor Liberado", fmtBRL(opsDetalhe.disbursedIssueAmount||opsDetalhe.disbursement_amount||opsDetalhe.issueAmount||0), "#34D399"],
                           ["📋 Parcela", fmtBRL(opsDetalhe.installmentValue||opsDetalhe.installment_value||opsDetalhe.installmentFaceValue||0), "#FBBF24"],
-                          ["🔢 Parcelas", opsDetalhe.numberOfInstallments||opsDetalhe.number_of_installments||opsDetalhe.installments||"—", C.atxt],
-                          ["📊 Tabela", opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.table||opsDetalhe.configName||"—", "#C084FC"],
-                        ].map(([l,v,cor])=>(
+                          ["🔢 Qtd Parcelas", opsDetalhe.numberOfInstallments||opsDetalhe.number_of_installments||opsDetalhe.installments||"—", C.atxt],
+                          ["📊 Tabela/Prazo", opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.configName||"—", "#C084FC"],
+                          ["📈 Taxa Mensal", opsDetalhe.monthlyInterestRate||opsDetalhe.monthly_interest_rate||opsDetalhe.rate ? `${parseFloat(opsDetalhe.monthlyInterestRate||opsDetalhe.monthly_interest_rate||opsDetalhe.rate||0).toFixed(2)}%` : "—", "#F97316"],
+                          ["📈 CET Anual", opsDetalhe.annualCet||opsDetalhe.annual_cet ? `${parseFloat(opsDetalhe.annualCet||opsDetalhe.annual_cet||0).toFixed(2)}%` : "—", "#F97316"],
+                          ["💵 Valor Total", fmtBRL(opsDetalhe.totalAmount||opsDetalhe.total_amount||0), C.td],
+                          ["💸 IOF", fmtBRL(opsDetalhe.iof||opsDetalhe.iofValue||0), C.td],
+                        ].filter(([,v])=>v&&v!=="—").map(([l,v,cor])=>(
                           <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
                             <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
                             <div style={{color:cor,fontWeight:700,fontSize:13}}>{v}</div>
                           </div>
                         ))}
                       </div>
-                      {/* ── Dados da contratação ── */}
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
+                      {/* ── Dados do cliente ── */}
+                      <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>👤 Cliente</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
                         {[
-                          ["👤 Cliente", opsDetalhe.name||opsDetalhe.borrowerName||"—", C.tp],
-                          ["🪪 CPF", fmtCPF(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||""), C.tm],
+                          ["👤 Nome", opsDetalhe.name||opsDetalhe.borrowerName||opsDetalhe.borrower?.name||"—", C.tp],
+                          ["🪪 CPF", fmtCPF(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||opsDetalhe.borrower?.documentNumber||""), C.tm],
+                          ["📅 Nascimento", opsDetalhe.birthDate||opsDetalhe.birth_date ? new Date(opsDetalhe.birthDate||opsDetalhe.birth_date).toLocaleDateString("pt-BR") : "—", C.td],
+                          ["📧 Email", opsDetalhe.email||opsDetalhe.borrower?.email||"—", C.td],
+                          ["📱 Telefone", (()=>{const t=opsDetalhe.phone||opsDetalhe.borrower?.phone||""; const ddd=opsDetalhe.phoneRegionCode||opsDetalhe.borrower?.phoneRegionCode||""; return t?(ddd+t):"—";})(), C.td],
                           ["📝 Contrato", opsDetalhe.contractNumber||"—", C.tm],
                           ["📅 Criado em", opsDetalhe.createdAt||opsDetalhe.created_at ? new Date(opsDetalhe.createdAt||opsDetalhe.created_at).toLocaleDateString("pt-BR") : "—", C.td],
                           ["📡 Provider", (opsDetalhe.provider||"—").toUpperCase(), C.td],
                           ["🏦 Status", STATUS_OP_LABEL[opsDetalhe.status||""]||opsDetalhe.status||"—", STATUS_OP_COLOR[opsDetalhe.status||""]||C.td],
-                        ].map(([l,v,cor])=>(
+                        ].filter(([,v])=>v&&v!=="—").map(([l,v,cor])=>(
                           <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
                             <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
                             <div style={{color:cor,fontWeight:600,fontSize:12}}>{v}</div>
                           </div>
                         ))}
                       </div>
+                      {/* ── Endereço ── */}
+                      {(opsDetalhe.street||opsDetalhe.address?.street||opsDetalhe.borrower?.street)&&(
+                        <>
+                        <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>📍 Endereço</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
+                          {[
+                            ["Rua", opsDetalhe.street||opsDetalhe.borrower?.street||"—"],
+                            ["Número", opsDetalhe.addressNumber||opsDetalhe.borrower?.addressNumber||"—"],
+                            ["Complemento", opsDetalhe.complement||opsDetalhe.borrower?.complement||"—"],
+                            ["Bairro", opsDetalhe.neighborhood||opsDetalhe.borrower?.neighborhood||"—"],
+                            ["Cidade", opsDetalhe.city||opsDetalhe.borrower?.city||"—"],
+                            ["UF", opsDetalhe.state||opsDetalhe.borrower?.state||"—"],
+                            ["CEP", opsDetalhe.postalCode||opsDetalhe.borrower?.postalCode||"—"],
+                          ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
+                            <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
+                              <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
+                              <div style={{color:C.tm,fontWeight:500,fontSize:12}}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                        </>
+                      )}
+                      {/* ── Dados bancários ── */}
+                      {(opsDetalhe.payment||opsDetalhe.bank||opsDetalhe.pixKey||opsDetalhe.bankAccount)&&(
+                        <>
+                        <div style={{color:C.ts,fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>🏦 Pagamento</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:14}}>
+                          {[
+                            ["Tipo", opsDetalhe.payment?.type||opsDetalhe.paymentType||"—"],
+                            ["Banco", opsDetalhe.bank?.name||opsDetalhe.bankName||opsDetalhe.payment?.bankName||"—"],
+                            ["Agência", opsDetalhe.agency||opsDetalhe.payment?.agency||"—"],
+                            ["Conta", opsDetalhe.account||opsDetalhe.payment?.account||"—"],
+                            ["Dígito", opsDetalhe.digit||opsDetalhe.payment?.digit||"—"],
+                            ["Chave PIX", opsDetalhe.pixKey||opsDetalhe.payment?.pix||opsDetalhe.payment?.data?.pix||"—"],
+                          ].filter(([,v])=>v&&v!=="—").map(([l,v])=>(
+                            <div key={l} style={{background:C.card,borderRadius:8,padding:"10px 12px"}}>
+                              <div style={{color:C.td,fontSize:10,marginBottom:4}}>{l}</div>
+                              <div style={{color:"#FBBF24",fontWeight:600,fontSize:12}}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+                        </>
+                      )}
                       {/* ── Link de Formalização ── */}
                       {(opsDetalhe.formalization_url||opsDetalhe.contract_url)&&(
                         <div style={{background:C.card,borderRadius:8,padding:"10px 14px"}}>
