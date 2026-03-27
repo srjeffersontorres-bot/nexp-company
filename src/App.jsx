@@ -12862,7 +12862,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:160 }}>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (CPF, nome ou contrato)</label>
-              <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
+              <input defaultValue={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
                 placeholder="CPF, nome ou nº contrato" autoComplete="off" style={{ ...S.input }} />
             </div>
             <div>
@@ -13253,14 +13253,17 @@ function V8DigitalTab({ currentUser, contacts }) {
               const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
               const diag = diagnosticarErroV8(rawMsg, c);
               addLog(`❌ ${fmtCPF(c)}: ${diag.titulo}`, false);
-              return { ...item, cpf:fmtCPF(c), status:"erro", erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+              // Use specific erroTipo as status (like individual FGTS) for better display
+              const statusLote = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"].includes(diag.tipo)
+                ? diag.tipo : "erro";
+              return { ...item, cpf:fmtCPF(c), status:statusLote, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
             }
           } catch {}
         }
 
         if (!bal) {
           addLog(`⏳ ${fmtCPF(c)}: Timeout`, false);
-          return { ...item, cpf:fmtCPF(c), status:"erro", erro:"Timeout — sem resposta em 45s", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:"Timeout — sem resposta em 45s", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
         }
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
@@ -13395,13 +13398,35 @@ function V8DigitalTab({ currentUser, contacts }) {
     });
     const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
     const pageItems=filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+    const ERR_STATUSES = ["erro","sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante","timeout"];
     const countOk=items.filter(x=>x.status==="ok").length;
-    const countErr=items.filter(x=>x.status==="erro").length;
+    const countErr=items.filter(x=>ERR_STATUSES.includes(x.status)).length;
     const countPend=items.filter(x=>x.status==="pendente").length;
 
-    const STATUS_LABEL = { ok:"✅ OK", erro:"❌ Erro", pendente:"⏳ Pendente", simulando:"🔄 ...", saldo_zero:"⚠ Saldo Zero" };
-    const STATUS_COL   = { ok:"#34D399", erro:"#F87171", pendente:"#FBBF24", simulando:"#60A5FA", saldo_zero:"#FBBF24" };
-    const STATUS_BG    = { ok:"#091E12", erro:"#2D1515", pendente:"#2B2310", simulando:"#0D1C38", saldo_zero:"#2B2310" };
+    const STATUS_LABEL = {
+      ok:"✅ OK",
+      erro:"❌ Erro",
+      pendente:"⏳ Pendente",
+      simulando:"🔄 Simulando...",
+      saldo_zero:"⚠ Saldo Zero",
+      sem_adesao:"📋 Sem Adesão",
+      inst_nao_autorizada:"🚫 Inst. não Autorizada",
+      aniversariante:"📅 Aniversariante",
+      sem_saldo:"💰 Sem Saldo",
+      cpf_invalido:"⚠ CPF Inválido",
+      timeout:"⏳ Timeout",
+    };
+    const STATUS_COL   = {
+      ok:"#34D399", erro:"#F87171", pendente:"#FBBF24", simulando:"#60A5FA", saldo_zero:"#FBBF24",
+      sem_adesao:"#FBBF24", inst_nao_autorizada:"#F87171", aniversariante:"#FBBF24",
+      sem_saldo:"#F87171", cpf_invalido:"#F87171", timeout:"#FBBF24",
+    };
+    const STATUS_BG    = {
+      ok:"#091E12", erro:"#2D1515", pendente:"#2B2310", simulando:"#0D1C38", saldo_zero:"#2B2310",
+      sem_adesao:"rgba(251,191,36,0.08)", inst_nao_autorizada:"rgba(239,68,68,0.08)",
+      aniversariante:"rgba(251,191,36,0.08)", sem_saldo:"rgba(239,68,68,0.08)",
+      cpf_invalido:"rgba(239,68,68,0.08)", timeout:"rgba(251,191,36,0.08)",
+    };
 
     return (
       <div>
@@ -13458,7 +13483,8 @@ function V8DigitalTab({ currentUser, contacts }) {
                 <span style={{ color:C.td, fontSize:11 }}>Os CPFs digitados são mantidos até você limpar manualmente.</span>
               </div>
               <div style={{ color:C.td, fontSize:11, marginBottom:8 }}>Um por linha ou separados por vírgula. CPFs com menos de 11 dígitos serão completados com zeros.</div>
-              <textarea value={cpfBox} onChange={e=>setCpfBoxPersist(e.target.value)}
+              <textarea defaultValue={cpfBox}
+                onChange={e=>{ clearTimeout(window._cpfBoxTimer); window._cpfBoxTimer=setTimeout(()=>setCpfBoxPersist(e.target.value),0); }}
                 rows={6} placeholder={"12345678901\n98765432100"}
                 style={{ ...S.input, resize:"vertical", fontFamily:"monospace", fontSize:12, width:"100%", marginBottom:8 }} />
               <div style={{ display:"flex", gap:8 }}>
@@ -13484,7 +13510,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Oferta mín (R$)</label><input value={filterMargem} onChange={e=>{setFilterMargem(e.target.value);setPage(0);}} placeholder="Ex: 500" style={{ ...S.input, width:100, fontSize:12, padding:"5px 9px" }}/></div>
             <div><label style={{ color:C.tm, fontSize:10.5, display:"block", marginBottom:3 }}>Status</label>
               <select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setPage(0);}} style={{ ...S.input, width:120, fontSize:12, padding:"5px 9px", cursor:"pointer" }}>
-                {["Todos","pendente","ok","erro","simulando","saldo_zero"].map(s=><option key={s}>{s}</option>)}
+                {["Todos","pendente","ok","simulando","saldo_zero","sem_adesao","inst_nao_autorizada","aniversariante","sem_saldo","cpf_invalido","timeout","erro"].map(s=><option key={s}>{s}</option>)}
               </select>
             </div>
             <div style={{ paddingBottom:2, color:C.td, fontSize:11 }}>{filtered.length} resultado{filtered.length!==1?"s":""}</div>
@@ -13605,7 +13631,7 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         {/* Barra de pesquisa + apagar cache */}
         <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
-          <input value={loteSearch} onChange={e=>{setLoteSearch(e.target.value);setPage(0);}}
+          <input defaultValue={loteSearch} onChange={e=>{setLoteSearch(e.target.value);setPage(0);}}
             placeholder="🔍 Pesquisar CPF ou nome..."
             style={{ ...S.input, flex:1, minWidth:200, fontSize:12.5, padding:"7px 12px" }}/>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -14096,7 +14122,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
             <div style={{ flex:1, minWidth:180 }}>
               <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Buscar (nome, CPF ou contrato)</label>
-              <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
+              <input defaultValue={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar(1)}
                 placeholder="Nome, CPF (com ou sem pontos) ou nº contrato" autoComplete="off" style={{ ...S.input }} />
             </div>
             <div>
@@ -15299,7 +15325,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {showLoteCLT&&(
             <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
               <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,marginBottom:10}}>⚡ Lote — Gerar Termos em Massa</div>
-              <textarea value={loteCLTCpfs} onChange={e=>setLoteCLTCpfs(e.target.value)}
+              <textarea defaultValue={loteCLTCpfs} onChange={e=>setLoteCLTCpfs(e.target.value)}
                 placeholder={"Cole os CPFs aqui, um por linha:\n84999999999,Nome,email@email.com,1990-01-01\nou apenas CPFs (buscará nos contatos):\n12345678901\n98765432100"}
                 style={{...S.input,height:90,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -15390,7 +15416,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
                   </div>
                   <input
-                    value={termosSearch||""}
+                    defaultValue={termosSearch||""}
                     onChange={e=>setTermosSearch(e.target.value)}
                     placeholder="🔍 Pesquisar consultas..."
                     style={{...S.input,fontSize:12,padding:"5px 10px",width:200,minWidth:140}}
@@ -15568,7 +15594,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       {aba==="clientes" && (
         <div>
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-            <input value={opsSearch} onChange={e=>setOpsSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscarOps()}
+            <input defaultValue={opsSearch} onChange={e=>setOpsSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscarOps()}
               placeholder="🔍 Nome ou CPF..." style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
             <button onClick={buscarOps} disabled={opsLoading}
               style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:opsLoading?0.6:1}}>
@@ -18283,7 +18309,7 @@ function PropostasPage({ currentUser, unreadPropostas=0 }) {
       {abaProp==="lista" && (
         <>
           <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
+            <input defaultValue={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
               style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 12px"}}/>
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               {["Todos",...STATUS_PROPOSTA].map(s=>{
