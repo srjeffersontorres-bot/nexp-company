@@ -13322,10 +13322,31 @@ function V8DigitalTab({ currentUser, contacts }) {
           } catch (postErr) {
             const msg = postErr?.message || "";
             addLog(`⚠ ${fmtCPF(c)}: POST falhou: ${msg}`, false);
+
+            // Erros que encerram sessão — propaga imediatamente
             if (msg.includes("Limite diário") || msg.includes("Sessão expirada")) throw postErr;
-            // Erro transitório no POST — espera e tenta próxima rodada
-            await new Promise(r => setTimeout(r, 5000));
-            continue;
+
+            // Verifica se é erro fatal da V8 (inst não autorizada, sem adesão, etc.)
+            const diagPost = diagnosticarErroV8(msg, c);
+            if (FATAIS.includes(diagPost.tipo)) {
+              // Erro fatal no POST — retorna status real, não tenta mais
+              addLog(`❌ ${fmtCPF(c)}: ${diagPost.titulo}`, false);
+              return { ...item, cpf:fmtCPF(c), status:diagPost.tipo, erro:diagPost.titulo, erroTipo:diagPost.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+            }
+
+            // Só retenta se for erro explicitamente transitório (tente novamente / limite de req.)
+            const msgL = msg.toLowerCase();
+            const isRetryErr = msgL.includes("tente novamente") || msgL.includes("limite de requis")
+              || msgL.includes("too many") || msgL.includes("rate limit") || msgL.includes("429");
+            if (isRetryErr) {
+              addLog(`⏳ ${fmtCPF(c)}: Limite de requisições — aguardando 3s antes de tentar novamente...`, false);
+              await new Promise(r => setTimeout(r, 3000));
+              continue; // retenta até conseguir
+            }
+
+            // Qualquer outro erro no POST — retorna com status genérico
+            addLog(`❌ ${fmtCPF(c)}: ${diagPost.titulo}`, false);
+            return { ...item, cpf:fmtCPF(c), status:"erro", erro:diagPost.titulo, erroTipo:diagPost.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
           }
 
           // 3. Polling GET — 18 tentativas de 3s = ~54s por rodada
