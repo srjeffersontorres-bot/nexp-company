@@ -11696,7 +11696,11 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [credForm, setCredForm] = useState({ username: savedUser, password: "" });
   const [authLoading, setAuthLoading] = useState(false);
   const [authErr, setAuthErr] = useState("");
-  const [aba, setAba] = useState(() => token && tokenExp && Date.now() < tokenExp ? "individual" : "config");
+  const [aba, setAbaRaw] = useState(() => {
+    if (!(token && tokenExp && Date.now() < tokenExp)) return "config";
+    return localStorage.getItem("nexp_v8_aba") || "individual";
+  });
+  const setAba = (v) => { setAbaRaw(v); localStorage.setItem("nexp_v8_aba", v); };
   // ── Rate limit status (exibido na UI) ────────────────────────
   const [rateStatus, setRateStatus] = useState(null);
   useEffect(() => {
@@ -11707,8 +11711,20 @@ function V8DigitalTab({ currentUser, contacts }) {
 
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
+  // Auto-resume lote after F5: if wasRunning was saved, trigger simularLote
+  // loteSimularLoteRef is set by LoteTab on each render so parent can call it
+  const loteSimularLoteRef = React.useRef(null);
+  useEffect(() => {
+    if (aba === "lote" && loteWasRunning && loteAutoResume.current) {
+      loteAutoResume.current = false;
+      // Wait for LoteTab to register its simularLote fn
+      const t = setTimeout(() => { if (loteSimularLoteRef.current) loteSimularLoteRef.current(); }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [aba]); // eslint-disable-line
+
   const saveSession = (tk, exp) => { setToken(tk); setTokenExp(exp); localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp })); };
-  const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); setAba("config"); };
+  const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); localStorage.removeItem("nexp_v8_aba"); setAba("config"); };
 
   const autenticar = async () => {
     if (!credForm.username || !credForm.password) { setAuthErr("Preencha e-mail e senha."); return; }
@@ -11844,8 +11860,14 @@ function V8DigitalTab({ currentUser, contacts }) {
 
   // ── Estados LoteTab — elevados para evitar re-mount e perda de estado ──
   const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
-  const [loteItems,        setLoteItems]        = useState(()=> lSaved?.items || []);
+  const [loteItems,        setLoteItems]        = useState(()=> {
+    const saved = lSaved?.items || [];
+    // Reset any "simulando" to "pendente" so they re-run on resume
+    return saved.map(x => x.status==="simulando" ? {...x,status:"pendente"} : x);
+  });
   const [loteRunning,      setLoteRunning]       = useState(false);
+  const loteWasRunning = lSaved?.wasRunning || false;
+  const loteAutoResume = React.useRef(loteWasRunning); // true = should auto-start on mount
   const [lotePaused,       setLotePaused]        = useState(false);
   const [loteProgress,     setLoteProgress]      = useState(lSaved?.progress||0);
   const [loteFilterSaldo,  setLoteFilterSaldo]   = useState("");
@@ -13227,7 +13249,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     };
 
     const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
-    const saveState = (newItems, prog) => localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, progress:prog }));
+    const saveState = (newItems, prog, wasRunning=false) => localStorage.setItem("nexp_v8_lote_state", JSON.stringify({ items:newItems, progress:prog, wasRunning }));
 
     const carregarFees = async () => {
       if (fees.length) return fees;
@@ -13391,6 +13413,11 @@ function V8DigitalTab({ currentUser, contacts }) {
       }
     };
 
+    // Register simularLote so parent's auto-resume useEffect can call it
+    loteSimularLoteRef.current = () => {
+      if (!running && items.some(x=>x.status==="pendente")) simularLote();
+    };
+
     const simularLote = async () => {
       setRunning(true); setPaused(false); abortRef.current=false; pauseRef.current=false;
       const lista=[...items]; let done=0;
@@ -13402,10 +13429,13 @@ function V8DigitalTab({ currentUser, contacts }) {
         const updated = await simularUm(lista[i]);
         lista[i]=updated; done++;
         const prog=Math.round(done/lista.length*100);
-        setProgress(prog); setItems([...lista]); saveState(lista,prog);
+        setProgress(prog); setItems([...lista]); saveState(lista,prog,true);
         await new Promise(r=>setTimeout(r,0));
       }
       setRunning(false); setPaused(false);
+      // Mark as not running after completion
+      const finalItems = items;
+      saveState(finalItems, progress, false);
     };
 
     // Adiciona CPFs SEM limpar a caixa
