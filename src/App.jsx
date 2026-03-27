@@ -11748,13 +11748,15 @@ function V8DigitalTab({ currentUser, contacts }) {
   };
 
   // ── apiFetch — rotas corretas conforme documentação V8 ───────
-  const apiFetch = async (path, method="GET", body=null, retries=2) => {
+  const apiFetch = async (path, method="GET", body=null, retries=2, { skipRateLimit=false }={}) => {
     if (!isTokenValid) throw new Error("Sessão expirada. Faça login novamente.");
-    // ── Rate limiting ─────────────────────────────────────────
-    const _uid  = currentUser?.uid || currentUser?.id;
-    const _role = currentUser?.role || "operador";
-    await checkRateLimit(_uid, _role);
-    getRateLimitStatus(_uid, _role).then(setRateStatus).catch(()=>{});
+    // ── Rate limiting (skip para polling GETs no lote) ────────
+    if (!skipRateLimit) {
+      const _uid  = currentUser?.uid || currentUser?.id;
+      const _role = currentUser?.role || "operador";
+      await checkRateLimit(_uid, _role);
+      getRateLimitStatus(_uid, _role).then(setRateStatus).catch(()=>{});
+    }
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
@@ -12047,7 +12049,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           await new Promise(r => setTimeout(r, 2500));
           addLog(`🔄 Verificando resultado (${i+1}/${maxTentativas})...`);
           try {
-            const res = await apiFetch(`/fgts/balance?search=${c}`);
+            const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
             addLog(`📦 GET balance: ${JSON.stringify(res).slice(0,150)}`);
 
             const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
@@ -12939,7 +12941,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       let bal = null;
                       for (let i=0;i<18;i++) {
                         await new Promise(r=>setTimeout(r,2500));
-                        const res = await apiFetch(`/fgts/balance?search=${cpfv}`);
+                        const res = await apiFetch(`/fgts/balance?search=${cpfv}`, "GET", null, 2, { skipRateLimit:true });
                         const regs = res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                         const ok = regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                         if(ok){bal=ok;break;}
@@ -13142,7 +13144,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                               let bal=null;
                               for(let ii=0;ii<18;ii++){
                                 await new Promise(r=>setTimeout(r,2500));
-                                const res=await apiFetch(`/fgts/balance?search=${cpfv}`);
+                                const res=await apiFetch(`/fgts/balance?search=${cpfv}`,"GET",null,2,{skipRateLimit:true});
                                 const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                                 const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                 if(ok){bal=ok;break;}
@@ -13282,7 +13284,18 @@ function V8DigitalTab({ currentUser, contacts }) {
         if (abortRef.current) return { ...item, status:"pendente" };
 
         // 1. POST — dispara consulta (igual ao individual)
-        try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
+        try {
+          await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+          addLog(`📡 ${fmtCPF(c)}: Consulta disparada.`);
+        } catch (postErr) {
+          const msg = postErr?.message || "";
+          addLog(`⚠ ${fmtCPF(c)} POST falhou: ${msg}`, false);
+          // Erros fatais — não adianta fazer polling
+          if (msg.includes("Limite diário") || msg.includes("Sessão expirada")) {
+            throw postErr;
+          }
+          // Erro transitório — tenta polling mesmo assim (pode já existir consulta anterior)
+        }
 
         // 2. Polling GET — IDÊNTICO ao individual (que funciona)
         for (let i=0; i<18; i++) {
@@ -13290,7 +13303,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           await new Promise(r=>setTimeout(r,2500));
           addLog(`🔄 ${fmtCPF(c)} (${i+1}/18)...`);
           try {
-            const res = await apiFetch(`/fgts/balance?search=${c}`);
+            const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
             addLog(`📦 ${fmtCPF(c)}: ${JSON.stringify(res).slice(0,120)}`);
 
             const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
@@ -13439,9 +13452,9 @@ function V8DigitalTab({ currentUser, contacts }) {
         await new Promise(r=>setTimeout(r,0));
       }
       setRunning(false); setPaused(false);
-      // Mark as not running after completion
-      const finalItems = items;
-      saveState(finalItems, progress, false);
+      // Mark as not running after completion — use lista (latest) not stale items
+      const finalProg = lista.length ? Math.round(done/lista.length*100) : 100;
+      saveState(lista, finalProg, false);
     };
 
     // Adiciona CPFs SEM limpar a caixa
@@ -14649,7 +14662,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                 let bal=null;
                                 for(let ii=0;ii<18;ii++){
                                   await new Promise(r=>setTimeout(r,2500));
-                                  const res=await apiFetch(`/fgts/balance?search=${cpfParaBusca}`);
+                                  const res=await apiFetch(`/fgts/balance?search=${cpfParaBusca}`,"GET",null,2,{skipRateLimit:true});
                                   const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
@@ -14928,7 +14941,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
   const [loteCLTItems, setLoteCLTItems] = useState([]);
   const [loteCLTRunning, setLoteCLTRunning] = useState(false);
-  const loteCLTAbort = {current:false};
+  const loteCLTAbort = useRef(false);
   const [termoLoading, setTermoLoading] = useState(false);
   const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
   const [termosSearch, setTermosSearch] = useState("");
@@ -16262,7 +16275,7 @@ function ApisBancosPage({ currentUser, contacts }) {
         <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
           <V8DigitalTab currentUser={currentUser} contacts={contacts} />
         </div>
-        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
+        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
         {abaBanco==="c6"                      && <BancoC6Tab />}
       </div>
     </div>
