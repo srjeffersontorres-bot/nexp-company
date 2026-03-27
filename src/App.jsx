@@ -1198,8 +1198,6 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   const isOnline = presence?.[uid]?.online;
 
   // ── Inline weather + calc state ───────────────────────────────
-  const [topBarCollapsed, setTopBarCollapsed] = useState(() => localStorage.getItem("nexp_topbar_collapsed")==="1");
-  const toggleTopBar = () => { const v = !topBarCollapsed; setTopBarCollapsed(v); localStorage.setItem("nexp_topbar_collapsed", v?"1":"0"); };
   const [showWeather, setShowWeather] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
   const [weather, setWeather] = useState(null);
@@ -1335,14 +1333,6 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
           )}
         </div>
 
-        {/* Minimizar/expandir atalhos */}
-        <button onClick={toggleTopBar} title={topBarCollapsed?"Expandir atalhos":"Minimizar atalhos"}
-          style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:C.td, fontSize:12, transition:"all 0.18s" }}
-          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color=C.td;}}>
-          {topBarCollapsed ? "▼" : "▲"}
-        </button>
-        {!topBarCollapsed && <>
         {/* Stories */}
         <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
@@ -1367,7 +1357,6 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
           {unreadChat > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#16A34A", color:"#fff", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadChat}</span>}
         </button>
 
-        </>}
         {/* Profile avatar */}
         <button onClick={()=>setPage("config")} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"6px 14px 6px 6px", cursor:"pointer", transition:"all 0.18s" }}
           onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
@@ -1619,8 +1608,7 @@ function LoginPage({ onLogin }) {
 }
 
 function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
-  const canEdit = user.role === "mestre";
-  const [cover, setCover] = useState(() => localStorage.getItem("nexp_sidebar_cover") || null);
+  const cover = localStorage.getItem("nexp_sidebar_cover") || null; // eslint-disable-line
 
   return (
     <div style={{ flexShrink: 0, position:"relative" }}>
