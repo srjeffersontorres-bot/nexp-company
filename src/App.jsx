@@ -16045,13 +16045,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <div key={op.operationId||op.id} style={{...S.card,overflow:"hidden",border:`1px solid ${C.b1}`,transition:"all 0.15s"}}
                   onMouseEnter={e=>e.currentTarget.style.borderColor=C.atxt+"44"}
                   onMouseLeave={e=>e.currentTarget.style.borderColor=C.b1}>
-                  <div onClick={()=>{
-                    // Open modal immediately with list data, fetch full detail in background
-                    setOpsDetalhe({...op, _loading:true});
-                    apiFetch(`/private-consignment/operation/${op.operationId||op.id}`)
-                      .then(d => setOpsDetalhe({...op, ...d, _loading:false}))
-                      .catch(() => setOpsDetalhe({...op, _loading:false}));
-                  }} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",cursor:"pointer"}}>
+                  <div onClick={()=>{ setOpsDetalhe(op); }}
+                    style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",cursor:"pointer"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{color:C.tp,fontWeight:700,fontSize:13}}>{op.name||"—"}</div>
                       <div style={{color:C.tm,fontSize:11,marginTop:2}}>{fmtCPF(op.documentNumber||"")} · {op.contractNumber||"—"}</div>
@@ -16087,7 +16082,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                {opsDetalhe._loading && <span style={{color:C.atxt,fontSize:12,animation:"pulse 1.5s infinite"}}>⏳ Carregando...</span>}
+
                 {(() => {
                   const st=opsDetalhe.status||"";
                   const col=STATUS_OP_COLOR[st]||C.td;
