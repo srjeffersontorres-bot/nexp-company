@@ -11868,6 +11868,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [loteProvider,     setLoteProvider]      = useState(() => localStorage.getItem("nexp_v8_lote_provider")||"cartos");
   const [loteFees,         setLoteFees]          = useState([]);
   const [loteDigModal,     setLoteDigModal]      = useState(null);
+  const [loteAnosSel,      setLoteAnosSel]       = useState({}); // { [item.id]: 1|2|3|4|5 }
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
   const [loteCardSim,      setLoteCardSim]       = useState(null);
   const [loteSearch,       setLoteSearch]        = useState("");
@@ -13246,23 +13247,48 @@ function V8DigitalTab({ currentUser, contacts }) {
       return lista;
     };
 
-    // simularUm com polling completo (igual ao individual)
+    // Helper: gera installments para N anos a partir do saldo
+    const makeInstallments = (bal, anos, saldoVal) => {
+      const baseInstalls = bal.periods||bal.installments||[];
+      if (baseInstalls.length) {
+        // Filtra só as parcelas até N anos
+        const limite = new Date(); limite.setFullYear(limite.getFullYear()+anos);
+        const filtered = baseInstalls
+          .map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }))
+          .filter(p=>new Date(p.dueDate)<=limite);
+        if (filtered.length) return filtered;
+      }
+      // Gera parcelas anuais para N anos
+      const installs = [];
+      for (let a=1; a<=anos; a++) {
+        installs.push({ totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+a,1,1).toISOString().split("T")[0] });
+      }
+      return installs;
+    };
+
+    // simularUm — retry infinito em erros transitórios, simula 1-5 anos separadamente
     const simularUm = async (item) => {
       const c = padCPF(item.cpf);
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
       const FATAIS = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"];
-      const MAX_TENTATIVAS = 3; // retry até 3x em erros transitórios
       let bal = null;
-      let ultimoDiag = null;
+      let tentativa = 0;
       try {
-        for (let tentativa=1; tentativa<=MAX_TENTATIVAS; tentativa++) {
-          // 1. Dispara consulta assíncrona (nova a cada retry)
-          await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+        // Loop infinito — sai só com sucesso, erro fatal, ou abort
+        while (true) {
+          if (abortRef.current) return { ...item, status:"pendente" };
+          tentativa++;
+          addLog(`🔄 ${fmtCPF(c)}: Tentativa ${tentativa}...`);
 
-          // 2. Polling GET até ter resultado (max 45s) — filter by CPF
+          // 1. Dispara consulta assíncrona (POST — nova a cada tentativa)
+          try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
+
+          // 2. Polling GET até ter resultado — 18 x 2.5s = 45s por tentativa
           bal = null;
           let erroFatal = false;
+          let ultimoDiag = null;
           for (let i=0; i<18; i++) {
+            if (abortRef.current) return { ...item, status:"pendente" };
             await new Promise(r=>setTimeout(r,2500));
             try {
               const res = await apiFetch(`/fgts/balance?search=${c}`);
@@ -13274,53 +13300,55 @@ function V8DigitalTab({ currentUser, contacts }) {
               if (falha) {
                 const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"Falha";
                 ultimoDiag = diagnosticarErroV8(rawMsg, c);
-                addLog(`❌ ${fmtCPF(c)}: ${ultimoDiag.titulo}${FATAIS.includes(ultimoDiag.tipo)?"":" (tentativa "+tentativa+"/"+MAX_TENTATIVAS+")"}`, false);
                 if (FATAIS.includes(ultimoDiag.tipo)) { erroFatal=true; }
-                break; // sai do polling, decide se retry
+                addLog(`${erroFatal?"❌":"⚠"} ${fmtCPF(c)}: ${ultimoDiag.titulo}${erroFatal?"":" — retentando..."}`, false);
+                break;
               }
             } catch {}
           }
-          if (bal) break; // sucesso — sai do loop de tentativas
+
+          if (bal) break; // ✅ sucesso — sai do while
+
           if (erroFatal && ultimoDiag) {
-            // Erro fatal — não tenta de novo, retorna status específico
+            // Erro fatal — para imediatamente
             const statusLote = FATAIS.includes(ultimoDiag.tipo) ? ultimoDiag.tipo : "erro";
             return { ...item, cpf:fmtCPF(c), status:statusLote, erro:ultimoDiag.titulo, erroTipo:ultimoDiag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
           }
-          // Erro transitório ou timeout — aguarda e tenta novamente
-          if (tentativa < MAX_TENTATIVAS) {
-            addLog(`⚠ ${fmtCPF(c)}: Erro transitório, retentando (${tentativa}/${MAX_TENTATIVAS})...`, false);
-            await new Promise(r=>setTimeout(r,3000));
-          }
-        }
-
-        if (!bal) {
-          addLog(`⏳ ${fmtCPF(c)}: Timeout após ${MAX_TENTATIVAS} tentativas`, false);
-          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:"Timeout — sem resposta após 3 tentativas", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+          // Erro transitório ou timeout — aguarda 5s e tenta de novo automaticamente
+          await new Promise(r=>setTimeout(r,5000));
         }
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
 
-        // 3. Simular tabelas
+        // 3. Simular tabelas para 1, 2, 3, 4 e 5 anos
         const feesList = await carregarFees();
         let melhorSim=null; let melhorVal=0; let melhorLabel=""; let melhorFeeId=""; let melhorAnos="—"; let allSims=[];
+        // simsByYear: { 1: {melhorSim, melhorVal, melhorLabel, melhorFeeId, allSims}, ... }
+        const simsByYear = {};
+
         if (feesList.length && bal.id) {
-          const installments = (bal.periods||bal.installments||[]).length
-            ? (bal.periods||bal.installments).map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }))
-            : [
-                { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
-                { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
-              ];
-          for (const fee of feesList) {
-            try {
-              const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
-              const v = parseFloat(sim?.availableBalance||0);
-              const label = fee.simulation_fees?.label||"";
-              allSims.push({ label, sim, ok:true });
-              if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=calcAnos(sim); }
-            } catch(e) {
-              allSims.push({ label:fee.simulation_fees?.label||"", err:e.message, ok:false });
+          for (const anos of [1,2,3,4,5]) {
+            const installments = makeInstallments(bal, anos, saldoVal);
+            simsByYear[anos] = { melhorSim:null, melhorVal:0, melhorLabel:"", melhorFeeId:"", allSims:[] };
+            for (const fee of feesList) {
+              try {
+                const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
+                const v = parseFloat(sim?.availableBalance||0);
+                const label = fee.simulation_fees?.label||"";
+                simsByYear[anos].allSims.push({ label, sim, ok:true });
+                if (v > simsByYear[anos].melhorVal) {
+                  simsByYear[anos].melhorVal=v; simsByYear[anos].melhorSim=sim;
+                  simsByYear[anos].melhorLabel=label; simsByYear[anos].melhorFeeId=fee.simulation_fees?.id_simulation_fees||"";
+                }
+                // Melhor geral = melhor de qualquer ano
+                if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=String(anos)+" ano"+(anos>1?"s":""); }
+              } catch(e) {
+                simsByYear[anos].allSims.push({ label:fee.simulation_fees?.label||"", err:e.message, ok:false });
+              }
             }
           }
+          // allSims = todas as simulações (melhor de cada ano)
+          allSims = Object.values(simsByYear).flatMap(s=>s.allSims);
         }
 
         const ts = new Date().toLocaleString("pt-BR");
@@ -13354,7 +13382,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           nome: nomeCliente || fmtCPF(c),
           saldo:saldoVal, margem:melhorVal,
           status: saldoVal > 0 ? "ok" : "saldo_zero",
-          sim:{ melhor:{ label:melhorLabel, sim:melhorSim, feeId:melhorFeeId }, balanceId:bal.id, allSims, anos:melhorAnos },
+          sim:{ melhor:{ label:melhorLabel, sim:melhorSim, feeId:melhorFeeId }, balanceId:bal.id, allSims, anos:melhorAnos, byYear:simsByYear },
           balance: bal,
           clienteV8,
           nomeCliente,
@@ -13710,7 +13738,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ background:C.deep }}>
-                  {["#","Nome","CPF","Status","Saldo disponível","Melhor Oferta","Tabela","Qtd anos","Data simulação","Ação","DIGITAR"].map(h=>(
+                  {["#","Nome","CPF","Status","Saldo disponível","Oferta","Tabela","Período","Data","Ação","DIGITAR"].map(h=>(
                     <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
                   ))}
                 </tr>
@@ -13742,13 +13770,40 @@ function V8DigitalTab({ currentUser, contacts }) {
                           ? <span style={{ color:C.atxt, fontWeight:700, fontSize:12 }}>{fmtBRL(it.saldo)}</span>
                           : <span style={{ color:C.td }}>—</span>}
                       </td>
-                      <td style={{ padding:"8px 10px", textAlign:"center" }}>
-                        {it.margem!=null && it.margem>0
-                          ? <span style={{ color:"#34D399", fontWeight:700, fontSize:12 }}>{fmtBRL(it.margem)}</span>
-                          : <span style={{ color:C.td }}>—</span>}
+                      <td style={{ padding:"6px 10px", textAlign:"center" }}>
+                        {(()=>{
+                          const anoSel = loteAnosSel[it.id] || null;
+                          const simAno = anoSel && it.sim?.byYear?.[anoSel];
+                          const val = simAno ? simAno.melhorVal : it.margem;
+                          return val!=null && val>0
+                            ? <span style={{ color:"#34D399", fontWeight:700, fontSize:12 }}>{fmtBRL(val)}</span>
+                            : <span style={{ color:C.td }}>—</span>;
+                        })()}
                       </td>
-                      <td style={{ color:C.td, padding:"8px 10px", fontSize:11, textTransform:"capitalize" }}>{it.sim?.melhor?.label||"—"}</td>
-                      <td style={{ color:C.tm, padding:"8px 10px", fontSize:11 }}>{it.sim?.anos||"—"}</td>
+                      <td style={{ color:C.td, padding:"6px 10px", fontSize:11, textTransform:"capitalize" }}>
+                        {(()=>{
+                          const anoSel = loteAnosSel[it.id] || null;
+                          const simAno = anoSel && it.sim?.byYear?.[anoSel];
+                          return simAno ? simAno.melhorLabel : (it.sim?.melhor?.label||"—");
+                        })()}
+                      </td>
+                      <td style={{ padding:"4px 8px" }} onClick={e=>e.stopPropagation()}>
+                        {it.status==="ok" && it.sim?.byYear ? (
+                          <div style={{ display:"flex", gap:3, flexWrap:"wrap" }}>
+                            {[1,2,3,4,5].map(a=>{
+                              const sel = loteAnosSel[it.id]===a;
+                              const hasData = it.sim.byYear[a]?.melhorVal>0;
+                              return (
+                                <button key={a}
+                                  onClick={()=>setLoteAnosSel(p=>({...p,[it.id]:sel?null:a}))}
+                                  style={{ background:sel?"rgba(59,110,245,0.25)":hasData?"rgba(255,255,255,0.05)":"transparent", color:sel?C.atxt:hasData?C.ts:C.td, border:`1px solid ${sel?C.acc+"66":C.b1}`, borderRadius:6, padding:"2px 6px", fontSize:10, fontWeight:sel?700:400, cursor:"pointer", minWidth:28, opacity:hasData?1:0.4 }}>
+                                  {a}a
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : <span style={{ color:C.td, fontSize:10 }}>{it.sim?.anos||"—"}</span>}
+                      </td>
                       <td style={{ color:C.td, padding:"8px 10px", fontSize:10.5 }}>{it.ts||"—"}</td>
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
                         <button onClick={()=>{ const n=[...items]; simularUm(n[ri]).then(u=>{ n[ri]=u; setItems([...n]); }); }}
@@ -13760,7 +13815,13 @@ function V8DigitalTab({ currentUser, contacts }) {
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
                         {it.status==="ok" && it.sim?.melhor?.sim ? (
                           <button
-                            onClick={()=>{ const d={ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it }; openDigModal(d); setLoteDigModal(d); }}
+                            onClick={()=>{
+                              const anoSel = loteAnosSel[it.id];
+                              const simAno = anoSel && it.sim?.byYear?.[anoSel];
+                              const tabela = simAno ? { label:simAno.melhorLabel, sim:simAno.melhorSim, feeId:simAno.melhorFeeId } : it.sim.melhor;
+                              const d={ tabela, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it };
+                              openDigModal(d); setLoteDigModal(d);
+                            }}
                             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.3px" }}>
                             DIGITAR
                           </button>
