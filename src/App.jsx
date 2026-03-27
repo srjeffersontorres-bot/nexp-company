@@ -16225,9 +16225,11 @@ function ApisBancosPage({ currentUser, contacts }) {
         </div>
       )}
 
-      {/* Conteúdo */}
+      {/* Conteúdo — V8DigitalTab sempre montado para não perder fila do lote */}
       <div style={{ padding:"0 30px" }}>
-        {abaBanco==="v8" && abaV8==="fgts"    && <V8DigitalTab currentUser={currentUser} contacts={contacts} />}
+        <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
+          <V8DigitalTab currentUser={currentUser} contacts={contacts} />
+        </div>
         {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab />}
         {abaBanco==="c6"                      && <BancoC6Tab />}
       </div>
@@ -19196,7 +19198,10 @@ export default function App() {
           <CalendarPage currentUser={currentUser} />
         )}
         {page === "simulador" && <SimuladorPage />}
-        {page === "apis" && <ApisBancosPage currentUser={currentUser} contacts={contacts} />}
+        {/* ApisBancosPage sempre montado — evita perda da fila do lote ao trocar de página */}
+        <div style={{ display: page === "apis" ? "block" : "none" }}>
+          <ApisBancosPage currentUser={currentUser} contacts={contacts} />
+        </div>
         {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
         </div>
       </div>
