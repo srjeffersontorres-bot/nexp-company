@@ -12038,62 +12038,80 @@ function V8DigitalTab({ currentUser, contacts }) {
       if(!autoRetry) addLog(`▶ Consultando saldo — CPF ${fmtCPF(c)} (${provider.toUpperCase()})`);
       else addLog(`🔄 Tentando novamente automaticamente...`);
       try {
-        // Limpar cache de saldo (API V8 cacheia por 24h — sem isso, GET pode retornar data vazia)
-        try { await apiFetch(`/fgts/balance/cache/${c}`, "DELETE", null, 0, { skipRateLimit:true }); } catch {}
-
-        addLog("📡 Iniciando consulta de saldo (assíncrona)...");
-        const postRes = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
-        addLog(`✅ Consulta disparada. ${postRes?.id ? "ID: "+postRes.id : ""}Aguardando processamento...`);
-
-        // Polling — GET /fgts/balance?search=CPF
+        const MAX_RODADAS = 10;
         let bal = null;
-        const maxTentativas = 18;
-        for (let i = 0; i < maxTentativas; i++) {
-          await new Promise(r => setTimeout(r, 3000));
-          addLog(`🔄 Verificando resultado (${i+1}/${maxTentativas})...`);
-          try {
-            const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
-            addLog(`📦 GET balance: ${JSON.stringify(res).slice(0,150)}`);
 
-            const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
-            const sucesso   = registros.find(r => r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0);
-            const qualquer  = registros.find(r => r && r.status === "success");
-            const encontrado = sucesso || qualquer;
+        for (let rodada = 1; rodada <= MAX_RODADAS; rodada++) {
+          // Limpar cache de saldo (API V8 cacheia por 24h)
+          try { await apiFetch(`/fgts/balance/cache/${c}`, "DELETE", null, 0, { skipRateLimit:true }); } catch {}
 
-            if (encontrado) {
-              bal = encontrado;
-              addLog(`✅ Saldo: ${fmtBRL(parseFloat(bal.amount||0))} | ID: ${bal.id||"—"}`);
-              setBalance(bal);
-              localStorage.setItem("nexp_v8_ind_balance", JSON.stringify(bal));
-              break;
-            }
+          if (rodada === 1) {
+            addLog("📡 Iniciando consulta de saldo (assíncrona)...");
+          } else {
+            addLog(`🔄 Tentativa ${rodada}/${MAX_RODADAS} — redisparando consulta...`);
+          }
+          await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+          addLog(`✅ Consulta disparada. Aguardando processamento...`);
 
-            // Falha — traduz mensagem da V8 para linguagem clara
-            const falha = registros.find(r => r && (r.status === "fail" || r.status === "error" || r.status === "failed"));
-            if (falha) {
-              const rawMsg = falha.statusInfo || falha.errorMessage || falha.message || "";
-              const errDiag = diagnosticarErroV8(rawMsg, c);
-              addLog(`❌ ${rawMsg}`, false);
-              const fd = parseFutureDate(rawMsg);
-              if (fd) setFutureDate(fd);
-              // Erros fatais — não tenta de novo
-              const isFatal = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"].includes(errDiag.tipo);
-              if (isFatal) {
-                setIndErrDetail(errDiag);
-                setErr(errDiag.titulo);
-                salvarErroHistorico(c, errDiag.titulo);
-                setSimStep("done"); setLoading(false);
-                return;
+          // Polling — GET /fgts/balance?search=CPF
+          const maxPolls = 18;
+          let fatalExit = false;
+          for (let i = 0; i < maxPolls; i++) {
+            await new Promise(r => setTimeout(r, 3000));
+            addLog(`🔄 Verificando resultado (${i+1}/${maxPolls})...`);
+            try {
+              const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
+              addLog(`📦 GET balance: ${JSON.stringify(res).slice(0,150)}`);
+
+              const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
+              const sucesso   = registros.find(r => r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0);
+              const qualquer  = registros.find(r => r && r.status === "success");
+              const encontrado = sucesso || qualquer;
+
+              if (encontrado) {
+                bal = encontrado;
+                addLog(`✅ Saldo: ${fmtBRL(parseFloat(bal.amount||0))} | ID: ${bal.id||"—"}`);
+                setBalance(bal);
+                localStorage.setItem("nexp_v8_ind_balance", JSON.stringify(bal));
+                break;
               }
-              // Erro transitório — tenta de novo automaticamente (até 2x)
-              addLog(`⚠ Erro transitório (${errDiag.tipo}), retentando em 3s...`, false);
-              await new Promise(r=>setTimeout(r,3000));
-              continue;
-            }
 
-            addLog(`⏳ Processando... (${registros.length} registro(s))`);
-          } catch(e) {
-            addLog(`⚠ Tentativa ${i+1}: ${e.message}`, false);
+              // Falha — traduz mensagem da V8 para linguagem clara
+              const falha = registros.find(r => r && (r.status === "fail" || r.status === "error" || r.status === "failed"));
+              if (falha) {
+                const rawMsg = falha.statusInfo || falha.errorMessage || falha.message || "";
+                const errDiag = diagnosticarErroV8(rawMsg, c);
+                addLog(`❌ ${rawMsg}`, false);
+                const fd = parseFutureDate(rawMsg);
+                if (fd) setFutureDate(fd);
+                // Erros fatais — não tenta de novo
+                const isFatal = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"].includes(errDiag.tipo);
+                if (isFatal) {
+                  setIndErrDetail(errDiag);
+                  setErr(errDiag.titulo);
+                  salvarErroHistorico(c, errDiag.titulo);
+                  setSimStep("done"); setLoading(false);
+                  return;
+                }
+                // Erro transitório — espera e continua polling
+                addLog(`⚠ Erro transitório (${errDiag.tipo}), retentando em 3s...`, false);
+                await new Promise(r=>setTimeout(r,3000));
+                continue;
+              }
+
+              addLog(`⏳ Processando... (${registros.length} registro(s))`);
+            } catch(e) {
+              addLog(`⚠ Tentativa ${i+1}: ${e.message}`, false);
+            }
+          }
+
+          // Se achou saldo, sai do loop de rodadas
+          if (bal) break;
+
+          // Sem resposta nessa rodada — tenta novamente
+          if (rodada < MAX_RODADAS) {
+            addLog(`⏳ Sem resposta na rodada ${rodada}. Tentando novamente automaticamente...`, false);
+            await new Promise(r => setTimeout(r, 3000));
           }
         }
 
@@ -12111,7 +12129,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           setIndErrDetail(errDiag);
           setErr(errDiag.titulo);
           salvarErroHistorico(c, errDiag.titulo);
-          addLog("❌ Timeout: sem resposta em 45s.", false);
+          addLog(`❌ Timeout: sem resposta após ${MAX_RODADAS} tentativas.`, false);
           setSimStep("done"); setLoading(false);
           return;
         }
@@ -13279,72 +13297,99 @@ function V8DigitalTab({ currentUser, contacts }) {
       return installs;
     };
 
-    // simularUm — CÓPIA EXATA da lógica do individual (buscarSaldo)
+    // simularUm — retenta automaticamente até puxar o saldo (só para em erro fatal ou abort)
     const simularUm = async (item) => {
       const c = padCPF(item.cpf);
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
       const FATAIS = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"];
+      const MAX_RETRIES = 10; // máximo de rodadas completas (cada rodada = 18 polls de 3s = ~54s)
       let bal = null;
       try {
-        if (abortRef.current) return { ...item, status:"pendente" };
-
-        // ── IGUAL AO INDIVIDUAL: limpa cache → POST → polling ──
-
-        // 1. Limpar cache (V8 cacheia 24h)
-        try { await apiFetch(`/fgts/balance/cache/${c}`, "DELETE", null, 0, { skipRateLimit:true }); } catch {}
-
-        // 2. POST — dispara consulta
-        addLog(`📡 ${fmtCPF(c)}: Iniciando consulta de saldo...`);
-        await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
-        addLog(`✅ ${fmtCPF(c)}: Consulta disparada. Aguardando processamento...`);
-
-        // 3. Polling GET — CÓPIA EXATA do individual
-        const maxTentativas = 18;
-        for (let i = 0; i < maxTentativas; i++) {
+        for (let rodada = 1; rodada <= MAX_RETRIES; rodada++) {
           if (abortRef.current) return { ...item, status:"pendente" };
-          await new Promise(r => setTimeout(r, 3000));
-          addLog(`🔄 ${fmtCPF(c)} (${i+1}/${maxTentativas})...`);
+
+          // 1. Limpar cache (V8 cacheia 24h)
+          try { await apiFetch(`/fgts/balance/cache/${c}`, "DELETE", null, 0, { skipRateLimit:true }); } catch {}
+
+          // 2. POST — dispara consulta
+          if (rodada === 1) {
+            addLog(`📡 ${fmtCPF(c)}: Iniciando consulta de saldo...`);
+          } else {
+            addLog(`🔄 ${fmtCPF(c)}: Tentativa ${rodada}/${MAX_RETRIES} — redisparando consulta...`);
+          }
           try {
-            const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
-            addLog(`📦 ${fmtCPF(c)}: ${JSON.stringify(res).slice(0,120)}`);
+            await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+            addLog(`✅ ${fmtCPF(c)}: Consulta disparada. Aguardando processamento...`);
+          } catch (postErr) {
+            const msg = postErr?.message || "";
+            addLog(`⚠ ${fmtCPF(c)}: POST falhou: ${msg}`, false);
+            if (msg.includes("Limite diário") || msg.includes("Sessão expirada")) throw postErr;
+            // Erro transitório no POST — espera e tenta próxima rodada
+            await new Promise(r => setTimeout(r, 5000));
+            continue;
+          }
 
-            const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
-            const sucesso   = registros.find(r => r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0);
-            const qualquer  = registros.find(r => r && r.status === "success");
-            const encontrado = sucesso || qualquer;
+          // 3. Polling GET — 18 tentativas de 3s = ~54s por rodada
+          const maxPolls = 18;
+          let fatalResult = null;
+          for (let i = 0; i < maxPolls; i++) {
+            if (abortRef.current) return { ...item, status:"pendente" };
+            await new Promise(r => setTimeout(r, 3000));
+            addLog(`🔄 ${fmtCPF(c)} (${i+1}/${maxPolls})...`);
+            try {
+              const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
+              addLog(`📦 ${fmtCPF(c)}: ${JSON.stringify(res).slice(0,120)}`);
 
-            if (encontrado) {
-              bal = encontrado;
-              addLog(`✅ ${fmtCPF(c)}: Saldo: ${fmtBRL(parseFloat(bal.amount||0))} | ID: ${bal.id||"—"}`);
-              break;
-            }
+              const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
+              const sucesso   = registros.find(r => r && (r.status === "success" || r.amount != null) && parseFloat(r.amount||0) > 0);
+              const qualquer  = registros.find(r => r && r.status === "success");
+              const encontrado = sucesso || qualquer;
 
-            // Falha — traduz mensagem (IGUAL individual)
-            const falha = registros.find(r => r && (r.status === "fail" || r.status === "error" || r.status === "failed"));
-            if (falha) {
-              const rawMsg = falha.statusInfo || falha.errorMessage || falha.message || "";
-              const diag = diagnosticarErroV8(rawMsg, c);
-              addLog(`❌ ${fmtCPF(c)}: ${rawMsg}`, false);
-              // Erros fatais — para imediatamente (IGUAL individual)
-              if (FATAIS.includes(diag.tipo)) {
-                return { ...item, cpf:fmtCPF(c), status:diag.tipo, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+              if (encontrado) {
+                bal = encontrado;
+                addLog(`✅ ${fmtCPF(c)}: Saldo: ${fmtBRL(parseFloat(bal.amount||0))} | ID: ${bal.id||"—"}`);
+                break;
               }
-              // Erro transitório — espera 3s e tenta de novo (IGUAL individual)
-              addLog(`⚠ ${fmtCPF(c)}: Erro transitório (${diag.tipo}), retentando em 3s...`, false);
-              await new Promise(r=>setTimeout(r,3000));
-              continue;
-            }
 
-            // Nenhum resultado ainda — loga e continua (IGUAL individual)
-            addLog(`⏳ ${fmtCPF(c)}: Processando... (${registros.length} registro(s))`);
-          } catch(e) {
-            addLog(`⚠ ${fmtCPF(c)}: Tentativa ${i+1}: ${e.message}`, false);
+              // Falha retornada pela V8
+              const falha = registros.find(r => r && (r.status === "fail" || r.status === "error" || r.status === "failed"));
+              if (falha) {
+                const rawMsg = falha.statusInfo || falha.errorMessage || falha.message || "";
+                const diag = diagnosticarErroV8(rawMsg, c);
+                addLog(`❌ ${fmtCPF(c)}: ${rawMsg}`, false);
+                // Erros fatais — para imediatamente, sem retry
+                if (FATAIS.includes(diag.tipo)) {
+                  fatalResult = { ...item, cpf:fmtCPF(c), status:diag.tipo, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+                  break;
+                }
+                // Erro transitório — espera e continua polling
+                addLog(`⚠ ${fmtCPF(c)}: Erro transitório (${diag.tipo}), retentando em 3s...`, false);
+                await new Promise(r=>setTimeout(r,3000));
+                continue;
+              }
+
+              // Nenhum resultado ainda (data:[]) — continua polling
+              addLog(`⏳ ${fmtCPF(c)}: Processando... (${registros.length} registro(s))`);
+            } catch(e) {
+              addLog(`⚠ ${fmtCPF(c)}: Tentativa ${i+1}: ${e.message}`, false);
+            }
+          }
+
+          // Se erro fatal, retorna imediatamente
+          if (fatalResult) return fatalResult;
+          // Se achou saldo, sai do loop de rodadas
+          if (bal) break;
+
+          // Não achou saldo nessa rodada — tenta novamente automaticamente
+          if (rodada < MAX_RETRIES) {
+            addLog(`⏳ ${fmtCPF(c)}: Sem resposta na rodada ${rodada}. Tentando novamente automaticamente...`, false);
+            await new Promise(r => setTimeout(r, 3000));
           }
         }
 
         if (!bal) {
-          addLog(`❌ ${fmtCPF(c)}: Timeout — sem resposta em 54s`, false);
-          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:"Timeout — sem resposta em 54s", erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
+          addLog(`❌ ${fmtCPF(c)}: Timeout — sem resposta após ${MAX_RETRIES} tentativas`, false);
+          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:`Timeout — sem resposta após ${MAX_RETRIES} tentativas`, erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
         }
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
