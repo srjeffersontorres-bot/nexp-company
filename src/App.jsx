@@ -13285,33 +13285,27 @@ function V8DigitalTab({ currentUser, contacts }) {
           if (abortRef.current) return { ...item, status:"pendente" };
           await new Promise(r=>setTimeout(r,1500));
           try {
-            // Tenta múltiplos formatos de busca em paralelo para achar o resultado mais rápido
-            const cSemZero = c.replace(/^0+/,""); // sem zeros à esquerda
-            const [r1, r2, r3] = await Promise.allSettled([
-              apiFetch(`/fgts/balance?search=${c}&limit=10`),
-              cSemZero !== c ? apiFetch(`/fgts/balance?search=${cSemZero}&limit=10`) : Promise.resolve(null),
-              apiFetch(`/fgts/balance?limit=20`), // resultados recentes sem filtro
+            const cSemZero = c.replace(/^0+/,"");
+            // Busca pelos dois formatos de CPF em paralelo
+            const [r1, r2] = await Promise.allSettled([
+              apiFetch(`/fgts/balance?search=${c}&limit=50`),
+              cSemZero !== c ? apiFetch(`/fgts/balance?search=${cSemZero}&limit=50`) : Promise.resolve(null),
             ]);
-
-            // Coleta todos os registros de todas as respostas
             const toArr = (r) => {
               if (r.status !== "fulfilled" || !r.value) return [];
               const v = r.value;
               return v?.data || (Array.isArray(v) ? v : [v]);
             };
-            const todos = [...toArr(r1), ...toArr(r2), ...toArr(r3)].filter(Boolean);
-            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${todos.length} registros`);
-
-            // Primeiro tenta achar pelo CPF exato no documentNumber
+            // Filtra SEMPRE pelo CPF — nunca usa resultados de outros clientes
             const matchCPF = (r) => {
-              const d = (r.documentNumber||r.cpf||"").replace(/\D/g,"");
-              return d === c || d === cSemZero;
+              if (!r) return false;
+              const d = (r.documentNumber||r.cpf||r.document||"").replace(/\D/g,"");
+              return d === c || d === cSemZero || d.endsWith(cSemZero.slice(-8));
             };
-            let registros = todos.filter(matchCPF);
-            // Fallback: se não achou por CPF, usa tudo (igual ao individual)
-            if (registros.length === 0) registros = todos;
+            const registros = [...toArr(r1), ...toArr(r2)].filter(matchCPF);
+            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${registros.length} reg próprios`);
 
-            const sucesso  = registros.find(r => r && (r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) > 0);
+            const sucesso  = registros.find(r => r && (r.status==="success"||r.amount!=null) && parseFloat(r.amount||0) >= 0);
             const qualquer = registros.find(r => r && r.status==="success");
             const encontrado = sucesso || qualquer;
 
@@ -13327,6 +13321,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               }
               await new Promise(r=>setTimeout(r,2000));
             }
+            // Se 0 registros próprios, aguarda mais (API ainda processando)
           } catch {}
         }
 
@@ -13685,6 +13680,30 @@ function V8DigitalTab({ currentUser, contacts }) {
               ))}
             </div>
 
+            {/* Seletor de anos — re-simula com período escolhido */}
+            {detalheItem.balance && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+                <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginRight:4 }}>Simular por período:</span>
+                {[1,2,3,4,5].map(a=>{
+                  const sel = loteAnosSel[detalheItem.id]===a;
+                  return (
+                    <button key={a}
+                      onClick={()=>{
+                        setLoteAnosSel(p=>({...p,[detalheItem.id]:sel?null:a}));
+                        const ri=items.findIndex(x=>x.id===detalheItem.id);
+                        if(ri<0) return;
+                        const novo={...items[ri],_anosForcar:sel?null:a,status:"simulando"};
+                        const lista=[...items]; lista[ri]=novo; setItems([...lista]);
+                        simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
+                      }}
+                      style={{ background:sel?"rgba(59,110,245,0.3)":"rgba(255,255,255,0.07)", color:sel?"#93C5FD":"rgba(255,255,255,0.7)", border:`1px solid ${sel?"rgba(59,110,245,0.6)":"rgba(255,255,255,0.12)"}`, borderRadius:9, padding:"5px 14px", fontSize:12, fontWeight:sel?700:400, cursor:"pointer", transition:"all 0.15s" }}>
+                      {a}a
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Todas as tabelas simuladas — clicáveis para digitar */}
             {(detalheItem.sim?.allSims||[]).length > 0 ? (
               <div>
@@ -13897,30 +13916,6 @@ function V8DigitalTab({ currentUser, contacts }) {
                 <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500 }}>
                   {(cardSim.it.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {cardSim.it.nome||"Cliente"}
                 </div>
-              </div>
-              {/* Seletor de anos */}
-              <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:16 }}>
-                {[1,2,3,4,5].map(a=>{
-                  const anoAtual = loteAnosSel[cardSim.it.id]||null;
-                  const sel = anoAtual===a;
-                  return (
-                    <button key={a}
-                      onClick={()=>{
-                        setLoteAnosSel(p=>({...p,[cardSim.it.id]:sel?null:a}));
-                        if (!sel) {
-                          const ri=items.findIndex(x=>x.id===cardSim.it.id);
-                          if(ri<0) return;
-                          const novo={...items[ri],_anosForcar:a,status:"simulando"};
-                          const lista=[...items]; lista[ri]=novo; setItems([...lista]);
-                          setCardSim(null);
-                          simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); saveState(l,progress,false); });
-                        }
-                      }}
-                      style={{ background:sel?"rgba(59,110,245,0.35)":"rgba(255,255,255,0.08)", color:sel?"#93C5FD":"rgba(255,255,255,0.7)", border:`1px solid ${sel?"rgba(59,110,245,0.7)":"rgba(255,255,255,0.15)"}`, borderRadius:10, padding:"6px 14px", fontSize:13, fontWeight:sel?800:500, cursor:"pointer", transition:"all 0.15s", letterSpacing:"0.2px" }}>
-                      {a}a
-                    </button>
-                  );
-                })}
               </div>
               <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
                 <div style={{ color:cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>{fmtBRL(cardSim.s.sim?.availableBalance||0)}</div>
