@@ -28,15 +28,15 @@ import { uploadArquivo } from "./firebase";
 
 // ══════════════════════════════════════════════════════════════════
 // ── SEGURANÇA: Rate Limiting por usuário (Firestore) ─────────────
-// Admin/Mestre: 3000 consultas/dia | Operador: 1200 consultas/dia
+// Todos os perfis: 30000 consultas/dia
 // ══════════════════════════════════════════════════════════════════
 const RATE_LIMITS = {
-  administrador: 3000, mestre: 3000, gerente: 3000, master: 3000,
-  supervisor: 1200, operador: 1200, indicado: 1200, visitante: 1200, digitador: 1200,
+  administrador: 30000, mestre: 30000, gerente: 30000, master: 30000,
+  supervisor: 30000, operador: 30000, indicado: 30000, visitante: 30000, digitador: 30000,
 };
 async function checkRateLimit(uid, role) {
   if (!uid) throw new Error("Usuário não autenticado.");
-  const limite = RATE_LIMITS[role] ?? 1200;
+  const limite = RATE_LIMITS[role] ?? 30000;
   const hoje = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
   const { doc: fbDoc, getDoc, setDoc: fbSetDoc, updateDoc, increment } = await import("firebase/firestore");
   const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
@@ -58,9 +58,9 @@ async function getRateLimitStatus(uid, role) {
     const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
     const snap = await getDoc(ref);
     const count = snap.exists() ? snap.data().count : 0;
-    const limite = RATE_LIMITS[role] ?? 1200;
+    const limite = RATE_LIMITS[role] ?? 30000;
     return { count, limite, restante: Math.max(0, limite - count) };
-  } catch { return { count: 0, limite: RATE_LIMITS[role] ?? 1200, restante: RATE_LIMITS[role] ?? 1200 }; }
+  } catch { return { count: 0, limite: RATE_LIMITS[role] ?? 30000, restante: RATE_LIMITS[role] ?? 30000 }; }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -13301,10 +13301,11 @@ function V8DigitalTab({ currentUser, contacts }) {
       const c = padCPF(item.cpf);
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
       const FATAIS = ["sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante"];
-      const MAX_RETRIES = 10; // máximo de rodadas completas (cada rodada = 18 polls de 3s = ~54s)
       let bal = null;
+      let rodada = 0;
       try {
-        for (let rodada = 1; rodada <= MAX_RETRIES; rodada++) {
+        while (true) { // sem limite — para apenas em erro fatal, abort ou resultado real
+          rodada++;
           if (abortRef.current) return { ...item, status:"pendente" };
 
           // 1. Limpar cache (V8 cacheia 24h)
@@ -13314,7 +13315,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           if (rodada === 1) {
             addLog(`📡 ${fmtCPF(c)}: Iniciando consulta de saldo...`);
           } else {
-            addLog(`🔄 ${fmtCPF(c)}: Tentativa ${rodada}/${MAX_RETRIES} — redisparando consulta...`);
+            addLog(`🔄 ${fmtCPF(c)}: Tentativa ${rodada} — redisparando consulta...`);
           }
           try {
             await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
@@ -13401,17 +13402,10 @@ function V8DigitalTab({ currentUser, contacts }) {
           // Se achou saldo, sai do loop de rodadas
           if (bal) break;
 
-          // Não achou saldo nessa rodada — tenta novamente automaticamente
-          if (rodada < MAX_RETRIES) {
-            addLog(`⏳ ${fmtCPF(c)}: Sem resposta na rodada ${rodada}. Tentando novamente automaticamente...`, false);
-            await new Promise(r => setTimeout(r, 3000));
-          }
-        }
-
-        if (!bal) {
-          addLog(`❌ ${fmtCPF(c)}: Timeout — sem resposta após ${MAX_RETRIES} tentativas`, false);
-          return { ...item, cpf:fmtCPF(c), status:"timeout", erro:`Timeout — sem resposta após ${MAX_RETRIES} tentativas`, erroTipo:"timeout", saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
-        }
+          // Não achou saldo nessa rodada — tenta novamente automaticamente (sem limite)
+          addLog(`⏳ ${fmtCPF(c)}: Sem resposta na rodada ${rodada}. Tentando novamente...`, false);
+          await new Promise(r => setTimeout(r, 3000));
+        } // end while(true)
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
 
