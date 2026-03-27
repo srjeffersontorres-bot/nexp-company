@@ -11712,7 +11712,8 @@ function V8DigitalTab({ currentUser, contacts }) {
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
   // Auto-resume lote after F5: if wasRunning was saved, trigger simularLote
-  // loteWasRunning / loteAutoResume — declared here so the useEffect below can use them
+  // lSaved / loteWasRunning / loteAutoResume — declared here so the useEffect below can use them
+  const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
   const loteWasRunning = lSaved?.wasRunning || false;
   const loteAutoResume = React.useRef(loteWasRunning); // true = should auto-start on mount
 
@@ -11863,7 +11864,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [indHistSearch,  setIndHistSearch]  = useState("");
 
   // ── Estados LoteTab — elevados para evitar re-mount e perda de estado ──
-  const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
+
   const [loteItems,        setLoteItems]        = useState(()=> {
     const saved = lSaved?.items || [];
     // Reset any "simulando" to "pendente" so they re-run on resume
