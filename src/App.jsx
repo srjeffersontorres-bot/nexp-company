@@ -8960,9 +8960,10 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                       <div>
                         <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>{tabUser.name||tabUser.email}</div>
                         <div style={{ color: tabOnline ? "#16A34A" : "#FBBF24", fontSize:11.5, marginTop:2 }}>
-                          {tabOnline
-                            ? <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#16A34A",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Online agora</span>
-                            : <span style={{display:"flex",alignItems:"center",gap:5,color:"#FBBF24"}}><span style={{width:7,height:7,borderRadius:"50%",background:"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>Offline{lastMsgTime(tabUid)?<span style={{color:"#fff"}}> · visto às {lastMsgTime(tabUid)}</span>:""}</span>}
+                          <span style={{display:"flex",alignItems:"center",gap:5}}>
+                            <span style={{width:7,height:7,borderRadius:"50%",background:tabOnline?"#16A34A":"#FBBF24",display:"inline-block",animation:"pulse 1.5s infinite"}}/>
+                            {!tabOnline && lastMsgTime(tabUid) && <span style={{color:C.td,fontSize:10}}>visto às {lastMsgTime(tabUid)}</span>}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -9787,9 +9788,8 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                     <div style={{ textAlign:"center" }}>
                       <div style={{ color:C.tp, fontSize:16, fontWeight:700, animation:"nameReveal 0.4s ease" }}>{vUser.name||vUser.email}</div>
                       <div style={{ color:rc2, fontSize:11.5, marginTop:2 }}>{roleLabel[vUser.role]}</div>
-                      <div style={{ color:isOnlineV?"#16A34A":"#FBBF24", fontSize:11.5, marginTop:4, display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
-                        <span style={{ width:8, height:8, borderRadius:"50%", background:isOnlineV?"#16A34A":"#FBBF24", display:"inline-block", boxShadow: isOnlineV?"0 0 6px #16A34A88":"0 0 6px #FBBF2488" }} />
-                        {isOnlineV ? "Online agora" : "Offline"}
+                      <div style={{ marginTop:4, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ width:8, height:8, borderRadius:"50%", background:isOnlineV?"#16A34A":"#FBBF24", display:"inline-block", boxShadow: isOnlineV?"0 0 6px #16A34A88":"0 0 6px #FBBF2488", animation:"pulse 1.5s infinite" }} />
                       </div>
                     </div>
                   </div>
@@ -13247,18 +13247,8 @@ function V8DigitalTab({ currentUser, contacts }) {
       return lista;
     };
 
-    // Helper: gera installments para N anos a partir do saldo
+    // Helper: gera installments para N anos
     const makeInstallments = (bal, anos, saldoVal) => {
-      const baseInstalls = bal.periods||bal.installments||[];
-      if (baseInstalls.length) {
-        // Filtra só as parcelas até N anos
-        const limite = new Date(); limite.setFullYear(limite.getFullYear()+anos);
-        const filtered = baseInstalls
-          .map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }))
-          .filter(p=>new Date(p.dueDate)<=limite);
-        if (filtered.length) return filtered;
-      }
-      // Gera parcelas anuais para N anos
       const installs = [];
       for (let a=1; a<=anos; a++) {
         installs.push({ totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+a,1,1).toISOString().split("T")[0] });
@@ -13266,7 +13256,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       return installs;
     };
 
-    // simularUm — retry infinito em erros transitórios, simula 1-5 anos separadamente
+    // simularUm — retry infinito em erros transitórios
     const simularUm = async (item) => {
       const c = padCPF(item.cpf);
       if (c.replace(/^0+/,"").length === 0) return { ...item, status:"erro", erro:"CPF inválido", erroTipo:"cpf_invalido" };
@@ -13320,35 +13310,32 @@ function V8DigitalTab({ currentUser, contacts }) {
 
         const saldoVal = parseFloat(bal.amount||bal.balance||0);
 
-        // 3. Simular tabelas para 1, 2, 3, 4 e 5 anos
+        // 3. Simular tabelas (melhor oferta)
         const feesList = await carregarFees();
         let melhorSim=null; let melhorVal=0; let melhorLabel=""; let melhorFeeId=""; let melhorAnos="—"; let allSims=[];
-        // simsByYear: { 1: {melhorSim, melhorVal, melhorLabel, melhorFeeId, allSims}, ... }
-        const simsByYear = {};
+        const anosItem = item._anosForcar || null; // anos forçado pelo botão (1-5)
 
         if (feesList.length && bal.id) {
-          for (const anos of [1,2,3,4,5]) {
-            const installments = makeInstallments(bal, anos, saldoVal);
-            simsByYear[anos] = { melhorSim:null, melhorVal:0, melhorLabel:"", melhorFeeId:"", allSims:[] };
-            for (const fee of feesList) {
-              try {
-                const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
-                const v = parseFloat(sim?.availableBalance||0);
-                const label = fee.simulation_fees?.label||"";
-                simsByYear[anos].allSims.push({ label, sim, ok:true });
-                if (v > simsByYear[anos].melhorVal) {
-                  simsByYear[anos].melhorVal=v; simsByYear[anos].melhorSim=sim;
-                  simsByYear[anos].melhorLabel=label; simsByYear[anos].melhorFeeId=fee.simulation_fees?.id_simulation_fees||"";
-                }
-                // Melhor geral = melhor de qualquer ano
-                if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=String(anos)+" ano"+(anos>1?"s":""); }
-              } catch(e) {
-                simsByYear[anos].allSims.push({ label:fee.simulation_fees?.label||"", err:e.message, ok:false });
-              }
+          const installments = anosItem
+            ? makeInstallments(bal, anosItem, saldoVal)
+            : (bal.periods||bal.installments||[]).length
+              ? (bal.periods||bal.installments).map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }))
+              : [
+                  { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
+                  { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
+                ];
+          for (const fee of feesList) {
+            try {
+              const sim = await apiFetch("/fgts/simulations","POST",{ simulationFeesId:fee.simulation_fees?.id_simulation_fees, balanceId:bal.id, targetAmount:0, documentNumber:c, desiredInstallments:installments, provider });
+              const v = parseFloat(sim?.availableBalance||0);
+              const label = fee.simulation_fees?.label||"";
+              allSims.push({ label, sim, ok:true });
+              if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=calcAnos(sim); }
+            } catch(e) {
+              allSims.push({ label:fee.simulation_fees?.label||"", err:e.message, ok:false });
             }
           }
-          // allSims = todas as simulações (melhor de cada ano)
-          allSims = Object.values(simsByYear).flatMap(s=>s.allSims);
+          if (anosItem) melhorAnos = anosItem+" ano"+(anosItem>1?"s":"");
         }
 
         const ts = new Date().toLocaleString("pt-BR");
@@ -13382,7 +13369,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           nome: nomeCliente || fmtCPF(c),
           saldo:saldoVal, margem:melhorVal,
           status: saldoVal > 0 ? "ok" : "saldo_zero",
-          sim:{ melhor:{ label:melhorLabel, sim:melhorSim, feeId:melhorFeeId }, balanceId:bal.id, allSims, anos:melhorAnos, byYear:simsByYear },
+          sim:{ melhor:{ label:melhorLabel, sim:melhorSim, feeId:melhorFeeId }, balanceId:bal.id, allSims, anos:melhorAnos },
           balance: bal,
           clienteV8,
           nomeCliente,
@@ -13771,32 +13758,26 @@ function V8DigitalTab({ currentUser, contacts }) {
                           : <span style={{ color:C.td }}>—</span>}
                       </td>
                       <td style={{ padding:"6px 10px", textAlign:"center" }}>
-                        {(()=>{
-                          const anoSel = loteAnosSel[it.id] || null;
-                          const simAno = anoSel && it.sim?.byYear?.[anoSel];
-                          const val = simAno ? simAno.melhorVal : it.margem;
-                          return val!=null && val>0
-                            ? <span style={{ color:"#34D399", fontWeight:700, fontSize:12 }}>{fmtBRL(val)}</span>
-                            : <span style={{ color:C.td }}>—</span>;
-                        })()}
+                        {it.margem!=null && it.margem>0
+                          ? <span style={{ color:"#34D399", fontWeight:700, fontSize:12 }}>{fmtBRL(it.margem)}</span>
+                          : <span style={{ color:C.td }}>—</span>}
                       </td>
-                      <td style={{ color:C.td, padding:"6px 10px", fontSize:11, textTransform:"capitalize" }}>
-                        {(()=>{
-                          const anoSel = loteAnosSel[it.id] || null;
-                          const simAno = anoSel && it.sim?.byYear?.[anoSel];
-                          return simAno ? simAno.melhorLabel : (it.sim?.melhor?.label||"—");
-                        })()}
-                      </td>
+                      <td style={{ color:C.td, padding:"6px 10px", fontSize:11, textTransform:"capitalize" }}>{it.sim?.melhor?.label||"—"}</td>
                       <td style={{ padding:"4px 8px" }} onClick={e=>e.stopPropagation()}>
-                        {it.status==="ok" && it.sim?.byYear ? (
+                        {it.status==="ok" || it.balance ? (
                           <div style={{ display:"flex", gap:3, flexWrap:"wrap" }}>
                             {[1,2,3,4,5].map(a=>{
                               const sel = loteAnosSel[it.id]===a;
-                              const hasData = it.sim.byYear[a]?.melhorVal>0;
                               return (
                                 <button key={a}
-                                  onClick={()=>setLoteAnosSel(p=>({...p,[it.id]:sel?null:a}))}
-                                  style={{ background:sel?"rgba(59,110,245,0.25)":hasData?"rgba(255,255,255,0.05)":"transparent", color:sel?C.atxt:hasData?C.ts:C.td, border:`1px solid ${sel?C.acc+"66":C.b1}`, borderRadius:6, padding:"2px 6px", fontSize:10, fontWeight:sel?700:400, cursor:"pointer", minWidth:28, opacity:hasData?1:0.4 }}>
+                                  onClick={()=>{
+                                    setLoteAnosSel(p=>({...p,[it.id]:a}));
+                                    // Re-simula com o ano selecionado
+                                    const novo = {...it, _anosForcar:a, status:"simulando"};
+                                    const lista=[...items]; lista[ri]=novo; setItems([...lista]);
+                                    simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); });
+                                  }}
+                                  style={{ background:sel?"rgba(59,110,245,0.25)":"rgba(255,255,255,0.05)", color:sel?C.atxt:C.ts, border:`1px solid ${sel?C.acc+"66":C.b1}`, borderRadius:6, padding:"2px 6px", fontSize:10, fontWeight:sel?700:400, cursor:"pointer", minWidth:28 }}>
                                   {a}a
                                 </button>
                               );
@@ -13815,13 +13796,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                       <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
                         {it.status==="ok" && it.sim?.melhor?.sim ? (
                           <button
-                            onClick={()=>{
-                              const anoSel = loteAnosSel[it.id];
-                              const simAno = anoSel && it.sim?.byYear?.[anoSel];
-                              const tabela = simAno ? { label:simAno.melhorLabel, sim:simAno.melhorSim, feeId:simAno.melhorFeeId } : it.sim.melhor;
-                              const d={ tabela, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it };
-                              openDigModal(d); setLoteDigModal(d);
-                            }}
+                            onClick={()=>{ const d={ tabela:it.sim.melhor, balance:{ ...it.balance, id:it.sim.balanceId }, cpf:it.cpf, provider:loteProvider, clientePreFill:it }; openDigModal(d); setLoteDigModal(d); }}
                             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", letterSpacing:"0.3px" }}>
                             DIGITAR
                           </button>
