@@ -12055,7 +12055,6 @@ function V8DigitalTab({ currentUser, contacts }) {
 
           // Polling — GET /fgts/balance?search=CPF
           const maxPolls = 18;
-          let fatalExit = false;
           for (let i = 0; i < maxPolls; i++) {
             await new Promise(r => setTimeout(r, 3000));
             addLog(`🔄 Verificando resultado (${i+1}/${maxPolls})...`);
