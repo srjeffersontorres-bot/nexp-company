@@ -5066,40 +5066,40 @@ function PerfisTab({ users, setUsers, currentUser }) {
           {/* Dados pessoais */}
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, marginBottom: 12, paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>👤 Dados Pessoais</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-            <Field label="Nome completo" k="name" />
-            <Field label="CPF" k="cpf" placeholder="000.000.000-00" />
+            {Field({label:"Nome completo", k:"name"})}
+            {Field({label:"CPF", k:"cpf", placeholder:"000.000.000-00"})}
           </div>
 
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏠 Endereço</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 0 }}>
-            <Field label="CEP" k="cep" placeholder="00000-000" />
-            <Field label="Rua / Logradouro" k="rua" placeholder="Ex: Rua das Flores" />
-            <Field label="Nº" k="numero" placeholder="123" />
+            {Field({label:"CEP", k:"cep", placeholder:"00000-000"})}
+            {Field({label:"Rua / Logradouro", k:"rua", placeholder:"Ex: Rua das Flores"})}
+            {Field({label:"Nº", k:"numero", placeholder:"123"})}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 0 }}>
-            <Field label="Cidade" k="cidade" placeholder="Ex: Natal" />
-            <Field label="UF" k="uf" placeholder="Ex: RN" />
+            {Field({label:"Cidade", k:"cidade", placeholder:"Ex: Natal"})}
+            {Field({label:"UF", k:"uf", placeholder:"Ex: RN"})}
           </div>
-          <Field label="Complemento" k="complemento" placeholder="Ex: Apto 12, Bloco B" />
+          {Field({label:"Complemento", k:"complemento", placeholder:"Ex: Apto 12, Bloco B"})}
 
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏦 Dados Bancários</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-            <Field label="Banco" k="banco" />
-            <Field label="Agência" k="agencia" />
-            <Field label="Conta" k="conta" />
+            {Field({label:"Banco", k:"banco"})}
+            {Field({label:"Agência", k:"agencia"})}
+            {Field({label:"Conta", k:"conta"})}
           </div>
           <div style={{ padding: "10px 12px", background: C.card, borderRadius: 8, border: `1px solid ${C.b1}`, marginBottom: 12 }}>
             <div style={{ color: C.atxt, fontSize: 10, fontWeight: 700, marginBottom: 8, textTransform: "uppercase" }}>⚡ PIX</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-              <Field label="Chave PIX" k="pixKey" />
-              <Field label="Banco da Chave PIX" k="pixBanco" />
+              {Field({label:"Chave PIX", k:"pixKey"})}
+              {Field({label:"Banco da Chave PIX", k:"pixBanco"})}
             </div>
           </div>
 
           <div style={{ color: C.ts, fontSize: 11.5, fontWeight: 700, margin: "16px 0 12px", paddingBottom: 6, borderBottom: `1px solid ${C.b1}` }}>🏆 Certificações</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-            <Field label="Certificações" k="certificacoes" />
-            <Field label="Vencimento" k="certVencimento" type="date" />
+            {Field({label:"Certificações", k:"certificacoes"})}
+            {Field({label:"Vencimento", k:"certVencimento", type:"date"})}
           </div>
 
           {/* Document viewer */}
@@ -5923,9 +5923,9 @@ function PerfilTab({ users, setUsers, currentUser }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Nome completo *" value={name} onChange={setName} placeholder="Nome completo" />
-          <Field label="CPF *" value={cpf} onChange={v=>setCpf(applyCPFMask(v))} placeholder="000.000.000-00" />
-          <Field label="Usuário (login)" value={uObj.email} readOnly placeholder="" />
+          {Field({label:"Nome completo *", value:name, onChange:setName, placeholder:"Nome completo"})}
+          {Field({label:"CPF *", value:cpf, onChange:v=>setCpf(applyCPFMask(v)), placeholder:"000.000.000-00"})}
+          {Field({label:"Usuário (login)", value:uObj.email, readOnly:true, placeholder:""})}
         </div>
       </div>
 
@@ -6000,30 +6000,30 @@ function PerfilTab({ users, setUsers, currentUser }) {
       <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
         <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏠 Endereço</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 12, marginBottom: 12 }}>
-          <Field label="CEP" value={cep} onChange={setCep} placeholder="00000-000" />
-          <Field label="Rua / Logradouro" value={rua} onChange={setRua} placeholder="Ex: Rua das Flores" />
-          <Field label="Nº" value={numero} onChange={setNumero} placeholder="Ex: 123" />
+          {Field({label:"CEP", value:cep, onChange:setCep, placeholder:"00000-000"})}
+          {Field({label:"Rua / Logradouro", value:rua, onChange:setRua, placeholder:"Ex: Rua das Flores"})}
+          {Field({label:"Nº", value:numero, onChange:setNumero, placeholder:"Ex: 123"})}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 12 }}>
-          <Field label="Cidade" value={cidade} onChange={setCidade} placeholder="Ex: Natal" />
-          <Field label="UF" value={uf} onChange={setUf} placeholder="Ex: RN" />
+          {Field({label:"Cidade", value:cidade, onChange:setCidade, placeholder:"Ex: Natal"})}
+          {Field({label:"UF", value:uf, onChange:setUf, placeholder:"Ex: RN"})}
         </div>
-        <Field label="Complemento" value={complemento} onChange={setComplemento} placeholder="Ex: Apto 12, Bloco B" />
+        {Field({label:"Complemento", value:complemento, onChange:setComplemento, placeholder:"Ex: Apto 12, Bloco B"})}
       </div>
 
       {/* ── Dados bancários ── */}
       <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
         <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏦 Dados Bancários</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Banco" value={banco} onChange={setBanco} placeholder="Ex: Banco do Brasil" />
-          <Field label="Agência" value={agencia} onChange={setAgencia} placeholder="Ex: 1234-5" />
-          <Field label="Conta" value={conta} onChange={setConta} placeholder="Ex: 12345-6" />
+          {Field({label:"Banco", value:banco, onChange:setBanco, placeholder:"Ex: Banco do Brasil"})}
+          {Field({label:"Agência", value:agencia, onChange:setAgencia, placeholder:"Ex: 1234-5"})}
+          {Field({label:"Conta", value:conta, onChange:setConta, placeholder:"Ex: 12345-6"})}
         </div>
         <div style={{ marginTop: 12, padding: "12px 14px", background: C.deep, borderRadius: 10, border: `1px solid ${C.b1}` }}>
           <div style={{ color: C.atxt, fontSize: 11, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.4px" }}>⚡ PIX</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Chave PIX" value={pixKey} onChange={setPixKey} placeholder="CPF, email, telefone ou chave" />
-            <Field label="Banco da Chave PIX" value={pixBanco} onChange={setPixBanco} placeholder="Ex: Nubank, Itaú..." />
+            {Field({label:"Chave PIX", value:pixKey, onChange:setPixKey, placeholder:"CPF, email, telefone ou chave"})}
+            {Field({label:"Banco da Chave PIX", value:pixBanco, onChange:setPixBanco, placeholder:"Ex: Nubank, Itaú..."})}
           </div>
         </div>
       </div>
@@ -6032,8 +6032,8 @@ function PerfilTab({ users, setUsers, currentUser }) {
       <div style={{ ...S.card, padding: "20px 24px", marginBottom: 16 }}>
         <div style={{ color: C.ts, fontSize: 12.5, fontWeight: 700, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>🏆 Certificações</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Certificação(ões)" value={certificacoes} onChange={setCertificacoes} placeholder="Ex: Certificação INSS, FGTS..." />
-          <Field label="Data de vencimento" value={certVencimento} onChange={setCertVencimento} type="date" placeholder="" />
+          {Field({label:"Certificação(ões)", value:certificacoes, onChange:setCertificacoes, placeholder:"Ex: Certificação INSS, FGTS..."})}
+          {Field({label:"Data de vencimento", value:certVencimento, onChange:setCertVencimento, type:"date", placeholder:""})}
         </div>
       </div>
 
