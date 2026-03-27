@@ -11712,6 +11712,10 @@ function V8DigitalTab({ currentUser, contacts }) {
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
   // Auto-resume lote after F5: if wasRunning was saved, trigger simularLote
+  // loteWasRunning / loteAutoResume — declared here so the useEffect below can use them
+  const loteWasRunning = lSaved?.wasRunning || false;
+  const loteAutoResume = React.useRef(loteWasRunning); // true = should auto-start on mount
+
   // loteSimularLoteRef is set by LoteTab on each render so parent can call it
   const loteSimularLoteRef = React.useRef(null);
   useEffect(() => {
@@ -11866,8 +11870,7 @@ function V8DigitalTab({ currentUser, contacts }) {
     return saved.map(x => x.status==="simulando" ? {...x,status:"pendente"} : x);
   });
   const [loteRunning,      setLoteRunning]       = useState(false);
-  const loteWasRunning = lSaved?.wasRunning || false;
-  const loteAutoResume = React.useRef(loteWasRunning); // true = should auto-start on mount
+
   const [lotePaused,       setLotePaused]        = useState(false);
   const [loteProgress,     setLoteProgress]      = useState(lSaved?.progress||0);
   const [loteFilterSaldo,  setLoteFilterSaldo]   = useState("");
@@ -13280,55 +13283,23 @@ function V8DigitalTab({ currentUser, contacts }) {
         // 1. POST — dispara consulta (igual ao individual)
         try { await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider }); } catch {}
 
-        // 2. Polling GET — aguarda resultado da API
+        // 2. Polling GET — IDÊNTICO ao individual (que funciona)
         for (let i=0; i<18; i++) {
           if (abortRef.current) return { ...item, status:"pendente" };
-          await new Promise(r=>setTimeout(r,1500));
+          await new Promise(r=>setTimeout(r,2500));
+          addLog(`🔄 ${fmtCPF(c)} (${i+1}/18)...`);
           try {
-            const cSemZero = c.replace(/^0+/,"");
-            // Busca pelos dois formatos em paralelo
-            const [r1, r2] = await Promise.allSettled([
-              apiFetch(`/fgts/balance?search=${c}&limit=50`),
-              cSemZero !== c ? apiFetch(`/fgts/balance?search=${cSemZero}&limit=50`) : Promise.resolve(null),
-            ]);
-            const toArr = (rv) => {
-              if (rv.status !== "fulfilled" || !rv.value) return [];
-              const v = rv.value;
-              return v?.data || (Array.isArray(v) ? v : (v && typeof v === "object" ? [v] : []));
-            };
-            const allFromSearch = [...toArr(r1), ...toArr(r2)].filter(Boolean);
+            const res = await apiFetch(`/fgts/balance?search=${c}`);
+            addLog(`📦 ${fmtCPF(c)}: ${JSON.stringify(res).slice(0,120)}`);
 
-            // Log na 1ª tentativa para debug de formato
-            if (i === 0 && allFromSearch.length > 0) {
-              addLog(`🔍 ${fmtCPF(c)} docNum sample: ${JSON.stringify(allFromSearch[0]?.documentNumber||allFromSearch[0]?.cpf||"?")}`);
-            }
+            const registros = res?.data || (Array.isArray(res) ? res : [res]).filter(Boolean);
+            const sucesso   = registros.find(r => r && (r.status==="success" || r.amount!=null) && parseFloat(r.amount||0) > 0);
+            const qualquer  = registros.find(r => r && r.status==="success");
+            const encontrado = sucesso || qualquer;
 
-            // Filtro por CPF — aceita qualquer campo que contenha os dígitos do CPF
-            const cpfDigits = c.replace(/\D/g,"");
-            const matchesCPF = (r) => {
-              if (!r) return false;
-              const fields = [r.documentNumber, r.cpf, r.document, r.individual_document_number, r.individualDocumentNumber];
-              return fields.some(f => f && String(f).replace(/\D/g,"").endsWith(cpfDigits.slice(-9)));
-            };
+            if (encontrado) { bal=encontrado; addLog(`✅ ${fmtCPF(c)}: ${fmtBRL(parseFloat(bal.amount||0))}`); break; }
 
-            // Primeiro: registros que matcham o CPF
-            let registros = allFromSearch.filter(matchesCPF);
-
-            // Se a busca por CPF retornou poucos resultados e nenhum matchou,
-            // a API retorna os registros pelo CPF buscado mesmo sem documentNumber no body
-            // Então usamos o que veio da busca diretamente (são do CPF certo)
-            if (registros.length === 0 && allFromSearch.length > 0 && allFromSearch.length <= 5) {
-              registros = allFromSearch; // busca foi por CPF, resultado é do CPF
-            }
-
-            addLog(`🔄 ${fmtCPF(c)} (${i+1}/18): ${registros.length}/${allFromSearch.length} reg`);
-
-            const sucesso  = registros.find(r => r.status==="success" || (r.amount!=null && parseFloat(r.amount||0) >= 0));
-            const qualquer = registros.find(r => r.status==="success");
-            const bal_ = sucesso || qualquer;
-            if (bal_) { bal=bal_; addLog(`✅ ${fmtCPF(c)}: saldo ${fmtBRL(parseFloat(bal.amount||0))}`); break; }
-
-            const falha = registros.find(r => r.status==="fail"||r.status==="error"||r.status==="failed");
+            const falha = registros.find(r => r && (r.status==="fail"||r.status==="error"||r.status==="failed"));
             if (falha) {
               const rawMsg = falha.statusInfo||falha.errorMessage||falha.message||"";
               const diag = diagnosticarErroV8(rawMsg, c);
@@ -13336,9 +13307,8 @@ function V8DigitalTab({ currentUser, contacts }) {
               if (FATAIS.includes(diag.tipo)) {
                 return { ...item, cpf:fmtCPF(c), status:diag.tipo, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
               }
-              await new Promise(r=>setTimeout(r,2000));
             }
-          } catch {}
+          } catch(e) { addLog(`⚠ ${fmtCPF(c)} poll err: ${e.message}`, false); }
         }
 
         if (!bal) {
