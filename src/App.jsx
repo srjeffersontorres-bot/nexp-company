@@ -28,28 +28,20 @@ import { uploadArquivo } from "./firebase";
 
 // ══════════════════════════════════════════════════════════════════
 // ── SEGURANÇA: Rate Limiting por usuário (Firestore) ─────────────
-// Todos os perfis: 30000 consultas/dia
-// ══════════════════════════════════════════════════════════════════
-const RATE_LIMITS = {
-  administrador: 30000, mestre: 30000, gerente: 30000, master: 30000,
-  supervisor: 30000, operador: 30000, indicado: 30000, visitante: 30000, digitador: 30000,
-};
+// Rate limits removidos — sem limite de consultas diárias
 async function checkRateLimit(uid, role) {
-  if (!uid) throw new Error("Usuário não autenticado.");
-  const limite = RATE_LIMITS[role] ?? 30000;
-  const hoje = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-  const { doc: fbDoc, getDoc, setDoc: fbSetDoc, updateDoc, increment } = await import("firebase/firestore");
-  const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
-  const snap = await getDoc(ref);
-  if (snap.exists()) {
-    const { count } = snap.data();
-    if (count >= limite) {
-      throw new Error(`⛔ Limite diário atingido (${limite} consultas). Tente novamente amanhã.`);
+  if (!uid) return; // sem limite — apenas conta para exibição
+  try {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const { doc: fbDoc, getDoc, setDoc: fbSetDoc, updateDoc, increment } = await import("firebase/firestore");
+    const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateDoc(ref, { count: increment(1) });
+    } else {
+      await fbSetDoc(ref, { count: 1, uid, role, data: hoje });
     }
-    await updateDoc(ref, { count: increment(1) });
-  } else {
-    await fbSetDoc(ref, { count: 1, uid, role, data: hoje });
-  }
+  } catch {} // nunca bloqueia
 }
 async function getRateLimitStatus(uid, role) {
   try {
@@ -58,9 +50,8 @@ async function getRateLimitStatus(uid, role) {
     const ref = fbDoc(db, "rate_limits", `${uid}_${hoje}`);
     const snap = await getDoc(ref);
     const count = snap.exists() ? snap.data().count : 0;
-    const limite = RATE_LIMITS[role] ?? 30000;
-    return { count, limite, restante: Math.max(0, limite - count) };
-  } catch { return { count: 0, limite: RATE_LIMITS[role] ?? 30000, restante: RATE_LIMITS[role] ?? 30000 }; }
+    return { count, limite: null, restante: null }; // sem limite
+  } catch { return { count: 0, limite: null, restante: null }; }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -5851,7 +5842,7 @@ function PerfilTab({ users, setUsers, currentUser }) {
           </button>
         )}
       </div>
-      <input key={label} defaultValue={value} onBlur={e => onChange && onChange(e.target.value)} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
+      <input defaultValue={value} onBlur={e => onChange && onChange(e.target.value)} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
         type={type} readOnly={readOnly || !canEdit}
         style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }} />
     </div>
@@ -14949,8 +14940,8 @@ function V8DigitalTab({ currentUser, contacts }) {
           <span style={{ color:C.td, fontSize:10.5, marginLeft:4 }}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
           <button onClick={clearSession} style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>Desconectar</button>
           {rateStatus && (
-            <span style={{ background: rateStatus.restante < 100 ? "rgba(239,68,68,0.15)" : "rgba(52,211,153,0.1)", color: rateStatus.restante < 100 ? "#F87171" : "#34D399", fontSize:10.5, fontWeight:700, padding:"3px 10px", borderRadius:20, whiteSpace:"nowrap", border:`1px solid ${rateStatus.restante < 100 ? "#EF444433" : "#34D39933"}` }}>
-              📊 {rateStatus.count}/{rateStatus.limite} consultas hoje
+            <span style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", fontSize:10.5, fontWeight:700, padding:"3px 10px", borderRadius:20, whiteSpace:"nowrap", border:"1px solid #34D39933" }}>
+              📊 {rateStatus.count} consultas hoje
             </span>
           )}
         </div>
@@ -15674,46 +15665,98 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   const exEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
                   const exGen = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
 
+                  // Monta itens iniciais
                   const novos = linhas.map(linha=>{
-                    const partes = linha.split(/[,;\t]+/).map(s=>s.trim());
+                    const partes = linha.split(/[,;	]+/).map(s=>s.trim());
                     const cpf = partes[0].replace(/\D/g,"").padStart(11,"0").slice(0,11);
                     const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpf);
-                    const nome = partes[1]||exNome(contato);
-                    const email = partes[2]||exEmail(contato);
-                    const dataNasc = partes[3]||exNasc(contato);
-                    const telefone = exTel(contato);
-                    const genero = exGen(contato);
                     return {
                       cpf, id:null, status:"PENDENTE",
-                      nome, email, dataNasc, telefone, genero,
+                      nome: partes[1]||exNome(contato),
+                      email: partes[2]||exEmail(contato),
+                      dataNasc: partes[3]||exNasc(contato),
+                      telefone: exTel(contato),
+                      genero: exGen(contato),
                       link:null, availableMarginValue:null,
                     };
                   });
                   setLoteCLTItems(novos);
+
                   for(let i=0;i<novos.length;i++){
                     if(loteCLTAbort.current) break;
-                    const item=novos[i];
+                    let item={...novos[i]};
+                    setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"BUSCANDO"}:x));
+
+                    // ── Cruzamento com API V8 ─────────────────────────────────
+                    try {
+                      // 1. Historico de consultas CLT
+                      const end=new Date().toISOString();
+                      const start=new Date(Date.now()-365*86400000).toISOString();
+                      const r=await apiFetch(`/private-consignment/consult?search=${item.cpf}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
+                      const cltItem=(r?.data||[])[0];
+                      if(cltItem){
+                        if(!item.nome)     item.nome     = exNome(cltItem);
+                        if(!item.email)    item.email    = exEmail(cltItem)||cltItem.signerEmail||"";
+                        if(!item.dataNasc) item.dataNasc = exNasc(cltItem)||cltItem.birthDate||"";
+                        if(!item.telefone||item.telefone.length<11) {
+                          const t=exTel(cltItem)||(cltItem.signerPhone?(cltItem.signerPhone.areaCode||"")+(cltItem.signerPhone.phoneNumber||""):"");
+                          if(t) item.telefone=t.replace(/\D/g,"");
+                        }
+                        if(item.genero==="male") item.genero=exGen(cltItem)||"male";
+                      }
+                    } catch {}
+
+                    try {
+                      // 2. Propostas FGTS (dados do cliente)
+                      if(!item.nome||!item.email||!item.dataNasc||item.telefone.length<11) {
+                        const rf=await apiFetch(`/fgts/proposal?search=${item.cpf}&page=1&limit=3`);
+                        const fgts=(rf?.data||rf||[])[0];
+                        if(fgts?.id){
+                          const det=await apiFetch(`/fgts/proposal/${fgts.id}`);
+                          if(!item.nome)     item.nome=exNome(det)||det.name||"";
+                          if(!item.email)    item.email=det.email||"";
+                          if(!item.dataNasc) item.dataNasc=det.birthDate||"";
+                          if(!item.telefone||item.telefone.length<11){
+                            const t=det.phone?(det.phoneRegionCode||"")+det.phone:"";
+                            if(t) item.telefone=t.replace(/\D/g,"");
+                          }
+                          if(item.genero==="male"&&det.gender) item.genero=det.gender;
+                        }
+                      }
+                    } catch {}
+
+                    // Atualiza item na lista com dados cruzados
+                    novos[i]=item;
+                    setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,status:"PENDENTE"}:x));
+
+                    // ── Validação ─────────────────────────────────────────────
                     if(!item.nome||!item.email||!item.dataNasc||item.telefone.length<11){
-                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"DADOS_INCOMPLETOS",erro:"Faltam dados (nome/email/nascimento/telefone)"}:x));
+                      const faltando=[];
+                      if(!item.nome)                 faltando.push("nome");
+                      if(!item.email)                faltando.push("email");
+                      if(!item.dataNasc)             faltando.push("nascimento");
+                      if(item.telefone.length<11)    faltando.push("telefone");
+                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,status:"DADOS_INCOMPLETOS",erro:`Falta: ${faltando.join(", ")}`}:x));
                       continue;
                     }
-                    setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"GERANDO"}:x));
+
+                    setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,status:"GERANDO"}:x));
                     try{
                       const tel=item.telefone.replace(/\D/g,"");
                       const body={
                         borrowerDocumentNumber:item.cpf,gender:item.genero||"male",birthDate:item.dataNasc,
                         signerName:item.nome,signerEmail:item.email,
-                        signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.length>=11?tel.slice(0,2):tel.slice(0,2)},
+                        signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.slice(0,2)},
                         provider:"QI",
                       };
                       const res=await apiFetch("/private-consignment/consult","POST",body);
                       const id=res.id||res.consultId;
                       const link=res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${id}`;
-                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,id,status:"AGUARDANDO",link}:x));
+                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,id,status:"AGUARDANDO",link}:x));
                     }catch(e){
-                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...x,status:"ERRO",erro:e.message}:x));
+                      setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,status:"ERRO",erro:e.message}:x));
                     }
-                    await new Promise(r=>setTimeout(r,600));
+                    await new Promise(r=>setTimeout(r,400));
                   }
                   setLoteCLTRunning(false);
                   buscarTermos(1);
@@ -15727,10 +15770,10 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               {loteCLTItems.length>0&&(
                 <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:4,maxHeight:200,overflowY:"auto"}}>
                   {loteCLTItems.map((x,i)=>{
-                    const sc={PENDENTE:C.td,GERANDO:"#FBBF24",AGUARDANDO:"#34D399",ERRO:"#F87171",DADOS_INCOMPLETOS:"#F87171"}[x.status]||C.td;
+                    const sc={PENDENTE:C.td,BUSCANDO:"#60A5FA",GERANDO:"#FBBF24",AGUARDANDO:"#34D399",ERRO:"#F87171",DADOS_INCOMPLETOS:"#F87171"}[x.status]||C.td;
                     return(
                       <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",background:C.deep,borderRadius:7,fontSize:11}}>
-                        <span style={{color:sc,width:12}}>{x.status==="GERANDO"?"⏳":x.status==="AGUARDANDO"?"✅":x.status==="ERRO"||x.status==="DADOS_INCOMPLETOS"?"❌":"○"}</span>
+                        <span style={{color:sc,width:12}}>{x.status==="BUSCANDO"?"🔍":x.status==="GERANDO"?"⏳":x.status==="AGUARDANDO"?"✅":x.status==="ERRO"||x.status==="DADOS_INCOMPLETOS"?"❌":"○"}</span>
                         <span style={{color:C.tp,fontFamily:"monospace"}}>{fmtCPF(x.cpf)}</span>
                         <span style={{color:C.tm,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.nome||"—"}</span>
                         {x.link&&<button onClick={()=>{navigator.clipboard.writeText(x.link).then(()=>{setCopied("lote"+i);setTimeout(()=>setCopied(null),2000);});}} style={{background:C.abg,color:copied==="lote"+i?"#34D399":C.atxt,border:`1px solid ${C.atxt}22`,borderRadius:5,padding:"2px 8px",fontSize:10,cursor:"pointer"}}>{copied==="lote"+i?"✅":"🔗 LINK"}</button>}
@@ -15882,6 +15925,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                         </div>
                                       );
                                     })}
+                                  </div>
+                                  {/* Botão Gerar Termo */}
+                                  <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"flex-end"}}>
+                                    <button onClick={e=>{e.stopPropagation();setInlineSimId(null);setAba("termo");setTermoForm(p=>({...p,cpf:(t.documentNumber||t.cpf||"").replace(/\D/g,""),nome:t.name||t.nome||"",email:t.email||"",telefone:t.phone||(t.signerPhone?(t.signerPhone.areaCode||"")+(t.signerPhone.phoneNumber||""):""),dataNasc:t.birthDate||"",genero:t.gender||"male"}));}}
+                                      style={{background:"rgba(79,142,247,0.15)",color:"#60A5FA",border:"1px solid #3B6EF544",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                                      📋 Gerar Termo de Consentimento
+                                    </button>
                                   </div>
                                 </div>
                               );
