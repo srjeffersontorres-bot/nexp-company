@@ -13202,7 +13202,6 @@ function V8DigitalTab({ currentUser, contacts }) {
     const filterStatus = loteFilterStatus;const setFilterStatus = setLoteFilterStatus;
     const logs         = loteLogs;        const setLogs         = setLoteLogs;
     const page         = lotePage;        const setPage         = setLotePage;
-    const cpfBox       = loteCpfBox;      // setCpfBox via setCpfBoxPersist
     const showCpfBox   = loteShowCpfBox;  const setShowCpfBox   = setLoteShowCpfBox;
     const provider     = loteProvider;
     const fees         = loteFees;        const setFees         = setLoteFees;
