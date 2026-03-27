@@ -12038,15 +12038,18 @@ function V8DigitalTab({ currentUser, contacts }) {
       if(!autoRetry) addLog(`▶ Consultando saldo — CPF ${fmtCPF(c)} (${provider.toUpperCase()})`);
       else addLog(`🔄 Tentando novamente automaticamente...`);
       try {
+        // Limpar cache de saldo (API V8 cacheia por 24h — sem isso, GET pode retornar data vazia)
+        try { await apiFetch(`/fgts/balance/cache/${c}`, "DELETE", null, 0, { skipRateLimit:true }); } catch {}
+
         addLog("📡 Iniciando consulta de saldo (assíncrona)...");
-        await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
-        addLog("✅ Consulta disparada. Aguardando processamento...");
+        const postRes = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+        addLog(`✅ Consulta disparada. ${postRes?.id ? "ID: "+postRes.id : ""}Aguardando processamento...`);
 
         // Polling — GET /fgts/balance?search=CPF
         let bal = null;
         const maxTentativas = 18;
         for (let i = 0; i < maxTentativas; i++) {
-          await new Promise(r => setTimeout(r, 2500));
+          await new Promise(r => setTimeout(r, 3000));
           addLog(`🔄 Verificando resultado (${i+1}/${maxTentativas})...`);
           try {
             const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
@@ -12937,10 +12940,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                     setSimModal({ loading:true, cpf:detalhe.documentNumber||detalhe.individualDocumentNumber||"", nome:detalhe.clientName||"", contrato:detalhe });
                     try {
                       const cpfv = (detalhe.documentNumber||detalhe.individualDocumentNumber||"").replace(/\D/g,"");
+                      try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE",null,0,{skipRateLimit:true}); } catch {}
                       await apiFetch("/fgts/balance","POST",{ documentNumber:cpfv, provider: detalhe.provider||"cartos" });
                       let bal = null;
                       for (let i=0;i<18;i++) {
-                        await new Promise(r=>setTimeout(r,2500));
+                        await new Promise(r=>setTimeout(r,3000));
                         const res = await apiFetch(`/fgts/balance?search=${cpfv}`, "GET", null, 2, { skipRateLimit:true });
                         const regs = res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                         const ok = regs.find(r=>r&&(r.status==="success"||r.amount!=null));
@@ -13140,10 +13144,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                             const cpfv=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
                             setSimModal({loading:true,cpf:cpfv,nome:op.clientName||"",contrato:op});
                             try{
+                              try{await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE",null,0,{skipRateLimit:true});}catch{}
                               await apiFetch("/fgts/balance","POST",{documentNumber:cpfv,provider:op.provider||"cartos"});
                               let bal=null;
                               for(let ii=0;ii<18;ii++){
-                                await new Promise(r=>setTimeout(r,2500));
+                                await new Promise(r=>setTimeout(r,3000));
                                 const res=await apiFetch(`/fgts/balance?search=${cpfv}`,"GET",null,2,{skipRateLimit:true});
                                 const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                                 const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
@@ -13283,10 +13288,15 @@ function V8DigitalTab({ currentUser, contacts }) {
       try {
         if (abortRef.current) return { ...item, status:"pendente" };
 
-        // 1. POST — dispara consulta (igual ao individual)
+        // 1. Limpar cache de saldo (API V8 cacheia por 24h — sem isso, GET retorna data vazia)
+        try { await apiFetch(`/fgts/balance/cache/${c}`, "DELETE", null, 0, { skipRateLimit:true }); } catch {}
+
+        // 2. POST — dispara consulta de saldo
+        let postOk = false;
         try {
-          await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
-          addLog(`📡 ${fmtCPF(c)}: Consulta disparada.`);
+          const postRes = await apiFetch("/fgts/balance","POST",{ documentNumber:c, provider });
+          addLog(`📡 ${fmtCPF(c)}: Consulta disparada. ${postRes?.id ? "ID: "+postRes.id : ""}`);
+          postOk = true;
         } catch (postErr) {
           const msg = postErr?.message || "";
           addLog(`⚠ ${fmtCPF(c)} POST falhou: ${msg}`, false);
@@ -13297,10 +13307,12 @@ function V8DigitalTab({ currentUser, contacts }) {
           // Erro transitório — tenta polling mesmo assim (pode já existir consulta anterior)
         }
 
-        // 2. Polling GET — IDÊNTICO ao individual (que funciona)
+        // 3. Polling GET — aguarda processamento assíncrono da V8
+        // Se POST falhou, espera um pouco mais antes de começar o polling
+        if (!postOk) await new Promise(r=>setTimeout(r,2000));
         for (let i=0; i<18; i++) {
           if (abortRef.current) return { ...item, status:"pendente" };
-          await new Promise(r=>setTimeout(r,2500));
+          await new Promise(r=>setTimeout(r,3000));
           addLog(`🔄 ${fmtCPF(c)} (${i+1}/18)...`);
           try {
             const res = await apiFetch(`/fgts/balance?search=${c}`, "GET", null, 2, { skipRateLimit:true });
@@ -14658,10 +14670,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                               const cpfParaBusca = cpfRaw.padStart(11,"0");
                               setAcompSimModal({loading:true,cpf:cpfParaBusca,nome:op.clientName||"",contrato:op});
                               try{
+                                try{await apiFetch(`/fgts/balance/cache/${cpfParaBusca}`,"DELETE",null,0,{skipRateLimit:true});}catch{}
                                 await apiFetch("/fgts/balance","POST",{documentNumber:cpfParaBusca,provider:providerValido});
                                 let bal=null;
                                 for(let ii=0;ii<18;ii++){
-                                  await new Promise(r=>setTimeout(r,2500));
+                                  await new Promise(r=>setTimeout(r,3000));
                                   const res=await apiFetch(`/fgts/balance?search=${cpfParaBusca}`,"GET",null,2,{skipRateLimit:true});
                                   const regs=res?.data||(Array.isArray(res)?res:[res]).filter(Boolean);
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
