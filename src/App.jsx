@@ -15667,7 +15667,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
                   // Monta itens iniciais
                   const novos = linhas.map(linha=>{
-                    const partes = linha.split(/[,;	]+/).map(s=>s.trim());
+                    const partes = linha.split(/[,;]+/).map(s=>s.trim());
                     const cpf = partes[0].replace(/\D/g,"").padStart(11,"0").slice(0,11);
                     const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpf);
                     return {
