@@ -1198,6 +1198,8 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   const isOnline = presence?.[uid]?.online;
 
   // ── Inline weather + calc state ───────────────────────────────
+  const [topBarCollapsed, setTopBarCollapsed] = useState(() => localStorage.getItem("nexp_topbar_collapsed")==="1");
+  const toggleTopBar = () => { const v = !topBarCollapsed; setTopBarCollapsed(v); localStorage.setItem("nexp_topbar_collapsed", v?"1":"0"); };
   const [showWeather, setShowWeather] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
   const [weather, setWeather] = useState(null);
@@ -1333,6 +1335,14 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
           )}
         </div>
 
+        {/* Minimizar/expandir atalhos */}
+        <button onClick={toggleTopBar} title={topBarCollapsed?"Expandir atalhos":"Minimizar atalhos"}
+          style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:C.td, fontSize:12, transition:"all 0.18s" }}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color=C.td;}}>
+          {topBarCollapsed ? "▶" : "◀"}
+        </button>
+        {!topBarCollapsed && <>
         {/* Stories */}
         <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
@@ -1357,6 +1367,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
           {unreadChat > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#16A34A", color:"#fff", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadChat}</span>}
         </button>
 
+        </>}
         {/* Profile avatar */}
         <button onClick={()=>setPage("config")} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"6px 14px 6px 6px", cursor:"pointer", transition:"all 0.18s" }}
           onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
@@ -3143,19 +3154,25 @@ function ImportPage({ contacts, setContacts, setPage, currentUser }) {
     setLoading(true); setErr("");
     try {
       const ts = Date.now();
-      // CPFs já existentes no sistema
       const existingCPFs = new Set(contacts.map((c) => (c.cpf || "").replace(/\D/g, "")).filter(Boolean));
       let imported = 0, skipped = 0;
       const importedContacts = [];
+      // Filtra primeiro sem tocar no Firestore
+      const toImport = [];
       for (let i = 0; i < prev.length; i++) {
         const c = prev[i];
         const cpfClean = (c.cpf || "").replace(/\D/g, "");
         if (cpfClean && existingCPFs.has(cpfClean)) { skipped++; continue; }
         if (cpfClean) existingCPFs.add(cpfClean);
-        const newC = { ...c, id: String(ts + i), reactions: [], _importId: String(ts) };
-        await saveContact(newC);
-        importedContacts.push(newC);
-        imported++;
+        toImport.push({ ...c, id: String(ts + i), reactions: [], _importId: String(ts) });
+      }
+      // Salva em lotes paralelos de 50 (Firestore suporta 500/batch mas 50 paralelos é mais rápido)
+      const CHUNK = 50;
+      for (let i = 0; i < toImport.length; i += CHUNK) {
+        const chunk = toImport.slice(i, i + CHUNK);
+        await Promise.all(chunk.map(newC => saveContact(newC)));
+        importedContacts.push(...chunk);
+        imported += chunk.length;
       }
       // Salvar histórico
       const entry = { id: String(ts), name: fn, count: imported, skipped, date: new Date().toLocaleString("pt-BR"), contacts: importedContacts };
@@ -5830,23 +5847,37 @@ function PerfilTab({ users, setUsers, currentUser }) {
   };
 
   // Field uses defaultValue to avoid 1-char re-render bug from Firestore listener re-renders
-  const Field = ({ label, value, onChange, placeholder, type = "text", readOnly = false }) => (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-        <label style={{ color: C.tm, fontSize: 11.5 }}>{label}</label>
-        {value && (
-          <button onClick={() => copyValue(label, value)}
-            style={{ background: copiedField === label ? "#091E12" : "transparent", border: "none", color: copiedField === label ? "#34D399" : C.td, cursor: "pointer", fontSize: 10.5, padding: "1px 6px", borderRadius: 5, transition: "all 0.2s" }}
-            title="Copiar">
-            {copiedField === label ? "✓ Copiado" : "⎘ Copiar"}
-          </button>
-        )}
+  // Field usa value controlado mas com initialValue para evitar perda de foco
+  // Cada instância mantém o estado localmente para não depender do pai
+  const Field = ({ label, value, onChange, placeholder, type = "text", readOnly = false }) => {
+    const [local, setLocal] = React.useState(value || "");
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+          <label style={{ color: C.tm, fontSize: 11.5 }}>{label}</label>
+          {local && (
+            <button onClick={() => copyValue(label, local)}
+              style={{ background: copiedField === label ? "#091E12" : "transparent", border: "none", color: copiedField === label ? "#34D399" : C.td, cursor: "pointer", fontSize: 10.5, padding: "1px 6px", borderRadius: 5, transition: "all 0.2s" }}
+              title="Copiar">
+              {copiedField === label ? "✓ Copiado" : "⎘ Copiar"}
+            </button>
+          )}
+        </div>
+        <input
+          value={local}
+          onChange={e => {
+            let v = e.target.value;
+            setLocal(v);
+            onChange && onChange(v);
+          }}
+          placeholder={placeholder || ""}
+          type={type}
+          readOnly={readOnly || !canEdit}
+          style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }}
+        />
       </div>
-      <input defaultValue={value} onBlur={e => onChange && onChange(e.target.value)} onChange={e => onChange && onChange(e.target.value)} placeholder={placeholder || ""}
-        type={type} readOnly={readOnly || !canEdit}
-        style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }} />
-    </div>
-  );
+    );
+  };
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -15060,6 +15091,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [termoLoading, setTermoLoading] = useState(false);
   const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
   const [termosSearch, setTermosSearch] = useState("");
+  const [termosFiltroStatus, setTermosFiltroStatus] = useState("Todos");
 
   const [termoBuscando, setTermoBuscando] = useState(false);
   const [termoAutoPreenchido, setTermoAutoPreenchido] = useState(false);
@@ -15821,6 +15853,21 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </button>
                 </div>
               </div>
+              {/* Filtro por status */}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                {["Todos","WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"].map(s=>{
+                  const cnt = s==="Todos" ? termos.length : termos.filter(t=>t.status===s).length;
+                  if(s!=="Todos"&&cnt===0) return null;
+                  const cor = STATUS_COR[s]||C.td;
+                  const active = termosFiltroStatus===s;
+                  return (
+                    <button key={s} onClick={()=>setTermosFiltroStatus(s)}
+                      style={{background:active?cor+"22":"transparent",color:active?cor:C.td,border:`1px solid ${active?cor+"55":C.b1}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:active?700:400,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                      {STATUS_LABEL[s]||"Todos"} <span style={{opacity:0.7}}>({cnt})</span>
+                    </button>
+                  );
+                })}
+              </div>
               <div style={{...S.card,overflow:"hidden"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
@@ -15832,6 +15879,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   </thead>
                   <tbody>
                     {termos.filter(t=>{
+                      if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
                       if(!termosSearch) return true;
                       const s=termosSearch.toLowerCase();
                       return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
@@ -16432,7 +16480,6 @@ function ApisBancosPage({ currentUser, contacts }) {
         <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
         <div style={{ display:"flex", gap:0 }}>
           {tabBtn(abaBanco==="v8",    "⚡ V8 Digital",  ()=>setAbaBanco("v8"))}
-          {tabBtn(abaBanco==="c6",    "🏦 Banco C6",    ()=>setAbaBanco("c6"))}
         </div>
       </div>
 
@@ -16450,7 +16497,7 @@ function ApisBancosPage({ currentUser, contacts }) {
           <V8DigitalTab currentUser={currentUser} contacts={contacts} />
         </div>
         {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="c6"                      && <BancoC6Tab />}
+
       </div>
     </div>
   );
@@ -18883,8 +18930,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
-  const [page, setPageRaw] = useState(() => sessionStorage.getItem("nexp_page") || "dashboard");
-  const setPage = (p) => { setPageRaw(p); sessionStorage.setItem("nexp_page", p); };
+  const [page, setPageRaw] = useState(() => localStorage.getItem("nexp_page") || "dashboard");
+  const setPage = (p) => { setPageRaw(p); localStorage.setItem("nexp_page", p); };
   const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
   const [shake, setShake] = useState(false);
@@ -18912,7 +18959,7 @@ export default function App() {
   // Salva a página ativa ao trocar — chat vira painel flutuante
   const setPageAndSave = (p) => {
     if (p === "chat") { setChatOpen(prev => !prev); return; }
-    sessionStorage.setItem("nexp_page", p);
+    localStorage.setItem("nexp_page", p);
     setPage(p);
   };
 
@@ -19191,13 +19238,13 @@ export default function App() {
     let timer = setTimeout(() => {
       firebaseLogout();
       setCurrentUser(null);
-      sessionStorage.removeItem("nexp_page");
+      localStorage.removeItem("nexp_page");
       setPage("dashboard");
     }, IDLE_MS);
     const reset = () => { clearTimeout(timer); timer = setTimeout(() => {
       firebaseLogout();
       setCurrentUser(null);
-      sessionStorage.removeItem("nexp_page");
+      localStorage.removeItem("nexp_page");
       setPage("dashboard");
     }, IDLE_MS); };
     const events = ["mousemove","keydown","click","scroll","touchstart"];
@@ -19239,7 +19286,7 @@ export default function App() {
   const logout = async () => {
     await firebaseLogout();
     setCurrentUser(null);
-    sessionStorage.removeItem("nexp_page");
+    localStorage.removeItem("nexp_page");
     setPage("dashboard");
   };
 
@@ -19456,7 +19503,7 @@ export default function App() {
                 onOpenStory={(uid) => {
                   setChatOpen(false);
                   setPage("stories");
-                  sessionStorage.setItem("nexp_page", "stories");
+                  localStorage.setItem("nexp_page", "stories");
                   sessionStorage.setItem("nexp_story_uid", uid);
                 }}
               />
