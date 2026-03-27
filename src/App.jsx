@@ -11895,6 +11895,11 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [acompDateFrom,    setAcompDateFrom]    = useState("");
   const [acompDateTo,      setAcompDateTo]      = useState("");
   const [acompSimModal,    setAcompSimModal]    = useState(null);
+  // ── Estados locais do AcompanhamentoTab elevados para evitar quebra de hooks ──
+  const [acompCancelandoId,    setAcompCancelandoId]    = useState(null);
+  const [acompShowCancelModal, setAcompShowCancelModal] = useState(null);
+  const [acompCancelReason,    setAcompCancelReason]    = useState("invalid_data:other");
+  const [acompCancelDesc,      setAcompCancelDesc]      = useState("");
 
   // ── Fila de Formalização (contratos digitados aguardando processamento) ──
   const [filaFormalizacao, setFilaFormalizacao] = useState(() => {
@@ -13916,11 +13921,11 @@ function V8DigitalTab({ currentUser, contacts }) {
       if (houveMudanca) salvarFilaLocal(filaAtualizada);
     };
 
-    // Cancelar proposta da fila
-    const [cancelandoId, setCancelandoId] = useState(null);
-    const [showCancelModal, setShowCancelModal] = useState(null);
-    const [cancelReason, setCancelReason] = useState("invalid_data:other");
-    const [cancelDesc, setCancelDesc] = useState("");
+    // Cancelar proposta da fila — estados elevados ao pai para não quebrar hooks
+    const cancelandoId    = acompCancelandoId;    const setCancelandoId    = setAcompCancelandoId;
+    const showCancelModal = acompShowCancelModal; const setShowCancelModal = setAcompShowCancelModal;
+    const cancelReason    = acompCancelReason;    const setCancelReason    = setAcompCancelReason;
+    const cancelDesc      = acompCancelDesc;      const setCancelDesc      = setAcompCancelDesc;
 
     const cancelarDaFila = async (item) => {
       setCancelandoId(item.id);
@@ -14036,10 +14041,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       setLoading(false);
     };
 
-    // Auto-carrega ao entrar na aba
-    useEffect(() => {
-      if (!acompData && !acompLoading) buscar(1);
-    }, []); // eslint-disable-line
+    // (auto-load is triggered at render start below)
 
     const gerarNovoLink = async (id) => {
       setAcompLinkLoading(true);
@@ -14070,6 +14072,9 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     // Proposta paga ou cancelada não pode gerar/atualizar link
     const canGenerateLink = (op) => !matchStatus(op?.status,"paid") && !matchStatus(op?.status,"canceled");
+
+    // Auto-carga ao primeiro render (substitui useEffect removido — chamado como função, não componente)
+    if (!acompData && !acompLoading && isTokenValid) { setTimeout(() => buscar(1), 0); }
 
     return (
       <div>
