@@ -4836,6 +4836,27 @@ function TemasTab({ currentTheme, onTheme }) {
 }
 
 
+// ── PerfisFieldItem — fora do pai para evitar re-mount a cada re-render ──
+function PerfisFieldItem({ label, fieldKey, initialValue, onCommit, copiedKey, onCopy, type, placeholder }) {
+  const [local, setLocal] = React.useState(initialValue || "");
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <label style={{ color: C.tm, fontSize: 11 }}>{label}</label>
+        {local && (
+          <button onClick={() => onCopy(fieldKey, local)}
+            style={{ background: "none", border: "none", color: copiedKey === fieldKey ? "#34D399" : C.td, cursor: "pointer", fontSize: 10, padding: "1px 5px" }}>
+            {copiedKey === fieldKey ? "✓ Copiado" : "⎘ Copiar"}
+          </button>
+        )}
+      </div>
+      <input value={local} onChange={e => { setLocal(e.target.value); onCommit(fieldKey, e.target.value); }}
+        type={type||"text"} placeholder={placeholder||""}
+        style={{ ...S.input, fontSize: 12.5 }} />
+    </div>
+  );
+}
+
 function PerfisTab({ users, setUsers, currentUser }) {
   const [selectedUid, setSelectedUid] = useState(null);
   const [editData, setEditData] = useState(null);
@@ -4925,25 +4946,16 @@ function PerfisTab({ users, setUsers, currentUser }) {
     });
   };
 
-  const Field = ({ label, k, type = "text", placeholder = "" }) => {
-    const [local, setLocal] = React.useState(editData?.[k] || "");
-    return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <label style={{ color: C.tm, fontSize: 11 }}>{label}</label>
-          {local && (
-            <button onClick={() => copyVal(k, local)}
-              style={{ background: "none", border: "none", color: copiedKey === k ? "#34D399" : C.td, cursor: "pointer", fontSize: 10, padding: "1px 5px" }}>
-              {copiedKey === k ? "✓ Copiado" : "⎘ Copiar"}
-            </button>
-          )}
-        </div>
-        <input value={local} onChange={e => { setLocal(e.target.value); EF(k, e.target.value); }}
-          type={type} placeholder={placeholder}
-          style={{ ...S.input, fontSize: 12.5 }} />
-      </div>
-    );
-  };
+  // Field delegado ao componente externo PerfisFieldItem para evitar re-mount
+  const Field = ({ label, k, type, placeholder }) => (
+    <PerfisFieldItem
+      key={k + (editData?.uid||editData?.id||"")}
+      label={label} fieldKey={k}
+      initialValue={editData?.[k] || ""}
+      onCommit={EF} copiedKey={copiedKey} onCopy={copyVal}
+      type={type} placeholder={placeholder}
+    />
+  );
 
   return (
     <div>
@@ -5713,6 +5725,33 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
   );
 }
 
+// ── PerfilFieldItem — fora do pai para evitar re-mount ──
+function PerfilFieldItem({ label, initialValue, onChange, placeholder, type, canEdit, readOnly, copiedField, onCopy }) {
+  const [local, setLocal] = React.useState(initialValue || "");
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+        <label style={{ color: C.tm, fontSize: 11.5 }}>{label}</label>
+        {local && (
+          <button onClick={() => onCopy(label, local)}
+            style={{ background: copiedField === label ? "#091E12" : "transparent", border: "none", color: copiedField === label ? "#34D399" : C.td, cursor: "pointer", fontSize: 10.5, padding: "1px 6px", borderRadius: 5, transition: "all 0.2s" }}
+            title="Copiar">
+            {copiedField === label ? "✓ Copiado" : "⎘ Copiar"}
+          </button>
+        )}
+      </div>
+      <input
+        value={local}
+        onChange={e => { const v = e.target.value; setLocal(v); onChange && onChange(v); }}
+        placeholder={placeholder || ""}
+        type={type || "text"}
+        readOnly={readOnly || !canEdit}
+        style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }}
+      />
+    </div>
+  );
+}
+
 function PerfilTab({ users, setUsers, currentUser }) {
   const myId = currentUser.uid || currentUser.id;
   const uObj = users.find((u) => (u.uid||u.id) === myId) || currentUser;
@@ -5827,37 +5866,14 @@ function PerfilTab({ users, setUsers, currentUser }) {
   };
 
   // Field uses defaultValue to avoid 1-char re-render bug from Firestore listener re-renders
-  // Field usa value controlado mas com initialValue para evitar perda de foco
-  // Cada instância mantém o estado localmente para não depender do pai
-  const Field = ({ label, value, onChange, placeholder, type = "text", readOnly = false }) => {
-    const [local, setLocal] = React.useState(value || "");
-    return (
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-          <label style={{ color: C.tm, fontSize: 11.5 }}>{label}</label>
-          {local && (
-            <button onClick={() => copyValue(label, local)}
-              style={{ background: copiedField === label ? "#091E12" : "transparent", border: "none", color: copiedField === label ? "#34D399" : C.td, cursor: "pointer", fontSize: 10.5, padding: "1px 6px", borderRadius: 5, transition: "all 0.2s" }}
-              title="Copiar">
-              {copiedField === label ? "✓ Copiado" : "⎘ Copiar"}
-            </button>
-          )}
-        </div>
-        <input
-          value={local}
-          onChange={e => {
-            let v = e.target.value;
-            setLocal(v);
-            onChange && onChange(v);
-          }}
-          placeholder={placeholder || ""}
-          type={type}
-          readOnly={readOnly || !canEdit}
-          style={{ ...S.input, color: (!canEdit || readOnly) ? C.tm : C.tp, cursor: (!canEdit || readOnly) ? "not-allowed" : "text", opacity: (!canEdit || readOnly) ? 0.6 : 1 }}
-        />
-      </div>
-    );
-  };
+  // Field delegado ao componente externo PerfilFieldItem para evitar re-mount
+  const Field = ({ label, value, onChange, placeholder, type, readOnly }) => (
+    <PerfilFieldItem
+      label={label} initialValue={value} onChange={onChange}
+      placeholder={placeholder} type={type} readOnly={readOnly}
+      canEdit={canEdit} copiedField={copiedField} onCopy={copyValue}
+    />
+  );
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -6074,6 +6090,15 @@ function PerfilTab({ users, setUsers, currentUser }) {
 }
 
 // Subcomponente isolado para exibir/redefinir senha no painel de edição
+// ── UsuariosInputItem — fora do pai para evitar re-mount ──
+function UsuariosInputItem({ fieldKey, initialValue, onChange, type, style }) {
+  const [local, setLocal] = React.useState(initialValue || "");
+  return (
+    <input value={local} onChange={e => { setLocal(e.target.value); onChange(fieldKey, e.target.value); }}
+      type={type||"text"} style={style} />
+  );
+}
+
 function UsuariosTab({ users, setUsers, currentUser }) {
   const myRole = currentUser.role || "operador";
   const myId   = currentUser.uid || currentUser.id;
@@ -6331,7 +6356,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
             {[["Nome *","name","text"],["CPF *","cpf","text"],["E-mail *","email","email"],["Senha inicial *","password","password"]].map(([l,k,t])=>(
               <div key={k}>
                 <label style={{ color:C.tm, fontSize:11.5, display:"block", marginBottom:4 }}>{l}</label>
-                <input defaultValue={form[k]} onChange={e=>setF(k,e.target.value)} type={t} style={{ ...S.input }} />
+                <UsuariosInputItem fieldKey={k} initialValue={form[k]} onChange={setF} type={t} style={{ ...S.input }} />
               </div>
             ))}
           </div>
@@ -6426,7 +6451,7 @@ function UsuariosTab({ users, setUsers, currentUser }) {
                       {[["Nome","name","text"],["CPF","cpf","text"],["E-mail","email","email"]].map(([l,k,t])=>(
                         <div key={k}>
                           <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:3 }}>{l}</label>
-                          <input defaultValue={editForm[k]||""} onChange={e=>setEF(k,e.target.value)} type={t} style={{ ...S.input, fontSize:12 }} />
+                          <UsuariosInputItem fieldKey={k} initialValue={editForm[k]||""} onChange={setEF} type={t} style={{ ...S.input, fontSize:12 }} />
                         </div>
                       ))}
                       {/* Senha — Ver/Ocultar */}
