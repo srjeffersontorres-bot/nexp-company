@@ -13361,10 +13361,11 @@ function V8DigitalTab({ currentUser, contacts }) {
                   fatalResult = { ...item, cpf:fmtCPF(c), status:diag.tipo, erro:diag.titulo, erroTipo:diag.tipo, saldo:0, margem:0, ts:new Date().toLocaleString("pt-BR") };
                   break;
                 }
-                // Erro transitório — espera e continua polling
-                addLog(`⚠ ${fmtCPF(c)}: Erro transitório (${diag.tipo}), retentando em 3s...`, false);
-                await new Promise(r=>setTimeout(r,3000));
-                continue;
+                // Erro transitório (tente novamente, limite, genérico) — BREAK imediato
+                // O resultado já está "failed" na fila V8; continuar polling retornaria o mesmo erro.
+                // A nova rodada vai limpar cache + re-POST + poll fresco.
+                addLog(`⚠ ${fmtCPF(c)}: Erro transitório (${diag.tipo}) — reiniciando consulta...`, false);
+                break; // sai do polling, dispara nova rodada automaticamente
               }
 
               // Nenhum resultado ainda (data:[]) — continua polling
