@@ -8877,12 +8877,9 @@ function FloatingChat({ currentUser, users, presence, minimized, pos, onPosChang
                           {u.name || u.email}
                           {muted && <span style={{ fontSize:10, opacity:0.5 }}>🔇</span>}
                         </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                          <span style={{ width:6, height:6, borderRadius:"50%", background:isOnline?"#16A34A":"#FBBF24", display:"inline-block", animation:"pulse 1.5s infinite" }} />
-                          {!isOnline && presence[uid]?.lastSeen?.seconds && (
-                            <span style={{ color:C.td, fontSize:10 }}>visto às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>
-                          )}
-                        </div>
+                        {!isOnline && presence[uid]?.lastSeen?.seconds && (
+                          <span style={{ color:C.td, fontSize:10 }}>visto às {new Date(presence[uid].lastSeen.seconds*1000).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>
+                        )}
                       </div>
                     {unread > 0 && !muted && <span style={{ background:C.acc, color:"#fff", borderRadius:"50%", width:20, height:20, fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{unread}</span>}
                   </button>
@@ -13712,118 +13709,86 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         </div>
 
-        {/* ── Lista estilo individual ── */}
-        {pageItems.length === 0 && (
-          <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"32px", textAlign:"center", color:C.td, fontSize:13, marginBottom:12 }}>
-            {items.length===0 ? "Adicione CPFs usando o botão ➕ CPFs" : "Nenhum resultado para os filtros aplicados."}
+        {/* Tabela */}
+        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead>
+                <tr style={{ background:C.deep }}>
+                  {["#","Nome","CPF","Status","Saldo FGTS","Melhor Oferta","Tabela","Anos","Data simulação","Ação"].map(h=>(
+                    <th key={h} style={{ color:C.tm, fontWeight:700, padding:"9px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}`, whiteSpace:"nowrap", fontSize:10.5 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageItems.map((it,idx)=>{
+                  const ri = items.findIndex(x=>x.id===it.id);
+                  const isSim = it.status==="simulando";
+                  const stCol = STATUS_COL[it.status]||"#94A3B8";
+                  const stBg  = STATUS_BG[it.status]||"#1a1a2e";
+                  const isDetalhado = detalheItem?.id === it.id;
+                  return (
+                    <tr key={it.id}
+                      onClick={()=>setDetalheItem(isDetalhado?null:it)}
+                      style={{ background:isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", opacity:isSim?0.85:1, transition:"background 0.1s" }}
+                      onMouseEnter={e=>!isDetalhado&&(e.currentTarget.style.background=`${C.acc}08`)}
+                      onMouseLeave={e=>e.currentTarget.style.background=isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep}>
+                      <td style={{ color:C.td, padding:"8px 10px", fontSize:11 }}>{page*PAGE_SIZE+idx+1}</td>
+                      <td style={{ color:C.tp, fontWeight:600, padding:"8px 10px", maxWidth:110, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.nome}</td>
+                      <td style={{ color:C.tm, padding:"8px 10px", fontFamily:"monospace", fontSize:11 }}>{it.cpf||"—"}</td>
+                      <td style={{ padding:"8px 10px" }}>
+                        <span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600, whiteSpace:"nowrap" }}>
+                          {STATUS_LABEL[it.status]||it.status}
+                        </span>
+                        {it.erro && <div style={{ color:"#F87171", fontSize:9.5, marginTop:2, maxWidth:120 }} title={it.erro}>{it.erro.slice(0,30)}</div>}
+                      </td>
+                      <td style={{ padding:"8px 10px", textAlign:"center" }}>
+                        {it.saldo!=null && it.saldo>0
+                          ? <span style={{ color:C.atxt, fontWeight:700, fontSize:12 }}>{fmtBRL(it.saldo)}</span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                      <td style={{ padding:"8px 10px", textAlign:"center" }}>
+                        {it.margem!=null && it.margem>0
+                          ? <span style={{ color:"#34D399", fontWeight:700, fontSize:12 }}>{fmtBRL(it.margem)}</span>
+                          : <span style={{ color:C.td }}>—</span>}
+                      </td>
+                      <td style={{ color:C.td, padding:"8px 10px", fontSize:11, textTransform:"capitalize" }}>{it.sim?.melhor?.label||"—"}</td>
+                      <td style={{ color:C.tm, padding:"8px 10px", fontSize:11 }}>{it.sim?.anos||"—"}</td>
+                      <td style={{ color:C.td, padding:"8px 10px", fontSize:10.5 }}>{it.ts||"—"}</td>
+                      <td style={{ padding:"8px 10px" }} onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>{ const n=[...items]; const novo={...n[ri],status:"simulando"}; n[ri]=novo; setItems([...n]); simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); }); }}
+                          disabled={running||isSim}
+                          style={{ background:"transparent", border:`1px solid ${C.b2}`, borderRadius:7, color:C.tm, cursor:"pointer", fontSize:11, padding:"3px 9px" }}>
+                          {isSim ? "⏳" : it.status==="ok"?"🔄":"▶"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {pageItems.length===0 && (
+                  <tr><td colSpan={10} style={{ color:C.td, textAlign:"center", padding:"32px", fontSize:13 }}>
+                    {items.length===0 ? "Adicione CPFs usando o botão ➕ CPFs" : "Nenhum resultado para os filtros aplicados."}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
-        {pageItems.map((it, idx)=>{
-          const ri = items.findIndex(x=>x.id===it.id);
-          const isSim = it.status==="simulando";
-          const stCol = STATUS_COL[it.status]||"#94A3B8";
-          const stBg  = STATUS_BG[it.status]||"#1a1a2e";
-          const sims  = (it.sim?.allSims||[]).filter(t=>t.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0));
-          const bestFeeId = it.sim?.melhor?.feeId;
-          const anoSel = loteAnosSel[it.id]||null;
-          return (
-            <div key={it.id} style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:16, marginBottom:10, overflow:"hidden" }}>
-              {/* Cabeçalho da linha */}
-              <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 16px", borderBottom: sims.length>0?`1px solid ${C.b1}`:"none", flexWrap:"wrap" }}>
-                <span style={{ color:C.td, fontSize:11, minWidth:22, textAlign:"center" }}>{page*PAGE_SIZE+idx+1}</span>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ color:C.tp, fontWeight:700, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.nome}</div>
-                  <div style={{ color:C.tm, fontSize:11, fontFamily:"monospace" }}>{it.cpf||"—"} {it.ts && <span style={{color:C.td}}>· {it.ts}</span>}</div>
-                </div>
-                {/* Status badge */}
-                <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
-                  <span style={{ background:stBg, color:stCol, fontSize:10.5, padding:"3px 10px", borderRadius:20, fontWeight:700, whiteSpace:"nowrap" }}>
-                    {STATUS_LABEL[it.status]||it.status}
-                  </span>
-                  {it.saldo>0 && <span style={{ color:C.atxt, fontSize:11, fontWeight:600 }}>Saldo: {fmtBRL(it.saldo)}</span>}
-                  {it.erro && <span style={{ color:"#F87171", fontSize:10, maxWidth:160, textAlign:"right" }} title={it.erro}>{it.erro.slice(0,40)}</span>}
-                </div>
-                {/* Botões de ação */}
-                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                  {/* Seletor de anos */}
-                  {(it.status==="ok"||it.balance||isSim) && (
-                    <div style={{ display:"flex", gap:3 }}>
-                      {[1,2,3,4,5].map(a=>{
-                        const sel = anoSel===a;
-                        return (
-                          <button key={a} onClick={()=>{
-                            setLoteAnosSel(p=>({...p,[it.id]:sel?null:a}));
-                            if (!sel) {
-                              const novo={...it,_anosForcar:a,status:"simulando"};
-                              const lista=[...items]; lista[ri]=novo; setItems([...lista]);
-                              simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); });
-                            }
-                          }}
-                          style={{ background:sel?`${C.acc}33`:"rgba(255,255,255,0.06)", color:sel?C.atxt:C.ts, border:`1px solid ${sel?C.acc+"77":C.b2}`, borderRadius:7, padding:"3px 7px", fontSize:11, fontWeight:sel?700:500, cursor:"pointer", transition:"all 0.15s" }}>
-                            {a}a
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {/* Re-simular */}
-                  <button onClick={()=>{ const n=[...items]; const novo={...n[ri],status:"simulando"}; n[ri]=novo; setItems([...n]); simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); }); }}
-                    disabled={running||isSim}
-                    title="Re-simular" style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${C.b2}`, borderRadius:8, color:isSim?C.atxt:C.tm, cursor:running||isSim?"not-allowed":"pointer", fontSize:13, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    {isSim ? <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> : "▶"}
-                  </button>
-                </div>
-              </div>
 
-              {/* Cards de simulação — igual ao individual */}
-              {isSim && (
-                <div style={{ padding:"16px 16px", color:C.td, fontSize:12, textAlign:"center" }}>⏳ Simulando{anoSel?` (${anoSel} ano${anoSel>1?"s":""})`:""}, aguarde...</div>
-              )}
-              {!isSim && sims.length > 0 && (
-                <div style={{ padding:"14px 16px", display:"flex", gap:10, flexWrap:"wrap" }}>
-                  {sims.map((t,si)=>{
-                    const vlr = parseFloat(t.sim?.availableBalance||t.sim?.availableAmount||0);
-                    const anos = calcAnos(t.sim);
-                    const isBest = bestFeeId===t.feeId;
-                    return (
-                      <div key={si} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:5 }}>
-                        <div
-                          style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.10)", border:`2px solid ${isBest?"rgba(52,211,153,0.5)":"rgba(79,142,247,0.3)"}`, borderRadius:14, padding:"14px 14px", width:140, cursor:"pointer", transition:"all 0.15s", position:"relative", textAlign:"center" }}
-                          onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}
-                          onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}
-                          onClick={()=>{ const d={tabela:{label:t.label,sim:t.sim,feeId:t.feeId},balance:{...it.balance,id:it.sim.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it}; openDigModal(d); setLoteDigModal(d); }}>
-                          {isBest && (
-                            <div style={{ position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 8px", borderRadius:99, whiteSpace:"nowrap" }}>🏆 MELHOR</div>
-                          )}
-                          <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.92)", fontWeight:900, fontSize:20, lineHeight:1, marginTop:isBest?6:0 }}>{fmtBRL(vlr)}</div>
-                          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:4 }}>Valor via PIX</div>
-                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:10.5, marginTop:5, fontWeight:700 }}>{anos}</div>
-                          <div style={{ marginTop:10, background:"rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 0", fontSize:11, fontWeight:800, color:"#fff" }}>📝 DIGITAR</div>
-                        </div>
-                        <div style={{ color:"rgba(255,255,255,0.55)", fontSize:11, fontWeight:600, textTransform:"capitalize" }}>{t.label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          {/* Paginação */}
+          {totalPages>1 && (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderTop:`1px solid ${C.b1}`, background:C.deep }}>
+              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
+                style={{ background:page>0?C.abg:C.deep, color:page>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page>0?"pointer":"not-allowed" }}>
+                ← Anteriores 50
+              </button>
+              <span style={{ color:C.tm, fontSize:12 }}>{page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} de {filtered.length}</span>
+              <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1}
+                style={{ background:page<totalPages-1?C.abg:C.deep, color:page<totalPages-1?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page<totalPages-1?"pointer":"not-allowed" }}>
+                Próximos 50 →
+              </button>
             </div>
-          );
-        })}
-
-        {/* Paginação */}
-        {totalPages>1 && (
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", background:C.card, border:`1px solid ${C.b1}`, borderRadius:12, marginBottom:12 }}>
-            <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
-              style={{ background:page>0?C.abg:C.deep, color:page>0?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page>0?"pointer":"not-allowed" }}>
-              ← Anteriores 50
-            </button>
-            <span style={{ color:C.tm, fontSize:12 }}>{page*PAGE_SIZE+1}–{Math.min((page+1)*PAGE_SIZE,filtered.length)} de {filtered.length}</span>
-            <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1}
-              style={{ background:page<totalPages-1?C.abg:C.deep, color:page<totalPages-1?C.atxt:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, cursor:page<totalPages-1?"pointer":"not-allowed" }}>
-              Próximos 50 →
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Log */}
         {logs.length>0 && (
@@ -13854,6 +13819,30 @@ function V8DigitalTab({ currentUser, contacts }) {
                 <div style={{ color:"rgba(255,255,255,0.55)", fontSize:13, fontWeight:500 }}>
                   {(cardSim.it.cpf||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")} · {cardSim.it.nome||"Cliente"}
                 </div>
+              </div>
+              {/* Seletor de anos */}
+              <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:16 }}>
+                {[1,2,3,4,5].map(a=>{
+                  const anoAtual = loteAnosSel[cardSim.it.id]||null;
+                  const sel = anoAtual===a;
+                  return (
+                    <button key={a}
+                      onClick={()=>{
+                        setLoteAnosSel(p=>({...p,[cardSim.it.id]:sel?null:a}));
+                        if (!sel) {
+                          const ri=items.findIndex(x=>x.id===cardSim.it.id);
+                          if(ri<0) return;
+                          const novo={...items[ri],_anosForcar:a,status:"simulando"};
+                          const lista=[...items]; lista[ri]=novo; setItems([...lista]);
+                          setCardSim(null);
+                          simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); });
+                        }
+                      }}
+                      style={{ background:sel?"rgba(59,110,245,0.35)":"rgba(255,255,255,0.08)", color:sel?"#93C5FD":"rgba(255,255,255,0.7)", border:`1px solid ${sel?"rgba(59,110,245,0.7)":"rgba(255,255,255,0.15)"}`, borderRadius:10, padding:"6px 14px", fontSize:13, fontWeight:sel?800:500, cursor:"pointer", transition:"all 0.15s", letterSpacing:"0.2px" }}>
+                      {a}a
+                    </button>
+                  );
+                })}
               </div>
               <div style={{ textAlign:"center", marginBottom:24, padding:"20px 0", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
                 <div style={{ color:cardSim.s.label===cardSim.it.sim?.melhor?.label?"#34D399":"#fff", fontSize:48, fontWeight:900, lineHeight:1, letterSpacing:"-2px" }}>{fmtBRL(cardSim.s.sim?.availableBalance||0)}</div>
