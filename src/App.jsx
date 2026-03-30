@@ -13977,7 +13977,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 )}
               </tbody>
             </table>
-          </div>
+          </div></div>
 
           {/* Paginação */}
           {totalPages>1 && (
@@ -15137,7 +15137,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const novoTermo={
         id, nome:dados.nome, cpf:cpfFmt,
         status:"WAITING_CONSENT", availableMarginValue:null,
-        link, criadoEm:new Date().toLocaleString("pt-BR"),
+        link, criadoEm:new Date().toLocaleString("pt-BR"), createdAt:new Date().toISOString(),
         dataNasc:dados.dataNasc, genero:dados.genero||"male",
         email:dados.email, telefone:dados.telefone,
         _autoGerado:true,
@@ -15186,7 +15186,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         status: "WAITING_CONSENT",
         availableMarginValue: null,
         link: res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${res.id}`,
-        criadoEm: new Date().toLocaleString("pt-BR"),
+        criadoEm: new Date().toLocaleString("pt-BR"), createdAt: new Date().toISOString(),
         dataNasc: termoForm.dataNasc,
         genero: termoForm.genero,
         email: termoForm.email,
@@ -15825,8 +15825,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   );
                 })}
               </div>
-              <style>{`.clt-termos-scroll::-webkit-scrollbar{width:8px}.clt-termos-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,0.03);border-radius:4px}.clt-termos-scroll::-webkit-scrollbar-thumb{background:rgba(79,142,247,0.45);border-radius:4px}.clt-termos-scroll::-webkit-scrollbar-thumb:hover{background:rgba(79,142,247,0.75)}`}</style>
-              <div className="clt-termos-scroll" style={{...S.card,maxHeight:520,overflowY:"scroll",scrollbarWidth:"thin",scrollbarColor:"rgba(79,142,247,0.4) transparent"}}>
+              <style>{`.clt-termos-scroll::-webkit-scrollbar{width:8px!important;display:block!important}.clt-termos-scroll::-webkit-scrollbar-track{background:#0d1629;border-radius:4px}.clt-termos-scroll::-webkit-scrollbar-thumb{background:#3B6EF5;border-radius:4px;min-height:40px}.clt-termos-scroll::-webkit-scrollbar-thumb:hover{background:#60A5FA}`}</style>
+              <div style={{...S.card,overflow:"hidden",padding:0}}>
+                <div className="clt-termos-scroll" style={{maxHeight:520,overflowY:"auto",width:"100%",scrollbarWidth:"thin",scrollbarColor:"#3B6EF5 #0d1629"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
@@ -15889,16 +15890,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                           {/* Data */}
                           <td style={{padding:"8px 10px",color:C.td,fontSize:10,whiteSpace:"nowrap"}}>
                             {(()=>{
-                              const raw = t.createdAt||t.created_at||t.criadoEm||t.updatedAt||t.updated_at||t.timestamp||t.date||"";
-                              if(!raw) return "—";
-                              // ISO string (from API)
-                              if(/\d{4}-\d{2}-\d{2}/.test(raw)) {
+                              // Try every possible date field the API might return
+                              const raw = t.createdAt||t.created_at||t.criadoEm||t.updatedAt||t.updated_at||t.timestamp||t.date||t.consultedAt||t.consulted_at||t.requestedAt||"";
+                              if(!raw) return <span title={JSON.stringify(Object.keys(t))}>—</span>;
+                              if(/\d{4}-\d{2}-\d{2}/.test(String(raw))) {
                                 try {
                                   const d = new Date(raw);
-                                  if(!isNaN(d)) return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
+                                  if(!isNaN(d)) return d.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
                                 } catch {}
                               }
-                              // Já está em pt-BR (criadoEm local) — retorna diretamente
                               return String(raw).slice(0,14);
                             })()}
                           </td>
@@ -15985,7 +15985,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </div></div>
               {/* Paginação */}
               {(termosPages&&(termosPages.hasNext||termosPages.hasPrev)) && (
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
