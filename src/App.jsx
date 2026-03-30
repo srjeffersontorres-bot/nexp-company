@@ -13127,7 +13127,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                           <div key={i}
                             onClick={()=>{
                               if(!s.ok)return;
-                              const d={tabela:{label:s.label,sim:s.sim,feeId:(fees||[]).find(f=>(f.simulation_fees?.label||"").toLowerCase()===s.label?.toLowerCase())?.simulation_fees?.id_simulation_fees||""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
+                              const d={tabela:{label:s.label,sim:s.sim,feeId:s.feeId||""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
                               openDigModal(d); setIndDigModal(d); setSimModal(null);
                             }}
                             style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
@@ -14488,7 +14488,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <div key={i}
                           onClick={()=>{
                             if(!s.ok)return;
-                            const d={tabela:{label:s.label,sim:s.sim,feeId:(fees||[]).find(f=>(f.simulation_fees?.label||"").toLowerCase()===s.label?.toLowerCase())?.simulation_fees?.id_simulation_fees||""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
+                            const d={tabela:{label:s.label,sim:s.sim,feeId:s.feeId||""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
                             openDigModal(d); setIndDigModal(d); setAcompSimModal(null);
                           }}
                           style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
