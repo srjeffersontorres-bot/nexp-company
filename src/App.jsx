@@ -13805,197 +13805,6 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         </div>
 
-        {/* Painel de detalhe ao clicar na linha */}
-        {detalheItem && (
-          <div style={{ background:"linear-gradient(135deg,#0f1f3d,#162a50)", border:"1px solid rgba(79,142,247,0.3)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <div>
-                <div style={{ color:"#fff", fontSize:13.5, fontWeight:700 }}>🔍 Detalhe — {detalheItem.cpf}</div>
-                <div style={{ color:"rgba(255,255,255,0.45)", fontSize:11, marginTop:2 }}>
-                  {detalheItem.ts||""} · {(detalheItem.balance?.provider||loteProvider)?.toUpperCase()}
-                </div>
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                <button
-                  onClick={async ()=>{
-                    const ri=items.findIndex(x=>x.id===detalheItem.id);
-                    if(ri<0) return;
-                    const updated=await simularUm({...items[ri],status:"pendente"});
-                    setItems(p=>{const n=[...p];n[ri]=updated; saveState(n,progress,false); return n;});
-                    setDetalheItem(updated);
-                  }}
-                  style={{ background:"rgba(79,142,247,0.2)", border:"1px solid rgba(79,142,247,0.35)", color:"#fff", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontSize:12 }}>
-                  🔄 Re-simular
-                </button>
-                <button onClick={()=>setDetalheItem(null)} style={{ background:"rgba(255,255,255,0.1)", border:"none", color:"#fff", borderRadius:7, padding:"5px 12px", cursor:"pointer", fontSize:12 }}>✕</button>
-              </div>
-            </div>
-
-            {/* Info resumida */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:8, marginBottom:18 }}>
-              {[
-                ["CPF", detalheItem.cpf],
-                ["Saldo FGTS", fmtBRL(detalheItem.saldo||0)],
-                ["Melhor Oferta", fmtBRL(detalheItem.margem||0)],
-                ["Tabela", detalheItem.sim?.melhor?.label||"—"],
-                ["Anos", detalheItem.sim?.anos||"—"],
-                ["Status", detalheItem.status],
-              ].map(([l,v])=>(
-                <div key={l} style={{ background:"rgba(255,255,255,0.07)", borderRadius:9, padding:"8px 12px" }}>
-                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{l}</div>
-                  <div style={{ color:"#fff", fontWeight:600, fontSize:13, marginTop:2 }}>{v}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Seletor de anos — re-simula com período escolhido */}
-            {detalheItem.balance && (
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-                <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginRight:4 }}>Simular por período:</span>
-                {[1,2,3,4,5].map(a=>{
-                  const sel = loteAnosSel[detalheItem.id]===a;
-                  return (
-                    <button key={a}
-                      onClick={()=>{
-                        setLoteAnosSel(p=>({...p,[detalheItem.id]:sel?null:a}));
-                        const ri=items.findIndex(x=>x.id===detalheItem.id);
-                        if(ri<0) return;
-                        const novo={...items[ri],_anosForcar:sel?null:a,status:"simulando"};
-                        const lista=[...items]; lista[ri]=novo; setItems([...lista]);
-                        simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
-                      }}
-                      style={{ background:sel?"rgba(59,110,245,0.3)":"rgba(255,255,255,0.07)", color:sel?"#93C5FD":"rgba(255,255,255,0.7)", border:`1px solid ${sel?"rgba(59,110,245,0.6)":"rgba(255,255,255,0.12)"}`, borderRadius:9, padding:"5px 14px", fontSize:12, fontWeight:sel?700:400, cursor:"pointer", transition:"all 0.15s" }}>
-                      {a}a
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Todas as tabelas simuladas — clicáveis para digitar */}
-            {(detalheItem.sim?.allSims||[]).length > 0 ? (
-              <div>
-                <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:12 }}>
-                  📊 {detalheItem.sim.allSims.length} tabelas simuladas — clique no balão para digitar
-                </div>
-                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                  {[...detalheItem.sim.allSims]
-                    .sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0))
-                    .map((s,i)=>{
-                      const isBest = s.label === detalheItem.sim?.melhor?.label;
-                      const vlr    = parseFloat(s.sim?.availableBalance||0);
-                      const emissao= parseFloat(s.sim?.emissionAmount||0);
-                      const anos   = calcAnos(s.sim);
-                      return (
-                        <div key={i}
-                          onClick={()=>{ if(!s.ok) return; setCardSim({s, it:detalheItem}); }}
-                          style={{
-                            background: isBest?"rgba(52,211,153,0.15)":s.ok?"rgba(79,142,247,0.1)":"rgba(239,68,68,0.08)",
-                            border:`2px solid ${isBest?"rgba(52,211,153,0.5)":s.ok?"rgba(79,142,247,0.3)":"rgba(239,68,68,0.2)"}`,
-                            borderRadius:14, padding:"14px 18px", minWidth:150,
-                            cursor:s.ok?"pointer":"default",
-                            transition:"all 0.15s",
-                            position:"relative",
-                          }}
-                          onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}}
-                          onMouseLeave={e=>{ e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"; }}>
-                          {isBest && (
-                            <div style={{ position:"absolute", top:-11, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 10px", borderRadius:99, whiteSpace:"nowrap", boxShadow:"0 2px 8px rgba(52,211,153,0.4)" }}>
-                              🏆 MELHOR OFERTA
-                            </div>
-                          )}
-                          <div style={{ color:"rgba(255,255,255,0.65)", fontSize:11.5, textTransform:"capitalize", marginBottom:6, marginTop:isBest?6:0, fontWeight:600 }}>
-                            {s.label}
-                          </div>
-                          {s.ok ? (
-                            <>
-                              <div style={{ color:isBest?"#34D399":"#fff", fontWeight:900, fontSize:20, lineHeight:1, letterSpacing:"-0.5px" }}>{fmtBRL(vlr)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10.5, marginTop:3 }}>Valor liberado via PIX</div>
-                              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:6, padding:"2px 8px", display:"inline-block", fontSize:10, color:"rgba(255,255,255,0.5)", marginTop:4 }}>emissão {fmtBRL(emissao)}</div>
-                              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10, marginTop:3 }}>{anos}</div>
-                              <div style={{ marginTop:10, background:"rgba(255,255,255,0.15)", borderRadius:8, padding:"5px 0", textAlign:"center", fontSize:11, fontWeight:800, color:"#fff", letterSpacing:"0.5px" }}>
-                                📝 DIGITAR
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ color:"#F87171", fontSize:11, marginTop:4 }}>✘ {(s.err||"Erro").slice(0,35)}</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            ) : (
-              <div style={{ textAlign:"center", padding:"16px 0" }}>
-                {(()=>{
-                  // Auto-trigger simulation se tem saldo mas sem tabelas
-                  const ri = items.findIndex(x=>x.id===detalheItem.id);
-                  if (ri>=0 && detalheItem.status==="ok" && detalheItem.balance && !running) {
-                    setTimeout(()=>{
-                      const novo={...items[ri],status:"simulando"};
-                      const lista=[...items]; lista[ri]=novo; setItems([...lista]);
-                      simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
-                    },100);
-                    return <div style={{color:C.atxt,fontSize:13}}>⏳ Carregando simulações...</div>;
-                  }
-                  return (
-                    <button
-                      onClick={()=>{
-                        if(ri<0) return;
-                        const novo={...items[ri],status:"simulando"};
-                        const lista=[...items]; lista[ri]=novo; setItems([...lista]);
-                        simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
-                      }}
-                      style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 24px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                      🔄 Simular este CPF
-                    </button>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Erro */}
-            {detalheItem.erro && (
-              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"10px 14px", marginTop:12 }}>
-                <div style={{ color:"#F87171", fontWeight:600 }}>{detalheItem.erro}</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Barra de pesquisa + apagar cache */}
-        <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
-          <input value={loteSearch}
-            onBlur={e=>{ setLoteSearch(e.target.value); setPage(0); }}
-            onKeyDown={e=>{ if(e.key==="Enter"){ setLoteSearch(e.target.value); setPage(0); } }}
-            placeholder="🔍 Pesquisar CPF ou nome..."
-            style={{ ...S.input, flex:1, minWidth:200, fontSize:12.5, padding:"7px 12px" }}/>
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            <input id="lote_cache_cpf" placeholder="CPF para apagar cache"
-              style={{ ...S.input, width:160, fontSize:12, padding:"6px 10px" }}
-              onKeyDown={async e=>{
-                if(e.key==="Enter"){
-                  const cpfv = padCPF(e.target.value);
-                  try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE"); } catch {}
-                  setItems(p=>p.map(x=>(x.cpfRaw===cpfv||x.cpf===fmtCPF(cpfv))?{...x,status:"pendente",saldo:null,margem:null,sim:null,erro:null}:x));
-                  e.target.value="";
-                }
-              }}/>
-            <button
-              onClick={async ()=>{
-                const inp = document.getElementById("lote_cache_cpf");
-                if(!inp?.value.trim()) return;
-                const cpfv = padCPF(inp.value);
-                try { await apiFetch(`/fgts/balance/cache/${cpfv}`,"DELETE"); } catch {}
-                setItems(p=>p.map(x=>(x.cpfRaw===cpfv||x.cpf===fmtCPF(cpfv))?{...x,status:"pendente",saldo:null,margem:null,sim:null,erro:null}:x));
-                inp.value="";
-              }}
-              style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 12px", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>
-              🗑 Apagar cache
-            </button>
-          </div>
-        </div>
-
         {/* Tabela */}
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, overflow:"hidden", marginBottom:12 }}>
           <div style={{ overflowX:"auto" }}>
@@ -14014,10 +13823,13 @@ function V8DigitalTab({ currentUser, contacts }) {
                   const stCol = STATUS_COL[it.status]||"#94A3B8";
                   const stBg  = STATUS_BG[it.status]||"#1a1a2e";
                   const isDetalhado = detalheItem?.id === it.id;
+                  const sims = (it.sim?.allSims||[]).filter(s=>s.ok).sort((a,b)=>(b.sim?.availableBalance||0)-(a.sim?.availableBalance||0));
+                  const bestFeeId = it.sim?.melhor?.feeId;
                   return (
-                    <tr key={it.id}
+                    <React.Fragment key={it.id}>
+                    <tr
                       onClick={()=>setDetalheItem(isDetalhado?null:it)}
-                      style={{ background:isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", opacity:isSim?0.85:1, transition:"background 0.1s" }}
+                      style={{ background:isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep, borderBottom:isDetalhado?"none":`1px solid ${C.b1}`, cursor:"pointer", opacity:isSim?0.85:1, transition:"background 0.1s" }}
                       onMouseEnter={e=>!isDetalhado&&(e.currentTarget.style.background=`${C.acc}08`)}
                       onMouseLeave={e=>e.currentTarget.style.background=isDetalhado?`${C.acc}15`:idx%2===0?C.card:C.deep}>
                       <td style={{ color:C.td, padding:"8px 10px", fontSize:11 }}>{page*PAGE_SIZE+idx+1}</td>
@@ -14050,6 +13862,83 @@ function V8DigitalTab({ currentUser, contacts }) {
                         </button>
                       </td>
                     </tr>
+                    {/* ── Expanded row with simulation cards ── */}
+                    {isDetalhado && (
+                      <tr>
+                        <td colSpan={10} style={{ padding:0, background:"linear-gradient(135deg,#0a1628,#0f1e40)", borderBottom:`1px solid ${C.atxt}33` }}>
+                          <div style={{ padding:"16px 20px" }}>
+                            {/* Info + botões de ano */}
+                            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14, flexWrap:"wrap" }}>
+                              <div>
+                                <span style={{ color:"#fff", fontSize:12, fontWeight:700 }}>{it.cpf}</span>
+                                <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginLeft:8 }}>{it.ts||""} · {(it.balance?.provider||loteProvider)?.toUpperCase()}</span>
+                              </div>
+                              {/* Botões 1a-5a */}
+                              {it.balance && (
+                                <div style={{ display:"flex", gap:4, marginLeft:"auto" }}>
+                                  {[1,2,3,4,5].map(a=>{
+                                    const sel = loteAnosSel[it.id]===a;
+                                    return (
+                                      <button key={a}
+                                        onClick={e=>{
+                                          e.stopPropagation();
+                                          setLoteAnosSel(p=>({...p,[it.id]:sel?null:a}));
+                                          const novo={...it,_anosForcar:sel?null:a,status:"simulando"};
+                                          const lista=[...items]; lista[ri]=novo; setItems([...lista]);
+                                          simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });
+                                        }}
+                                        style={{ background:sel?`${C.acc}33`:"rgba(255,255,255,0.07)", color:sel?C.atxt:"rgba(255,255,255,0.6)", border:`1px solid ${sel?C.acc+"66":"rgba(255,255,255,0.12)"}`, borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:sel?700:400, cursor:"pointer" }}>
+                                        {a}a
+                                      </button>
+                                    );
+                                  })}
+                                  <button onClick={e=>{e.stopPropagation(); const novo={...it,status:"simulando"}; const lista=[...items]; lista[ri]=novo; setItems([...lista]); simularUm(novo).then(u=>{ const l=[...items]; l[ri]=u; setItems([...l]); setDetalheItem(u); saveState(l,progress,false); });}}
+                                    style={{ background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.6)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                                    🔄
+                                  </button>
+                                </div>
+                              )}
+                              <button onClick={e=>{e.stopPropagation();setDetalheItem(null);}} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.4)", borderRadius:6, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>✕</button>
+                            </div>
+                            {/* Simulation cards */}
+                            {isSim ? (
+                              <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, textAlign:"center", padding:"16px 0" }}>⏳ Simulando...</div>
+                            ) : sims.length > 0 ? (
+                              <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                                {sims.map((s,si)=>{
+                                  const isBest = s.feeId===bestFeeId;
+                                  const vlr = parseFloat(s.sim?.availableBalance||s.sim?.availableAmount||0);
+                                  const anos = calcAnos(s.sim);
+                                  return (
+                                    <div key={si}
+                                      onClick={e=>{ e.stopPropagation(); const d={tabela:{label:s.label,sim:s.sim,feeId:s.feeId},balance:{...it.balance,id:it.sim.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it}; openDigModal(d); setLoteDigModal(d); }}
+                                      style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.10)", border:`2px solid ${isBest?"rgba(52,211,153,0.5)":"rgba(79,142,247,0.3)"}`, borderRadius:14, padding:"14px 16px", minWidth:150, cursor:"pointer", transition:"all 0.15s", position:"relative", textAlign:"center" }}
+                                      onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}
+                                      onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                                      {isBest && <div style={{ position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(90deg,#34D399,#059669)", color:"#000", fontSize:9, fontWeight:800, padding:"2px 8px", borderRadius:99, whiteSpace:"nowrap" }}>🏆 MELHOR OFERTA</div>}
+                                      <div style={{ color:isBest?"#34D399":"rgba(255,255,255,0.9)", fontWeight:900, fontSize:20, lineHeight:1, marginTop:isBest?6:0 }}>{fmtBRL(vlr)}</div>
+                                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginTop:4 }}>Valor via PIX</div>
+                                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:10.5, marginTop:5, fontWeight:700 }}>{anos}</div>
+                                      <div style={{ color:"rgba(255,255,255,0.5)", fontSize:10.5, textTransform:"capitalize", marginTop:4 }}>{s.label}</div>
+                                      <div style={{ marginTop:10, background:"rgba(255,255,255,0.12)", borderRadius:7, padding:"5px 0", fontSize:10, fontWeight:800, color:"#fff" }}>📝 DIGITAR</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : it.status==="ok" ? (
+                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, textAlign:"center", padding:"16px 0" }}>
+                                Sem simulações. Clique em 🔄 para simular.
+                              </div>
+                            ) : (
+                              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, textAlign:"center", padding:"16px 0" }}>
+                                Clique em ▶ para iniciar a simulação.
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
                 {pageItems.length===0 && (
