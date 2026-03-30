@@ -11202,7 +11202,14 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
           dueDate: p.dueDate||p.date,
         })),
       };
-      console.log("[FGTS Proposal] body:", JSON.stringify({ fgtsSimulationId:body.fgtsSimulationId, simulationFeesId:body.simulationFeesId, balanceId:body.balanceId, provider:body.provider }));
+      // Validate required IDs before sending
+      const missingFields = [];
+      if (!body.fgtsSimulationId)  missingFields.push(`fgtsSimulationId (sim.id=${tabela?.sim?.id||"?"}, sim.id_simulation=${tabela?.sim?.id_simulation||"?"})`);
+      if (!body.simulationFeesId)  missingFields.push(`simulationFeesId (tabela.feeId=${tabela?.feeId||"?"})`);
+      if (!body.balanceId)         missingFields.push(`balanceId (balance.id=${balance?.id||"?"})`);
+      if (missingFields.length) {
+        throw new Error(`Campos obrigatórios ausentes: ${missingFields.join(" | ")}`);
+      }
       const res = await apiFetch("/fgts/proposal","POST",body);
       setResult(res);
 
