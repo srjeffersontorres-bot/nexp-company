@@ -16049,7 +16049,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             {ops.map(op=>{
               const st=op.status||"";
               const col=STATUS_OP_COLOR[st]||C.td;
-              const isSel=opsDetalhe?.operationId===op.operationId;
               return (
                 <div key={op.operationId||op.id} style={{...S.card,overflow:"hidden",border:`1px solid ${C.b1}`,transition:"all 0.15s"}}
                   onMouseEnter={e=>e.currentTarget.style.borderColor=C.atxt+"44"}
