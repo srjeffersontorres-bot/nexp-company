@@ -15892,7 +15892,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                             {(()=>{
                               // Try every possible date field the API might return
                               const raw = t.createdAt||t.created_at||t.criadoEm||t.updatedAt||t.updated_at||t.timestamp||t.date||t.consultedAt||t.consulted_at||t.requestedAt||"";
-                              if(!raw) return <span title={JSON.stringify(Object.keys(t))}>—</span>;
+                              if(!raw) return "—";
                               if(/\d{4}-\d{2}-\d{2}/.test(String(raw))) {
                                 try {
                                   const d = new Date(raw);
