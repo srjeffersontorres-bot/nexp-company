@@ -11096,8 +11096,8 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
     });
   }, [initialForm]); // eslint-disable-line
   const vlr   = parseFloat(tabela?.sim?.availableBalance || 0);
-  const simId = tabela?.sim?.id || "";
-  const balId = balance?.id || "";
+  const simId = tabela?.sim?.id_simulation || tabela?.sim?.id || tabela?.sim?.simulationId || "";
+  const balId = balance?.id || balance?.balanceId || "";
   const cpfClean = (cpf||"").replace(/\D/g,"");
 
   // v8c for payment suggestions display
@@ -11172,7 +11172,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
 
       const body = {
         fgtsSimulationId:             simId,
-        simulationFeesId:             tabela?.feeId || "",
+        simulationFeesId:             tabela?.feeId || tabela?.sim?.simulationFeesId || tabela?.sim?.id_simulation_fees || "",
         balanceId:                    balId,
         name:                         form.name,
         individualDocumentNumber:     cpfClean,
@@ -11202,6 +11202,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
           dueDate: p.dueDate||p.date,
         })),
       };
+      console.log("[FGTS Proposal] body:", JSON.stringify({ fgtsSimulationId:body.fgtsSimulationId, simulationFeesId:body.simulationFeesId, balanceId:body.balanceId, provider:body.provider }));
       const res = await apiFetch("/fgts/proposal","POST",body);
       setResult(res);
 
