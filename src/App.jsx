@@ -15829,7 +15829,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
-                      {["Cliente","CPF","Parceiro","Status","Margem Disp.","Link","Probabilidade","Ação"].map(h=>(
+                      {["","Cliente","CPF","Parceiro","Status","Margem Disp.","Link","Data","Probabilidade","Ação"].map(h=>(
                         <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
                       ))}
                     </tr>
@@ -15855,6 +15855,19 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                           style={{borderBottom:inlineSimId===t.id?`1px solid ${C.atxt}33`:`1px solid ${C.b1}`,cursor:(t.status==="SUCCESS"||t.availableMarginValue||["FAILED","REJECTED"].includes(t.status))?"pointer":"default",transition:"background 0.1s"}}
                           onMouseEnter={e=>e.currentTarget.style.background=C.deep}
                           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          {/* Thumb */}
+                          <td style={{padding:"6px 8px",width:36}}>
+                            {t.link ? (
+                              <a href={t.link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,background:"rgba(52,211,153,0.12)",borderRadius:8,border:"1px solid rgba(52,211,153,0.3)",textDecoration:"none",fontSize:14}}>
+                                🔗
+                              </a>
+                            ) : (
+                              <div style={{width:30,height:30,background:C.deep,borderRadius:8,border:`1px solid ${C.b2}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:C.td}}>
+                                {t.status==="WAITING_CONSENT"?"⏳":t.status==="SUCCESS"?"✅":t.status==="FAILED"?"❌":"○"}
+                              </div>
+                            )}
+                          </td>
                           <td style={{padding:"8px 10px",color:C.tp,fontWeight:600,fontSize:12}}>{t.name||t.nome||"—"}</td>
                           <td style={{padding:"8px 10px",color:C.tm,fontFamily:"monospace",fontSize:11}}>{fmtCPF(t.documentNumber||t.cpf||"")}</td>
                           <td style={{padding:"8px 10px",color:C.td,fontSize:10}}>{t.partnerId||t.partner_id||"—"}</td>
@@ -15871,6 +15884,17 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                 {copied===t.id?"✅ Copiado":"🔗 LINK"}
                               </button>
                             ):<span style={{color:C.td,fontSize:10}}>—</span>}
+                          </td>
+                          {/* Data */}
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:10,whiteSpace:"nowrap"}}>
+                            {(t.createdAt||t.created_at||t.criadoEm) ? (()=>{
+                              const raw = t.createdAt||t.created_at||t.criadoEm;
+                              try {
+                                const d = new Date(raw);
+                                if(!isNaN(d)) return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
+                              } catch {}
+                              return raw;
+                            })() : "—"}
                           </td>
                           <td style={{padding:"8px 10px"}}>
                             {t.status==="SUCCESS"&&t.availableMarginValue ? (
@@ -15899,7 +15923,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         </tr>
                         {/* Inline simulação */}
                         {inlineSimId===t.id&&(
-                          <tr><td colSpan={8} style={{padding:0,background:"linear-gradient(135deg,rgba(10,22,45,0.98),rgba(15,30,60,0.98))"}}>
+                          <tr><td colSpan={10} style={{padding:0,background:"linear-gradient(135deg,rgba(10,22,45,0.98),rgba(15,30,60,0.98))"}}>
                             {(simLoading&&inlineSimId===t.id) ? (
                               <div style={{padding:"20px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontSize:12}}>
                                 <div style={{animation:"pulse 1.5s infinite",marginBottom:6}}>⚡</div>Calculando 7 simulações...
