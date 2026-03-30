@@ -12791,7 +12791,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         const vlr = parseFloat(s.sim?.availableBalance||0);
                         return (
                           <div key={i}
-                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
+                            onClick={()=>{ if(!s.ok) return; const d={ tabela:{ label:s.label, sim:s.sim, feeId:histDetalhe.melhorFeeId||histDetalhe.sim?.melhor?.feeId||"" }, balance:{ ...histDetalhe.balance, id:histDetalhe.balanceId }, cpf:histDetalhe.cpf, provider:histDetalhe.provider, clientePreFill:histDetalhe }; openDigModal(d); setIndDigModal(d); }}
                             style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.1)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
                             onMouseEnter={e=>{ if(s.ok){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.3)";} }}
                             onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
@@ -13127,7 +13127,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                           <div key={i}
                             onClick={()=>{
                               if(!s.ok)return;
-                              const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
+                              const d={tabela:{label:s.label,sim:s.sim,feeId:(fees||[]).find(f=>(f.simulation_fees?.label||"").toLowerCase()===s.label?.toLowerCase())?.simulation_fees?.id_simulation_fees||""},balance:{...simModal.bal,id:simModal.bal?.id},cpf:simModal.cpf,provider:simModal.contrato?.provider||loteProvider,clientePreFill:{cpf:simModal.cpf,nome:simModal.nome}};
                               openDigModal(d); setIndDigModal(d); setSimModal(null);
                             }}
                             style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
@@ -14023,7 +14023,12 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
               <button onClick={()=>{
                 const {s,it}=cardSim; setCardSim(null);
-                const d={tabela:{label:s.label,sim:s.sim,feeId:s.feeId||s.sim?.simulationFeesId||""},balance:{...it.balance,id:it.sim?.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it};
+                // Resolve feeId: from allSims entry, OR from melhor (if same label), OR from fees list by label
+                const resolvedFeeId = s.feeId
+                  || (it.sim?.melhor?.label===s.label ? it.sim?.melhor?.feeId : "")
+                  || (fees.find(f=>(f.simulation_fees?.label||"").toLowerCase()===s.label?.toLowerCase())?.simulation_fees?.id_simulation_fees)
+                  || "";
+                const d={tabela:{label:s.label,sim:s.sim,feeId:resolvedFeeId},balance:{...it.balance,id:it.sim?.balanceId||it.balance?.id},cpf:it.cpf,provider:loteProvider,clientePreFill:it};
                 openDigModal(d); setLoteDigModal(d);
               }} style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:"pointer", letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
                 📝 Digitar esta proposta
@@ -14483,7 +14488,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                         <div key={i}
                           onClick={()=>{
                             if(!s.ok)return;
-                            const d={tabela:{label:s.label,sim:s.sim,feeId:""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
+                            const d={tabela:{label:s.label,sim:s.sim,feeId:(fees||[]).find(f=>(f.simulation_fees?.label||"").toLowerCase()===s.label?.toLowerCase())?.simulation_fees?.id_simulation_fees||""},balance:{...acompSimModal.bal,id:acompSimModal.bal?.id},cpf:acompSimModal.cpf,provider:acompSimModal.contrato?.provider||loteProvider,clientePreFill:{cpf:acompSimModal.cpf,nome:acompSimModal.nome,clienteV8:acompSimModal.contrato}};
                             openDigModal(d); setIndDigModal(d); setAcompSimModal(null);
                           }}
                           style={{ background:isBest?"rgba(52,211,153,0.12)":"rgba(79,142,247,0.08)", border:`2px solid ${isBest?"rgba(52,211,153,0.4)":"rgba(79,142,247,0.2)"}`, borderRadius:12, padding:"10px 14px", minWidth:130, cursor:s.ok?"pointer":"default", position:"relative", transition:"all 0.12s" }}
