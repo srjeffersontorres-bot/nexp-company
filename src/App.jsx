@@ -11916,7 +11916,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [loteAnosSel,      setLoteAnosSel]       = useState({}); // { [item.id]: 1|2|3|4|5 }
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
   const [loteCardSim,      setLoteCardSim]       = useState(null);
-  const [loteSearch,       setLoteSearch]        = useState("");
+  const [loteSearch,       setLoteSearch]        = useState(""); // eslint-disable-line no-unused-vars
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
   const loteCpfBoxRef = useRef(null); // textarea DOM ref — never triggers re-render
