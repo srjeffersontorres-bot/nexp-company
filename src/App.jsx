@@ -15007,7 +15007,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [termoForm, setTermoForm] = useState({
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
   });
-  const [termos, setTermos] = useState([]); // lista de termos gerados
+  const [termos, setTermos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
+  }); // lista de termos — carrega cache instant
   const [termosPage, setTermosPage] = useState(1);
   const [termosPages, setTermosPages] = useState(null);
   const [showLoteCLT, setShowLoteCLT] = useState(false);
@@ -15214,7 +15216,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   const buscarTermos = async (pg=1) => {
     setLoading(true); setErr("");
-    // Pre-load configs em paralelo (não bloqueia)
     if(!configs.length) {
       apiFetch("/private-consignment/simulation/configs").then(d=>{
         const list=d?.configs||[];
@@ -15226,37 +15227,44 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       link: item.consent_url||item.url||item.link||item.authorization_url
         ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
     });
+    const merge = (prev, novos) => {
+      const ids = new Set(prev.map(x=>x.id));
+      return [...novos.filter(x=>!ids.has(x.id)), ...prev]; // novos primeiro
+    };
+    const saveCache = (lista) => {
+      try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,500))); } catch {}
+    };
     try {
       const end = new Date().toISOString();
-      const start = new Date(Date.now()-365*86400000).toISOString();
-      const url = (p) => `/private-consignment/consult?page=${p}&limit=100&provider=QI&startDate=${start}&endDate=${end}`;
 
-      // 1ª página — exibe imediatamente
-      const r1 = await apiFetch(url(pg));
-      const primeira = (r1?.data||[]).map(mapLink);
-      setTermos(primeira);
-      setTermosPage(pg);
-      setTermosPages(r1?.pages||null);
-      setLoading(false);
+      // ── Fase 1: últimos 7 dias — resposta em <1s ─────────────
+      const start7 = new Date(Date.now()-7*86400000).toISOString();
+      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=100&provider=QI&startDate=${start7}&endDate=${end}`);
+      const recentes = (r7?.data||[]).map(mapLink);
+      setTermos(prev => { const merged = merge(prev, recentes); saveCache(merged); return merged; });
+      setTermosPage(1);
+      setLoading(false); // UI liberada — lista já visível
 
-      // Demais páginas — todas em paralelo
-      const totalPages = r1?.pages?.totalPages||1;
-      if(totalPages > 1 && pg === 1) {
-        const restantes = Array.from({length: totalPages-1}, (_,i) => i+2);
-        // Dispara todas em paralelo, atualiza à medida que chegam
-        const promises = restantes.map(p =>
-          apiFetch(url(p))
-            .then(r => {
-              const extra = (r?.data||[]).map(mapLink);
-              if(extra.length) setTermos(prev => {
-                // Evita duplicatas por id
-                const ids = new Set(prev.map(x=>x.id));
-                return [...prev, ...extra.filter(x=>!ids.has(x.id))];
-              });
-            })
-            .catch(()=>{})
-        );
-        await Promise.allSettled(promises);
+      // ── Fase 2: 8-365 dias — tudo em paralelo, sem travar UI ──
+      const start365 = new Date(Date.now()-365*86400000).toISOString();
+      const start8   = new Date(Date.now()-365*86400000).toISOString();
+      const url365 = (p) => `/private-consignment/consult?page=${p}&limit=100&provider=QI&startDate=${start8}&endDate=${start7}`;
+
+      // Descobre total de páginas com 1 chamada
+      const rMeta = await apiFetch(url365(1)).catch(()=>null);
+      if(rMeta) {
+        const extra0 = (rMeta?.data||[]).map(mapLink);
+        if(extra0.length) setTermos(prev => { const m = merge(prev, extra0); saveCache(m); return m; });
+        const totalPgs = rMeta?.pages?.totalPages||1;
+        if(totalPgs > 1) {
+          const pages = Array.from({length:totalPgs-1},(_,i)=>i+2);
+          await Promise.allSettled(pages.map(p =>
+            apiFetch(url365(p)).then(r=>{
+              const ex=(r?.data||[]).map(mapLink);
+              if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
+            }).catch(()=>{})
+          ));
+        }
       }
     } catch(e) { setErr(e.message); setLoading(false); }
   };
