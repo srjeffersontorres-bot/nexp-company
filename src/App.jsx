@@ -11066,6 +11066,8 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
   result, setResult, err, setErr, cepLoading, setCepLoading, bankSearch, setBankSearch,
   // initialForm passed once — form state lives INSIDE modal to prevent re-render typing bug
   initialForm,
+  // fees list for feeId lookup by label when feeId is missing
+  allFees,
 }) {
   // ✅ Form state local — evita re-render do pai ao digitar (bug 1 caractere)
   const [form, setForm] = useState(() => initialForm || {});
@@ -11202,14 +11204,32 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
           dueDate: p.dueDate||p.date,
         })),
       };
-      // Validate required IDs before sending
-      const missingFields = [];
-      if (!body.fgtsSimulationId)  missingFields.push(`fgtsSimulationId (sim.id=${tabela?.sim?.id||"?"}, sim.id_simulation=${tabela?.sim?.id_simulation||"?"})`);
-      if (!body.simulationFeesId)  missingFields.push(`simulationFeesId (tabela.feeId=${tabela?.feeId||"?"})`);
-      if (!body.balanceId)         missingFields.push(`balanceId (balance.id=${balance?.id||"?"})`);
-      if (missingFields.length) {
-        throw new Error(`Campos obrigatórios ausentes: ${missingFields.join(" | ")}`);
+      // Resolve simulationFeesId — from tabela.feeId OR lookup in allFees by label OR fetch fresh
+      if (!body.simulationFeesId) {
+        const lbl = (tabela?.label||"").toLowerCase().trim();
+        // Try from allFees prop
+        if (allFees?.length) {
+          const found = allFees.find(f=>(f.simulation_fees?.label||"").toLowerCase().trim()===lbl);
+          if (found?.simulation_fees?.id_simulation_fees) body.simulationFeesId = found.simulation_fees.id_simulation_fees;
+        }
+        // Still missing — fetch fees fresh from API
+        if (!body.simulationFeesId) {
+          try {
+            const feesData = await apiFetch("/fgts/simulations/fees","GET");
+            const feesArr = Array.isArray(feesData) ? feesData.filter(f=>f.active) : [];
+            const found = feesArr.find(f=>(f.simulation_fees?.label||"").toLowerCase().trim()===lbl);
+            if (found?.simulation_fees?.id_simulation_fees) body.simulationFeesId = found.simulation_fees.id_simulation_fees;
+            // If still not found, use first available fee
+            if (!body.simulationFeesId && feesArr.length) body.simulationFeesId = feesArr[0].simulation_fees?.id_simulation_fees||"";
+          } catch {}
+        }
       }
+      // Validate
+      const missingFields = [];
+      if (!body.fgtsSimulationId) missingFields.push("fgtsSimulationId");
+      if (!body.simulationFeesId) missingFields.push("simulationFeesId");
+      if (!body.balanceId)        missingFields.push("balanceId");
+      if (missingFields.length) throw new Error(`Campos obrigatórios ausentes: ${missingFields.join(", ")}`);
       const res = await apiFetch("/fgts/proposal","POST",body);
       setResult(res);
 
@@ -12680,6 +12700,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
             initialForm={modalForm}
+            allFees={indFees}
             setAcompData={setAcompData}
             onClose={()=>{ setIndDigModal(null); }}
             onSuccess={async (res)=>{ 
@@ -14057,6 +14078,7 @@ function V8DigitalTab({ currentUser, contacts }) {
             cepLoading={modalCepLoading} setCepLoading={setModalCepLoading}
             bankSearch={modalBankSearch} setBankSearch={setModalBankSearch}
             initialForm={modalForm}
+            allFees={loteFees}
             setAcompData={setAcompData}
             onClose={()=>{ setLoteDigModal(null); }}
             onSuccess={async (res)=>{ 
