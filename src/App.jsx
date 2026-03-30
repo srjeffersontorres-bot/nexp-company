@@ -15826,7 +15826,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 })}
               </div>
               <style>{`.clt-termos-scroll::-webkit-scrollbar{width:8px}.clt-termos-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,0.03);border-radius:4px}.clt-termos-scroll::-webkit-scrollbar-thumb{background:rgba(79,142,247,0.45);border-radius:4px}.clt-termos-scroll::-webkit-scrollbar-thumb:hover{background:rgba(79,142,247,0.75)}`}</style>
-              <div className="clt-termos-scroll" style={{...S.card,overflow:"hidden",maxHeight:520,overflowY:"scroll",scrollbarWidth:"thin",scrollbarColor:"rgba(79,142,247,0.4) transparent"}}>
+              <div className="clt-termos-scroll" style={{...S.card,maxHeight:520,overflowY:"scroll",scrollbarWidth:"thin",scrollbarColor:"rgba(79,142,247,0.4) transparent"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
@@ -15891,11 +15891,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                             {(()=>{
                               const raw = t.createdAt||t.created_at||t.criadoEm||t.updatedAt||t.updated_at||t.timestamp||t.date||"";
                               if(!raw) return "—";
-                              try {
-                                const d = new Date(raw);
-                                if(!isNaN(d)) return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
-                              } catch {}
-                              return String(raw).slice(0,16);
+                              // ISO string (from API)
+                              if(/\d{4}-\d{2}-\d{2}/.test(raw)) {
+                                try {
+                                  const d = new Date(raw);
+                                  if(!isNaN(d)) return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
+                                } catch {}
+                              }
+                              // Já está em pt-BR (criadoEm local) — retorna diretamente
+                              return String(raw).slice(0,14);
                             })()}
                           </td>
                           <td style={{padding:"8px 10px"}}>
