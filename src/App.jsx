@@ -15246,7 +15246,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       setLoading(false); // UI liberada — lista já visível
 
       // ── Fase 2: 8-365 dias — tudo em paralelo, sem travar UI ──
-      const start365 = new Date(Date.now()-365*86400000).toISOString();
       const start8   = new Date(Date.now()-365*86400000).toISOString();
       const url365 = (p) => `/private-consignment/consult?page=${p}&limit=100&provider=QI&startDate=${start8}&endDate=${start7}`;
 
@@ -15826,7 +15825,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   );
                 })}
               </div>
-              <div style={{...S.card,overflow:"hidden"}}>
+              <div style={{...S.card,overflow:"hidden",maxHeight:520,overflowY:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
