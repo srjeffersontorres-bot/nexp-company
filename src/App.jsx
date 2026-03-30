@@ -13316,6 +13316,13 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     // Helper: gera installments para N anos
     const makeInstallments = (bal, anos, saldoVal) => {
+      // Use real API periods (sliced to N anos) — same as individual tab
+      const allPeriods = bal?.periods || bal?.installments || [];
+      if (allPeriods.length) {
+        const sliced = allPeriods.slice(0, anos);
+        if (sliced.length) return sliced.map(p => ({ totalAmount: parseFloat(p.amount||p.totalAmount||saldoVal), dueDate: p.dueDate||p.date }));
+      }
+      // Fallback: fabricate N installments with saldo (only if no real periods)
       const installs = [];
       for (let a=1; a<=anos; a++) {
         installs.push({ totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+a,1,1).toISOString().split("T")[0] });
@@ -13434,7 +13441,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           await new Promise(r => setTimeout(r, 3000));
         } // end while(true)
 
-        const saldoVal = parseFloat(bal.amount||bal.balance||0);
+        const saldoVal = parseFloat(bal?.amount || bal?.balance || bal?.availableBalance || 100);
 
         // Helper: erro transitório (rate limit, servidor, "tente novamente")
         const isTransientErr = (msg) => {
@@ -13452,17 +13459,19 @@ function V8DigitalTab({ currentUser, contacts }) {
         const balanceId = bal.id || bal.balanceId || null;
 
         if (feesList.length) {
+          // Mirror individual tab logic exactly
           const rawPeriods = (bal.periods||bal.installments||[]);
+          const allInstallments = rawPeriods.length
+            ? rawPeriods.map(p => ({ totalAmount: parseFloat(p.amount||p.totalAmount||saldoVal), dueDate: p.dueDate||p.date }))
+            : [
+                { totalAmount: saldoVal, dueDate: new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
+                { totalAmount: saldoVal, dueDate: new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
+              ];
           let installments;
           if (anosItem) {
             installments = makeInstallments(bal, anosItem, saldoVal);
-          } else if (rawPeriods.length >= 2) {
-            installments = rawPeriods.map(p=>({ totalAmount:parseFloat(p.amount||p.totalAmount||saldoVal), dueDate:p.dueDate||p.date }));
           } else {
-            installments = [
-              { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+1,1,1).toISOString().split("T")[0] },
-              { totalAmount:saldoVal||100, dueDate:new Date(new Date().getFullYear()+2,1,1).toISOString().split("T")[0] },
-            ];
+            installments = allInstallments; // usa todos os períodos reais — igual ao individual
           }
 
           // Tenta simular cada tabela com retry infinito em erros transitórios
