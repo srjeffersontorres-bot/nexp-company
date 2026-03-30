@@ -13977,7 +13977,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 )}
               </tbody>
             </table>
-          </div></div>
+          </div>
 
           {/* Paginação */}
           {totalPages>1 && (
@@ -14058,7 +14058,7 @@ function V8DigitalTab({ currentUser, contacts }) {
           </div>
         )}
 
-                {loteDigModal && (
+        {loteDigModal && (
           <ModalDigitacaoRapida
             tabela={loteDigModal.tabela}
             balance={loteDigModal.balance}
