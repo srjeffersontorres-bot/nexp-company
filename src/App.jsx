@@ -13491,7 +13491,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                 if (balanceId) simBody.balanceId = balanceId;
                 const sim = await apiFetch("/fgts/simulations","POST", simBody);
                 const v = parseFloat(sim?.availableBalance||0);
-                allSims.push({ label, sim, ok:true });
+                allSims.push({ label, sim, ok:true, feeId:fee.simulation_fees?.id_simulation_fees||"" });
                 if (v > melhorVal) { melhorVal=v; melhorSim=sim; melhorLabel=label; melhorFeeId=fee.simulation_fees?.id_simulation_fees||""; melhorAnos=calcAnos(sim); }
                 simOk = true;
               } catch(e) {
@@ -13911,7 +13911,7 @@ function V8DigitalTab({ currentUser, contacts }) {
                                   const anos = calcAnos(s.sim);
                                   return (
                                     <div key={si}
-                                      onClick={e=>{ e.stopPropagation(); const d={tabela:{label:s.label,sim:s.sim,feeId:s.feeId},balance:{...it.balance,id:it.sim.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it}; openDigModal(d); setLoteDigModal(d); }}
+                                      onClick={e=>{ e.stopPropagation(); setCardSim({s,it}); }}
                                       style={{ background:isBest?"rgba(52,211,153,0.15)":"rgba(79,142,247,0.10)", border:`2px solid ${isBest?"rgba(52,211,153,0.5)":"rgba(79,142,247,0.3)"}`, borderRadius:14, padding:"14px 16px", minWidth:150, cursor:"pointer", transition:"all 0.15s", position:"relative", textAlign:"center" }}
                                       onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)";}}
                                       onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
@@ -14015,7 +14015,7 @@ function V8DigitalTab({ currentUser, contacts }) {
               </div>
               <button onClick={()=>{
                 const {s,it}=cardSim; setCardSim(null);
-                const d={tabela:{label:s.label,sim:s.sim,feeId:s.sim?.id||""},balance:{...it.balance,id:it.sim?.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it};
+                const d={tabela:{label:s.label,sim:s.sim,feeId:s.feeId||s.sim?.simulationFeesId||""},balance:{...it.balance,id:it.sim?.balanceId},cpf:it.cpf,provider:loteProvider,clientePreFill:it};
                 openDigModal(d); setLoteDigModal(d);
               }} style={{ width:"100%", background:"linear-gradient(135deg,#6D28D9,#4F46E5)", color:"#fff", border:"none", borderRadius:16, padding:"16px", fontSize:15, fontWeight:800, cursor:"pointer", letterSpacing:"0.3px", boxShadow:"0 8px 32px rgba(109,40,217,0.4)" }}>
                 📝 Digitar esta proposta
