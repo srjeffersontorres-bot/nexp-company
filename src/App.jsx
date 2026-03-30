@@ -15023,9 +15023,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [termoBuscando, setTermoBuscando] = useState(false);
   const [termoAutoPreenchido, setTermoAutoPreenchido] = useState(false);
 
-  const buscarContatoTermo = async () => {
-    const cpfLimpo = (termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0");
+  // Versão com cpf como parâmetro — evita race condition com setState
+  const buscarContatoTermoCpf = async (cpfRaw) => {
+    const cpfLimpo = (cpfRaw||"").replace(/\D/g,"").padStart(11,"0");
     if(cpfLimpo.replace(/0/g,"").length===0) return;
+    // Atualiza form com CPF formatado
+    const cpfFmt = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+    setTermoForm(p=>({...p,cpf:cpfFmt}));
 
     // Helper: extrai telefone de um objeto com múltiplos campos possíveis
     const extractTel = (obj) => {
@@ -15111,6 +15115,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setErr(""); setTermoLoading(true);
     try {
       const tel=(dados.telefone||"").replace(/\D/g,"");
+      if(!dados.nome||!dados.email||!dados.dataNasc||tel.length<10){
+        setTermoLoading(false); return; // dados insuficientes, não gera
+      }
       const body={
         borrowerDocumentNumber:cpfLimpo,
         gender:dados.genero||"male",
@@ -15121,25 +15128,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         provider:"QI",
       };
       const res=await apiFetch("/private-consignment/consult","POST",body);
+      const id=res.id||res.consultId;
+      if(!id){ setErr("API não retornou ID do termo."); setTermoLoading(false); return; }
       const cpfFmt=cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+      const link=res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${id}`;
       const novoTermo={
-        id:res.id,
-        nome:dados.nome,
-        cpf:cpfFmt,
-        status:"WAITING_CONSENT",
-        availableMarginValue:null,
-        link:`https://app.v8sistema.com/consignment/consult/${res.id}`,
-        criadoEm:new Date().toLocaleString("pt-BR"),
-        dataNasc:dados.dataNasc,
-        genero:dados.genero||"male",
-        email:dados.email,
-        telefone:dados.telefone,
+        id, nome:dados.nome, cpf:cpfFmt,
+        status:"WAITING_CONSENT", availableMarginValue:null,
+        link, criadoEm:new Date().toLocaleString("pt-BR"),
+        dataNasc:dados.dataNasc, genero:dados.genero||"male",
+        email:dados.email, telefone:dados.telefone,
         _autoGerado:true,
       };
       setTermos(prev=>[novoTermo,...prev]);
       setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
       setTermoAutoPreenchido(false);
-      // Polling de status
+      // Polling: atualiza status na fila
       let tentativas=0;
       const poll=setInterval(async()=>{
         try{
@@ -15147,14 +15151,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           const end=new Date().toISOString();
           const start=new Date(Date.now()-86400000).toISOString();
           const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
-          const found=(r?.data||[]).find(x=>x.id===res.id);
+          const found=(r?.data||[]).find(x=>x.id===id);
           if(found){
-            setTermos(prev=>prev.map(t=>t.id===res.id?{...t,...found,link:novoTermo.link}:t));
+            setTermos(prev=>prev.map(t=>t.id===id?{...t,...found,link:novoTermo.link}:t));
             if(["SUCCESS","FAILED","REJECTED"].includes(found.status)||tentativas>20) clearInterval(poll);
           } else if(tentativas>20) clearInterval(poll);
         }catch{ if(tentativas>20) clearInterval(poll); }
       },4000);
-    } catch(e){ setErr(e.message); }
+    } catch(e){ setErr("❌ "+e.message); }
     setTermoLoading(false);
   };
 
@@ -15179,7 +15183,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         cpf: termoForm.cpf,
         status: "WAITING_CONSENT",
         availableMarginValue: null,
-        link: `https://app.v8sistema.com/consignment/consult/${res.id}`,
+        link: res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${res.id}`,
         criadoEm: new Date().toLocaleString("pt-BR"),
         dataNasc: termoForm.dataNasc,
         genero: termoForm.genero,
@@ -15542,19 +15546,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const raw=fmt.replace(/\D/g,"");
                       setTermoForm(p=>({...p,cpf:fmt}));
                       setTermoAutoPreenchido(false);
-                      if(raw.length===11) setTimeout(()=>buscarContatoTermo(),100);
+                      if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
-                    onBlur={()=>{
-                      const raw=(termoForm.cpf||"").replace(/\D/g,"");
-                      if(raw.length>0&&raw.length<11){
-                        const padded=raw.padStart(11,"0");
-                        const fmt=padded.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
-                        setTermoForm(p=>({...p,cpf:fmt}));
-                        setTimeout(()=>buscarContatoTermo(),100);
-                      } else { buscarContatoTermo(); }
+                    onBlur={e=>{
+                      const raw=(e.target.value||"").replace(/\D/g,"");
+                      if(raw.length>0) buscarContatoTermoCpf(raw.padStart(11,"0"));
                     }}
                     placeholder="000.000.000-00" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
-                  <button onClick={buscarContatoTermo} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
+                  <button onClick={()=>buscarContatoTermoCpf((termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0"))} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
                     {termoBuscando?"⏳":"🔍"}
                   </button>
                 </div>
