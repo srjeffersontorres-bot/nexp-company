@@ -15214,27 +15214,51 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   const buscarTermos = async (pg=1) => {
     setLoading(true); setErr("");
-    // Pre-load configs in parallel for faster simulation
+    // Pre-load configs em paralelo (não bloqueia)
     if(!configs.length) {
       apiFetch("/private-consignment/simulation/configs").then(d=>{
         const list=d?.configs||[];
         if(list.length){setConfigs(list);if(!configSel)setConfigSel(list[0]);}
       }).catch(()=>{});
     }
+    const mapLink = item => ({
+      ...item,
+      link: item.consent_url||item.url||item.link||item.authorization_url
+        ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
+    });
     try {
-      const end=new Date().toISOString();
-      const start=new Date(Date.now()-90*86400000).toISOString(); // 90 dias (mais rápido)
-      const r=await apiFetch(`/private-consignment/consult?page=${pg}&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
-      const lista=(r?.data||[]).map(item=>({
-        ...item,
-        link: item.consent_url||item.url||item.link||item.authorization_url
-          ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
-      }));
-      setTermos(lista);
+      const end = new Date().toISOString();
+      const start = new Date(Date.now()-365*86400000).toISOString();
+      const url = (p) => `/private-consignment/consult?page=${p}&limit=100&provider=QI&startDate=${start}&endDate=${end}`;
+
+      // 1ª página — exibe imediatamente
+      const r1 = await apiFetch(url(pg));
+      const primeira = (r1?.data||[]).map(mapLink);
+      setTermos(primeira);
       setTermosPage(pg);
-      setTermosPages(r?.pages||null);
-    } catch(e) { setErr(e.message); }
-    setLoading(false);
+      setTermosPages(r1?.pages||null);
+      setLoading(false);
+
+      // Demais páginas — todas em paralelo
+      const totalPages = r1?.pages?.totalPages||1;
+      if(totalPages > 1 && pg === 1) {
+        const restantes = Array.from({length: totalPages-1}, (_,i) => i+2);
+        // Dispara todas em paralelo, atualiza à medida que chegam
+        const promises = restantes.map(p =>
+          apiFetch(url(p))
+            .then(r => {
+              const extra = (r?.data||[]).map(mapLink);
+              if(extra.length) setTermos(prev => {
+                // Evita duplicatas por id
+                const ids = new Set(prev.map(x=>x.id));
+                return [...prev, ...extra.filter(x=>!ids.has(x.id))];
+              });
+            })
+            .catch(()=>{})
+        );
+        await Promise.allSettled(promises);
+      }
+    } catch(e) { setErr(e.message); setLoading(false); }
   };
 
   // Status badge colors
