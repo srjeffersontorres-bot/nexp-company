@@ -11704,7 +11704,7 @@ function diagnosticarErroV8(rawMsg, cpf) {
   if (msg.includes("aniversário") || msg.includes("aniversario") || msg.includes("próximo mês") || msg.includes("proximo mes") || msg.includes("dia ") || msg.includes("não permitida antes") || msg.includes("nao permitida antes") || msg.includes("operação não permitida") || msg.includes("operacao nao permitida") || msg.includes("antes de ")) {
     const data = rawMsg.match(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/)?.[0] || "";
     return {
-      titulo: `🎂 Aniversariante${data ? ` / ${data}` : ""}`,
+      titulo: "🎂 Aniversariante",
       descricao: `Este cliente é aniversariante do mês. A simulação só estará disponível${data ? ` a partir de ${data}` : " no próximo período"}.`,
       solucao: "Aguarde o período correto e tente novamente.",
       tipo: "aniversariante",
@@ -11714,7 +11714,7 @@ function diagnosticarErroV8(rawMsg, cpf) {
   }
   if (msg.includes("saldo insuficiente") || msg.includes("saldo zero") || msg.includes("sem saldo") || msg.includes("saldo indisponível") || msg.includes("não possui saldo disponível") || msg.includes("nao possui saldo disponivel") || msg.includes("operações fiduciárias") || msg.includes("operacoes fiduciarias")) {
     return {
-      titulo: "💰 Sem Saldo",
+      titulo: "🙁 Sem saldo",
       descricao: "🙁 Não foi dessa vez — o cliente não possui saldo disponível para operações.",
       solucao: "Verifique se o cliente tem saldo no FGTS e se está na modalidade Saque Aniversário.",
       tipo: "sem_saldo",
@@ -14830,7 +14830,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
                                   const fail=regs.find(r=>r&&r.status==="fail");
-                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:(fail.statusInfo||"Falha na consulta").includes("Saque Aniversário")?"Instituição não autorizada":(fail.statusInfo||"Falha na consulta")}));return;}
+                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:(fail.statusInfo||"Falha na consulta").includes("Saque Aniversário")?"🚫 Banco não autorizado":(fail.statusInfo||"Falha na consulta")}));return;}
                                 }
                                 if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout — tente novamente"}));return;}
                                 const feesR=await apiFetch("/fgts/simulations/fees");
