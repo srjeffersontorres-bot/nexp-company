@@ -11683,7 +11683,7 @@ function diagnosticarErroV8(rawMsg, cpf) {
 
   if (msg.includes("instituição fiduciária") || msg.includes("fiduciária") || msg.includes("fiduciaria") || msg.includes("não possui autorização") || msg.includes("institution isn") || msg.includes("autorização do trabalhador para operação")) {
     return {
-      titulo: "🚫 Banco não autorizado",
+      titulo: "🚫 Não autorizado",
       descricao: "🥶 Solicite a autorização — o cliente precisa autorizar esta instituição no app FGTS.",
       solucao: "Oriente o cliente a acessar o app FGTS e autorizar a instituição.",
       tipo: "inst_nao_autorizada",
@@ -16027,7 +16027,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                   <div style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                                     <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600}}>Tabela:</span>
                                     {cfgKeys.map((cfgId,idx)=>{
-                                      const cfg=simConfigs[cfgId]?.cfg;
                                       const isActive=cur===cfgId;
                                       const tabelaLabel = idx === 0 ? "CLT Acelera - Com Seguro" : "CLT Acelera - Sem Seguro";
                                       return (
