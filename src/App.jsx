@@ -13740,7 +13740,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
       simulando:"🔄 Simulando...",
       saldo_zero:"⚠ Saldo Zero",
       sem_adesao:"📋 Sem Adesão",
-      inst_nao_autorizada:"🚫 Banco não autorizado",
+      inst_nao_autorizada:"🚫 Não autorizado",
       aniversariante:"🎂 Aniversariante",
       sem_saldo:"💰 Sem Saldo",
       cpf_invalido:"⚠ CPF Inválido",
@@ -14830,7 +14830,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                                   const ok=regs.find(r=>r&&(r.status==="success"||r.amount!=null));
                                   if(ok){bal=ok;break;}
                                   const fail=regs.find(r=>r&&r.status==="fail");
-                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:(fail.statusInfo||"Falha na consulta").includes("Saque Aniversário")?"🚫 Banco não autorizado":(fail.statusInfo||"Falha na consulta")}));return;}
+                                  if(fail){setAcompSimModal(p=>({...p,loading:false,err:(fail.statusInfo||"Falha na consulta").includes("Saque Aniversário")?"🚫 Não autorizado":(fail.statusInfo||"Falha na consulta")}));return;}
                                 }
                                 if(!bal){setAcompSimModal(p=>({...p,loading:false,err:"Timeout — tente novamente"}));return;}
                                 const feesR=await apiFetch("/fgts/simulations/fees");
@@ -15369,6 +15369,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [inlineSimId, setInlineSimId] = useState(null);
   const [avisoModal, setAvisoModal] = useState(null);
   const [simCustomParcela, setSimCustomParcela] = useState("");
+  const [simMargemCustom, setSimMargemCustom] = useState(""); // margem customizada para simulação
   const [simTermoAtivo, setSimTermoAtivo] = useState(null); // eslint-disable-line no-unused-vars
   const [limparModal, setLimparModal] = useState(false);
 
@@ -16022,6 +16023,40 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                               const mi=resultados.reduce((mi,r,i)=>parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0)>parseFloat(resultados[mi]?.sim?.disbursement_amount||resultados[mi]?.sim?.disbursed_issue_amount||0)?i:mi,0);
                               return (
                                 <div style={{padding:"12px 14px"}}>
+                                  {/* Seletor de Tabelas CLT */}
+                                  <div style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                                    <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600}}>Tabela:</span>
+                                    {cfgKeys.map(cfgId=>{
+                                      const cfg=simConfigs[cfgId]?.cfg;
+                                      const label=cfg?.label||`Tabela ${cfgId}`;
+                                      const isActive=cur===cfgId;
+                                      return (
+                                        <button key={cfgId} onClick={()=>setSimConfigSel(cfgId)}
+                                          style={{background:isActive?"#34D39922":"rgba(255,255,255,0.05)",color:isActive?"#34D399":"rgba(255,255,255,0.6)",border:`1px solid ${isActive?"#34D39955":"rgba(255,255,255,0.1)"}`,borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:isActive?700:500,cursor:"pointer",transition:"all 0.15s"}}>
+                                          {label.includes("Seguro")?label:label.includes("seguro")?label:`${label} ${label.toLowerCase().includes("com")?"- Com seguro":"- Sem seguro"}`}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  
+                                  {/* Campo de Margem Customizada */}
+                                  <div style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                                    <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600}}>Margem:</span>
+                                    <input
+                                      type="number"
+                                      placeholder={`${parseFloat(t.availableMarginValue||0).toFixed(2)}`}
+                                      onChange={(e)=>setSimMargemCustom(e.target.value)}
+                                      style={{background:"rgba(255,255,255,0.05)",color:"#fff",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"5px 10px",fontSize:11,width:120,outline:"none"}}
+                                    />
+                                    <button onClick={()=>{
+                                      const margemVal=parseFloat(simMargemCustom||t.availableMarginValue||0);
+                                      if(margemVal>0) executarSimulacoes(t,true,margemVal.toString());
+                                    }}
+                                      style={{background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                      ⚡ Simular
+                                    </button>
+                                  </div>
+                                  
                                   <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8}}>
                                     {resultados.map((r,idx)=>{
                                       const isB=idx===mi;
