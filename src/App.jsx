@@ -15320,7 +15320,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       // ── Fase 1: últimos 7 dias — resposta em <1s ─────────────
       const start7 = new Date(Date.now()-7*86400000).toISOString();
-      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=100&provider=QI&startDate=${start7}&endDate=${end}`);
+      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=30&provider=QI&startDate=${start7}&endDate=${end}`);
       const recentes = (r7?.data||[]).map(mapLink);
       setTermos(prev => { const merged = merge(prev, recentes); saveCache(merged); return merged; });
       setTermosPage(1);
@@ -15328,7 +15328,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       // ── Fase 2: 8-365 dias — tudo em paralelo, sem travar UI ──
       const start8   = new Date(Date.now()-365*86400000).toISOString();
-      const url365 = (p) => `/private-consignment/consult?page=${p}&limit=100&provider=QI&startDate=${start8}&endDate=${start7}`;
+      const url365 = (p) => `/private-consignment/consult?page=${p}&limit=30&provider=QI&startDate=${start8}&endDate=${start7}`;
 
       // Descobre total de páginas com 1 chamada
       const rMeta = await apiFetch(url365(1)).catch(()=>null);
@@ -16028,7 +16028,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                     <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600}}>Tabela:</span>
                                     {cfgKeys.map((cfgId,idx)=>{
                                       const isActive=cur===cfgId;
-                                      const tabelaLabel = idx === 0 ? "CLT Acelera - Com Seguro" : "CLT Acelera - Sem Seguro";
+                                      const tabelaLabel = idx === 0 ? "CLT Acelera - Sem Seguro" : "CLT Acelera - Com Seguro";
                                       return (
                                         <button key={cfgId} onClick={()=>setSimConfigSel(cfgId)}
                                           style={{background:isActive?"#34D39922":"rgba(255,255,255,0.05)",color:isActive?"#34D399":"rgba(255,255,255,0.6)",border:`1px solid ${isActive?"#34D39955":"rgba(255,255,255,0.1)"}`,borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:isActive?700:500,cursor:"pointer",transition:"all 0.15s"}}>
