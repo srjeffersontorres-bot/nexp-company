@@ -5497,6 +5497,12 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       roles: ["mestre", "master", "indicado", "administrador", "gerente", "supervisor", "operador", "digitador", "visitante"],
     },
     {
+      id: "geral",
+      label: "Geral",
+      icon: "⚙",
+      roles: ["mestre", "master", "indicado", "administrador", "gerente", "supervisor", "operador", "digitador", "visitante"],
+    },
+    {
       id: "temas",
       label: "Temas",
       icon: "🎨",
@@ -5557,28 +5563,34 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
             setUsers={setUsers}
             currentUser={currentUser}
           />
-          {/* ── Auto-logout toggle ─────────────────────────────── */}
-          <div style={{...S.card,padding:"18px 22px",marginTop:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <div style={{color:C.tp,fontSize:13,fontWeight:700,marginBottom:3}}>⏱ Logout automático por inatividade</div>
-                <div style={{color:C.td,fontSize:12}}>
-                  {autoLogoutEnabled
-                    ? "Sessão encerrada automaticamente após 15 min sem uso."
-                    : "Desativado — sessão permanece aberta indefinidamente."}
+
+          </>
+        )}
+        {tab === "geral" && (
+          <div>
+            <div style={{...S.card, padding:"18px 22px", marginBottom:16}}>
+              <div style={{color:C.ts, fontSize:13, fontWeight:700, marginBottom:16}}>⚙ Preferências Gerais</div>
+              {/* Auto-logout */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderBottom:`1px solid ${C.b1}`}}>
+                <div>
+                  <div style={{color:C.tp,fontSize:13,fontWeight:600,marginBottom:3}}>⏱ Logout automático por inatividade</div>
+                  <div style={{color:C.td,fontSize:12}}>
+                    {autoLogoutEnabled
+                      ? "Sessão encerrada automaticamente após 15 min sem uso."
+                      : "Desativado — sessão permanece aberta indefinidamente."}
+                  </div>
                 </div>
+                <button onClick={()=>{
+                    const next=!autoLogoutEnabled;
+                    setAutoLogoutEnabled(next);
+                    localStorage.setItem("nexp_auto_logout",next?"1":"0");
+                  }}
+                  style={{flexShrink:0,background:autoLogoutEnabled?"rgba(52,211,153,0.15)":"rgba(239,68,68,0.12)",color:autoLogoutEnabled?"#34D399":"#F87171",border:`1px solid ${autoLogoutEnabled?"#34D39944":"#EF444433"}`,borderRadius:10,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",whiteSpace:"nowrap",marginLeft:16}}>
+                  {autoLogoutEnabled?"✅ Ativado":"❌ Desativado"}
+                </button>
               </div>
-              <button onClick={()=>{
-                  const next=!autoLogoutEnabled;
-                  setAutoLogoutEnabled(next);
-                  localStorage.setItem("nexp_auto_logout",next?"1":"0");
-                }}
-                style={{flexShrink:0,background:autoLogoutEnabled?"rgba(52,211,153,0.15)":"rgba(239,68,68,0.12)",color:autoLogoutEnabled?"#34D399":"#F87171",border:`1px solid ${autoLogoutEnabled?"#34D39944":"#EF444433"}`,borderRadius:10,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",whiteSpace:"nowrap"}}>
-                {autoLogoutEnabled?"✅ Ativado":"❌ Desativado"}
-              </button>
             </div>
           </div>
-          </>
         )}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
         {tab === "apis" && <ConfigurarAPITab currentUser={currentUser} />}
@@ -11969,6 +11981,7 @@ function V8DigitalTab({ currentUser, contacts }) {
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
   const [loteCardSim,      setLoteCardSim]       = useState(null);
   const [loteSearch,       setLoteSearch]        = useState(""); // eslint-disable-line no-unused-vars
+  const [loteSimFim,       setLoteSimFim]        = useState(false); // popup "simulações acabaram"
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
   const loteCpfBoxRef = useRef(null); // textarea DOM ref — never triggers re-render
@@ -13651,11 +13664,14 @@ function V8DigitalTab({ currentUser, contacts }) {
 
     const simularLote = async () => {
       setRunning(true); setPaused(false); abortRef.current=false; pauseRef.current=false;
-      const lista=[...items]; let done=0;
+      const lista=[...items];
+      // Começa contando os itens já concluídos para não resetar o progresso
+      const DONE_STATUSES = ["ok","saldo_zero","sem_adesao","inst_nao_autorizada","sem_saldo","cpf_invalido","aniversariante","timeout","erro"];
+      let done = lista.filter(x => DONE_STATUSES.includes(x.status)).length;
       for (let i=0; i<lista.length; i++) {
         while(pauseRef.current) await new Promise(r=>setTimeout(r,300));
         if(abortRef.current) break;
-        if(lista[i].status==="ok") { done++; continue; }
+        if(DONE_STATUSES.includes(lista[i].status)) { continue; }
         lista[i]={ ...lista[i], status:"simulando" }; setItems([...lista]);
         const updated = await simularUm(lista[i]);
         lista[i]=updated; done++;
@@ -13664,9 +13680,11 @@ function V8DigitalTab({ currentUser, contacts }) {
         await new Promise(r=>setTimeout(r,0));
       }
       setRunning(false); setPaused(false);
-      // Mark as not running after completion — use lista (latest) not stale items
+      // Mark as not running after completion
       const finalProg = lista.length ? Math.round(done/lista.length*100) : 100;
       saveState(lista, finalProg, false);
+      // Popup se todas as simulações foram concluídas (não abortado)
+      if (!abortRef.current && lista.length > 0) setLoteSimFim(true);
     };
 
     // Adiciona CPFs SEM limpar a caixa
@@ -14975,6 +14993,26 @@ function V8DigitalTab({ currentUser, contacts }) {
         </div>
       )}
 
+      {/* ── Popup: simulações FGTS concluídas ── */}
+      {loteSimFim && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"linear-gradient(145deg,rgba(15,18,35,0.99),rgba(10,12,28,0.99))",border:"1px solid rgba(52,211,153,0.3)",borderRadius:24,padding:"40px 36px",textAlign:"center",maxWidth:380,width:"100%",boxShadow:"0 32px 80px rgba(0,0,0,0.8)"}}>
+            <div style={{fontSize:52,marginBottom:16}}>✅</div>
+            <div style={{color:"#fff",fontSize:20,fontWeight:800,marginBottom:10}}>As suas consultas de lote acabaram!</div>
+            <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginBottom:28}}>Todos os CPFs foram processados. Confira os resultados na fila.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <button onClick={()=>{ setLoteSimFim(false); setAba("lote"); }}
+                style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#000",border:"none",borderRadius:14,padding:"14px",fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 8px 24px rgba(52,211,153,0.4)"}}>
+                🔍 Verificar agora
+              </button>
+              <button onClick={()=>setLoteSimFim(false)}
+                style={{background:"transparent",color:"rgba(255,255,255,0.4)",border:"none",borderRadius:10,padding:"10px",fontSize:13,cursor:"pointer"}}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {isTokenValid && aba === "individual"      && IndividualTab()}
       {isTokenValid && aba === "lote"             && LoteTab()}
       {isTokenValid && aba === "operacoes"        && OperacoesTab()}
