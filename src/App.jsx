@@ -11683,9 +11683,9 @@ function diagnosticarErroV8(rawMsg, cpf) {
 
   if (msg.includes("instituição fiduciária") || msg.includes("fiduciária") || msg.includes("fiduciaria") || msg.includes("não possui autorização") || msg.includes("institution isn") || msg.includes("autorização do trabalhador para operação")) {
     return {
-      titulo: "🚫 Instituição não autorizado",
-      descricao: "A Instituição Fiduciária não possui autorização do Trabalhador para Operação Fiduciária.",
-      solucao: "O cliente não autorizou esta instituição. Oriente-o a acessar o app FGTS e autorizar.",
+      titulo: "🚫 Banco não autorizado",
+      descricao: "🥶 Solicite a autorização — o cliente precisa autorizar esta instituição no app FGTS.",
+      solucao: "Oriente o cliente a acessar o app FGTS e autorizar a instituição.",
       tipo: "inst_nao_autorizada",
       cor: "#F87171",
       bg: "rgba(239,68,68,0.08)",
@@ -11714,8 +11714,8 @@ function diagnosticarErroV8(rawMsg, cpf) {
   }
   if (msg.includes("saldo insuficiente") || msg.includes("saldo zero") || msg.includes("sem saldo") || msg.includes("saldo indisponível") || msg.includes("não possui saldo disponível") || msg.includes("nao possui saldo disponivel") || msg.includes("operações fiduciárias") || msg.includes("operacoes fiduciarias")) {
     return {
-      titulo: "💰 Sem saldo suficiente",
-      descricao: "Trabalhador NÃO possui saldo disponível que permita realizar Operações Fiduciárias.",
+      titulo: "💰 Sem Saldo",
+      descricao: "🙁 Não foi dessa vez — o cliente não possui saldo disponível para operações.",
       solucao: "Verifique se o cliente tem saldo no FGTS e se está na modalidade Saque Aniversário.",
       tipo: "sem_saldo",
       cor: "#F87171",
@@ -13740,7 +13740,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
       simulando:"🔄 Simulando...",
       saldo_zero:"⚠ Saldo Zero",
       sem_adesao:"📋 Sem Adesão",
-      inst_nao_autorizada:"🚫 Inst. não Autorizada",
+      inst_nao_autorizada:"🚫 Banco não autorizado",
       aniversariante:"🎂 Aniversariante",
       sem_saldo:"💰 Sem Saldo",
       cpf_invalido:"⚠ CPF Inválido",
@@ -13930,7 +13930,15 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                         <span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600, whiteSpace:"nowrap" }}>
                           {STATUS_LABEL[it.status]||it.status}
                         </span>
-                        {it.status==="aniversariante" ? (
+                        {it.status==="inst_nao_autorizada" ? (
+                          <div style={{ color:"#F87171", fontSize:9.5, marginTop:3 }}>
+                            🥶 Solicite a autorização
+                          </div>
+                        ) : it.status==="sem_saldo" ? (
+                          <div style={{ color:"#F87171", fontSize:9.5, marginTop:3 }}>
+                            🙁 Não foi dessa vez
+                          </div>
+                        ) : it.status==="aniversariante" ? (
                           <div style={{ color:"#FBBF24", fontSize:9.5, marginTop:3 }} title={it.erro}>
                             {`${(()=>{ const m=(it.erro||"").match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/); return m?"Simule no dia -> "+m[0]:"🎂 Aniversariante"; })()}`}
                           </div>
