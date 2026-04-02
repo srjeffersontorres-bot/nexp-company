@@ -13684,7 +13684,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
       const finalProg = lista.length ? Math.round(done/lista.length*100) : 100;
       saveState(lista, finalProg, false);
       // Popup se todas as simulações foram concluídas (não abortado)
-      if (!abortRef.current && lista.length > 0) { setLoteSimFim(true); onLoteSimFim?.(); }
+      if (!abortRef.current && lista.length > 0) { onLoteSimFim?.(); }
     };
 
     // Adiciona CPFs SEM limpar a caixa
@@ -14994,25 +14994,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
       )}
 
       {/* ── Popup: simulações FGTS concluídas ── */}
-      {loteSimFim && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{background:"linear-gradient(145deg,rgba(15,18,35,0.99),rgba(10,12,28,0.99))",border:"1px solid rgba(52,211,153,0.3)",borderRadius:24,padding:"40px 36px",textAlign:"center",maxWidth:380,width:"100%",boxShadow:"0 32px 80px rgba(0,0,0,0.8)"}}>
-            <div style={{fontSize:52,marginBottom:16}}>✅</div>
-            <div style={{color:"#fff",fontSize:20,fontWeight:800,marginBottom:10}}>As suas consultas de lote acabaram!</div>
-            <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginBottom:28}}>Todos os CPFs foram processados. Confira os resultados na fila.</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <button onClick={()=>{ setLoteSimFim(false); setAba("lote"); }}
-                style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#000",border:"none",borderRadius:14,padding:"14px",fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 8px 24px rgba(52,211,153,0.4)"}}>
-                🔍 Verificar agora
-              </button>
-              <button onClick={()=>setLoteSimFim(false)}
-                style={{background:"transparent",color:"rgba(255,255,255,0.4)",border:"none",borderRadius:10,padding:"10px",fontSize:13,cursor:"pointer"}}>
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
       {isTokenValid && aba === "individual"      && IndividualTab()}
       {isTokenValid && aba === "lote"             && LoteTab()}
       {isTokenValid && aba === "operacoes"        && OperacoesTab()}
