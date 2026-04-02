@@ -15093,6 +15093,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   }); // lista de termos — carrega cache instant
   const [termosPage, setTermosPage] = useState(1);
   const [termosPages, setTermosPages] = useState(null);
+  const PAGE_SIZE_TERMOS = 30; // 30 clientes por página
   const [showLoteCLT, setShowLoteCLT] = useState(false);
   const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
   const [loteCLTItems, setLoteCLTItems] = useState([]);
@@ -15424,7 +15425,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       }));
 
       if(!Object.keys(melhores).length) {
-        throw new Error("Simulação falhou: sem resposta da API para nenhuma combinação.");
+        throw new Error("⚠️ Simulação indisponível no momento. Tente novamente em alguns segundos ou verifique o saldo disponível do cliente.");
       }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
@@ -15919,12 +15920,17 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {termos.filter(t=>{
-                      if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
-                      if(!termosSearch) return true;
-                      const s=termosSearch.toLowerCase();
-                      return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-                    }).map(t=>{
+                    {(() => {
+                      const filtrados = termos.filter(t=>{
+                        if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
+                        if(!termosSearch) return true;
+                        const s=termosSearch.toLowerCase();
+                        return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
+                      });
+                      const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS);
+                      const pageItems = filtrados.slice((termosPage-1)*PAGE_SIZE_TERMOS, termosPage*PAGE_SIZE_TERMOS);
+                      setTermosPages({total:filtrados.length,totalPages,hasNext:termosPage<totalPages,hasPrev:termosPage>1});
+                      return pageItems.map(t=>{
                       const col=STATUS_COR[t.status]||C.td;
                       return (
                         <React.Fragment key={t.id}>
@@ -16100,7 +16106,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         )}
                         </React.Fragment>
                       );
-                    })}
+                    });
+                    })()}
                   </tbody>
                 </table>
               </div></div>
