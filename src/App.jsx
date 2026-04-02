@@ -5488,6 +5488,7 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
   const [tab, setTab] = useState("perfil");
   const [permSearch, setPermSearch] = useState("");
   const [permExpandedId, setPermExpandedId] = useState(null);
+  const [autoLogoutEnabled, setAutoLogoutEnabled] = useState(()=>localStorage.getItem("nexp_auto_logout")!=="0");
   const tabs = [
     {
       id: "perfil",
@@ -5550,11 +5551,34 @@ function ConfigPage({ users, setUsers, currentUser, theme, onTheme, sysConfig, o
       </div>
       <div style={{ padding: "26px 36px", maxWidth: 860 }}>
         {tab === "perfil" && (
+          <>
           <PerfilTab
             users={users}
             setUsers={setUsers}
             currentUser={currentUser}
           />
+          {/* ── Auto-logout toggle ─────────────────────────────── */}
+          <div style={{...S.card,padding:"18px 22px",marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{color:C.tp,fontSize:13,fontWeight:700,marginBottom:3}}>⏱ Logout automático por inatividade</div>
+                <div style={{color:C.td,fontSize:12}}>
+                  {autoLogoutEnabled
+                    ? "Sessão encerrada automaticamente após 15 min sem uso."
+                    : "Desativado — sessão permanece aberta indefinidamente."}
+                </div>
+              </div>
+              <button onClick={()=>{
+                  const next=!autoLogoutEnabled;
+                  setAutoLogoutEnabled(next);
+                  localStorage.setItem("nexp_auto_logout",next?"1":"0");
+                }}
+                style={{flexShrink:0,background:autoLogoutEnabled?"rgba(52,211,153,0.15)":"rgba(239,68,68,0.12)",color:autoLogoutEnabled?"#34D399":"#F87171",border:`1px solid ${autoLogoutEnabled?"#34D39944":"#EF444433"}`,borderRadius:10,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s",whiteSpace:"nowrap"}}>
+                {autoLogoutEnabled?"✅ Ativado":"❌ Desativado"}
+              </button>
+            </div>
+          </div>
+          </>
         )}
         {tab === "temas" && <TemasTab currentTheme={theme} onTheme={onTheme} />}
         {tab === "apis" && <ConfigurarAPITab currentUser={currentUser} />}
@@ -19329,8 +19353,10 @@ export default function App() {
   });
 
   // ── Inatividade — logout automático após 15 minutos ────────
+  // Pode ser desativado pelo usuário em Configurações → Perfil
   useEffect(() => {
     if (!currentUser) return;
+    if (localStorage.getItem("nexp_auto_logout") === "0") return; // desativado
     const IDLE_MS = 15 * 60 * 1000;
     let timer = setTimeout(() => {
       firebaseLogout();
