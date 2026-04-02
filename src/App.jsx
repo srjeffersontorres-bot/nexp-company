@@ -13930,7 +13930,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                         </span>
                         {it.status==="aniversariante" ? (
                           <div style={{ color:"#FBBF24", fontSize:9.5, marginTop:3 }} title={it.erro}>
-                            {`🎂 | Aniversariante${(()=>{ const m=(it.erro||"").match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/); return m?" / "+m[0]:""; })()}`}
+                            {`${(()=>{ const m=(it.erro||"").match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/); return m?"Simule no dia -> "+m[0]:"🎂 Aniversariante"; })()}`}
                           </div>
                         ) : it.erro ? (
                           <div style={{ color:"#F87171", fontSize:9.5, marginTop:2, maxWidth:120 }} title={it.erro}>{it.erro.slice(0,30)}</div>
@@ -14761,19 +14761,22 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                     return (
                       <React.Fragment key={op.id}>
                         <tr
-                          onClick={async ()=>{
+                          onClick={()=>{
                             if (isSel) { setDetalhe(null); return; }
-                            setDetalhe({...op, _loading:true});
-                            try {
-                              const det = await apiFetch(`/fgts/proposal/${op.id}`);
-                              const merged = {...op,...det};
-                              setDetalhe(merged);
-                              setData(prev => prev ? {
-                                ...prev,
-                                data: (prev.data||[]).map(r=>r.id===op.id?merged:r),
-                                _all: (prev._all||[]).map(r=>r.id===op.id?merged:r),
-                              } : prev);
-                            } catch { setDetalhe(op); }
+                            // Abre inline imediatamente com dados da lista
+                            setDetalhe({...op, _loading:false});
+                            // Busca dados completos em background
+                            apiFetch(`/fgts/proposal/${op.id}`)
+                              .then(det=>{
+                                const merged={...op,...det};
+                                setDetalhe(merged);
+                                setData(prev=>prev?{
+                                  ...prev,
+                                  data:(prev.data||[]).map(r=>r.id===op.id?merged:r),
+                                  _all:(prev._all||[]).map(r=>r.id===op.id?merged:r),
+                                }:prev);
+                              })
+                              .catch(()=>{}); // silencioso — já tem dados básicos
                           }}
                           style={{ background:isSel?`${C.acc}15`:C.card, borderBottom:`1px solid ${C.b1}`, cursor:"pointer", transition:"background 0.1s" }}
                           onMouseEnter={e=>!isSel&&(e.currentTarget.style.background=C.deep)}
