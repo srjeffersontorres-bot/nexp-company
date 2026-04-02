@@ -16026,14 +16026,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                   {/* Seletor de Tabelas CLT */}
                                   <div style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid rgba(255,255,255,0.07)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                                     <span style={{color:"rgba(255,255,255,0.5)",fontSize:11,fontWeight:600}}>Tabela:</span>
-                                    {cfgKeys.map(cfgId=>{
+                                    {cfgKeys.map((cfgId,idx)=>{
                                       const cfg=simConfigs[cfgId]?.cfg;
-                                      const label=cfg?.label||`Tabela ${cfgId}`;
                                       const isActive=cur===cfgId;
+                                      const tabelaLabel = idx === 0 ? "CLT Acelera - Com Seguro" : "CLT Acelera - Sem Seguro";
                                       return (
                                         <button key={cfgId} onClick={()=>setSimConfigSel(cfgId)}
                                           style={{background:isActive?"#34D39922":"rgba(255,255,255,0.05)",color:isActive?"#34D399":"rgba(255,255,255,0.6)",border:`1px solid ${isActive?"#34D39955":"rgba(255,255,255,0.1)"}`,borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:isActive?700:500,cursor:"pointer",transition:"all 0.15s"}}>
-                                          {label.includes("Seguro")?label:label.includes("seguro")?label:`${label} ${label.toLowerCase().includes("com")?"- Com seguro":"- Sem seguro"}`}
+                                          {tabelaLabel}
                                         </button>
                                       );
                                     })}
@@ -16050,7 +16050,10 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                     />
                                     <button onClick={()=>{
                                       const margemVal=parseFloat(simMargemCustom||t.availableMarginValue||0);
-                                      if(margemVal>0) executarSimulacoes(t,true,margemVal.toString());
+                                      if(margemVal>0) {
+                                        executarSimulacoes(t,true,margemVal.toString());
+                                        setSimMargemCustom(""); // Limpa o campo após simular
+                                      }
                                     }}
                                       style={{background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                                       ⚡ Simular
