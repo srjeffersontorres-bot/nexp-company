@@ -11701,7 +11701,7 @@ function diagnosticarErroV8(rawMsg, cpf) {
       bg: "rgba(251,191,36,0.08)",
     };
   }
-  if (msg.includes("aniversário") || msg.includes("aniversario") || msg.includes("próximo mês") || msg.includes("proximo mes") || msg.includes("dia ")) {
+  if (msg.includes("aniversário") || msg.includes("aniversario") || msg.includes("próximo mês") || msg.includes("proximo mes") || msg.includes("dia ") || msg.includes("não permitida antes") || msg.includes("nao permitida antes") || msg.includes("operação não permitida") || msg.includes("operacao nao permitida") || msg.includes("antes de ")) {
     const data = rawMsg.match(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/)?.[0] || "";
     return {
       titulo: `🎂 Aniversariante${data ? ` / ${data}` : ""}`,
@@ -13909,14 +13909,13 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                         <span style={{ background:stBg, color:stCol, fontSize:10, padding:"2px 8px", borderRadius:20, fontWeight:600, whiteSpace:"nowrap" }}>
                           {STATUS_LABEL[it.status]||it.status}
                         </span>
-                        {it.erro && (
-                          <div style={{ color:it.status==="aniversariante"?"#FBBF24":"#F87171", fontSize:9.5, marginTop:2, maxWidth:150 }} title={it.erro}>
-                            {it.status==="aniversariante"
-                              ? `🎂 ${it.cpf||""} | Aniversariante${(it.erro.match(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/)||[""])[0] ? " / "+(it.erro.match(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/)||[""])[0] : ""}`
-                              : it.erro.slice(0,35)
-                            }
+                        {it.status==="aniversariante" ? (
+                          <div style={{ color:"#FBBF24", fontSize:9.5, marginTop:3 }} title={it.erro}>
+                            {`🎂 ${it.cpf||""} | Aniversariante${(()=>{ const m=(it.erro||"").match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/); return m?" / "+m[0]:""; })()}`}
                           </div>
-                        )}
+                        ) : it.erro ? (
+                          <div style={{ color:"#F87171", fontSize:9.5, marginTop:2, maxWidth:120 }} title={it.erro}>{it.erro.slice(0,30)}</div>
+                        ) : null}
                       </td>
                       <td style={{ padding:"8px 10px", textAlign:"center" }}>
                         {it.saldo!=null && it.saldo>0
