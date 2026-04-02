@@ -15084,6 +15084,19 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     }).catch(()=>{});
   }, [isTokenValid]); // eslint-disable-line
 
+  // ── Atualizar paginação quando termos mudam ──
+  useEffect(() => {
+    const filtrados = termos.filter(t=>{
+      if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
+      if(!termosSearch) return true;
+      const s=termosSearch.toLowerCase();
+      return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
+    });
+    const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS) || 1;
+    setTermosPages({total:filtrados.length,totalPages,hasNext:termosPage<totalPages,hasPrev:termosPage>1});
+    if(termosPage > totalPages) setTermosPage(1);
+  }, [termos, termosPage, termosFiltroStatus, termosSearch, PAGE_SIZE_TERMOS]); // eslint-disable-line
+
   // ── GERADOR DE TERMO ─────────────────────────────────────────
   const [termoForm, setTermoForm] = useState({
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
@@ -15929,10 +15942,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       });
                       const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS);
                       const pageItems = filtrados.slice((termosPage-1)*PAGE_SIZE_TERMOS, termosPage*PAGE_SIZE_TERMOS);
-                      setTermosPages({total:filtrados.length,totalPages,hasNext:termosPage<totalPages,hasPrev:termosPage>1});
                       return pageItems.map(t=>{
-                      const col=STATUS_COR[t.status]||C.td;
-                      return (
+                        const col=STATUS_COR[t.status]||C.td;
+                        return (
                         <React.Fragment key={t.id}>
                         <tr
                           onClick={()=>{
