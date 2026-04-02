@@ -11765,7 +11765,7 @@ function diagnosticarErroV8(rawMsg, cpf) {
   };
 }
 
-function V8DigitalTab({ currentUser, contacts }) {
+function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); };
   const padCPF = raw => raw.replace(/\D/g,"").padStart(11,"0");
@@ -13684,7 +13684,7 @@ function V8DigitalTab({ currentUser, contacts }) {
       const finalProg = lista.length ? Math.round(done/lista.length*100) : 100;
       saveState(lista, finalProg, false);
       // Popup se todas as simulações foram concluídas (não abortado)
-      if (!abortRef.current && lista.length > 0) setLoteSimFim(true);
+      if (!abortRef.current && lista.length > 0) { setLoteSimFim(true); onLoteSimFim?.(); }
     };
 
     // Adiciona CPFs SEM limpar a caixa
@@ -16616,7 +16616,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 }
 
 
-function ApisBancosPage({ currentUser, contacts }) {
+function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
   const [abaBanco, setAbaBancoRaw] = useState(() => localStorage.getItem("nexp_abaBanco")||"v8");
   const setAbaBanco = (v) => { setAbaBancoRaw(v); localStorage.setItem("nexp_abaBanco",v); };
   const [abaV8, setAbaV8Raw] = useState(() => localStorage.getItem("nexp_abaV8")||"fgts");
@@ -16653,7 +16653,7 @@ function ApisBancosPage({ currentUser, contacts }) {
       {/* Conteúdo — V8DigitalTab sempre montado para não perder fila do lote */}
       <div style={{ padding:"0 30px" }}>
         <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
-          <V8DigitalTab currentUser={currentUser} contacts={contacts} />
+          <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
         </div>
         {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
 
@@ -19090,6 +19090,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
   const [page, setPageRaw] = useState(() => localStorage.getItem("nexp_page") || "dashboard");
+  const [loteSimFimGlobal, setLoteSimFimGlobal] = useState(false); // popup fim de lote
   const setPage = (p) => { setPageRaw(p); localStorage.setItem("nexp_page", p); };
   const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
@@ -19627,11 +19628,31 @@ export default function App() {
         {page === "simulador" && <SimuladorPage />}
         {/* ApisBancosPage sempre montado — evita perda da fila do lote ao trocar de página */}
         <div style={{ display: page === "apis" ? "block" : "none" }}>
-          <ApisBancosPage currentUser={currentUser} contacts={contacts} />
+          <ApisBancosPage currentUser={currentUser} contacts={contacts} onLoteSimFim={()=>setLoteSimFimGlobal(true)} />
         </div>
         {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
         </div>
       </div>
+      {/* ── Popup global: consultas de lote concluídas ── */}
+      {loteSimFimGlobal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"linear-gradient(145deg,rgba(15,18,35,0.99),rgba(10,12,28,0.99))",border:"1px solid rgba(52,211,153,0.3)",borderRadius:24,padding:"40px 36px",textAlign:"center",maxWidth:380,width:"100%",boxShadow:"0 32px 80px rgba(0,0,0,0.8)"}}>
+            <div style={{fontSize:52,marginBottom:16}}>✅</div>
+            <div style={{color:"#fff",fontSize:20,fontWeight:800,marginBottom:10}}>As suas consultas de lote acabaram!</div>
+            <div style={{color:"rgba(255,255,255,0.5)",fontSize:13,marginBottom:28}}>Todos os CPFs foram processados. Confira os resultados na fila.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <button onClick={()=>{ setLoteSimFimGlobal(false); setPage("apis"); }}
+                style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#000",border:"none",borderRadius:14,padding:"14px",fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 8px 24px rgba(52,211,153,0.4)"}}>
+                🔍 Verificar agora
+              </button>
+              <button onClick={()=>setLoteSimFimGlobal(false)}
+                style={{background:"transparent",color:"rgba(255,255,255,0.4)",border:"none",borderRadius:10,padding:"10px",fontSize:13,cursor:"pointer"}}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Chat Flutuante + FAB ── */}
       {(() => {
