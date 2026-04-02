@@ -11981,6 +11981,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
   const [loteCardSim,      setLoteCardSim]       = useState(null);
   const [loteSearch,       setLoteSearch]        = useState(""); // eslint-disable-line no-unused-vars
+  const [loteApagarConfirm, setLoteApagarConfirm] = useState(false);
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
   const loteCpfBoxRef = useRef(null); // textarea DOM ref — never triggers re-render
@@ -13359,7 +13360,8 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
     const pauseRef     = lotePauseRef;
     const cpfBoxRef    = loteCpfBoxRef;
     const PAGE_SIZE    = 50;
-    const [showApagarConfirm, setShowApagarConfirm] = React.useState(false);
+    const showApagarConfirm  = loteApagarConfirm;
+    const setShowApagarConfirm = setLoteApagarConfirm;
 
     const setProviderPersist = (p) => { setLoteProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
     // Read CPF box value from DOM ref — NEVER call setState on keystroke to avoid re-render bug
