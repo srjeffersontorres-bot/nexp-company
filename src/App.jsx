@@ -13359,6 +13359,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
     const pauseRef     = lotePauseRef;
     const cpfBoxRef    = loteCpfBoxRef;
     const PAGE_SIZE    = 50;
+    const [showApagarConfirm, setShowApagarConfirm] = React.useState(false);
 
     const setProviderPersist = (p) => { setLoteProvider(p); localStorage.setItem("nexp_v8_lote_provider", p); };
     // Read CPF box value from DOM ref — NEVER call setState on keystroke to avoid re-render bug
@@ -13840,10 +13841,28 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
             <div style={{ paddingBottom:2, color:C.td, fontSize:11, marginLeft:"auto" }}>{filtered.length} / {items.length}</div>
             {/* Apagar tudo */}
             {!running && items.length > 0 && (
-              <button onClick={()=>{ if(!window.confirm("Apagar todas as consultas do lote?")) return; setItems([]); setProgress(0); setLogs([]); setDetalheItem(null); localStorage.removeItem("nexp_v8_lote_state"); }}
-                style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                🗑 Apagar tudo
-              </button>
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setShowApagarConfirm(p=>!p)}
+                  style={{ background:"#2D1515", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"5px 14px", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                  🗑 Apagar tudo
+                </button>
+                {showApagarConfirm && (
+                  <div style={{position:"absolute",bottom:"calc(100% + 8px)",right:0,zIndex:200,background:"rgba(20,10,10,0.97)",border:"1px solid #EF444433",borderRadius:12,padding:"14px 16px",minWidth:220,boxShadow:"0 8px 32px rgba(0,0,0,0.6)"}}>
+                    <div style={{color:"#F87171",fontSize:12.5,fontWeight:700,marginBottom:10}}>⚠ Apagar todas as consultas?</div>
+                    <div style={{color:"rgba(255,255,255,0.45)",fontSize:11,marginBottom:12}}>Essa ação não pode ser desfeita.</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>{ setItems([]); setProgress(0); setLogs([]); setDetalheItem(null); localStorage.removeItem("nexp_v8_lote_state"); setShowApagarConfirm(false); }}
+                        style={{flex:1,background:"#EF4444",color:"#fff",border:"none",borderRadius:8,padding:"7px 0",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                        Apagar
+                      </button>
+                      <button onClick={()=>setShowApagarConfirm(false)}
+                        style={{flex:1,background:"rgba(255,255,255,0.08)",color:"rgba(255,255,255,0.6)",border:"none",borderRadius:8,padding:"7px 0",fontSize:12,cursor:"pointer"}}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           {/* Filtro por status — badges clicáveis */}
@@ -13911,7 +13930,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                         </span>
                         {it.status==="aniversariante" ? (
                           <div style={{ color:"#FBBF24", fontSize:9.5, marginTop:3 }} title={it.erro}>
-                            {`🎂 ${it.cpf||""} | Aniversariante${(()=>{ const m=(it.erro||"").match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/); return m?" / "+m[0]:""; })()}`}
+                            {`🎂 | Aniversariante${(()=>{ const m=(it.erro||"").match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/); return m?" / "+m[0]:""; })()}`}
                           </div>
                         ) : it.erro ? (
                           <div style={{ color:"#F87171", fontSize:9.5, marginTop:2, maxWidth:120 }} title={it.erro}>{it.erro.slice(0,30)}</div>
