@@ -11981,7 +11981,6 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
   const [loteCardSim,      setLoteCardSim]       = useState(null);
   const [loteSearch,       setLoteSearch]        = useState(""); // eslint-disable-line no-unused-vars
-  const [loteSimFim,       setLoteSimFim]        = useState(false); // popup "simulações acabaram"
   const loteAbortRef = useRef(false);
   const lotePauseRef = useRef(false);
   const loteCpfBoxRef = useRef(null); // textarea DOM ref — never triggers re-render
