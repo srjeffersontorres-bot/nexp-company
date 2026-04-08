@@ -16991,16 +16991,23 @@ function PrataDigitalTab({ currentUser }) {
   // carrega credencial do Firestore apenas quando o tab está visível
   useEffect(()=>{
     if(!uid){ setCredOk(true); return; }
+    // timeout de segurança: se Firestore demorar > 6s, avança mesmo assim
+    const timer = setTimeout(()=>setCredOk(true), 6000);
     let unsub = ()=>{};
     try {
       unsub = onSnapshot(collection(db,"credenciais_bancos"), snap=>{
-        const found = snap.docs.map(d=>({...d.data()}))
-          .find(c=>c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo") || null;
-        setCred(found);
+        clearTimeout(timer);
+        try {
+          const found = snap.docs
+            .map(d=>{ try{ return {...d.data()}; }catch{ return null; } })
+            .filter(Boolean)
+            .find(c=>c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo") || null;
+          setCred(found);
+        } catch{ /* ignora */ }
         setCredOk(true);
-      }, ()=>{ setCredOk(true); });
-    } catch{ setCredOk(true); }
-    return ()=>unsub();
+      }, ()=>{ clearTimeout(timer); setCredOk(true); });
+    } catch{ clearTimeout(timer); setCredOk(true); }
+    return ()=>{ clearTimeout(timer); unsub(); };
   },[uid]); // eslint-disable-line
 
   // auto-login quando credencial carregada e token inválido
