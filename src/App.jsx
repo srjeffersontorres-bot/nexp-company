@@ -16774,7 +16774,7 @@ function CredenciaisTab({ currentUser }) {
   };
 
   return (
-    <div style={{ padding:"28px 0" }}>
+    <div style={{ padding:"24px 0", minHeight:400 }}>
       {/* Header */}
       <div style={{ marginBottom:24 }}>
         <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:4 }}>Usuários de Bancos Parceiros</div>
@@ -16989,7 +16989,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
         <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
         <div style={{ display:"flex", gap:0 }}>
           {tabBtn(abaBanco==="v8",         "⚡ V8 Digital",    ()=>setAbaBanco("v8"))}
-          {tabBtn(abaBanco==="credencial",  "🔐 Credencial",    ()=>setAbaBanco("credencial"))}
+          {tabBtn(abaBanco==="credencial",  "🔐 Credenciais",   ()=>setAbaBanco("credencial"))}
         </div>
       </div>
 
