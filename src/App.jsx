@@ -16714,18 +16714,33 @@ function CredenciaisTab({ currentUser }) {
   const [confirmDel, setConfirmDel] = useState(null);
   const [substituindo, setSubstituindo] = useState(null);
   const [formSub, setFormSub] = useState({ usuario:"", senha:"" });
+  const [credErr, setCredErr] = useState("");
+
+  // Carrega credenciais do localStorage como fallback imediato
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("nexp_creds_" + uid) || "[]");
+      if (saved.length) setCreds(saved);
+    } catch {}
+  }, [uid]);
 
   // Carrega credenciais do Firestore
   useEffect(() => {
     if (!uid) return;
-    const ref = collection(db, "credenciais_bancos");
-    const unsub = onSnapshot(ref, snap => {
-      const docs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(c => c.uid === uid)
-        .sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0));
-      setCreds(docs);
-    });
+    let unsub = () => {};
+    try {
+      const ref = collection(db, "credenciais_bancos");
+      unsub = onSnapshot(ref, snap => {
+        try {
+          const docs = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(c => c.uid === uid)
+            .sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0));
+          setCreds(docs);
+          try { localStorage.setItem("nexp_creds_" + uid, JSON.stringify(docs)); } catch {}
+        } catch(e) { setCredErr(e.message); }
+      }, err => { setCredErr(err.message); });
+    } catch(e) { setCredErr(e.message); }
     return () => unsub();
   }, [uid]);
 
@@ -16779,6 +16794,7 @@ function CredenciaisTab({ currentUser }) {
       <div style={{ marginBottom:24 }}>
         <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:4 }}>Usuários de Bancos Parceiros</div>
         <div style={{ color:C.td, fontSize:13 }}>Gerencie suas credenciais</div>
+        {credErr && <div style={{ color:"#F87171", fontSize:11, marginTop:6 }}>⚠ {credErr}</div>}
       </div>
 
       {/* Botão Adicionar */}
