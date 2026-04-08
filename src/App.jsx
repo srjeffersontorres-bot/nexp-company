@@ -16691,6 +16691,281 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 }
 
 
+
+// ══════════════════════════════════════════════════════════════
+// CREDENCIAIS DE BANCOS PARCEIROS
+// ══════════════════════════════════════════════════════════════
+const BANCOS_PARCEIROS = [
+  { id:"prata_digital",  nome:"Prata Digital",    icon:"🪙", cor:"#94A3B8", disponivel:false },
+  { id:"v8_digital",     nome:"V8 Digital",        icon:"⚡", cor:"#3B6EF5", disponivel:true  },
+  { id:"novo_saque",     nome:"Novo Saque",         icon:"💳", cor:"#34D399", disponivel:false },
+  { id:"facta",          nome:"Facta Financeira",   icon:"🏦", cor:"#F97316", disponivel:false },
+  { id:"banco_hub",      nome:"Banco Hub",          icon:"🔗", cor:"#C084FC", disponivel:false },
+];
+
+function CredenciaisTab({ currentUser }) {
+  const uid = currentUser?.uid || currentUser?.id;
+  const [creds, setCreds] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [bancSel, setBancSel] = useState(null);
+  const [form, setForm] = useState({ usuario:"", senha:"" });
+  const [salvando, setSalvando] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState({});
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [substituindo, setSubstituindo] = useState(null);
+  const [formSub, setFormSub] = useState({ usuario:"", senha:"" });
+
+  // Carrega credenciais do Firestore
+  useEffect(() => {
+    if (!uid) return;
+    const ref = collection(db, "credenciais_bancos");
+    const unsub = onSnapshot(ref, snap => {
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(c => c.uid === uid)
+        .sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0));
+      setCreds(docs);
+    });
+    return () => unsub();
+  }, [uid]);
+
+  const salvar = async () => {
+    if (!bancSel || !form.usuario.trim() || !form.senha.trim()) return;
+    setSalvando(true);
+    try {
+      const id = `cred_${uid}_${bancSel.id}_${Date.now()}`;
+      await setDoc(doc(db, "credenciais_bancos", id), {
+        id, uid,
+        bancoId: bancSel.id,
+        bancoNome: bancSel.nome,
+        usuario: form.usuario.trim(),
+        senha: form.senha.trim(),
+        status: "ativo",
+        criadoEm: Date.now(),
+        criadoEmStr: new Date().toLocaleDateString("pt-BR"),
+      });
+      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"" });
+    } catch(e) { alert("Erro ao salvar: "+e.message); }
+    setSalvando(false);
+  };
+
+  const alterarStatus = async (cred) => {
+    const novoStatus = cred.status === "ativo" ? "inativo" : "ativo";
+    await setDoc(doc(db, "credenciais_bancos", cred.id), { status: novoStatus }, { merge: true });
+  };
+
+  const excluir = async (id) => {
+    await deleteDoc(doc(db, "credenciais_bancos", id));
+    setConfirmDel(null);
+  };
+
+  const substituir = async (cred) => {
+    if (!formSub.usuario.trim() || !formSub.senha.trim()) return;
+    setSalvando(true);
+    await setDoc(doc(db, "credenciais_bancos", cred.id), {
+      usuario: formSub.usuario.trim(),
+      senha: formSub.senha.trim(),
+      atualizadoEm: Date.now(),
+      atualizadoEmStr: new Date().toLocaleDateString("pt-BR"),
+    }, { merge: true });
+    setSalvando(false);
+    setSubstituindo(null);
+    setFormSub({ usuario:"", senha:"" });
+  };
+
+  return (
+    <div style={{ padding:"28px 0" }}>
+      {/* Header */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:4 }}>Usuários de Bancos Parceiros</div>
+        <div style={{ color:C.td, fontSize:13 }}>Gerencie suas credenciais</div>
+      </div>
+
+      {/* Botão Adicionar */}
+      <button onClick={()=>{ setShowModal(true); setBancSel(null); setForm({usuario:"",senha:""}); }}
+        style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:28, display:"flex", alignItems:"center", gap:8 }}>
+        ➕ Adicionar credencial
+      </button>
+
+      {/* Cards de credenciais */}
+      {creds.length === 0 ? (
+        <div style={{ ...S.card, padding:"40px", textAlign:"center", color:C.td, fontSize:13 }}>
+          Nenhuma credencial cadastrada ainda.
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {creds.map(cred => {
+            const banco = BANCOS_PARCEIROS.find(b=>b.id===cred.bancoId) || {};
+            const ativo = cred.status === "ativo";
+            const isSub = substituindo?.id === cred.id;
+            return (
+              <div key={cred.id} style={{ ...S.card, padding:"20px 24px", border:`1px solid ${ativo?"rgba(52,211,153,0.25)":"rgba(255,255,255,0.06)"}` }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ fontSize:26 }}>{banco.icon||"🏦"}</div>
+                    <div>
+                      <div style={{ color:C.tp, fontSize:15, fontWeight:700 }}>{cred.bancoNome}</div>
+                      <div style={{ color:C.td, fontSize:11, marginTop:2 }}>
+                        Criado em {cred.criadoEmStr||"—"}
+                        {cred.atualizadoEmStr && <span> · Atualizado em {cred.atualizadoEmStr}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ background:ativo?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.06)", color:ativo?"#34D399":"#94A3B8", border:`1px solid ${ativo?"#34D39944":"#ffffff22"}`, borderRadius:20, padding:"3px 14px", fontSize:11, fontWeight:700 }}>
+                    {ativo?"● Ativo":"○ Inativo"}
+                  </span>
+                </div>
+
+                {/* Dados */}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                  <div style={{ background:C.deep, borderRadius:9, padding:"10px 14px" }}>
+                    <div style={{ color:C.td, fontSize:10, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.5px" }}>Usuário</div>
+                    <div style={{ color:C.tp, fontSize:13, fontWeight:600, wordBreak:"break-all" }}>{cred.usuario}</div>
+                  </div>
+                  <div style={{ background:C.deep, borderRadius:9, padding:"10px 14px" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                      <div style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px" }}>Senha</div>
+                      <button onClick={()=>setMostrarSenha(p=>({...p,[cred.id]:!p[cred.id]}))}
+                        style={{ background:"none", border:"none", color:C.td, cursor:"pointer", fontSize:10, padding:0 }}>
+                        {mostrarSenha[cred.id]?"🙈 Ocultar":"👁 Mostrar"}
+                      </button>
+                    </div>
+                    <div style={{ color:C.tp, fontSize:13, fontWeight:600, fontFamily:"monospace", letterSpacing: mostrarSenha[cred.id]?"0":"2px" }}>
+                      {mostrarSenha[cred.id] ? cred.senha : "••••••••••"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form de substituição */}
+                {isSub && (
+                  <div style={{ background:C.deep, borderRadius:10, padding:"14px", marginBottom:14, border:`1px solid ${C.atxt}33` }}>
+                    <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:10 }}>🔄 Substituir credenciais</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10 }}>
+                      <input value={formSub.usuario} onChange={e=>setFormSub(p=>({...p,usuario:e.target.value}))}
+                        placeholder="Novo usuário" style={{ ...S.input, fontSize:12 }} />
+                      <input value={formSub.senha} onChange={e=>setFormSub(p=>({...p,senha:e.target.value}))}
+                        placeholder="Nova senha" type="password" style={{ ...S.input, fontSize:12 }} />
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={()=>substituir(cred)} disabled={salvando||!formSub.usuario.trim()||!formSub.senha.trim()}
+                        style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"8px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        {salvando?"⏳":"✅"} Salvar
+                      </button>
+                      <button onClick={()=>{ setSubstituindo(null); setFormSub({usuario:"",senha:""}); }}
+                        style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"8px 14px", fontSize:12, cursor:"pointer" }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Confirm delete */}
+                {confirmDel===cred.id && (
+                  <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:10, padding:"12px 14px", marginBottom:14 }}>
+                    <div style={{ color:"#F87171", fontSize:12, fontWeight:700, marginBottom:8 }}>⚠ Excluir esta credencial?</div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={()=>excluir(cred.id)}
+                        style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:8, padding:"7px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        Excluir
+                      </button>
+                      <button onClick={()=>setConfirmDel(null)}
+                        style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões de ação */}
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <button onClick={()=>alterarStatus(cred)}
+                    style={{ background:ativo?"rgba(239,68,68,0.10)":"rgba(52,211,153,0.10)", color:ativo?"#F87171":"#34D399", border:`1px solid ${ativo?"#EF444433":"#34D39933"}`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                    {ativo?"⏸ Desativar":"▶ Ativar"}
+                  </button>
+                  <button onClick={()=>{ setSubstituindo(isSub?null:cred); setFormSub({usuario:"",senha:""}); }}
+                    style={{ background:isSub?C.abg:"rgba(79,142,247,0.10)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                    🔄 Substituir
+                  </button>
+                  <button onClick={()=>setConfirmDel(confirmDel===cred.id?null:cred.id)}
+                    style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                    🗑 Excluir
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal Adicionar Credencial */}
+      {showModal && (
+        <div onClick={()=>{ setShowModal(false); setBancSel(null); }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:"linear-gradient(145deg,rgba(15,18,35,0.99),rgba(10,12,28,0.99))", border:"1px solid rgba(255,255,255,0.09)", borderRadius:22, padding:"28px 28px", width:"100%", maxWidth:480, boxShadow:"0 32px 80px rgba(0,0,0,0.8)" }}>
+
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <div style={{ color:C.tp, fontSize:16, fontWeight:800 }}>🔐 Adicionar Credencial Bancária</div>
+              <button onClick={()=>{ setShowModal(false); setBancSel(null); }}
+                style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"rgba(255,255,255,0.5)", borderRadius:50, width:30, height:30, cursor:"pointer", fontSize:13 }}>✕</button>
+            </div>
+
+            <div style={{ color:C.tm, fontSize:12, marginBottom:12, fontWeight:600 }}>Selecione o banco:</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
+              {BANCOS_PARCEIROS.map(banco => {
+                const sel = bancSel?.id === banco.id;
+                return (
+                  <button key={banco.id} onClick={()=>setBancSel(banco)}
+                    style={{ background:sel?`${banco.cor}22`:"rgba(255,255,255,0.04)", border:`2px solid ${sel?banco.cor:"rgba(255,255,255,0.08)"}`, borderRadius:12, padding:"12px 16px", cursor:"pointer", display:"flex", alignItems:"center", gap:12, transition:"all 0.15s", textAlign:"left" }}>
+                    <span style={{ fontSize:20 }}>{banco.icon}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ color:sel?banco.cor:C.tp, fontSize:13, fontWeight:700 }}>{banco.nome}</div>
+                      {!banco.disponivel && <div style={{ color:C.td, fontSize:10, marginTop:2 }}>🔜 Em breve</div>}
+                    </div>
+                    {sel && <span style={{ color:banco.cor, fontSize:18 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Form de credenciais */}
+            {bancSel && (
+              <div style={{ borderTop:"1px solid rgba(255,255,255,0.07)", paddingTop:18 }}>
+                <div style={{ color:C.tm, fontSize:12, fontWeight:600, marginBottom:12 }}>
+                  Credenciais para <span style={{ color:bancSel.cor }}>{bancSel.nome}</span>
+                  {!bancSel.disponivel && <span style={{ color:"#FBBF24", fontSize:10, marginLeft:8 }}>🔜 Integração em breve</span>}
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:18 }}>
+                  <div>
+                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Usuário / Login</label>
+                    <input value={form.usuario} onChange={e=>setForm(p=>({...p,usuario:e.target.value}))}
+                      placeholder="seu@email.com ou usuário" style={{ ...S.input, width:"100%" }} autoComplete="off" />
+                  </div>
+                  <div>
+                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha</label>
+                    <input value={form.senha} onChange={e=>setForm(p=>({...p,senha:e.target.value}))}
+                      placeholder="••••••••" type="password" style={{ ...S.input, width:"100%" }} autoComplete="new-password" />
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:10 }}>
+                  <button onClick={salvar} disabled={salvando||!form.usuario.trim()||!form.senha.trim()}
+                    style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:(salvando||!form.usuario.trim()||!form.senha.trim())?0.5:1, transition:"opacity 0.2s" }}>
+                    {salvando?"⏳ Salvando...":"💾 Salvar credencial"}
+                  </button>
+                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:""}); }}
+                    style={{ background:"rgba(255,255,255,0.06)", color:C.td, border:`1px solid ${C.b2}`, borderRadius:12, padding:"13px 18px", fontSize:13, cursor:"pointer" }}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
   const [abaBanco, setAbaBancoRaw] = useState(() => localStorage.getItem("nexp_abaBanco")||"v8");
   const setAbaBanco = (v) => { setAbaBancoRaw(v); localStorage.setItem("nexp_abaBanco",v); };
@@ -16713,7 +16988,8 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
       <div style={{ padding:"20px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
         <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
         <div style={{ display:"flex", gap:0 }}>
-          {tabBtn(abaBanco==="v8",    "⚡ V8 Digital",  ()=>setAbaBanco("v8"))}
+          {tabBtn(abaBanco==="v8",         "⚡ V8 Digital",    ()=>setAbaBanco("v8"))}
+          {tabBtn(abaBanco==="credencial",  "🔐 Credencial",    ()=>setAbaBanco("credencial"))}
         </div>
       </div>
 
@@ -16731,6 +17007,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
           <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
         </div>
         {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
+        {abaBanco==="credencial" && <CredenciaisTab currentUser={currentUser} />}
 
       </div>
     </div>
