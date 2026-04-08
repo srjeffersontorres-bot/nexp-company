@@ -16997,7 +16997,7 @@ function PrataDigitalTab({ currentUser }) {
     localStorage.setItem("nexp_prata_session", JSON.stringify({ token:tk, exp, accountId:accId, accountToken:accTk }));
   };
   const clearSession = () => {
-    setToken(null); setTokenExp(null); setPartnerAccountId(null); setPartnerAccountToken(null);
+    setToken(null); setTokenExp(null);
     localStorage.removeItem("nexp_prata_session");
   };
 
