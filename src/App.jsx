@@ -27,6 +27,7 @@ import {
 import { uploadArquivo } from "./firebase";
 
 // ══════════════════════════════════════════════════════════════════
+// v_CRED_2025 — com aba Credenciais
 // ── SEGURANÇA: Rate Limiting por usuário (Firestore) ─────────────
 // Rate limits removidos — sem limite de consultas diárias
 async function checkRateLimit(uid, role) {
@@ -16714,33 +16715,18 @@ function CredenciaisTab({ currentUser }) {
   const [confirmDel, setConfirmDel] = useState(null);
   const [substituindo, setSubstituindo] = useState(null);
   const [formSub, setFormSub] = useState({ usuario:"", senha:"" });
-  const [credErr, setCredErr] = useState("");
-
-  // Carrega credenciais do localStorage como fallback imediato
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("nexp_creds_" + uid) || "[]");
-      if (saved.length) setCreds(saved);
-    } catch {}
-  }, [uid]);
 
   // Carrega credenciais do Firestore
   useEffect(() => {
     if (!uid) return;
-    let unsub = () => {};
-    try {
-      const ref = collection(db, "credenciais_bancos");
-      unsub = onSnapshot(ref, snap => {
-        try {
-          const docs = snap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .filter(c => c.uid === uid)
-            .sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0));
-          setCreds(docs);
-          try { localStorage.setItem("nexp_creds_" + uid, JSON.stringify(docs)); } catch {}
-        } catch(e) { setCredErr(e.message); }
-      }, err => { setCredErr(err.message); });
-    } catch(e) { setCredErr(e.message); }
+    const ref = collection(db, "credenciais_bancos");
+    const unsub = onSnapshot(ref, snap => {
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(c => c.uid === uid)
+        .sort((a,b) => (b.criadoEm||0) - (a.criadoEm||0));
+      setCreds(docs);
+    });
     return () => unsub();
   }, [uid]);
 
@@ -16794,7 +16780,6 @@ function CredenciaisTab({ currentUser }) {
       <div style={{ marginBottom:24 }}>
         <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:4 }}>Usuários de Bancos Parceiros</div>
         <div style={{ color:C.td, fontSize:13 }}>Gerencie suas credenciais</div>
-        {credErr && <div style={{ color:"#F87171", fontSize:11, marginTop:6 }}>⚠ {credErr}</div>}
       </div>
 
       {/* Botão Adicionar */}
@@ -17003,9 +16988,12 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
       {/* Nível 1 — Banco */}
       <div style={{ padding:"20px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
         <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
-        <div style={{ display:"flex", gap:0 }}>
+        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
           {tabBtn(abaBanco==="v8",         "⚡ V8 Digital",    ()=>setAbaBanco("v8"))}
-          {tabBtn(abaBanco==="credencial",  "🔐 Credenciais",   ()=>setAbaBanco("credencial"))}
+          <button onClick={()=>setAbaBanco("credencial")}
+            style={{ background:abaBanco==="credencial"?"rgba(59,110,245,0.2)":"rgba(59,110,245,0.08)", border:"1px solid rgba(59,110,245,0.4)", borderRadius:10, cursor:"pointer", padding:"8px 20px", fontSize:13.5, fontWeight:abaBanco==="credencial"?700:500, color:abaBanco==="credencial"?"#60A5FA":"#94A3B8", transition:"all 0.15s", whiteSpace:"nowrap" }}>
+            🔐 Credenciais
+          </button>
         </div>
       </div>
 
