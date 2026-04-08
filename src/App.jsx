@@ -16940,7 +16940,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:18 }}>
                   <div>
-                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Usuário / E-mail</label>
+                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Usuário / Login</label>
                     <input value={form.usuario} onChange={e=>setForm(p=>({...p,usuario:e.target.value}))}
                       placeholder="seu@email.com ou usuário" style={{ ...S.input, width:"100%" }} autoComplete="off" />
                   </div>
@@ -16972,285 +16972,251 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 // ── Prata Digital Tab ──────────────────────────────────────────
 function PrataDigitalTab({ currentUser }) {
   const PROXY = "/api/prataproxy";
-  const uid = currentUser?.uid || currentUser?.id;
-  const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
-  const fmtCPF = v => { const c=v.replace(/\D/g,"").padStart(11,"0"); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
+  const uid   = currentUser?.uid || currentUser?.id;
 
-  // Token de sessão (cache local)
-  const [token,    setToken]    = useState(()=>{ try{const s=JSON.parse(localStorage.getItem("nexp_prata_session")||"null"); return (s?.exp&&Date.now()<s.exp)?s.token:null;}catch{return null;} });
-  const [tokenExp, setTokenExp] = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.exp||null;}catch{return null;} });
+  const fmtR = (v) => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+  const cpfMask = (v) => { const d=v.replace(/\D/g,"").slice(0,11); if(d.length<=3)return d; if(d.length<=6)return `${d.slice(0,3)}.${d.slice(3)}`; if(d.length<=9)return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; };
 
-  // Credencial carregada do Firestore
-  const [cred,        setCred]        = useState(null);  // { usuario, senha }
-  const [credLoading, setCredLoading] = useState(true);
-  const [authErr,     setAuthErr]     = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-  const [abaP, setAbaP] = useState("fgts");
+  /* ---------- auth ---------- */
+  const [tkn,    setTkn]    = useState(null);
+  const [tknExp, setTknExp] = useState(null);
+  const [cred,   setCred]   = useState(null);
+  const [credOk, setCredOk] = useState(false); // true depois que Firestore respondeu
+  const [authErr,    setAuthErr]    = useState("");
+  const [authBusy,   setAuthBusy]   = useState(false);
+  const [sub, setSub] = useState("fgts");
 
-  const isTokenValid = token && tokenExp && Date.now() < tokenExp;
+  const valid = tkn && tknExp && Date.now() < tknExp;
 
-  // 1. Carrega credencial ativa do Firestore
-  useEffect(() => {
-    if (!uid) { setCredLoading(false); return; }
-    let unsub = () => {};
+  // carrega credencial do Firestore apenas quando o tab está visível
+  useEffect(()=>{
+    if(!uid){ setCredOk(true); return; }
+    let unsub = ()=>{};
     try {
-      const ref = collection(db, "credenciais_bancos");
-      unsub = onSnapshot(ref, snap => {
-        try {
-          const found = snap.docs
-            .map(d => ({ id:d.id, ...d.data() }))
-            .find(c => c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo");
-          setCred(found||null);
-        } catch { setCred(null); }
-        setCredLoading(false);
-      }, () => { setCred(null); setCredLoading(false); });
-    } catch { setCred(null); setCredLoading(false); }
-    return () => unsub();
-  }, [uid]); // eslint-disable-line
+      unsub = onSnapshot(collection(db,"credenciais_bancos"), snap=>{
+        const found = snap.docs.map(d=>({...d.data()}))
+          .find(c=>c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo") || null;
+        setCred(found);
+        setCredOk(true);
+      }, ()=>{ setCredOk(true); });
+    } catch{ setCredOk(true); }
+    return ()=>unsub();
+  },[uid]); // eslint-disable-line
 
-  // 2. Auto-autentica quando credencial estiver disponível e token inválido
-  useEffect(() => {
-    if (!cred || isTokenValid) return;
-    try { autenticar(cred); } catch { /* silencioso */ }
-  }, [cred]); // eslint-disable-line
+  // auto-login quando credencial carregada e token inválido
+  useEffect(()=>{
+    if(!credOk || !cred || valid) return;
+    doLogin(cred);
+  },[cred, credOk]); // eslint-disable-line
 
-  const saveSession = (tk, exp) => {
-    setToken(tk); setTokenExp(exp);
-    localStorage.setItem("nexp_prata_session", JSON.stringify({ token:tk, exp }));
-  };
-
-  const autenticar = async (c) => {
-    setAuthLoading(true); setAuthErr("");
+  const doLogin = async (c) => {
+    setAuthBusy(true); setAuthErr("");
     try {
-      const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+      const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message||data.error||`Erro ${res.status}`);
-      const exp = Date.now() + (23*60*60*1000);
-      saveSession(data.data.token, exp);
-    } catch(e) { setAuthErr(e.message); }
-    setAuthLoading(false);
+      const j = await r.json();
+      if(!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
+      const exp = Date.now() + 23*3600*1000;
+      setTkn(j.data.token); setTknExp(exp);
+    } catch(e){ setAuthErr(e.message); }
+    setAuthBusy(false);
   };
 
-  const prataFetch = async (path, method="GET", body=null) => {
-    if (!isTokenValid) throw new Error("Sessão expirada.");
-    const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action:"bff", path, method, token, body }) });
-    const text = await res.text();
-    let data; try { data = JSON.parse(text); } catch { throw new Error(`Servidor indisponível (${res.status})`); }
-    if (!res.ok) throw new Error(data.message||data.error||(Array.isArray(data.errors)?data.errors.map(e=>e.message||e).join("; "):null)||`Erro ${res.status}`);
-    return data;
+  const api = async (path, method="GET", body=null) => {
+    if(!valid) throw new Error("Sessão expirada.");
+    const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ action:"bff", path, method, token:tkn, body }) });
+    const txt = await r.text();
+    let j; try{ j=JSON.parse(txt); }catch{ throw new Error(`Erro ${r.status}`); }
+    if(!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
+    return j;
   };
 
-  // ── Estados FGTS ────────────────────────────────────────────
-  const [fCpf,       setFCpf]       = useState("");
-  const [fSupplier,  setFSupplier]  = useState("qitech");
-  const [fLoading,   setFLoading]   = useState(false);
-  const [fErr,       setFErr]       = useState("");
-  const [fBalance,   setFBalance]   = useState(null);
-  const [fSimResult, setFSimResult] = useState(null);
-  const [fSimLoading,setFSimLoading]= useState(false);
-  const [fSimErr,    setFSimErr]    = useState("");
+  /* ---------- FGTS ---------- */
+  const [cpf,     setCpf]     = useState("");
+  const [fornec,  setFornec]  = useState("qitech");
+  const [busy,    setBusy]    = useState(false);
+  const [err,     setErr]     = useState("");
+  const [saldo,   setSaldo]   = useState(null);
+  const [simRes,  setSimRes]  = useState(null);
+  const [simBusy, setSimBusy] = useState(false);
+  const [simErr,  setSimErr]  = useState("");
 
-  const supplierPath = fSupplier === "qitech" ? "qitech" : "bmp";
+  const path0 = fornec==="qitech" ? "qitech" : "bmp";
 
-  const consultarSaldo = async () => {
-    const cpf = fCpf.replace(/\D/g,"");
-    if (cpf.length!==11){setFErr("CPF inválido.");return;}
-    setFLoading(true); setFErr(""); setFBalance(null); setFSimResult(null);
+  const buscarSaldo = async () => {
+    const c = cpf.replace(/\D/g,"");
+    if(c.length!==11){ setErr("CPF inválido."); return; }
+    setBusy(true); setErr(""); setSaldo(null); setSimRes(null);
+    try { const d = await api(`/v1/${path0}/fgts/balance?document=${c}`); setSaldo(d.data||d); }
+    catch(e){ setErr(e.message); }
+    setBusy(false);
+  };
+
+  const simular = async () => {
+    const c = cpf.replace(/\D/g,"");
+    setSimBusy(true); setSimErr(""); setSimRes(null);
     try {
-      const data = await prataFetch(`/v1/${supplierPath}/fgts/balance?document=${cpf}`);
-      setFBalance(data.data||data);
-    } catch(e) { setFErr(e.message); }
-    setFLoading(false);
+      const rates = fornec==="qitech" ? [16] : [45];
+      const d = await api(`/v1/${path0}/fgts/simulation`,"POST",{ document:c, rates });
+      setSimRes(d.data||d);
+    } catch(e){ setSimErr(e.message); }
+    setSimBusy(false);
   };
 
-  const criarSimulacao = async () => {
-    const cpf = fCpf.replace(/\D/g,"");
-    if (!fBalance){setFSimErr("Consulte o saldo primeiro.");return;}
-    setFSimLoading(true); setFSimErr(""); setFSimResult(null);
-    try {
-      const rates = fSupplier==="qitech" ? [16] : [45];
-      const data  = await prataFetch(`/v1/${supplierPath}/fgts/simulation`, "POST", { document:cpf, rates });
-      setFSimResult(data.data||data);
-    } catch(e) { setFSimErr(e.message); }
-    setFSimLoading(false);
-  };
+  const periodos  = saldo?.periods||[];
+  const total     = periodos.reduce((a,p)=>a+(parseFloat(p.total_amount)||0),0);
+  const sPeriodos = simRes?.periods||simRes?.installments||[];
 
-  const periods    = fBalance?.periods||[];
-  const totalSaldo = periods.reduce((a,p)=>a+(parseFloat(p.total_amount)||0),0);
-  const simPeriods = fSimResult?.periods||fSimResult?.installments||[];
-  const netAmount  = fSimResult?.net_amount ?? fSimResult?.netAmount ?? null;
-  const totalBruto = fSimResult?.amount ?? fSimResult?.totalAmount ?? null;
+  /* ---------- render ---------- */
+  if(!credOk) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando...</div>;
 
-  // ── Estados de carregamento / sem credencial ─────────────────
-  if (credLoading) return (
-    <div style={{ padding:"40px 0", textAlign:"center", color:C.td, fontSize:13 }}>⏳ Carregando credenciais...</div>
-  );
-
-  if (!cred) return (
-    <div style={{ padding:"32px 0", maxWidth:460 }}>
-      <div style={{ ...S.card, padding:"28px 32px", textAlign:"center" }}>
-        <div style={{ fontSize:36, marginBottom:14 }}>🪙</div>
-        <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Nenhuma credencial cadastrada</div>
-        <div style={{ color:C.td, fontSize:13, lineHeight:1.6, marginBottom:20 }}>
-          Para usar a Prata Digital, cadastre suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong>.
+  if(!cred) return (
+    <div style={{padding:"28px 0",maxWidth:440}}>
+      <div style={{...S.card,padding:"28px 32px",textAlign:"center"}}>
+        <div style={{fontSize:34,marginBottom:12}}>🪙</div>
+        <div style={{color:C.tp,fontSize:15,fontWeight:700,marginBottom:8}}>Prata Digital</div>
+        <div style={{color:C.td,fontSize:13,lineHeight:1.6,marginBottom:18}}>
+          Cadastre suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong> para usar este banco.
         </div>
-        <div style={{ background:C.deep, borderRadius:10, padding:"12px 16px", fontSize:12, color:C.tm, textAlign:"left" }}>
-          <div style={{ fontWeight:700, marginBottom:6, color:C.tp }}>O que você vai precisar:</div>
-          <div>• E-mail de acesso da conta parceiro</div>
+        <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",fontSize:12,color:C.tm,textAlign:"left"}}>
+          <div style={{fontWeight:700,marginBottom:4,color:C.tp}}>Você vai precisar de:</div>
+          <div>• E-mail da conta parceiro</div>
           <div>• Senha da conta</div>
         </div>
       </div>
     </div>
   );
 
-  if (authLoading) return (
-    <div style={{ padding:"40px 0", textAlign:"center", color:C.td, fontSize:13 }}>⏳ Autenticando na Prata Digital...</div>
-  );
+  if(authBusy) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando...</div>;
 
-  if (authErr) return (
-    <div style={{ padding:"32px 0", maxWidth:460 }}>
-      <div style={{ ...S.card, padding:"24px 28px" }}>
-        <div style={{ color:"#F87171", fontSize:14, fontWeight:700, marginBottom:10 }}>⚠ Erro de autenticação</div>
-        <div style={{ color:C.td, fontSize:13, marginBottom:16 }}>{authErr}</div>
-        <div style={{ color:C.td, fontSize:12, marginBottom:16 }}>Verifique suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong> e tente novamente.</div>
-        <button onClick={()=>autenticar(cred)}
-          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"10px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+  if(authErr) return (
+    <div style={{padding:"28px 0",maxWidth:440}}>
+      <div style={{...S.card,padding:"24px 28px"}}>
+        <div style={{color:"#F87171",fontSize:14,fontWeight:700,marginBottom:8}}>⚠ Erro de autenticação</div>
+        <div style={{color:C.td,fontSize:13,marginBottom:14}}>{authErr}</div>
+        <button onClick={()=>doLogin(cred)}
+          style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
           🔄 Tentar novamente
         </button>
       </div>
     </div>
   );
 
-  // ── Tela principal ───────────────────────────────────────────
   return (
-    <div style={{ padding:"0" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 0 12px", borderBottom:`1px solid ${C.b1}`, marginBottom:0, flexWrap:"wrap", gap:10 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:22 }}>🪙</span>
+    <div>
+      {/* header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0 10px",borderBottom:`1px solid ${C.b1}`,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>🪙</span>
           <div>
-            <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>Prata Digital</div>
-            <div style={{ color:"#34D399", fontSize:11 }}>● Sessão ativa · {cred.usuario}</div>
+            <div style={{color:C.tp,fontSize:14,fontWeight:700}}>Prata Digital</div>
+            <div style={{color:"#34D399",fontSize:11}}>● Sessão ativa · {cred.usuario}</div>
           </div>
         </div>
-        <button onClick={()=>{ setToken(null); setTokenExp(null); localStorage.removeItem("nexp_prata_session"); autenticar(cred); }}
-          style={{ background:"rgba(79,142,247,0.10)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+        <button onClick={()=>{setTkn(null);setTknExp(null);doLogin(cred);}}
+          style={{background:"rgba(79,142,247,0.10)",color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
           🔄 Reconectar
         </button>
       </div>
 
-      {/* Sub-abas */}
-      <div style={{ display:"flex", gap:0, borderBottom:`1px solid ${C.b1}`, marginBottom:20 }}>
+      {/* sub-tabs */}
+      <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18}}>
         {[["fgts","📋 FGTS"]].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setAbaP(id)}
-            style={{ background:"transparent", border:"none", cursor:"pointer", padding:"10px 22px", fontSize:13.5, fontWeight:abaP===id?700:400, color:abaP===id?"#34D399":C.tm, borderBottom:abaP===id?"2px solid #34D399":"2px solid transparent", marginBottom:"-1px", transition:"all 0.12s" }}>
+          <button key={id} onClick={()=>setSub(id)}
+            style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:sub===id?700:400,color:sub===id?"#34D399":C.tm,borderBottom:sub===id?"2px solid #34D399":"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>
             {lbl}
           </button>
         ))}
       </div>
 
       {/* FGTS */}
-      {abaP==="fgts" && (
-        <div style={{ maxWidth:640 }}>
-          {/* Supplier */}
-          <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+      {sub==="fgts" && (
+        <div style={{maxWidth:620}}>
+          {/* fornecedor */}
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
             {[["qitech","QI Tech","#3B6EF5"],["bmp","BMP","#F97316"]].map(([id,lbl,cor])=>(
-              <button key={id} onClick={()=>{setFSupplier(id);setFBalance(null);setFSimResult(null);setFErr("");setFSimErr("");}}
-                style={{ background:fSupplier===id?`${cor}22`:"rgba(255,255,255,0.04)", border:`2px solid ${fSupplier===id?cor:"rgba(255,255,255,0.08)"}`, borderRadius:10, padding:"8px 18px", cursor:"pointer", color:fSupplier===id?cor:C.td, fontSize:13, fontWeight:fSupplier===id?700:400, transition:"all 0.15s" }}>
+              <button key={id} onClick={()=>{setFornec(id);setSaldo(null);setSimRes(null);setErr("");setSimErr("");}}
+                style={{background:fornec===id?`${cor}22`:"rgba(255,255,255,0.04)",border:`2px solid ${fornec===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fornec===id?cor:C.td,fontSize:13,fontWeight:fornec===id?700:400,transition:"all 0.15s"}}>
                 {lbl}
               </button>
             ))}
           </div>
 
-          {/* Busca CPF */}
-          <div style={{ display:"flex", gap:10, marginBottom:20 }}>
-            <input value={fCpf} onChange={e=>setFCpf(fmtCPF(e.target.value))}
-              onKeyDown={e=>e.key==="Enter"&&consultarSaldo()}
-              placeholder="000.000.000-00" maxLength={14}
-              style={{ ...S.input, flex:1, fontSize:15, padding:"12px 16px" }} />
-            <button onClick={consultarSaldo} disabled={fLoading}
-              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"12px 22px", fontSize:14, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap", opacity:fLoading?0.7:1 }}>
-              {fLoading?"⏳ Consultando...":"🔍 Consultar Saldo"}
+          {/* CPF */}
+          <div style={{display:"flex",gap:10,marginBottom:18}}>
+            <input value={cpf} onChange={e=>setCpf(cpfMask(e.target.value))}
+              onKeyDown={e=>e.key==="Enter"&&buscarSaldo()} placeholder="000.000.000-00" maxLength={14}
+              style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
+            <button onClick={buscarSaldo} disabled={busy}
+              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",opacity:busy?0.7:1}}>
+              {busy?"⏳ Consultando...":"🔍 Consultar Saldo"}
             </button>
           </div>
 
-          {fErr && <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:10, padding:"12px 16px", color:"#F87171", fontSize:13, marginBottom:16 }}>⚠ {fErr}</div>}
+          {err && <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:10,padding:"11px 14px",color:"#F87171",fontSize:13,marginBottom:14}}>⚠ {err}</div>}
 
-          {/* Resultado saldo */}
-          {fBalance && (
-            <div style={{ ...S.card, padding:"20px 24px", marginBottom:16 }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8 }}>
-                <div style={{ color:C.tp, fontSize:15, fontWeight:700 }}>📊 Saldo FGTS Disponível</div>
-                <div style={{ background:"rgba(52,211,153,0.12)", color:"#34D399", border:"1px solid #34D39933", borderRadius:20, padding:"4px 14px", fontSize:12, fontWeight:700 }}>
-                  Total: {fmtBRL(totalSaldo)}
-                </div>
+          {/* resultado saldo */}
+          {saldo && (
+            <div style={{...S.card,padding:"18px 22px",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                <div style={{color:C.tp,fontSize:14,fontWeight:700}}>📊 Saldo FGTS</div>
+                <span style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid #34D39933",borderRadius:20,padding:"3px 14px",fontSize:12,fontWeight:700}}>
+                  Total: {fmtR(total)}
+                </span>
               </div>
-              {periods.length > 0 ? (
-                <div style={{ overflowX:"auto" }}>
-                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-                    <thead><tr style={{ borderBottom:`1px solid ${C.b1}` }}>
-                      {["Período","Valor Disponível"].map(h=>(
-                        <th key={h} style={{ color:C.tm, fontWeight:700, padding:"7px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {periods.map((p,i)=>{
-                        const dt = new Date(p.due_date||p.dueDate);
-                        return (
-                          <tr key={i} style={{ borderBottom:`1px solid ${C.b1}22` }}>
-                            <td style={{ padding:"8px 10px", color:C.tp }}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"long"})}</td>
-                            <td style={{ padding:"8px 10px", color:"#34D399", fontWeight:700 }}>{fmtBRL(p.total_amount??p.totalAmount)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : <div style={{ color:C.td, fontSize:13 }}>Nenhum período retornado.</div>}
+              {periodos.length>0 ? (
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead><tr>
+                    {["Período","Disponível"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"6px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {periodos.map((p,i)=>{
+                      const dt=new Date(p.due_date||p.dueDate);
+                      return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
+                        <td style={{padding:"7px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"long"})}</td>
+                        <td style={{padding:"7px 10px",color:"#34D399",fontWeight:700}}>{fmtR(p.total_amount)}</td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              ) : <div style={{color:C.td,fontSize:13}}>Nenhum período disponível.</div>}
 
-              {fSimErr && <div style={{ marginTop:12, background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"10px 14px", color:"#F87171", fontSize:12 }}>⚠ {fSimErr}</div>}
-              <button onClick={criarSimulacao} disabled={fSimLoading}
-                style={{ marginTop:16, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:fSimLoading?0.7:1 }}>
-                {fSimLoading?"⏳ Simulando...":"⚡ Criar Simulação"}
+              {simErr && <div style={{marginTop:10,background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:8,padding:"9px 12px",color:"#F87171",fontSize:12}}>⚠ {simErr}</div>}
+              <button onClick={simular} disabled={simBusy}
+                style={{marginTop:14,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:simBusy?0.7:1}}>
+                {simBusy?"⏳ Simulando...":"⚡ Criar Simulação"}
               </button>
             </div>
           )}
 
-          {/* Resultado simulação */}
-          {fSimResult && (
-            <div style={{ ...S.card, padding:"20px 24px", border:"1px solid rgba(59,110,245,0.25)" }}>
-              <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:16 }}>📋 Simulação</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-                {[["Valor Bruto",fmtBRL(totalBruto)],["Valor Líquido",fmtBRL(netAmount)],["Parcelas",simPeriods.length||fSimResult?.quota_qty||"—"],["Bancarizadora",fSupplier==="qitech"?"QI Tech":"BMP"]].map(([lbl,val])=>(
-                  <div key={lbl} style={{ background:C.deep, borderRadius:9, padding:"10px 14px" }}>
-                    <div style={{ color:C.td, fontSize:10, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.5px" }}>{lbl}</div>
-                    <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{val}</div>
+          {/* resultado simulação */}
+          {simRes && (
+            <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(59,110,245,0.25)"}}>
+              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📋 Simulação</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+                {[["Valor Bruto",fmtR(simRes.amount??simRes.totalAmount)],["Valor Líquido",fmtR(simRes.net_amount??simRes.netAmount)],["Parcelas",sPeriodos.length||simRes.quota_qty||"—"],["Bancarizadora",fornec==="qitech"?"QI Tech":"BMP"]].map(([l,v])=>(
+                  <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
+                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{l}</div>
+                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div>
                   </div>
                 ))}
               </div>
-              {simPeriods.length > 0 && (
-                <div style={{ overflowX:"auto" }}>
-                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                    <thead><tr>
-                      {["Vencimento","Valor"].map(h=>(
-                        <th key={h} style={{ color:C.tm, fontWeight:700, padding:"6px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {simPeriods.map((p,i)=>{
-                        const dt = new Date(p.due_date||p.dueDate);
-                        return (
-                          <tr key={i} style={{ borderBottom:`1px solid ${C.b1}22` }}>
-                            <td style={{ padding:"6px 10px", color:C.tp }}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
-                            <td style={{ padding:"6px 10px", color:"#60A5FA", fontWeight:600 }}>{fmtBRL(p.amount||p.total_amount)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              {sPeriodos.length>0 && (
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr>
+                    {["Vencimento","Valor"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {sPeriodos.map((p,i)=>{
+                      const dt=new Date(p.due_date||p.dueDate);
+                      return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
+                        <td style={{padding:"5px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
+                        <td style={{padding:"5px 10px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.amount||p.total_amount)}</td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
           )}
@@ -17261,8 +17227,8 @@ function PrataDigitalTab({ currentUser }) {
 }
 
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
-  const [abaBanco, setAbaBancoRaw] = useState("v8");
-  const setAbaBanco = (v) => { setAbaBancoRaw(v); localStorage.setItem("nexp_abaBanco",v); };
+  // abaBanco nunca lê localStorage para evitar crash ao carregar a página
+  const [abaBanco, setAbaBanco] = useState("v8");
   const [abaV8, setAbaV8Raw] = useState(() => localStorage.getItem("nexp_abaV8")||"fgts");
   const setAbaV8 = (v) => { setAbaV8Raw(v); localStorage.setItem("nexp_abaV8",v); };
 
@@ -17304,13 +17270,14 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
         <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
           <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
         </div>
-        {abaBanco==="v8" && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
+        {abaBanco==="v8"         && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
         {abaBanco==="prata"      && <PrataDigitalTab currentUser={currentUser} />}
         {abaBanco==="credencial" && <CredenciaisTab  currentUser={currentUser} />}
       </div>
     </div>
   );
 }
+
 
 // ── UFs do Brasil ──────────────────────────────────────────────
 const UF_BRASIL = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
