@@ -16710,7 +16710,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
   const [creds, setCreds] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [bancSel, setBancSel] = useState(null);
-  const [form, setForm] = useState({ usuario:"", senha:"" });
+  const [form, setForm] = useState({ usuario:"", senha:"", prataClient:"" });
   const [salvando, setSalvando] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState({});
   const [confirmDel, setConfirmDel] = useState(null);
@@ -16733,10 +16733,11 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 
   const salvar = async () => {
     if (!bancSel || !form.usuario.trim() || !form.senha.trim()) return;
+    if (bancSel.id === "prata_digital" && !form.prataClient.trim()) return;
     setSalvando(true);
     try {
       const id = `cred_${uid}_${bancSel.id}_${Date.now()}`;
-      await setDoc(doc(db, "credenciais_bancos", id), {
+      const payload = {
         id, uid,
         bancoId: bancSel.id,
         bancoNome: bancSel.nome,
@@ -16745,8 +16746,10 @@ function CredenciaisTab({ currentUser, standalone=false }) {
         status: "ativo",
         criadoEm: Date.now(),
         criadoEmStr: new Date().toLocaleDateString("pt-BR"),
-      });
-      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"" });
+      };
+      if (bancSel.id === "prata_digital") payload.prataClient = form.prataClient.trim();
+      await setDoc(doc(db, "credenciais_bancos", id), payload);
+      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"", prataClient:"" });
     } catch(e) { alert("Erro ao salvar: "+e.message); }
     setSalvando(false);
   };
@@ -16940,7 +16943,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:18 }}>
                   <div>
-                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Usuário / Login</label>
+                    <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Usuário / E-mail</label>
                     <input value={form.usuario} onChange={e=>setForm(p=>({...p,usuario:e.target.value}))}
                       placeholder="seu@email.com ou usuário" style={{ ...S.input, width:"100%" }} autoComplete="off" />
                   </div>
@@ -16949,13 +16952,22 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                     <input value={form.senha} onChange={e=>setForm(p=>({...p,senha:e.target.value}))}
                       placeholder="••••••••" type="password" style={{ ...S.input, width:"100%" }} autoComplete="new-password" />
                   </div>
+                  {bancSel.id === "prata_digital" && (
+                    <div>
+                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>x-prata-client <span style={{ color:"#FBBF24" }}>*</span></label>
+                      <input value={form.prataClient} onChange={e=>setForm(p=>({...p,prataClient:e.target.value}))}
+                        placeholder="Identificador parceiro fornecido pela Prata Digital" style={{ ...S.input, width:"100%" }} autoComplete="off" />
+                      <div style={{ color:C.td, fontSize:10, marginTop:4 }}>Código único de parceiro fornecido pela Prata Digital.</div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
-                  <button onClick={salvar} disabled={salvando||!form.usuario.trim()||!form.senha.trim()}
-                    style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:(salvando||!form.usuario.trim()||!form.senha.trim())?0.5:1, transition:"opacity 0.2s" }}>
+                  <button onClick={salvar}
+                    disabled={salvando||!form.usuario.trim()||!form.senha.trim()||(bancSel.id==="prata_digital"&&!form.prataClient.trim())}
+                    style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:(salvando||!form.usuario.trim()||!form.senha.trim()||(bancSel.id==="prata_digital"&&!form.prataClient.trim()))?0.5:1, transition:"opacity 0.2s" }}>
                     {salvando?"⏳ Salvando...":"💾 Salvar credencial"}
                   </button>
-                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:""}); }}
+                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:"",prataClient:""}); }}
                     style={{ background:"rgba(255,255,255,0.06)", color:C.td, border:`1px solid ${C.b2}`, borderRadius:12, padding:"13px 18px", fontSize:13, cursor:"pointer" }}>
                     Cancelar
                   </button>
@@ -16972,55 +16984,65 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 // ── Prata Digital Tab ──────────────────────────────────────────
 function PrataDigitalTab({ currentUser }) {
   const PROXY = "/api/prataproxy";
+  const uid = currentUser?.uid || currentUser?.id;
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
   const fmtCPF = v => { const c=v.replace(/\D/g,"").padStart(11,"0"); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
 
-  // Sessão persistente
-  const [token,    setToken]    = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.token||null;}catch{return null;} });
+  // Token de sessão (cache local)
+  const [token,    setToken]    = useState(()=>{ try{const s=JSON.parse(localStorage.getItem("nexp_prata_session")||"null"); return (s?.exp&&Date.now()<s.exp)?s.token:null;}catch{return null;} });
   const [tokenExp, setTokenExp] = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.exp||null;}catch{return null;} });
-  // partnerAccountId e partnerAccountToken salvos na sessão para uso futuro (propostas)
-  const _partnerAccountId    = (()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.accountId||null;}catch{return null;} })(); // eslint-disable-line no-unused-vars
-  const _partnerAccountToken = (()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.accountToken||null;}catch{return null;} })(); // eslint-disable-line no-unused-vars
-  const [credForm, setCredForm] = useState({
-    email:       localStorage.getItem("nexp_prata_email")||"",
-    password:    "",
-    prataClient: localStorage.getItem("nexp_prata_client")||"",
-  });
-  const [authLoading, setAuthLoading] = useState(false);
+
+  // Credencial carregada do Firestore
+  const [cred,        setCred]        = useState(null);  // { usuario, senha, prataClient }
+  const [credLoading, setCredLoading] = useState(true);
   const [authErr,     setAuthErr]     = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [abaP, setAbaP] = useState("fgts");
 
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
-  const saveSession = (tk, exp, accId, accTk) => {
+  // 1. Carrega credencial ativa do Firestore
+  useEffect(() => {
+    if (!uid) { setCredLoading(false); return; }
+    const ref = collection(db, "credenciais_bancos");
+    const unsub = onSnapshot(ref, snap => {
+      const found = snap.docs
+        .map(d => ({ id:d.id, ...d.data() }))
+        .find(c => c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo");
+      setCred(found||null);
+      setCredLoading(false);
+    });
+    return () => unsub();
+  }, [uid]);
+
+  // 2. Auto-autentica quando credencial estiver disponível e token inválido
+  useEffect(() => {
+    if (!cred || isTokenValid) return;
+    autenticar(cred);
+  }, [cred]); // eslint-disable-line
+
+  const saveSession = (tk, exp) => {
     setToken(tk); setTokenExp(exp);
-    localStorage.setItem("nexp_prata_session", JSON.stringify({ token:tk, exp, accountId:accId, accountToken:accTk }));
-  };
-  const clearSession = () => {
-    setToken(null); setTokenExp(null);
-    localStorage.removeItem("nexp_prata_session");
+    localStorage.setItem("nexp_prata_session", JSON.stringify({ token:tk, exp }));
   };
 
-  const autenticar = async () => {
-    if (!credForm.email||!credForm.password||!credForm.prataClient){setAuthErr("Preencha e-mail, senha e x-prata-client.");return;}
+  const autenticar = async (c) => {
     setAuthLoading(true); setAuthErr("");
     try {
-      localStorage.setItem("nexp_prata_email",  credForm.email);
-      localStorage.setItem("nexp_prata_client", credForm.prataClient);
       const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"auth", email:credForm.email, password:credForm.password, prataClient:credForm.prataClient }) });
+        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message||data.error||`Erro ${res.status}`);
       const exp = Date.now() + (23*60*60*1000);
-      saveSession(data.data.token, exp, data.data.account?.id, data.data.account?.token);
+      saveSession(data.data.token, exp);
     } catch(e) { setAuthErr(e.message); }
     setAuthLoading(false);
   };
 
   const prataFetch = async (path, method="GET", body=null) => {
-    if (!isTokenValid) throw new Error("Sessão expirada. Faça login novamente.");
+    if (!isTokenValid) throw new Error("Sessão expirada.");
     const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action:"bff", path, method, token, prataClient: localStorage.getItem("nexp_prata_client")||"", body }) });
+      body: JSON.stringify({ action:"bff", path, method, token, prataClient:cred?.prataClient||"", body }) });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { throw new Error(`Servidor indisponível (${res.status})`); }
     if (!res.ok) throw new Error(data.message||data.error||(Array.isArray(data.errors)?data.errors.map(e=>e.message||e).join("; "):null)||`Erro ${res.status}`);
@@ -17029,11 +17051,11 @@ function PrataDigitalTab({ currentUser }) {
 
   // ── Estados FGTS ────────────────────────────────────────────
   const [fCpf,       setFCpf]       = useState("");
-  const [fSupplier,  setFSupplier]  = useState("qitech"); // qitech | bmp
+  const [fSupplier,  setFSupplier]  = useState("qitech");
   const [fLoading,   setFLoading]   = useState(false);
   const [fErr,       setFErr]       = useState("");
-  const [fBalance,   setFBalance]   = useState(null);   // dados do GET balance
-  const [fSimResult, setFSimResult] = useState(null);   // dados do POST simulation
+  const [fBalance,   setFBalance]   = useState(null);
+  const [fSimResult, setFSimResult] = useState(null);
   const [fSimLoading,setFSimLoading]= useState(false);
   const [fSimErr,    setFSimErr]    = useState("");
 
@@ -17062,65 +17084,68 @@ function PrataDigitalTab({ currentUser }) {
     setFSimLoading(false);
   };
 
-  const periods     = fBalance?.periods||[];
-  const totalSaldo  = periods.reduce((a,p)=>a+(parseFloat(p.total_amount)||0),0);
-  const simPeriods  = fSimResult?.periods||fSimResult?.installments||[];
-  const netAmount   = fSimResult?.net_amount ?? fSimResult?.netAmount ?? null;
-  const totalBruto  = fSimResult?.amount      ?? fSimResult?.totalAmount ?? null;
+  const periods    = fBalance?.periods||[];
+  const totalSaldo = periods.reduce((a,p)=>a+(parseFloat(p.total_amount)||0),0);
+  const simPeriods = fSimResult?.periods||fSimResult?.installments||[];
+  const netAmount  = fSimResult?.net_amount ?? fSimResult?.netAmount ?? null;
+  const totalBruto = fSimResult?.amount ?? fSimResult?.totalAmount ?? null;
 
-  // ── Render ───────────────────────────────────────────────────
-  if (!isTokenValid) return (
+  // ── Estados de carregamento / sem credencial ─────────────────
+  if (credLoading) return (
+    <div style={{ padding:"40px 0", textAlign:"center", color:C.td, fontSize:13 }}>⏳ Carregando credenciais...</div>
+  );
+
+  if (!cred) return (
     <div style={{ padding:"32px 0", maxWidth:460 }}>
-      <div style={{ ...S.card, padding:"28px 32px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:22 }}>
-          <div style={{ fontSize:28 }}>🪙</div>
-          <div>
-            <div style={{ color:C.tp, fontSize:16, fontWeight:800 }}>Prata Digital — Login</div>
-            <div style={{ color:C.td, fontSize:12, marginTop:2 }}>Acesse sua conta de parceiro</div>
-          </div>
+      <div style={{ ...S.card, padding:"28px 32px", textAlign:"center" }}>
+        <div style={{ fontSize:36, marginBottom:14 }}>🪙</div>
+        <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Nenhuma credencial cadastrada</div>
+        <div style={{ color:C.td, fontSize:13, lineHeight:1.6, marginBottom:20 }}>
+          Para usar a Prata Digital, cadastre suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong>.
         </div>
-
-        {[
-          { label:"E-mail", k:"email",       type:"email",    ph:"user.api@pratadigital.com.br" },
-          { label:"Senha",  k:"password",    type:"password", ph:"••••••••" },
-          { label:"x-prata-client", k:"prataClient", type:"text", ph:"Identificador do parceiro" },
-        ].map(f => (
-          <div key={f.k} style={{ marginBottom:14 }}>
-            <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>{f.label}</label>
-            <input value={credForm[f.k]} type={f.type}
-              onChange={e=>setCredForm(p=>({...p,[f.k]:e.target.value}))}
-              onKeyDown={e=>e.key==="Enter"&&autenticar()}
-              placeholder={f.ph} style={{ ...S.input, width:"100%" }} autoComplete="off" />
-          </div>
-        ))}
-
-        {authErr && <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"8px 12px", color:"#F87171", fontSize:12, marginBottom:14 }}>{authErr}</div>}
-
-        <button onClick={autenticar} disabled={authLoading}
-          style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
-          {authLoading?"⏳ Autenticando...":"🔑 Entrar"}
-        </button>
-        <div style={{ marginTop:14, padding:"10px 14px", background:C.deep, borderRadius:10, fontSize:11, color:C.td }}>
-          💡 O <strong style={{color:C.tm}}>x-prata-client</strong> é o identificador único da sua conta parceiro fornecido pela Prata Digital.
+        <div style={{ background:C.deep, borderRadius:10, padding:"12px 16px", fontSize:12, color:C.tm, textAlign:"left" }}>
+          <div style={{ fontWeight:700, marginBottom:6, color:C.tp }}>O que você vai precisar:</div>
+          <div>• E-mail de acesso da conta parceiro</div>
+          <div>• Senha da conta</div>
+          <div>• Código <strong>x-prata-client</strong> fornecido pela Prata Digital</div>
         </div>
       </div>
     </div>
   );
 
+  if (authLoading) return (
+    <div style={{ padding:"40px 0", textAlign:"center", color:C.td, fontSize:13 }}>⏳ Autenticando na Prata Digital...</div>
+  );
+
+  if (authErr) return (
+    <div style={{ padding:"32px 0", maxWidth:460 }}>
+      <div style={{ ...S.card, padding:"24px 28px" }}>
+        <div style={{ color:"#F87171", fontSize:14, fontWeight:700, marginBottom:10 }}>⚠ Erro de autenticação</div>
+        <div style={{ color:C.td, fontSize:13, marginBottom:16 }}>{authErr}</div>
+        <div style={{ color:C.td, fontSize:12, marginBottom:16 }}>Verifique suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong> e tente novamente.</div>
+        <button onClick={()=>autenticar(cred)}
+          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"10px 22px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          🔄 Tentar novamente
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Tela principal ───────────────────────────────────────────
   return (
     <div style={{ padding:"0" }}>
-      {/* Header logado */}
+      {/* Header */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 0 12px", borderBottom:`1px solid ${C.b1}`, marginBottom:0, flexWrap:"wrap", gap:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:22 }}>🪙</span>
           <div>
             <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>Prata Digital</div>
-            <div style={{ color:"#34D399", fontSize:11 }}>● Sessão ativa</div>
+            <div style={{ color:"#34D399", fontSize:11 }}>● Sessão ativa · {cred.usuario}</div>
           </div>
         </div>
-        <button onClick={clearSession}
-          style={{ background:"rgba(239,68,68,0.1)", color:"#F87171", border:"1px solid #EF444433", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
-          Sair
+        <button onClick={()=>{ setToken(null); setTokenExp(null); localStorage.removeItem("nexp_prata_session"); autenticar(cred); }}
+          style={{ background:"rgba(79,142,247,0.10)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+          🔄 Reconectar
         </button>
       </div>
 
@@ -17137,7 +17162,7 @@ function PrataDigitalTab({ currentUser }) {
       {/* FGTS */}
       {abaP==="fgts" && (
         <div style={{ maxWidth:640 }}>
-          {/* Supplier selector */}
+          {/* Supplier */}
           <div style={{ display:"flex", gap:8, marginBottom:16 }}>
             {[["qitech","QI Tech","#3B6EF5"],["bmp","BMP","#F97316"]].map(([id,lbl,cor])=>(
               <button key={id} onClick={()=>{setFSupplier(id);setFBalance(null);setFSimResult(null);setFErr("");setFSimErr("");}}
@@ -17161,7 +17186,7 @@ function PrataDigitalTab({ currentUser }) {
 
           {fErr && <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:10, padding:"12px 16px", color:"#F87171", fontSize:13, marginBottom:16 }}>⚠ {fErr}</div>}
 
-          {/* Resultado do saldo */}
+          {/* Resultado saldo */}
           {fBalance && (
             <div style={{ ...S.card, padding:"20px 24px", marginBottom:16 }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8 }}>
@@ -17170,24 +17195,20 @@ function PrataDigitalTab({ currentUser }) {
                   Total: {fmtBRL(totalSaldo)}
                 </div>
               </div>
-
               {periods.length > 0 ? (
                 <div style={{ overflowX:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-                    <thead>
-                      <tr style={{ borderBottom:`1px solid ${C.b1}` }}>
-                        {["Período","Valor Disponível"].map(h=>(
-                          <th key={h} style={{ color:C.tm, fontWeight:700, padding:"7px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
+                    <thead><tr style={{ borderBottom:`1px solid ${C.b1}` }}>
+                      {["Período","Valor Disponível"].map(h=>(
+                        <th key={h} style={{ color:C.tm, fontWeight:700, padding:"7px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
+                      ))}
+                    </tr></thead>
                     <tbody>
                       {periods.map((p,i)=>{
                         const dt = new Date(p.due_date||p.dueDate);
-                        const dtStr = isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"long"});
                         return (
                           <tr key={i} style={{ borderBottom:`1px solid ${C.b1}22` }}>
-                            <td style={{ padding:"8px 10px", color:C.tp }}>{dtStr}</td>
+                            <td style={{ padding:"8px 10px", color:C.tp }}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"long"})}</td>
                             <td style={{ padding:"8px 10px", color:"#34D399", fontWeight:700 }}>{fmtBRL(p.total_amount??p.totalAmount)}</td>
                           </tr>
                         );
@@ -17195,12 +17216,9 @@ function PrataDigitalTab({ currentUser }) {
                     </tbody>
                   </table>
                 </div>
-              ) : (
-                <div style={{ color:C.td, fontSize:13 }}>Nenhum período retornado.</div>
-              )}
+              ) : <div style={{ color:C.td, fontSize:13 }}>Nenhum período retornado.</div>}
 
               {fSimErr && <div style={{ marginTop:12, background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8, padding:"10px 14px", color:"#F87171", fontSize:12 }}>⚠ {fSimErr}</div>}
-
               <button onClick={criarSimulacao} disabled={fSimLoading}
                 style={{ marginTop:16, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", opacity:fSimLoading?0.7:1 }}>
                 {fSimLoading?"⏳ Simulando...":"⚡ Criar Simulação"}
@@ -17208,35 +17226,26 @@ function PrataDigitalTab({ currentUser }) {
             </div>
           )}
 
-          {/* Resultado da simulação */}
+          {/* Resultado simulação */}
           {fSimResult && (
             <div style={{ ...S.card, padding:"20px 24px", border:"1px solid rgba(59,110,245,0.25)" }}>
               <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:16 }}>📋 Simulação</div>
-
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-                {[
-                  ["Valor Bruto",    fmtBRL(totalBruto)],
-                  ["Valor Líquido",  fmtBRL(netAmount)],
-                  ["Parcelas",       simPeriods.length||fSimResult?.quota_qty||"—"],
-                  ["Supplier",       fSupplier==="qitech"?"QI Tech":"BMP"],
-                ].map(([lbl,val])=>(
+                {[["Valor Bruto",fmtBRL(totalBruto)],["Valor Líquido",fmtBRL(netAmount)],["Parcelas",simPeriods.length||fSimResult?.quota_qty||"—"],["Bancarizadora",fSupplier==="qitech"?"QI Tech":"BMP"]].map(([lbl,val])=>(
                   <div key={lbl} style={{ background:C.deep, borderRadius:9, padding:"10px 14px" }}>
                     <div style={{ color:C.td, fontSize:10, marginBottom:4, textTransform:"uppercase", letterSpacing:"0.5px" }}>{lbl}</div>
                     <div style={{ color:C.tp, fontSize:14, fontWeight:700 }}>{val}</div>
                   </div>
                 ))}
               </div>
-
               {simPeriods.length > 0 && (
                 <div style={{ overflowX:"auto" }}>
                   <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                    <thead>
-                      <tr>
-                        {["Vencimento","Valor"].map(h=>(
-                          <th key={h} style={{ color:C.tm, fontWeight:700, padding:"6px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
+                    <thead><tr>
+                      {["Vencimento","Valor"].map(h=>(
+                        <th key={h} style={{ color:C.tm, fontWeight:700, padding:"6px 10px", textAlign:"left", borderBottom:`1px solid ${C.b1}` }}>{h}</th>
+                      ))}
+                    </tr></thead>
                     <tbody>
                       {simPeriods.map((p,i)=>{
                         const dt = new Date(p.due_date||p.dueDate);
