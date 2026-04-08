@@ -1654,6 +1654,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   const all = [
     { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
     { id:"apis",       label:"Bancos",          icon:"⬧", roles:["administrador","gerente","mestre","master"] },
+    { id:"credenciais",label:"Credenciais",     icon:"🔐", roles:["administrador","gerente","mestre","master"] },
     { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"] },
     { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
     { id:"dashboard",  label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
@@ -16704,7 +16705,7 @@ const BANCOS_PARCEIROS = [
   { id:"banco_hub",      nome:"Banco Hub",          icon:"🔗", cor:"#C084FC", disponivel:false },
 ];
 
-function CredenciaisTab({ currentUser }) {
+function CredenciaisTab({ currentUser, standalone=false }) {
   const uid = currentUser?.uid || currentUser?.id;
   const [creds, setCreds] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -16775,9 +16776,10 @@ function CredenciaisTab({ currentUser }) {
   };
 
   return (
-    <div style={{ padding:"24px 0", minHeight:400 }}>
+    <div style={{ padding: standalone ? "28px 36px" : "24px 0", minHeight:400, background: standalone ? C.bg : "transparent" }}>
       {/* Header */}
       <div style={{ marginBottom:24 }}>
+        {standalone && <h1 style={{ color:C.tp, fontSize:21, fontWeight:700, margin:"0 0 6px" }}>🔐 Credenciais</h1>}
         <div style={{ color:C.tp, fontSize:17, fontWeight:800, marginBottom:4 }}>Usuários de Bancos Parceiros</div>
         <div style={{ color:C.td, fontSize:13 }}>Gerencie suas credenciais</div>
       </div>
@@ -19986,6 +19988,7 @@ export default function App() {
         <div style={{ display: page === "apis" ? "block" : "none" }}>
           <ApisBancosPage currentUser={currentUser} contacts={contacts} onLoteSimFim={()=>setLoteSimFimGlobal(true)} />
         </div>
+        {page === "credenciais" && <CredenciaisTab currentUser={currentUser} standalone />}
         {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
         </div>
       </div>
