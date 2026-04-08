@@ -16710,7 +16710,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
   const [creds, setCreds] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [bancSel, setBancSel] = useState(null);
-  const [form, setForm] = useState({ usuario:"", senha:"", prataClient:"" });
+  const [form, setForm] = useState({ usuario:"", senha:"" });
   const [salvando, setSalvando] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState({});
   const [confirmDel, setConfirmDel] = useState(null);
@@ -16733,11 +16733,10 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 
   const salvar = async () => {
     if (!bancSel || !form.usuario.trim() || !form.senha.trim()) return;
-    if (bancSel.id === "prata_digital" && !form.prataClient.trim()) return;
     setSalvando(true);
     try {
       const id = `cred_${uid}_${bancSel.id}_${Date.now()}`;
-      const payload = {
+      await setDoc(doc(db, "credenciais_bancos", id), {
         id, uid,
         bancoId: bancSel.id,
         bancoNome: bancSel.nome,
@@ -16746,10 +16745,8 @@ function CredenciaisTab({ currentUser, standalone=false }) {
         status: "ativo",
         criadoEm: Date.now(),
         criadoEmStr: new Date().toLocaleDateString("pt-BR"),
-      };
-      if (bancSel.id === "prata_digital") payload.prataClient = form.prataClient.trim();
-      await setDoc(doc(db, "credenciais_bancos", id), payload);
-      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"", prataClient:"" });
+      });
+      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"" });
     } catch(e) { alert("Erro ao salvar: "+e.message); }
     setSalvando(false);
   };
@@ -16952,22 +16949,13 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                     <input value={form.senha} onChange={e=>setForm(p=>({...p,senha:e.target.value}))}
                       placeholder="••••••••" type="password" style={{ ...S.input, width:"100%" }} autoComplete="new-password" />
                   </div>
-                  {bancSel.id === "prata_digital" && (
-                    <div>
-                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>x-prata-client <span style={{ color:"#FBBF24" }}>*</span></label>
-                      <input value={form.prataClient} onChange={e=>setForm(p=>({...p,prataClient:e.target.value}))}
-                        placeholder="Identificador parceiro fornecido pela Prata Digital" style={{ ...S.input, width:"100%" }} autoComplete="off" />
-                      <div style={{ color:C.td, fontSize:10, marginTop:4 }}>Código único de parceiro fornecido pela Prata Digital.</div>
-                    </div>
-                  )}
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
-                  <button onClick={salvar}
-                    disabled={salvando||!form.usuario.trim()||!form.senha.trim()||(bancSel.id==="prata_digital"&&!form.prataClient.trim())}
-                    style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:(salvando||!form.usuario.trim()||!form.senha.trim()||(bancSel.id==="prata_digital"&&!form.prataClient.trim()))?0.5:1, transition:"opacity 0.2s" }}>
+                  <button onClick={salvar} disabled={salvando||!form.usuario.trim()||!form.senha.trim()}
+                    style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:(salvando||!form.usuario.trim()||!form.senha.trim())?0.5:1, transition:"opacity 0.2s" }}>
                     {salvando?"⏳ Salvando...":"💾 Salvar credencial"}
                   </button>
-                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:"",prataClient:""}); }}
+                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:""}); }}
                     style={{ background:"rgba(255,255,255,0.06)", color:C.td, border:`1px solid ${C.b2}`, borderRadius:12, padding:"13px 18px", fontSize:13, cursor:"pointer" }}>
                     Cancelar
                   </button>
@@ -16993,7 +16981,7 @@ function PrataDigitalTab({ currentUser }) {
   const [tokenExp, setTokenExp] = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.exp||null;}catch{return null;} });
 
   // Credencial carregada do Firestore
-  const [cred,        setCred]        = useState(null);  // { usuario, senha, prataClient }
+  const [cred,        setCred]        = useState(null);  // { usuario, senha }
   const [credLoading, setCredLoading] = useState(true);
   const [authErr,     setAuthErr]     = useState("");
   const [authLoading, setAuthLoading] = useState(false);
@@ -17030,7 +17018,7 @@ function PrataDigitalTab({ currentUser }) {
     setAuthLoading(true); setAuthErr("");
     try {
       const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
+        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message||data.error||`Erro ${res.status}`);
       const exp = Date.now() + (23*60*60*1000);
@@ -17042,7 +17030,7 @@ function PrataDigitalTab({ currentUser }) {
   const prataFetch = async (path, method="GET", body=null) => {
     if (!isTokenValid) throw new Error("Sessão expirada.");
     const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action:"bff", path, method, token, prataClient:cred?.prataClient||"", body }) });
+      body: JSON.stringify({ action:"bff", path, method, token, body }) });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { throw new Error(`Servidor indisponível (${res.status})`); }
     if (!res.ok) throw new Error(data.message||data.error||(Array.isArray(data.errors)?data.errors.map(e=>e.message||e).join("; "):null)||`Erro ${res.status}`);
@@ -17107,7 +17095,6 @@ function PrataDigitalTab({ currentUser }) {
           <div style={{ fontWeight:700, marginBottom:6, color:C.tp }}>O que você vai precisar:</div>
           <div>• E-mail de acesso da conta parceiro</div>
           <div>• Senha da conta</div>
-          <div>• Código <strong>x-prata-client</strong> fornecido pela Prata Digital</div>
         </div>
       </div>
     </div>
