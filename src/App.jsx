@@ -11805,17 +11805,13 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
   // Auto-resume lote after F5: if wasRunning was saved, trigger simularLote
-  // lSaved / loteWasRunning / loteAutoResume — declared here so the useEffect below can use them
   const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
   const loteWasRunning = lSaved?.wasRunning || false;
-  const loteAutoResume = React.useRef(loteWasRunning); // true = should auto-start on mount
-
-  // loteSimularLoteRef is set by LoteTab on each render so parent can call it
+  const loteAutoResume = React.useRef(loteWasRunning);
   const loteSimularLoteRef = React.useRef(null);
   useEffect(() => {
     if (aba === "lote" && loteWasRunning && loteAutoResume.current) {
       loteAutoResume.current = false;
-      // Wait for LoteTab to register its simularLote fn
       const t = setTimeout(() => { if (loteSimularLoteRef.current) loteSimularLoteRef.current(); }, 400);
       return () => clearTimeout(t);
     }
@@ -11824,13 +11820,16 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const saveSession = (tk, exp) => { setToken(tk); setTokenExp(exp); localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp })); };
   const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); localStorage.removeItem("nexp_v8_aba"); setAba("config"); };
 
-  const autenticar = async () => {
-    if (!credForm.username || !credForm.password) { setAuthErr("Preencha e-mail e senha."); return; }
+  // autenticar aceita params diretos (auto-login) ou usa credForm (login manual)
+  const autenticar = async (overUser, overPass) => {
+    const username = overUser || credForm.username;
+    const password = overPass || credForm.password;
+    if (!username || !password) { setAuthErr("Preencha e-mail e senha."); return; }
     setAuthLoading(true); setAuthErr("");
     try {
-      localStorage.setItem("nexp_v8_user", credForm.username); setSavedUser(credForm.username);
+      localStorage.setItem("nexp_v8_user", username); setSavedUser(username);
       const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"auth", payload:{ username:credForm.username, password:credForm.password } }) });
+        body: JSON.stringify({ action:"auth", payload:{ username, password } }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_description || data.message || data.error || `Erro ${res.status}`);
       const exp = Date.now() + ((data.expires_in || 86400) - 60) * 1000;
@@ -11839,6 +11838,27 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
     } catch(e) { setAuthErr(e.message); }
     setAuthLoading(false);
   };
+
+  // ── Auto-login via Credenciais (Firestore) ───────────────────
+  useEffect(() => {
+    if (isTokenValid) return; // já tem sessão válida
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) return;
+    let unsub = () => {};
+    const timer = setTimeout(() => {}, 8000); // apenas referência, não bloqueia
+    try {
+      unsub = onSnapshot(collection(db, "credenciais_bancos"), snap => {
+        try {
+          const found = snap.docs
+            .map(d => { try { return {...d.data()}; } catch { return null; } })
+            .filter(Boolean)
+            .find(c => c.uid === uid && c.bancoId === "v8_digital" && c.status === "ativo");
+          if (found) autenticar(found.usuario, found.senha);
+        } catch {}
+      }, () => {});
+    } catch {}
+    return () => { clearTimeout(timer); unsub(); };
+  }, []); // eslint-disable-line
 
   // ── apiFetch — rotas corretas conforme documentação V8 ───────
   const apiFetch = async (path, method="GET", body=null, retries=2, { skipRateLimit=false }={}) => {
@@ -15012,23 +15032,31 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 
       {!isTokenValid && (
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"22px 24px" }}>
-          <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
-          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Use seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8. Sessão salva no navegador.</div>
-          <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:9, padding:"10px 14px", marginBottom:16, fontSize:11 }}>
-            <div style={{ color:C.td }}>Auth: <span style={{ color:C.tm }}>https://auth.v8sistema.com/oauth/token</span></div>
-            <div style={{ color:C.td }}>BFF: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
-            <div style={{ color:C.td }}>Client ID: <span style={{ color:C.tm }}>DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn</span></div>
-          </div>
-          {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label><input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} /></div>
-            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label><input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} /></div>
-          </div>
-          <button onClick={autenticar} disabled={authLoading}
-            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
-            {authLoading?"⏳ Autenticando...":"🔐 Entrar na V8 Digital →"}
-          </button>
-          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>Sessão salva. Não precisará fazer login ao recarregar.</div>
+          {authLoading ? (
+            <div style={{ textAlign:"center", padding:"12px 0" }}>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>⏳ Autenticando...</div>
+              <div style={{ color:C.td, fontSize:12 }}>Usando credenciais salvas da aba 🔐 Credenciais.</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
+              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>
+                {savedUser
+                  ? <>Credencial: <b style={{color:C.atxt}}>{savedUser}</b> · ou entre manualmente:</>
+                  : <>Cadastre suas credenciais V8 na aba <b style={{color:C.atxt}}>🔐 Credenciais</b> para login automático, ou entre manualmente:</>
+                }
+              </div>
+              {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+                <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label><input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} /></div>
+                <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label><input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} /></div>
+              </div>
+              <button onClick={()=>autenticar()} disabled={authLoading}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
+                🔐 Entrar na V8 Digital →
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -17021,7 +17049,9 @@ function PrataDigitalTab({ currentUser }) {
     try {
       const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha }) });
-      const j = await r.json();
+      const txt = await r.text();
+      if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Certifique-se de que o arquivo api/prataproxy.js está na pasta raiz do seu projeto e foi deployado.");
+      const j = JSON.parse(txt);
       if(!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
       const exp = Date.now() + 23*3600*1000;
       setTkn(j.data.token); setTknExp(exp);
@@ -17034,7 +17064,8 @@ function PrataDigitalTab({ currentUser }) {
     const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ action:"bff", path, method, token:tkn, body }) });
     const txt = await r.text();
-    let j; try{ j=JSON.parse(txt); }catch{ throw new Error(`Erro ${r.status}`); }
+    if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique se o arquivo api/prataproxy.js está na pasta correta do projeto.");
+    let j; try{ j=JSON.parse(txt); }catch{ throw new Error(`Resposta inválida do servidor (${r.status})`); }
     if(!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
     return j;
   };
