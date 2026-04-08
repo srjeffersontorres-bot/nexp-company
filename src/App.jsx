@@ -15940,7 +15940,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         const s=termosSearch.toLowerCase();
                         return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
                       });
-                      const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS);
+                      const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS); // eslint-disable-line no-unused-vars
                       const pageItems = filtrados.slice((termosPage-1)*PAGE_SIZE_TERMOS, termosPage*PAGE_SIZE_TERMOS);
                       return pageItems.map(t=>{
                         const col=STATUS_COR[t.status]||C.td;
