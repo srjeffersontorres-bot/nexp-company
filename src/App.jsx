@@ -16992,21 +16992,26 @@ function PrataDigitalTab({ currentUser }) {
   // 1. Carrega credencial ativa do Firestore
   useEffect(() => {
     if (!uid) { setCredLoading(false); return; }
-    const ref = collection(db, "credenciais_bancos");
-    const unsub = onSnapshot(ref, snap => {
-      const found = snap.docs
-        .map(d => ({ id:d.id, ...d.data() }))
-        .find(c => c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo");
-      setCred(found||null);
-      setCredLoading(false);
-    });
+    let unsub = () => {};
+    try {
+      const ref = collection(db, "credenciais_bancos");
+      unsub = onSnapshot(ref, snap => {
+        try {
+          const found = snap.docs
+            .map(d => ({ id:d.id, ...d.data() }))
+            .find(c => c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo");
+          setCred(found||null);
+        } catch { setCred(null); }
+        setCredLoading(false);
+      }, () => { setCred(null); setCredLoading(false); });
+    } catch { setCred(null); setCredLoading(false); }
     return () => unsub();
-  }, [uid]);
+  }, [uid]); // eslint-disable-line
 
   // 2. Auto-autentica quando credencial estiver disponível e token inválido
   useEffect(() => {
     if (!cred || isTokenValid) return;
-    autenticar(cred);
+    try { autenticar(cred); } catch { /* silencioso */ }
   }, [cred]); // eslint-disable-line
 
   const saveSession = (tk, exp) => {
@@ -17256,7 +17261,7 @@ function PrataDigitalTab({ currentUser }) {
 }
 
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
-  const [abaBanco, setAbaBancoRaw] = useState(() => localStorage.getItem("nexp_abaBanco")||"v8");
+  const [abaBanco, setAbaBancoRaw] = useState("v8");
   const setAbaBanco = (v) => { setAbaBancoRaw(v); localStorage.setItem("nexp_abaBanco",v); };
   const [abaV8, setAbaV8Raw] = useState(() => localStorage.getItem("nexp_abaV8")||"fgts");
   const setAbaV8 = (v) => { setAbaV8Raw(v); localStorage.setItem("nexp_abaV8",v); };
