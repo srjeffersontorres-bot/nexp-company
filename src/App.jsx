@@ -16738,7 +16738,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
   const [creds, setCreds] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [bancSel, setBancSel] = useState(null);
-  const [form, setForm] = useState({ usuario:"", senha:"" });
+  const [form, setForm] = useState({ usuario:"", senha:"", prataClient:"" });
   const [salvando, setSalvando] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState({});
   const [confirmDel, setConfirmDel] = useState(null);
@@ -16764,7 +16764,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
     setSalvando(true);
     try {
       const id = `cred_${uid}_${bancSel.id}_${Date.now()}`;
-      await setDoc(doc(db, "credenciais_bancos", id), {
+      const payload = {
         id, uid,
         bancoId: bancSel.id,
         bancoNome: bancSel.nome,
@@ -16773,8 +16773,11 @@ function CredenciaisTab({ currentUser, standalone=false }) {
         status: "ativo",
         criadoEm: Date.now(),
         criadoEmStr: new Date().toLocaleDateString("pt-BR"),
-      });
-      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"" });
+      };
+      if (bancSel.id === "prata_digital" && form.prataClient.trim())
+        payload.prataClient = form.prataClient.trim();
+      await setDoc(doc(db, "credenciais_bancos", id), payload);
+      setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"", prataClient:"" });
     } catch(e) { alert("Erro ao salvar: "+e.message); }
     setSalvando(false);
   };
@@ -16983,6 +16986,15 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                     <input value={form.senha} onChange={e=>setForm(p=>({...p,senha:e.target.value}))}
                       placeholder="••••••••" type="password" style={{ ...S.input, width:"100%" }} autoComplete="new-password" />
                   </div>
+                  {bancSel.id === "prata_digital" && (
+                    <div>
+                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>
+                        x-prata-client <span style={{ color:C.td, fontWeight:400 }}>(código do parceiro)</span>
+                      </label>
+                      <input value={form.prataClient} onChange={e=>setForm(p=>({...p,prataClient:e.target.value}))}
+                        placeholder="Código fornecido pela Prata Digital" style={{ ...S.input, width:"100%" }} autoComplete="off" />
+                    </div>
+                  )}
                 </div>
                 <div style={{ display:"flex", gap:10 }}>
                   <button onClick={salvar} disabled={salvando||!form.usuario.trim()||!form.senha.trim()}
@@ -17054,9 +17066,9 @@ function PrataDigitalTab({ currentUser }) {
     setAuthBusy(true); setAuthErr("");
     try {
       const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha }) });
+        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
       const txt = await r.text();
-      if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Certifique-se de que o arquivo api/prataproxy.js está na pasta raiz do seu projeto e foi deployado.");
+      if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique se api/prataproxy.js está na pasta correta.");
       const j = JSON.parse(txt);
       if(!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
       const exp = Date.now() + 23*3600*1000;
@@ -17068,9 +17080,9 @@ function PrataDigitalTab({ currentUser }) {
   const api = async (path, method="GET", body=null) => {
     if(!valid) throw new Error("Sessão expirada.");
     const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action:"bff", path, method, token:tkn, body }) });
+      body: JSON.stringify({ action:"bff", path, method, token:tkn, prataClient:cred?.prataClient||"", body }) });
     const txt = await r.text();
-    if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique se o arquivo api/prataproxy.js está na pasta correta do projeto.");
+    if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique se api/prataproxy.js está na pasta correta.");
     let j; try{ j=JSON.parse(txt); }catch{ throw new Error(`Resposta inválida do servidor (${r.status})`); }
     if(!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
     return j;
