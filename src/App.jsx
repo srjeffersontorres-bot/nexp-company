@@ -16779,9 +16779,15 @@ function CredenciaisTab({ currentUser, standalone=false }) {
     setSalvando(false);
   };
 
+  const [statusBusy, setStatusBusy] = useState({});
+
   const alterarStatus = async (cred) => {
     const novoStatus = cred.status === "ativo" ? "inativo" : "ativo";
-    await setDoc(doc(db, "credenciais_bancos", cred.id), { status: novoStatus }, { merge: true });
+    setStatusBusy(p => ({...p, [cred.id]: true}));
+    try {
+      await setDoc(doc(db, "credenciais_bancos", cred.id), { status: novoStatus }, { merge: true });
+    } catch(e) { alert("Erro ao alterar status: " + e.message); }
+    setStatusBusy(p => ({...p, [cred.id]: false}));
   };
 
   const excluir = async (id) => {
@@ -16909,9 +16915,9 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 
                 {/* Botões de ação */}
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  <button onClick={()=>alterarStatus(cred)}
-                    style={{ background:ativo?"rgba(239,68,68,0.10)":"rgba(52,211,153,0.10)", color:ativo?"#F87171":"#34D399", border:`1px solid ${ativo?"#EF444433":"#34D39933"}`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
-                    {ativo?"⏸ Desativar":"▶ Ativar"}
+                  <button onClick={()=>alterarStatus(cred)} disabled={!!statusBusy[cred.id]}
+                    style={{ background:ativo?"rgba(239,68,68,0.10)":"rgba(52,211,153,0.10)", color:ativo?"#F87171":"#34D399", border:`1px solid ${ativo?"#EF444433":"#34D39933"}`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer", opacity:statusBusy[cred.id]?0.6:1 }}>
+                    {statusBusy[cred.id]?"⏳ Salvando...":ativo?"⏸ Desativar":"▶ Ativar"}
                   </button>
                   <button onClick={()=>{ setSubstituindo(isSub?null:cred); setFormSub({usuario:"",senha:""}); }}
                     style={{ background:isSub?C.abg:"rgba(79,142,247,0.10)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
