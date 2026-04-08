@@ -16978,8 +16978,9 @@ function PrataDigitalTab({ currentUser }) {
   // Sessão persistente
   const [token,    setToken]    = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.token||null;}catch{return null;} });
   const [tokenExp, setTokenExp] = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.exp||null;}catch{return null;} });
-  const [partnerAccountId,    setPartnerAccountId]    = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.accountId||null;}catch{return null;} });
-  const [partnerAccountToken, setPartnerAccountToken] = useState(()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.accountToken||null;}catch{return null;} });
+  // partnerAccountId e partnerAccountToken salvos na sessão para uso futuro (propostas)
+  const _partnerAccountId    = (()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.accountId||null;}catch{return null;} })(); // eslint-disable-line no-unused-vars
+  const _partnerAccountToken = (()=>{ try{return JSON.parse(localStorage.getItem("nexp_prata_session")||"null")?.accountToken||null;}catch{return null;} })(); // eslint-disable-line no-unused-vars
   const [credForm, setCredForm] = useState({
     email:       localStorage.getItem("nexp_prata_email")||"",
     password:    "",
@@ -16992,7 +16993,7 @@ function PrataDigitalTab({ currentUser }) {
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
   const saveSession = (tk, exp, accId, accTk) => {
-    setToken(tk); setTokenExp(exp); setPartnerAccountId(accId); setPartnerAccountToken(accTk);
+    setToken(tk); setTokenExp(exp);
     localStorage.setItem("nexp_prata_session", JSON.stringify({ token:tk, exp, accountId:accId, accountToken:accTk }));
   };
   const clearSession = () => {
@@ -17037,7 +17038,6 @@ function PrataDigitalTab({ currentUser }) {
   const [fSimErr,    setFSimErr]    = useState("");
 
   const supplierPath = fSupplier === "qitech" ? "qitech" : "bmp";
-  const supplierId   = fSupplier === "qitech" ? 1 : 4;
 
   const consultarSaldo = async () => {
     const cpf = fCpf.replace(/\D/g,"");
