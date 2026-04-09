@@ -11805,13 +11805,17 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
   // Auto-resume lote after F5: if wasRunning was saved, trigger simularLote
+  // lSaved / loteWasRunning / loteAutoResume — declared here so the useEffect below can use them
   const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
   const loteWasRunning = lSaved?.wasRunning || false;
-  const loteAutoResume = React.useRef(loteWasRunning);
+  const loteAutoResume = React.useRef(loteWasRunning); // true = should auto-start on mount
+
+  // loteSimularLoteRef is set by LoteTab on each render so parent can call it
   const loteSimularLoteRef = React.useRef(null);
   useEffect(() => {
     if (aba === "lote" && loteWasRunning && loteAutoResume.current) {
       loteAutoResume.current = false;
+      // Wait for LoteTab to register its simularLote fn
       const t = setTimeout(() => { if (loteSimularLoteRef.current) loteSimularLoteRef.current(); }, 400);
       return () => clearTimeout(t);
     }
@@ -11820,16 +11824,13 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const saveSession = (tk, exp) => { setToken(tk); setTokenExp(exp); localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp })); };
   const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); localStorage.removeItem("nexp_v8_aba"); setAba("config"); };
 
-  // autenticar aceita params diretos (auto-login) ou usa credForm (login manual)
-  const autenticar = async (overUser, overPass) => {
-    const username = overUser || credForm.username;
-    const password = overPass || credForm.password;
-    if (!username || !password) { setAuthErr("Preencha e-mail e senha."); return; }
+  const autenticar = async () => {
+    if (!credForm.username || !credForm.password) { setAuthErr("Preencha e-mail e senha."); return; }
     setAuthLoading(true); setAuthErr("");
     try {
-      localStorage.setItem("nexp_v8_user", username); setSavedUser(username);
+      localStorage.setItem("nexp_v8_user", credForm.username); setSavedUser(credForm.username);
       const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"auth", payload:{ username, password } }) });
+        body: JSON.stringify({ action:"auth", payload:{ username:credForm.username, password:credForm.password } }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_description || data.message || data.error || `Erro ${res.status}`);
       const exp = Date.now() + ((data.expires_in || 86400) - 60) * 1000;
@@ -11838,27 +11839,6 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
     } catch(e) { setAuthErr(e.message); }
     setAuthLoading(false);
   };
-
-  // ── Auto-login via Credenciais (Firestore) ───────────────────
-  useEffect(() => {
-    if (isTokenValid) return; // já tem sessão válida
-    const uid = currentUser?.uid || currentUser?.id;
-    if (!uid) return;
-    let unsub = () => {};
-    const timer = setTimeout(() => {}, 8000); // apenas referência, não bloqueia
-    try {
-      unsub = onSnapshot(collection(db, "credenciais_bancos"), snap => {
-        try {
-          const found = snap.docs
-            .map(d => { try { return {...d.data()}; } catch { return null; } })
-            .filter(Boolean)
-            .find(c => c.uid === uid && c.bancoId === "v8_digital" && c.status === "ativo");
-          if (found) autenticar(found.usuario, found.senha);
-        } catch {}
-      }, () => {});
-    } catch {}
-    return () => { clearTimeout(timer); unsub(); };
-  }, []); // eslint-disable-line
 
   // ── apiFetch — rotas corretas conforme documentação V8 ───────
   const apiFetch = async (path, method="GET", body=null, retries=2, { skipRateLimit=false }={}) => {
@@ -15032,31 +15012,23 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 
       {!isTokenValid && (
         <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"22px 24px" }}>
-          {authLoading ? (
-            <div style={{ textAlign:"center", padding:"12px 0" }}>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:6 }}>⏳ Autenticando...</div>
-              <div style={{ color:C.td, fontSize:12 }}>Usando credenciais salvas da aba 🔐 Credenciais.</div>
-            </div>
-          ) : (
-            <>
-              <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
-              <div style={{ color:C.tm, fontSize:12, marginBottom:14 }}>
-                {savedUser
-                  ? <>Credencial: <b style={{color:C.atxt}}>{savedUser}</b> · ou entre manualmente:</>
-                  : <>Cadastre suas credenciais V8 na aba <b style={{color:C.atxt}}>🔐 Credenciais</b> para login automático, ou entre manualmente:</>
-                }
-              </div>
-              {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-                <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label><input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} /></div>
-                <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label><input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} /></div>
-              </div>
-              <button onClick={()=>autenticar()} disabled={authLoading}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
-                🔐 Entrar na V8 Digital →
-              </button>
-            </>
-          )}
+          <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
+          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Use seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8. Sessão salva no navegador.</div>
+          <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:9, padding:"10px 14px", marginBottom:16, fontSize:11 }}>
+            <div style={{ color:C.td }}>Auth: <span style={{ color:C.tm }}>https://auth.v8sistema.com/oauth/token</span></div>
+            <div style={{ color:C.td }}>BFF: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
+            <div style={{ color:C.td }}>Client ID: <span style={{ color:C.tm }}>DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn</span></div>
+          </div>
+          {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label><input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} /></div>
+            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label><input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} /></div>
+          </div>
+          <button onClick={autenticar} disabled={authLoading}
+            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
+            {authLoading?"⏳ Autenticando...":"🔐 Entrar na V8 Digital →"}
+          </button>
+          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>Sessão salva. Não precisará fazer login ao recarregar.</div>
         </div>
       )}
 
@@ -16744,6 +16716,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
   const [confirmDel, setConfirmDel] = useState(null);
   const [substituindo, setSubstituindo] = useState(null);
   const [formSub, setFormSub] = useState({ usuario:"", senha:"" });
+  const [statusBusy, setStatusBusy] = useState({});
 
   // Carrega credenciais do Firestore
   useEffect(() => {
@@ -16781,8 +16754,6 @@ function CredenciaisTab({ currentUser, standalone=false }) {
     } catch(e) { alert("Erro ao salvar: "+e.message); }
     setSalvando(false);
   };
-
-  const [statusBusy, setStatusBusy] = useState({});
 
   const alterarStatus = async (cred) => {
     const novoStatus = cred.status === "ativo" ? "inativo" : "ativo";
@@ -16822,7 +16793,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
       </div>
 
       {/* Botão Adicionar */}
-      <button onClick={()=>{ setShowModal(true); setBancSel(null); setForm({usuario:"",senha:""}); }}
+      <button onClick={()=>{ setShowModal(true); setBancSel(null); setForm({usuario:"",senha:"",prataClient:""}); }}
         style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:28, display:"flex", alignItems:"center", gap:8 }}>
         ➕ Adicionar credencial
       </button>
@@ -16919,8 +16890,8 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                 {/* Botões de ação */}
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                   <button onClick={()=>alterarStatus(cred)} disabled={!!statusBusy[cred.id]}
-                    style={{ background:ativo?"rgba(239,68,68,0.10)":"rgba(52,211,153,0.10)", color:ativo?"#F87171":"#34D399", border:`1px solid ${ativo?"#EF444433":"#34D39933"}`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer", opacity:statusBusy[cred.id]?0.6:1 }}>
-                    {statusBusy[cred.id]?"⏳ Salvando...":ativo?"⏸ Desativar":"▶ Ativar"}
+                    style={{ background:ativo?"rgba(239,68,68,0.10)":"rgba(52,211,153,0.10)", color:ativo?"#F87171":"#34D399", border:`1px solid ${ativo?"#EF444433":"#34D39933"}`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer", opacity:statusBusy[cred.id]?0.5:1 }}>
+                    {statusBusy[cred.id]?"⏳...":ativo?"⏸ Desativar":"▶ Ativar"}
                   </button>
                   <button onClick={()=>{ setSubstituindo(isSub?null:cred); setFormSub({usuario:"",senha:""}); }}
                     style={{ background:isSub?C.abg:"rgba(79,142,247,0.10)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
@@ -16986,11 +16957,9 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                     <input value={form.senha} onChange={e=>setForm(p=>({...p,senha:e.target.value}))}
                       placeholder="••••••••" type="password" style={{ ...S.input, width:"100%" }} autoComplete="new-password" />
                   </div>
-                  {bancSel.id === "prata_digital" && (
+                  {bancSel && bancSel.id === "prata_digital" && (
                     <div>
-                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>
-                        x-prata-client <span style={{ color:C.td, fontWeight:400 }}>(código do parceiro)</span>
-                      </label>
+                      <label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>x-prata-client <span style={{ color:C.td, fontWeight:400 }}>(código do parceiro)</span></label>
                       <input value={form.prataClient} onChange={e=>setForm(p=>({...p,prataClient:e.target.value}))}
                         placeholder="Código fornecido pela Prata Digital" style={{ ...S.input, width:"100%" }} autoComplete="off" />
                     </div>
@@ -17001,7 +16970,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                     style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:(salvando||!form.usuario.trim()||!form.senha.trim())?0.5:1, transition:"opacity 0.2s" }}>
                     {salvando?"⏳ Salvando...":"💾 Salvar credencial"}
                   </button>
-                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:""}); }}
+                  <button onClick={()=>{ setShowModal(false); setBancSel(null); setForm({usuario:"",senha:"",prataClient:""}); }}
                     style={{ background:"rgba(255,255,255,0.06)", color:C.td, border:`1px solid ${C.b2}`, borderRadius:12, padding:"13px 18px", fontSize:13, cursor:"pointer" }}>
                     Cancelar
                   </button>
@@ -17017,117 +16986,109 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 
 // ── Prata Digital Tab ──────────────────────────────────────────
 function PrataDigitalTab({ currentUser }) {
-  const PROXY = "/api/prataproxy";
-  const uid   = currentUser?.uid || currentUser?.id;
+  const PROXY  = "/api/prataproxy";
+  const uid    = currentUser?.uid || currentUser?.id;
+  const fmtR   = (v) => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+  const maskCPF = (v) => { const d=v.replace(/\D/g,"").slice(0,11); if(d.length<=3)return d; if(d.length<=6)return d.slice(0,3)+"."+d.slice(3); if(d.length<=9)return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6); return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6,9)+"-"+d.slice(9); };
 
-  const fmtR = (v) => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
-  const cpfMask = (v) => { const d=v.replace(/\D/g,"").slice(0,11); if(d.length<=3)return d; if(d.length<=6)return `${d.slice(0,3)}.${d.slice(3)}`; if(d.length<=9)return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; };
-
-  /* ---------- auth ---------- */
-  const [tkn,    setTkn]    = useState(null);
-  const [tknExp, setTknExp] = useState(null);
-  const [cred,   setCred]   = useState(null);
-  const [credOk, setCredOk] = useState(false); // true depois que Firestore respondeu
-  const [authErr,    setAuthErr]    = useState("");
-  const [authBusy,   setAuthBusy]   = useState(false);
-  const [sub, setSub] = useState("fgts");
+  const [tkn,      setTkn]      = useState(null);
+  const [tknExp,   setTknExp]   = useState(null);
+  const [cred,     setCred]     = useState(null);
+  const [credOk,   setCredOk]   = useState(false);
+  const [authErr,  setAuthErr]  = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [subPrata, setSubPrata] = useState("fgts");
 
   const valid = tkn && tknExp && Date.now() < tknExp;
 
-  // carrega credencial do Firestore apenas quando o tab está visível
-  useEffect(()=>{
-    if(!uid){ setCredOk(true); return; }
-    // timeout de segurança: se Firestore demorar > 6s, avança mesmo assim
-    const timer = setTimeout(()=>setCredOk(true), 6000);
-    let unsub = ()=>{};
+  useEffect(() => {
+    if (!uid) { setCredOk(true); return; }
+    const timer = setTimeout(() => setCredOk(true), 6000);
+    let unsub = () => {};
     try {
-      unsub = onSnapshot(collection(db,"credenciais_bancos"), snap=>{
+      unsub = onSnapshot(collection(db, "credenciais_bancos"), snap => {
         clearTimeout(timer);
         try {
           const found = snap.docs
-            .map(d=>{ try{ return {...d.data()}; }catch{ return null; } })
+            .map(d => { try { return {...d.data()}; } catch { return null; } })
             .filter(Boolean)
-            .find(c=>c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo") || null;
+            .find(c => c.uid === uid && c.bancoId === "prata_digital" && c.status === "ativo") || null;
           setCred(found);
-        } catch{ /* ignora */ }
+        } catch { /* ignore */ }
         setCredOk(true);
-      }, ()=>{ clearTimeout(timer); setCredOk(true); });
-    } catch{ clearTimeout(timer); setCredOk(true); }
-    return ()=>{ clearTimeout(timer); unsub(); };
-  },[uid]); // eslint-disable-line
+      }, () => { clearTimeout(timer); setCredOk(true); });
+    } catch { clearTimeout(timer); setCredOk(true); }
+    return () => { clearTimeout(timer); unsub(); };
+  }, [uid]); // eslint-disable-line
 
-  // auto-login quando credencial carregada e token inválido
-  useEffect(()=>{
-    if(!credOk || !cred || valid) return;
+  useEffect(() => {
+    if (!credOk || !cred || valid) return;
     doLogin(cred);
-  },[cred, credOk]); // eslint-disable-line
+  }, [cred, credOk]); // eslint-disable-line
 
   const doLogin = async (c) => {
     setAuthBusy(true); setAuthErr("");
     try {
-      const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
+      const body = JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" });
+      const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"}, body });
       const txt = await r.text();
-      if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique se api/prataproxy.js está na pasta correta.");
+      if (txt.trim().startsWith("<")) throw new Error("Arquivo api/prataproxy.js não encontrado no servidor. Verifique o deploy.");
       const j = JSON.parse(txt);
-      if(!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
+      if (!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
       const exp = Date.now() + 23*3600*1000;
       setTkn(j.data.token); setTknExp(exp);
-    } catch(e){ setAuthErr(e.message); }
+    } catch(e) { setAuthErr(e.message); }
     setAuthBusy(false);
   };
 
-  const api = async (path, method="GET", body=null) => {
-    if(!valid) throw new Error("Sessão expirada.");
-    const r = await fetch(PROXY,{ method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action:"bff", path, method, token:tkn, prataClient:cred?.prataClient||"", body }) });
+  const prataAPI = async (path, method="GET", reqBody=null) => {
+    if (!valid) throw new Error("Sessão expirada.");
+    const body = JSON.stringify({ action:"bff", path, method, token:tkn, prataClient:cred?.prataClient||"", body:reqBody });
+    const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"}, body });
     const txt = await r.text();
-    if(txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique se api/prataproxy.js está na pasta correta.");
-    let j; try{ j=JSON.parse(txt); }catch{ throw new Error(`Resposta inválida do servidor (${r.status})`); }
-    if(!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
+    if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado no servidor.");
+    let j; try { j = JSON.parse(txt); } catch { throw new Error(`Resposta inválida (${r.status})`); }
+    if (!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
     return j;
   };
 
-  /* ---------- FGTS ---------- */
-  const [cpf,     setCpf]     = useState("");
-  const [fornec,  setFornec]  = useState("qitech");
-  const [busy,    setBusy]    = useState(false);
-  const [err,     setErr]     = useState("");
-  const [saldo,   setSaldo]   = useState(null);
-  const [simRes,  setSimRes]  = useState(null);
-  const [simBusy, setSimBusy] = useState(false);
-  const [simErr,  setSimErr]  = useState("");
+  const [fCpf,     setFCpf]     = useState("");
+  const [fFornec,  setFFornec]  = useState("qitech");
+  const [fBusy,    setFBusy]    = useState(false);
+  const [fErr,     setFErr]     = useState("");
+  const [fSaldo,   setFSaldo]   = useState(null);
+  const [fSim,     setFSim]     = useState(null);
+  const [fSimBusy, setFSimBusy] = useState(false);
+  const [fSimErr,  setFSimErr]  = useState("");
 
-  const path0 = fornec==="qitech" ? "qitech" : "bmp";
+  const fPath = fFornec === "qitech" ? "qitech" : "bmp";
 
   const buscarSaldo = async () => {
-    const c = cpf.replace(/\D/g,"");
-    if(c.length!==11){ setErr("CPF inválido."); return; }
-    setBusy(true); setErr(""); setSaldo(null); setSimRes(null);
-    try { const d = await api(`/v1/${path0}/fgts/balance?document=${c}`); setSaldo(d.data||d); }
-    catch(e){ setErr(e.message); }
-    setBusy(false);
+    const cpf = fCpf.replace(/\D/g,"");
+    if (cpf.length !== 11) { setFErr("CPF inválido."); return; }
+    setFBusy(true); setFErr(""); setFSaldo(null); setFSim(null);
+    try { const d = await prataAPI(`/v1/${fPath}/fgts/balance?document=${cpf}`); setFSaldo(d.data||d); }
+    catch(e) { setFErr(e.message); }
+    setFBusy(false);
   };
 
-  const simular = async () => {
-    const c = cpf.replace(/\D/g,"");
-    setSimBusy(true); setSimErr(""); setSimRes(null);
+  const criarSim = async () => {
+    const cpf = fCpf.replace(/\D/g,"");
+    setFSimBusy(true); setFSimErr(""); setFSim(null);
     try {
-      const rates = fornec==="qitech" ? [16] : [45];
-      const d = await api(`/v1/${path0}/fgts/simulation`,"POST",{ document:c, rates });
-      setSimRes(d.data||d);
-    } catch(e){ setSimErr(e.message); }
-    setSimBusy(false);
+      const rates = fFornec === "qitech" ? [16] : [45];
+      const d = await prataAPI(`/v1/${fPath}/fgts/simulation`, "POST", { document:cpf, rates });
+      setFSim(d.data||d);
+    } catch(e) { setFSimErr(e.message); }
+    setFSimBusy(false);
   };
 
-  const periodos  = saldo?.periods||[];
-  const total     = periodos.reduce((a,p)=>a+(parseFloat(p.total_amount)||0),0);
-  const sPeriodos = simRes?.periods||simRes?.installments||[];
+  const periodos = fSaldo?.periods || [];
+  const total    = periodos.reduce((a,p) => a + (parseFloat(p.total_amount)||0), 0);
+  const sPer     = fSim?.periods || fSim?.installments || [];
 
-  /* ---------- render ---------- */
-  if(!credOk) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando...</div>;
-
-  if(!cred) return (
+  if (!credOk)   return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando...</div>;
+  if (!cred)     return (
     <div style={{padding:"28px 0",maxWidth:440}}>
       <div style={{...S.card,padding:"28px 32px",textAlign:"center"}}>
         <div style={{fontSize:34,marginBottom:12}}>🪙</div>
@@ -17137,16 +17098,14 @@ function PrataDigitalTab({ currentUser }) {
         </div>
         <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",fontSize:12,color:C.tm,textAlign:"left"}}>
           <div style={{fontWeight:700,marginBottom:4,color:C.tp}}>Você vai precisar de:</div>
-          <div>• E-mail da conta parceiro</div>
-          <div>• Senha da conta</div>
+          <div>• E-mail e senha da conta parceiro</div>
+          <div>• Código x-prata-client (fornecido pela Prata Digital)</div>
         </div>
       </div>
     </div>
   );
-
-  if(authBusy) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando...</div>;
-
-  if(authErr) return (
+  if (authBusy)  return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando na Prata Digital...</div>;
+  if (authErr)   return (
     <div style={{padding:"28px 0",maxWidth:440}}>
       <div style={{...S.card,padding:"24px 28px"}}>
         <div style={{color:"#F87171",fontSize:14,fontWeight:700,marginBottom:8}}>⚠ Erro de autenticação</div>
@@ -17161,7 +17120,6 @@ function PrataDigitalTab({ currentUser }) {
 
   return (
     <div>
-      {/* header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0 10px",borderBottom:`1px solid ${C.b1}`,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:20}}>🪙</span>
@@ -17170,50 +17128,45 @@ function PrataDigitalTab({ currentUser }) {
             <div style={{color:"#34D399",fontSize:11}}>● Sessão ativa · {cred.usuario}</div>
           </div>
         </div>
-        <button onClick={()=>{setTkn(null);setTknExp(null);doLogin(cred);}}
+        <button onClick={()=>{ setTkn(null); setTknExp(null); doLogin(cred); }}
           style={{background:"rgba(79,142,247,0.10)",color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
           🔄 Reconectar
         </button>
       </div>
 
-      {/* sub-tabs */}
       <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18}}>
-        {[["fgts","📋 FGTS"]].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setSub(id)}
-            style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:sub===id?700:400,color:sub===id?"#34D399":C.tm,borderBottom:sub===id?"2px solid #34D399":"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>
+        {[["fgts","📋 FGTS"]].map(([id,lbl]) => (
+          <button key={id} onClick={()=>setSubPrata(id)}
+            style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:subPrata===id?700:400,color:subPrata===id?"#34D399":C.tm,borderBottom:subPrata===id?"2px solid #34D399":"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>
             {lbl}
           </button>
         ))}
       </div>
 
-      {/* FGTS */}
-      {sub==="fgts" && (
+      {subPrata === "fgts" && (
         <div style={{maxWidth:620}}>
-          {/* fornecedor */}
           <div style={{display:"flex",gap:8,marginBottom:14}}>
-            {[["qitech","QI Tech","#3B6EF5"],["bmp","BMP","#F97316"]].map(([id,lbl,cor])=>(
-              <button key={id} onClick={()=>{setFornec(id);setSaldo(null);setSimRes(null);setErr("");setSimErr("");}}
-                style={{background:fornec===id?`${cor}22`:"rgba(255,255,255,0.04)",border:`2px solid ${fornec===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fornec===id?cor:C.td,fontSize:13,fontWeight:fornec===id?700:400,transition:"all 0.15s"}}>
+            {[["qitech","QI Tech","#3B6EF5"],["bmp","BMP","#F97316"]].map(([id,lbl,cor]) => (
+              <button key={id} onClick={()=>{ setFFornec(id); setFSaldo(null); setFSim(null); setFErr(""); setFSimErr(""); }}
+                style={{background:fFornec===id?`${cor}22`:"rgba(255,255,255,0.04)",border:`2px solid ${fFornec===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fFornec===id?cor:C.td,fontSize:13,fontWeight:fFornec===id?700:400,transition:"all 0.15s"}}>
                 {lbl}
               </button>
             ))}
           </div>
 
-          {/* CPF */}
           <div style={{display:"flex",gap:10,marginBottom:18}}>
-            <input value={cpf} onChange={e=>setCpf(cpfMask(e.target.value))}
+            <input value={fCpf} onChange={e=>setFCpf(maskCPF(e.target.value))}
               onKeyDown={e=>e.key==="Enter"&&buscarSaldo()} placeholder="000.000.000-00" maxLength={14}
               style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
-            <button onClick={buscarSaldo} disabled={busy}
-              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",opacity:busy?0.7:1}}>
-              {busy?"⏳ Consultando...":"🔍 Consultar Saldo"}
+            <button onClick={buscarSaldo} disabled={fBusy}
+              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",opacity:fBusy?0.7:1}}>
+              {fBusy?"⏳ Consultando...":"🔍 Consultar Saldo"}
             </button>
           </div>
 
-          {err && <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:10,padding:"11px 14px",color:"#F87171",fontSize:13,marginBottom:14}}>⚠ {err}</div>}
+          {fErr && <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:10,padding:"11px 14px",color:"#F87171",fontSize:13,marginBottom:14}}>⚠ {fErr}</div>}
 
-          {/* resultado saldo */}
-          {saldo && (
+          {fSaldo && (
             <div style={{...S.card,padding:"18px 22px",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
                 <div style={{color:C.tp,fontSize:14,fontWeight:700}}>📊 Saldo FGTS</div>
@@ -17221,14 +17174,14 @@ function PrataDigitalTab({ currentUser }) {
                   Total: {fmtR(total)}
                 </span>
               </div>
-              {periodos.length>0 ? (
+              {periodos.length > 0 ? (
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                   <thead><tr>
-                    {["Período","Disponível"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"6px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
+                    {["Período","Disponível"].map(h => <th key={h} style={{color:C.tm,fontWeight:700,padding:"6px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {periodos.map((p,i)=>{
-                      const dt=new Date(p.due_date||p.dueDate);
+                    {periodos.map((p,i) => {
+                      const dt = new Date(p.due_date||p.dueDate);
                       return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
                         <td style={{padding:"7px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"long"})}</td>
                         <td style={{padding:"7px 10px",color:"#34D399",fontWeight:700}}>{fmtR(p.total_amount)}</td>
@@ -17237,35 +17190,33 @@ function PrataDigitalTab({ currentUser }) {
                   </tbody>
                 </table>
               ) : <div style={{color:C.td,fontSize:13}}>Nenhum período disponível.</div>}
-
-              {simErr && <div style={{marginTop:10,background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:8,padding:"9px 12px",color:"#F87171",fontSize:12}}>⚠ {simErr}</div>}
-              <button onClick={simular} disabled={simBusy}
-                style={{marginTop:14,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:simBusy?0.7:1}}>
-                {simBusy?"⏳ Simulando...":"⚡ Criar Simulação"}
+              {fSimErr && <div style={{marginTop:10,background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:8,padding:"9px 12px",color:"#F87171",fontSize:12}}>⚠ {fSimErr}</div>}
+              <button onClick={criarSim} disabled={fSimBusy}
+                style={{marginTop:14,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:fSimBusy?0.7:1}}>
+                {fSimBusy?"⏳ Simulando...":"⚡ Criar Simulação"}
               </button>
             </div>
           )}
 
-          {/* resultado simulação */}
-          {simRes && (
+          {fSim && (
             <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(59,110,245,0.25)"}}>
               <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📋 Simulação</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-                {[["Valor Bruto",fmtR(simRes.amount??simRes.totalAmount)],["Valor Líquido",fmtR(simRes.net_amount??simRes.netAmount)],["Parcelas",sPeriodos.length||simRes.quota_qty||"—"],["Bancarizadora",fornec==="qitech"?"QI Tech":"BMP"]].map(([l,v])=>(
+                {[["Valor Bruto",fmtR(fSim.amount??fSim.totalAmount)],["Valor Líquido",fmtR(fSim.net_amount??fSim.netAmount)],["Parcelas",sPer.length||fSim.quota_qty||"—"],["Bancarizadora",fFornec==="qitech"?"QI Tech":"BMP"]].map(([l,v]) => (
                   <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
                     <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{l}</div>
                     <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div>
                   </div>
                 ))}
               </div>
-              {sPeriodos.length>0 && (
+              {sPer.length > 0 && (
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead><tr>
-                    {["Vencimento","Valor"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
+                    {["Vencimento","Valor"].map(h => <th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {sPeriodos.map((p,i)=>{
-                      const dt=new Date(p.due_date||p.dueDate);
+                    {sPer.map((p,i) => {
+                      const dt = new Date(p.due_date||p.dueDate);
                       return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
                         <td style={{padding:"5px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
                         <td style={{padding:"5px 10px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.amount||p.total_amount)}</td>
@@ -17283,7 +17234,6 @@ function PrataDigitalTab({ currentUser }) {
 }
 
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
-  // abaBanco nunca lê localStorage para evitar crash ao carregar a página
   const [abaBanco, setAbaBanco] = useState("v8");
   const [abaV8, setAbaV8Raw] = useState(() => localStorage.getItem("nexp_abaV8")||"fgts");
   const setAbaV8 = (v) => { setAbaV8Raw(v); localStorage.setItem("nexp_abaV8",v); };
@@ -17300,7 +17250,6 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
 
   return (
     <div style={{ padding:"0", maxWidth:"100%" }}>
-      {/* Nível 1 — Banco */}
       <div style={{ padding:"20px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
         <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
         <div style={{ display:"flex", gap:4, alignItems:"center", flexWrap:"wrap" }}>
@@ -17313,7 +17262,6 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
         </div>
       </div>
 
-      {/* Nível 2 — Sub-abas da V8 */}
       {abaBanco==="v8" && (
         <div style={{ background:C.deep, borderBottom:`1px solid ${C.b1}`, padding:"0 30px", display:"flex", gap:0 }}>
           {tabBtn(abaV8==="fgts",    "📋 FGTS",                  ()=>setAbaV8("fgts"),    true)}
@@ -17321,19 +17269,17 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
         </div>
       )}
 
-      {/* Conteúdo — V8DigitalTab sempre montado para não perder fila do lote */}
       <div style={{ padding:"0 30px" }}>
         <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
           <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
         </div>
         {abaBanco==="v8"         && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="prata"      && <PrataDigitalTab currentUser={currentUser} />}
-        {abaBanco==="credencial" && <CredenciaisTab  currentUser={currentUser} />}
+        {abaBanco==="prata"      && <PrataDigitalTab  currentUser={currentUser} />}
+        {abaBanco==="credencial" && <CredenciaisTab   currentUser={currentUser} />}
       </div>
     </div>
   );
 }
-
 
 // ── UFs do Brasil ──────────────────────────────────────────────
 const UF_BRASIL = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
