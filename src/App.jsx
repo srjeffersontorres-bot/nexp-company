@@ -2396,8 +2396,6 @@ function HomePageInicial({ currentUser }) {
     setNovaTitulo(""); setNovaDescricao(""); setNovaTextoFull(""); setShowAddNoticia(false);
   };
 
-  const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626"];
-
   // Card wrapper with tech hover effect
   return (
     <div style={{ padding:"28px 32px", maxWidth:1300, overflowY:"auto", height:"100%" }}>
