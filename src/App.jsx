@@ -1347,8 +1347,57 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   // eslint-disable-next-line no-unused-vars
   const isOnline = presence?.[uid]?.online;
 
-  const [showProfile, setShowProfile] = useState(false);
-  const [profileTab, setProfileTab] = useState("perfil");
+  const [showProfile,  setShowProfile]  = useState(false);
+  const [profileTab,   setProfileTab]   = useState("perfil");
+
+  // ── Notificações popup ──────────────────────────────────────
+  const [showNotifPop,  setShowNotifPop]  = useState(false);
+  const [toastNotif,    setToastNotif]    = useState(null);  // notif temporária (20s)
+  const [notifList,     setNotifList]     = useState([]);    // todas as notifs
+  const [notifLikes,    setNotifLikes]    = useState({});    // {id: count}
+  const prevUnreadNotif = useRef(unreadNotif);
+
+  // ── Stories popup ───────────────────────────────────────────
+  const [storiesPopMsg, setStoriesPopMsg] = useState(null);
+  const storiesMsgIdx   = useRef(0);
+  const STORIES_MSGS = [
+    "acabou de postar um story, confira! 🔥",
+    "subiu algo novo nos stories, dá uma olhada! 👀",
+    "tem um story novo te esperando! ✨",
+    "postou um story imperdível! 🚀",
+    "compartilhou algo novo, vai perder? 🎉",
+  ];
+  const prevUnreadStories = useRef(unreadStories);
+
+  // Detecta nova notificação → toast 20s
+  useEffect(() => {
+    if (unreadNotif > prevUnreadNotif.current && unreadNotif > 0) {
+      setToastNotif({ id: Date.now(), message: "Você tem uma nova notificação" });
+      const timer = setTimeout(() => setToastNotif(null), 20000);
+      prevUnreadNotif.current = unreadNotif;
+      return () => clearTimeout(timer);
+    }
+    prevUnreadNotif.current = unreadNotif;
+  }, [unreadNotif]); // eslint-disable-line
+
+  // Detecta novo story → popup animado
+  useEffect(() => {
+    if (unreadStories > prevUnreadStories.current && unreadStories > 0) {
+      // Pega o autor do story mais recente
+      const lastStory = stories?.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
+      const autor = lastStory?.authorName || "Alguém";
+      const msg = `${autor} ${STORIES_MSGS[storiesMsgIdx.current % STORIES_MSGS.length]}`;
+      storiesMsgIdx.current += 1;
+      setStoriesPopMsg(msg);
+      const timer = setTimeout(() => setStoriesPopMsg(null), 6000);
+      return () => clearTimeout(timer);
+    }
+    prevUnreadStories.current = unreadStories;
+  }, [unreadStories]); // eslint-disable-line
+
+  const likeNotif = (id) => {
+    setNotifLikes(p => ({...p, [id]: (p[id]||0)+1}));
+  };
 
   // Primeiro nome apenas
   const firstName = (currentUser?.name || "Usuário").split(" ")[0];
@@ -1377,21 +1426,104 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
       {/* Right side */}
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
 
-        {/* Stories */}
-        <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
-          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
-          <span style={{ fontSize:14 }}>◎</span>
-          {unreadStories > 0 && <span style={{ position:"absolute", top:1, right:1, width:9, height:9, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block", border:"1.5px solid rgba(0,0,0,0.98)" }} />}
-        </button>
+        {/* Stories button + popup */}
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
+            <span style={{ fontSize:14 }}>◎</span>
+            {unreadStories > 0 && <span style={{ position:"absolute", top:1, right:1, width:9, height:9, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block", border:"1.5px solid rgba(0,0,0,0.98)" }} />}
+          </button>
+          {/* Stories toast popup */}
+          {storiesPopMsg && (
+            <div style={{ position:"absolute", top:"calc(100% + 10px)", right:0, zIndex:600, minWidth:220, background:"rgba(10,12,30,0.97)", backdropFilter:"blur(20px)", border:"1px solid rgba(59,110,245,0.4)", borderRadius:14, padding:"12px 14px", boxShadow:"0 8px 32px rgba(59,110,245,0.3)", animation:"fadeInDown 0.3s ease" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                <span style={{ fontSize:20, animation:"pulse 1s infinite" }}>◎</span>
+                <span style={{ color:"#60A5FA", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px" }}>Novo Story!</span>
+              </div>
+              <div style={{ color:"#f0f2ff", fontSize:12, lineHeight:1.4 }}>{storiesPopMsg}</div>
+              <button onClick={()=>{ setStoriesPopMsg(null); setPage("stories"); }}
+                style={{ marginTop:8, width:"100%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", color:"#fff", border:"none", borderRadius:8, padding:"6px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                Ver Stories →
+              </button>
+            </div>
+          )}
+        </div>
 
-        {/* Notification bell */}
-        <button onClick={()=>setPage("notificacoes")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
-          onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
-          <span style={{ fontSize:14 }}>🔔</span>
-          {unreadNotif > 0 && <span style={{ position:"absolute", top:1, right:1, background:"#F59E0B", color:"#000", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadNotif}</span>}
-        </button>
+        {/* Notification bell + toast + popup */}
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>{ setShowNotifPop(p=>!p); setToastNotif(null); }}
+            style={{ position:"relative", background:showNotifPop?"rgba(245,158,11,0.15)":"rgba(255,255,255,0.05)", border:`1px solid ${showNotifPop?"rgba(245,158,11,0.4)":"rgba(255,255,255,0.08)"}`, borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
+            onMouseLeave={e=>{if(!showNotifPop){e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}}>
+            <span style={{ fontSize:14 }}>🔔</span>
+            {unreadNotif > 0 && <span style={{ position:"absolute", top:1, right:1, background:"#F59E0B", color:"#000", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadNotif}</span>}
+          </button>
+
+          {/* Toast nova notificação */}
+          {toastNotif && !showNotifPop && (
+            <div style={{ position:"absolute", top:"calc(100% + 10px)", right:0, zIndex:600, minWidth:240, background:"rgba(10,12,30,0.97)", backdropFilter:"blur(20px)", border:"1px solid rgba(245,158,11,0.35)", borderRadius:14, padding:"12px 14px", boxShadow:"0 8px 32px rgba(245,158,11,0.2)", animation:"fadeInDown 0.3s ease" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                <span style={{ fontSize:16, animation:"pulse 1s infinite" }}>🔔</span>
+                <span style={{ color:"#FBBF24", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px" }}>Nova notificação</span>
+                <button onClick={()=>setToastNotif(null)} style={{ marginLeft:"auto", background:"none", border:"none", color:"rgba(255,255,255,0.3)", cursor:"pointer", fontSize:12 }}>✕</button>
+              </div>
+              <div style={{ color:"#f0f2ff", fontSize:12, lineHeight:1.4 }}>{toastNotif.message || toastNotif.text || toastNotif.title || "Você tem uma nova notificação"}</div>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:8 }}>
+                <button onClick={()=>likeNotif(toastNotif.id)}
+                  style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", color:"#F87171", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                  ♥ {notifLikes[toastNotif.id]||0}
+                </button>
+                <button onClick={()=>{ setToastNotif(null); setShowNotifPop(true); }}
+                  style={{ background:"rgba(245,158,11,0.12)", color:"#FBBF24", border:"1px solid rgba(245,158,11,0.25)", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                  Ver todas →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Popup todas as notificações */}
+          {showNotifPop && (
+            <>
+              <div onClick={()=>setShowNotifPop(false)} style={{ position:"fixed", inset:0, zIndex:498 }} />
+              <div style={{ position:"absolute", top:"calc(100% + 10px)", right:0, zIndex:600, width:300, maxHeight:420, background:"rgba(8,10,24,0.98)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:18, boxShadow:"0 8px 40px rgba(0,0,0,0.8)", overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                <div style={{ padding:"14px 16px 10px", borderBottom:"1px solid rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ color:"#f0f2ff", fontSize:13, fontWeight:700 }}>🔔 Notificações</div>
+                  <button onClick={()=>setShowNotifPop(false)} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:14 }}>✕</button>
+                </div>
+                <div style={{ overflowY:"auto", flex:1 }}>
+                  {notifList.length === 0 && (
+                    <div style={{ padding:"24px", textAlign:"center", color:"rgba(255,255,255,0.3)", fontSize:12 }}>Nenhuma notificação</div>
+                  )}
+                  {notifList.map(n => (
+                    <div key={n.id} style={{ padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+                      <div style={{ color:"#f0f2ff", fontSize:12, lineHeight:1.4, marginBottom:6 }}>
+                        {n.message || n.text || n.title || "Notificação"}
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <button onClick={()=>likeNotif(n.id)}
+                          style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.15)", color:"#F87171", borderRadius:7, padding:"3px 10px", fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:4, transition:"all 0.12s" }}
+                          onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.18)"}
+                          onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}>
+                          ♥ {notifLikes[n.id]||0}
+                        </button>
+                        <span style={{ color:"rgba(255,255,255,0.25)", fontSize:9 }}>
+                          {n.createdAt ? new Date(n.createdAt?.seconds ? n.createdAt.seconds*1000 : n.createdAt).toLocaleString("pt-BR",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit"}) : ""}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding:"10px 16px", borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+                  <button onClick={()=>{ setShowNotifPop(false); setPage("notificacoes"); }}
+                    style={{ width:"100%", background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                    Abrir Notificações completas
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Chat */}
         <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
@@ -1797,6 +1929,9 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     },
   ];
 
+  // Abas avulsas — emojis mapeados
+  const AVULSAS_EMOJI = { calendario:"📅", usuarios_page:"👤", premium:"⭐", pagamentos:"💳", config:"⚙️" };
+
   // Abas avulsas — ordem customizável pelo usuário
   const AVULSAS_DEFAULT = [
     { id:"calendario",   label:"Agenda",             icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
@@ -1943,36 +2078,38 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 
             {/* ── Abas avulsas — grid de quadradinhos ── */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,padding:"4px 0"}}>
-              {AVULSAS.filter(canSee).map((it, idx, arr) => {
+              {AVULSAS.filter(canSee).map((it) => {
                 const active = it.id==="config" ? isConfig : page===it.id;
+                const emoji  = AVULSAS_EMOJI[it.id] || it.icon;
                 return (
-                  <div key={it.id} style={{position:"relative",display:"flex",flexDirection:"column"}}>
-                    <button onClick={()=>setPage(it.id)}
-                      style={{
-                        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                        gap:4, padding:"10px 4px 8px", borderRadius:10, cursor:"pointer",
-                        border:`1px solid ${active?C.atxt+"55":"rgba(255,255,255,0.07)"}`,
-                        background: active?`linear-gradient(135deg,${C.acc},${C.lg2})`:"rgba(255,255,255,0.04)",
-                        color: active?"#fff":"rgba(255,255,255,0.7)",
-                        fontSize:10, fontWeight:active?700:400,
-                        boxShadow: active?`0 3px 12px ${C.acc}44`:"none",
-                        transition:"all 0.15s", width:"100%", minHeight:58, textAlign:"center",
-                      }}
-                      onMouseEnter={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.09)";e.currentTarget.style.color="#fff";}}}
-                      onMouseLeave={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.04)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}}
-                    >
-                      <span style={{fontSize:16,color:"#fff"}}>{it.icon}</span>
-                      <span style={{lineHeight:1.2,wordBreak:"break-word",fontSize:9.5}}>{it.label}</span>
-                      {it.id==="premium" && <span style={{position:"absolute",top:3,right:4,fontSize:8,color:C.atxt}}>★</span>}
-                    </button>
-                    {/* Botões reordenar */}
-                    <div style={{display:"flex",gap:2,marginTop:2,justifyContent:"center"}}>
-                      <button onClick={()=>moveAvulsa(it.id,-1)} disabled={idx===0}
-                        style={{background:"transparent",border:"none",color:idx===0?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.4)",cursor:idx===0?"default":"pointer",fontSize:8,padding:"1px 4px",borderRadius:3}}>↑</button>
-                      <button onClick={()=>moveAvulsa(it.id,1)} disabled={idx===arr.length-1}
-                        style={{background:"transparent",border:"none",color:idx===arr.length-1?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.4)",cursor:idx===arr.length-1?"default":"pointer",fontSize:8,padding:"1px 4px",borderRadius:3}}>↓</button>
-                    </div>
-                  </div>
+                  <button key={it.id} onClick={()=>setPage(it.id)}
+                    style={{
+                      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                      gap:3, padding:"8px 4px", borderRadius:10, cursor:"pointer",
+                      border:`1px solid ${active?C.atxt+"55":"rgba(255,255,255,0.08)"}`,
+                      background: active?`linear-gradient(135deg,${C.acc},${C.lg2})`:"rgba(255,255,255,0.04)",
+                      color:"#fff",
+                      boxShadow: active?`0 3px 12px ${C.acc}44`:"none",
+                      transition:"all 0.18s cubic-bezier(.4,0,.2,1)",
+                      width:"100%", height:60, textAlign:"center",
+                    }}
+                    onMouseEnter={e=>{
+                      e.currentTarget.style.transform="scale(1.08)";
+                      e.currentTarget.style.background=active?`linear-gradient(135deg,${C.acc},${C.lg2})`:`linear-gradient(135deg,${C.lg1}99,${C.lg2}99)`;
+                      e.currentTarget.style.boxShadow=`0 6px 20px ${C.acc}55`;
+                      e.currentTarget.style.border=`1px solid ${C.atxt}77`;
+                    }}
+                    onMouseLeave={e=>{
+                      e.currentTarget.style.transform="scale(1)";
+                      e.currentTarget.style.background=active?`linear-gradient(135deg,${C.acc},${C.lg2})`:"rgba(255,255,255,0.04)";
+                      e.currentTarget.style.boxShadow=active?`0 3px 12px ${C.acc}44`:"none";
+                      e.currentTarget.style.border=`1px solid ${active?C.atxt+"55":"rgba(255,255,255,0.08)"}`;
+                    }}
+                  >
+                    <span style={{fontSize:17}}>{emoji}</span>
+                    <span style={{fontSize:8.5,lineHeight:1.2,wordBreak:"break-word",whiteSpace:"normal",maxWidth:"100%",padding:"0 2px"}}>{it.label}</span>
+                    {it.id==="premium" && <span style={{position:"absolute",top:2,right:3,fontSize:7,color:"#FBBF24"}}>PRO</span>}
+                  </button>
                 );
               })}
             </div>
@@ -2025,7 +2162,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
             <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "10px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 10, textDecoration: "none", cursor:"pointer" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
-              <span style={{ color: "#25D366", fontSize: 12, fontWeight: 700 }}>💬 Falar com suporte</span>
+              <span style={{ color: "#25D366", fontSize: 12, fontWeight: 700 }}>Falar com suporte</span>
             </a>
           </div>
         </div>
@@ -20401,6 +20538,10 @@ export default function App() {
         @keyframes fadeIn {
           from { opacity: 0; }
           to   { opacity: 1; }
+        }
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
         @keyframes dissolve {
           0%   { opacity:1; transform:scale(1) blur(0px); filter:blur(0); }
