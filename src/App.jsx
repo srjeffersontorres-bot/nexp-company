@@ -1673,135 +1673,182 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
 }
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
   const uObj = users.find((u) => u.id === user.id) || user;
-  const all = [
-    { id:"review",     label:"Ver Clientes",    icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"apis",       label:"Bancos",          icon:"⬧", roles:["administrador","gerente","mestre","master"] },
-    { id:"credenciais",label:"Credenciais",     icon:"🔐", roles:["administrador","gerente","mestre","master"] },
-    { id:"digitacao",  label:"Digitação",       icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"] },
-    { id:"propostas",  label:"Propostas",       icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
-    { id:"dashboard",  label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"contacts",   label:"Contatos",       icon:"⬡", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"add",        label:"Adicionar",       icon:"⊕", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
-    { id:"import",     label:"Importar",        icon:"⤓", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
-    { id:"cstatus",    label:"Status",          icon:"◐", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"simulador",  label:"Simulador",       icon:"⊟", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
-    { id:"leds",       label:"Leds",            icon:"⬦", roles:["administrador","gerente","mestre","master"] },
-    { id:"usuarios_page", label:"Usuários",     icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
-    { id:"atalhos",    label:"Atalhos",         icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"calendario", label:"Agenda",          icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"pagamentos", label:"Pagamentos",       icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
-    { id:"premium",    label:"Premium Nexp",    icon:"◈", roles:["administrador","mestre"] },
-    { id:"config",     label:"Configurações",   icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+
+  // ── Grupos de navegação ─────────────────────────────────────
+  const GRUPOS = [
+    {
+      id: "gestao_clientes",
+      label: "Gestão de Clientes",
+      icon: "👥",
+      roles: ["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"],
+      subs: [
+        { id:"review",    label:"Ver Clientes", icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+        { id:"leds",      label:"Leads",        icon:"⬦", roles:["administrador","gerente","mestre","master"] },
+        { id:"import",    label:"Importar",     icon:"⤓", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+        { id:"atalhos",   label:"Atalhos",      icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+        { id:"contacts",  label:"Contatos",     icon:"⬡", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+      ],
+    },
+    {
+      id: "simuladores",
+      label: "Simuladores",
+      icon: "⬧",
+      roles: ["administrador","gerente","supervisor","mestre","master","indicado"],
+      subs: [
+        { id:"apis",      label:"Bancos",    icon:"⬧", roles:["administrador","gerente","mestre","master"] },
+        { id:"simulador", label:"Simulador", icon:"⊟", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+      ],
+    },
+    {
+      id: "gestao_propostas",
+      label: "Gestão de Propostas",
+      icon: "📋",
+      roles: ["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"],
+      subs: [
+        { id:"propostas", label:"Propostas",  icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
+        { id:"digitacao", label:"Digitações", icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"], badge:"digitacao" },
+      ],
+    },
   ];
-  // For visitante: filter by mestre-controlled tab config
+
+  // Abas avulsas (mantidas fora dos grupos)
+  const AVULSAS = [
+    { id:"dashboard",    label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"add",          label:"Adicionar",            icon:"⊕", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"cstatus",      label:"Status",               icon:"◐", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"usuarios_page",label:"Usuários",             icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
+    { id:"calendario",   label:"Agenda",               icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"pagamentos",   label:"Pagamentos",           icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
+    { id:"premium",      label:"Premium Nexp",         icon:"◈", roles:["administrador","mestre"] },
+    { id:"config",       label:"Configurações",        icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+  ];
+
   const cfg = sysConfig?.visitanteTabs || {};
-  const nav = all.filter(it => {
+  const canSee = (it) => {
     if (!it.roles.includes(user.role)) return false;
-    if (user.role === "visitante") return cfg[it.id] !== false;
+    if (user.role === "visitante" && cfg[it.id] === false) return false;
     if (it.requireConfig && sysConfig && sysConfig[it.requireConfig] === false) return false;
     return true;
-  });
-  const roleLabel = ROLE_LABEL;
-  const isConfig = page === "config";
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [navOpen] = useState(true);
-  const [navOrder, setNavOrder] = useState(() => {
-    // "review" (Ver Clientes) fica em primeiro por padrão
-    const defaultOrder = ["review", ...nav.filter(it => it.id !== "review").map(it => it.id)];
-    return defaultOrder;
-  });
-  const [dragId, setDragId] = useState(null);
-  const [dragOver, setDragOver] = useState(null);
-
-  const orderedNav = [...nav].sort((a, b) => {
-    const ai = navOrder.indexOf(a.id);
-    const bi = navOrder.indexOf(b.id);
-    if (ai === -1) return 1; if (bi === -1) return -1;
-    return ai - bi;
-  });
-
-  const handleDragStart = (id) => setDragId(id);
-  const handleDragOver  = (e, id) => { e.preventDefault(); setDragOver(id); };
-  const handleDrop      = (e, targetId) => {
-    e.preventDefault();
-    if (!dragId || dragId === targetId) { setDragId(null); setDragOver(null); return; }
-    const arr = [...orderedNav.map(x => x.id)];
-    const from = arr.indexOf(dragId); const to = arr.indexOf(targetId);
-    arr.splice(from, 1); arr.splice(to, 0, dragId);
-    setNavOrder(arr); setDragId(null); setDragOver(null);
   };
-  const handleDragEnd = () => { setDragId(null); setDragOver(null); };
+
+  const roleLabel = ROLE_LABEL;
+  const isConfig  = page === "config";
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Track which grupo is open (expanded)
+  const activeGrupo = GRUPOS.find(g => g.subs.some(s => s.id === page))?.id || null;
+  const [openGrupo, setOpenGrupo] = useState(activeGrupo);
+
+  const toggleGrupo = (id) => setOpenGrupo(o => o === id ? null : id);
+
+  const btnStyle = (active, isOver) => ({
+    display:"flex", alignItems:"center", gap:10,
+    padding:"9px 13px", borderRadius:12, cursor:"pointer",
+    textAlign:"left", width:"100%",
+    background: active ? `linear-gradient(135deg,${C.acc},${C.lg2})` : isOver ? "rgba(255,255,255,0.06)" : "transparent",
+    color: active ? "#fff" : isOver ? C.atxt : C.ts,
+    border:"none", fontSize:12.5, fontWeight:active?700:400,
+    boxShadow: active ? `0 4px 16px ${C.acc}44` : "none",
+    transition:"all 0.18s cubic-bezier(.4,0,.2,1)",
+  });
+
+  const subBtnStyle = (active) => ({
+    display:"flex", alignItems:"center", gap:9,
+    padding:"7px 12px 7px 32px", borderRadius:10, cursor:"pointer",
+    textAlign:"left", width:"100%", border:"none",
+    background: active ? `${C.acc}22` : "transparent",
+    color: active ? C.atxt : C.tm,
+    fontSize:12, fontWeight:active?700:400,
+    borderLeft: active ? `2px solid ${C.atxt}` : "2px solid transparent",
+    transition:"all 0.15s",
+  });
 
   return (
     <>
-      {/* Sidebar */}
       <div className={sidebarOpen ? "nexp-sidebar nexp-sidebar-open" : "nexp-sidebar"} style={{
-        width: sidebarOpen ? 222 : 0, background: "rgba(0,0,0,0.98)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", height: "100vh",
-        display: "flex", flexDirection: "column", flexShrink: 0,
-        borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "hidden",
-        transition: "width 0.25s cubic-bezier(.4,0,.2,1)", position: "relative",
+        width: sidebarOpen ? 222 : 0, background:"rgba(0,0,0,0.98)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", height:"100vh",
+        display:"flex", flexDirection:"column", flexShrink:0,
+        borderRight:"1px solid rgba(255,255,255,0.06)", overflow:"hidden",
+        transition:"width 0.25s cubic-bezier(.4,0,.2,1)", position:"relative",
       }}>
-        <div style={{ width: 222, display: "flex", flexDirection: "column", height: "100%" }}>
-
-          {/* ── Capa editável ── */}
+        <div style={{ width:222, display:"flex", flexDirection:"column", height:"100%" }}>
           <SidebarCover user={user} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
-          {/* Nav items */}
-          {navOpen && (
-            <nav style={{ flex: 1, padding: "4px 8px 6px", display: "flex", flexDirection: "column", gap: 3, overflowY: "auto" }}>
-              {orderedNav.map((it) => {
-                const active = it.id === "config" ? isConfig : page === it.id;
-                const isDragging = dragId === it.id;
-                const isOver = dragOver === it.id && dragOver !== dragId;
-                return (
-                  <button key={it.id}
-                    draggable
-                    onDragStart={() => handleDragStart(it.id)}
-                    onDragOver={(e) => handleDragOver(e, it.id)}
-                    onDrop={(e) => handleDrop(e, it.id)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => { setPage(it.id); }}
+          <nav style={{ flex:1, padding:"4px 8px 6px", display:"flex", flexDirection:"column", gap:2, overflowY:"auto" }}>
+
+            {/* ── Grupos colapsáveis ── */}
+            {GRUPOS.map(grupo => {
+              if (!canSee(grupo)) return null;
+              const visibleSubs = grupo.subs.filter(canSee);
+              if (!visibleSubs.length) return null;
+              const isOpen = openGrupo === grupo.id;
+              const isGrupoActive = visibleSubs.some(s => s.id === page);
+              return (
+                <div key={grupo.id}>
+                  <button
+                    onClick={() => toggleGrupo(grupo.id)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "9px 13px", borderRadius: 12, cursor: "pointer",
-                      textAlign: "left", width: "100%",
-                      background: active ? `linear-gradient(135deg,${C.acc},${C.lg2})` : isOver ? "rgba(255,255,255,0.06)" : "transparent",
-                      color: active ? "#fff" : isOver ? C.atxt : C.ts,
-                      border: active ? "none" : "none",
-                      fontSize: 12.5, fontWeight: active ? 700 : 400,
-                      opacity: isDragging ? 0.35 : 1,
-                      transform: isOver ? "translateX(4px)" : "none",
-                      transition: "all 0.18s cubic-bezier(.4,0,.2,1)",
-                      boxShadow: active ? `0 4px 16px ${C.acc}44` : "none",
+                      ...btnStyle(isGrupoActive && !isOpen, false),
+                      justifyContent:"space-between",
                     }}
-                    onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = "#fff"; e.currentTarget.style.transform = "translateX(4px)"; }}}
-                    onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.ts; e.currentTarget.style.transform = "none"; }}}
+                    onMouseEnter={e=>{ if(!isGrupoActive||isOpen){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";}}}
+                    onMouseLeave={e=>{ if(!isGrupoActive||isOpen){e.currentTarget.style.background=isGrupoActive&&!isOpen?`linear-gradient(135deg,${C.acc},${C.lg2})`:"transparent";e.currentTarget.style.color=isGrupoActive&&!isOpen?"#fff":C.ts;}}}
                   >
-                    <span style={{ fontSize: 14, width: 18, textAlign: "center", flexShrink: 0 }}>{it.icon}</span>
-                    <span style={{ flex: 1 }}>{it.label}</span>
-                    {it.id === "premium" && <span style={{ background: active ? "rgba(255,255,255,0.2)" : C.abg, color: active ? "#fff" : C.atxt, fontSize: 9, padding: "1px 5px", borderRadius: 9 }}>★</span>}
-                    {/* Badge propostas */}
-                    {it.id === "propostas" && unreadPropostas > 0 && (
-                      <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
-                        {unreadPropostas}
-                      </span>
-                    )}
-                    {/* Badge digitação */}
-                    {it.id === "digitacao" && (unreadDigitacao||0) > 0 && (
-                      <span style={{ background:"#EF4444", color:"#fff", fontSize:9, padding:"2px 6px", borderRadius:9, fontWeight:800, animation:"pulse 1.5s infinite", marginLeft:2 }}>
-                        {unreadDigitacao}
-                      </span>
-                    )}
-                    <span style={{ fontSize: 10, color: active ? "rgba(255,255,255,0.35)" : C.td, cursor: "grab" }} title="Arrastar">⠿</span>
+                    <span style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0}}>{grupo.icon}</span>
+                      <span style={{flex:1,fontSize:12.5}}>{grupo.label}</span>
+                    </span>
+                    <span style={{fontSize:10,color:"rgba(255,255,255,0.4)",transition:"transform 0.2s",transform:isOpen?"rotate(180deg)":"none"}}>▾</span>
                   </button>
-                );
-              })}
-            </nav>
-          )}
+                  {isOpen && (
+                    <div style={{marginTop:2,marginBottom:2}}>
+                      {visibleSubs.map(sub => {
+                        const active = page === sub.id;
+                        return (
+                          <button key={sub.id} onClick={()=>setPage(sub.id)}
+                            style={subBtnStyle(active)}
+                            onMouseEnter={e=>{ if(!active){e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#fff";}}}
+                            onMouseLeave={e=>{ if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.tm;}}}
+                          >
+                            <span style={{fontSize:13}}>{sub.icon}</span>
+                            <span style={{flex:1}}>{sub.label}</span>
+                            {sub.id==="propostas" && unreadPropostas>0 && (
+                              <span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800}}>{unreadPropostas}</span>
+                            )}
+                            {sub.id==="digitacao" && (unreadDigitacao||0)>0 && (
+                              <span style={{background:"#EF4444",color:"#fff",fontSize:9,padding:"2px 6px",borderRadius:9,fontWeight:800}}>{unreadDigitacao}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
+            {/* ── Divisor ── */}
+            <div style={{height:1,background:"rgba(255,255,255,0.06)",margin:"4px 4px"}} />
 
+            {/* ── Abas avulsas ── */}
+            {AVULSAS.filter(canSee).map(it => {
+              const active = it.id==="config" ? isConfig : page===it.id;
+              return (
+                <button key={it.id} onClick={()=>setPage(it.id)}
+                  style={btnStyle(active, false)}
+                  onMouseEnter={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";e.currentTarget.style.transform="translateX(4px)";}}}
+                  onMouseLeave={e=>{if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.ts;e.currentTarget.style.transform="none";}}}
+                >
+                  <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0}}>{it.icon}</span>
+                  <span style={{flex:1}}>{it.label}</span>
+                  {it.id==="premium" && <span style={{background:active?"rgba(255,255,255,0.2)":C.abg,color:active?"#fff":C.atxt,fontSize:9,padding:"1px 5px",borderRadius:9}}>★</span>}
+                  <span style={{fontSize:10,color:active?"rgba(255,255,255,0.35)":C.td,cursor:"grab"}} title="Arrastar">⠿</span>
+                </button>
+              );
+            })}
+          </nav>
 
-          {/* Bottom: Stories + Chat + Profile + WhatsApp */}
+          {/* Bottom: Notificações + Stories + Chat + User card */}
           <div style={{ padding: "0 12px" }}>
             <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
               {[{ id:"notificacoes", label:"Notificações", icon:"🔔" }, { id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Nexp Chat", icon:null }].filter(item => {
@@ -17256,52 +17303,132 @@ function PrataDigitalTab({ currentUser }) {
 }
 
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
-  const [abaBanco, setAbaBanco] = useState("v8");
-  const [abaV8, setAbaV8Raw] = useState(() => localStorage.getItem("nexp_abaV8")||"fgts");
-  const setAbaV8 = (v) => { setAbaV8Raw(v); localStorage.setItem("nexp_abaV8",v); };
+  const [bancoSel, setBancoSel] = useState(null); // null = tela de cards
+  const [abaSim,   setAbaSim]   = useState("fgts"); // fgts | credito
 
-  const tabBtn = (ativa, label, onClick, accent=false) => (
+  const BANCOS = [
+    { id:"v8",      nome:"V8 Digital",      icon:"⚡", cor:"#3B6EF5", bg:"rgba(59,110,245,0.12)", ativo:true,  subs:["fgts","credito"] },
+    { id:"prata",   nome:"Prata Digital",   icon:"🪙", cor:"#94A3B8", bg:"rgba(148,163,184,0.10)", ativo:true,  subs:["fgts"] },
+    { id:"nsaque",  nome:"Novo Saque",      icon:"💳", cor:"#34D399", bg:"rgba(52,211,153,0.10)", ativo:false, subs:[] },
+    { id:"hub",     nome:"Hub Crédito",     icon:"🔗", cor:"#C084FC", bg:"rgba(192,132,252,0.10)", ativo:false, subs:[] },
+    { id:"gofintech",nome:"Go Fintech",     icon:"🚀", cor:"#F97316", bg:"rgba(249,115,22,0.10)",  ativo:false, subs:[] },
+  ];
+
+  const banco = BANCOS.find(b => b.id === bancoSel);
+
+  const tabBtn = (ativa, label, onClick, cor="#34D399") => (
     <button onClick={onClick}
       style={{ background:"transparent", border:"none", cursor:"pointer", padding:"10px 22px", fontSize:13.5,
-        fontWeight:ativa?700:400, color:ativa?(accent?"#34D399":C.atxt):C.tm,
-        borderBottom:ativa?`2px solid ${accent?"#34D399":C.atxt}`:"2px solid transparent",
+        fontWeight:ativa?700:400, color:ativa?cor:C.tm,
+        borderBottom:ativa?`2px solid ${cor}`:"2px solid transparent",
         marginBottom:"-1px", transition:"all 0.12s", whiteSpace:"nowrap" }}>
       {label}
     </button>
   );
 
+  // ── Tela de seleção de banco (cards) ──────────────────────────
+  if (!bancoSel) return (
+    <div style={{ padding:"28px 30px" }}>
+      <div style={{ marginBottom:28 }}>
+        <h1 style={{ color:C.tp, fontSize:20, fontWeight:800, margin:"0 0 6px" }}>🏦 Bancos Parceiros</h1>
+        <div style={{ color:C.td, fontSize:13 }}>Selecione um banco para acessar as opções de simulação</div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:16 }}>
+        {BANCOS.map(b => (
+          <button key={b.id} onClick={()=>{ if(b.ativo){ setBancoSel(b.id); setAbaSim("fgts"); } }}
+            style={{
+              background:b.bg, border:`1.5px solid ${b.cor}${b.ativo?"55":"22"}`,
+              borderRadius:18, padding:"24px 20px", cursor:b.ativo?"pointer":"not-allowed",
+              textAlign:"left", transition:"all 0.18s", opacity:b.ativo?1:0.55,
+              boxShadow: b.ativo?`0 4px 20px ${b.cor}22`:"none",
+            }}
+            onMouseEnter={e=>{ if(b.ativo){e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow=`0 8px 28px ${b.cor}33`;} }}
+            onMouseLeave={e=>{ if(b.ativo){e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow=`0 4px 20px ${b.cor}22`;} }}
+          >
+            <div style={{ fontSize:34, marginBottom:12 }}>{b.icon}</div>
+            <div style={{ color:b.ativo?b.cor:"#94A3B8", fontSize:15, fontWeight:800, marginBottom:6 }}>{b.nome}</div>
+            {b.ativo ? (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                {b.subs.map(s => (
+                  <span key={s} style={{ background:`${b.cor}22`, color:b.cor, fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>
+                    {s==="fgts"?"FGTS":"CLT"}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color:"#94A3B8", fontSize:11 }}>🔜 Em breve</div>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Credenciais link */}
+      <div style={{ marginTop:32, padding:"16px 20px", background:C.card, borderRadius:14, border:`1px solid ${C.b1}`, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+        <div>
+          <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>🔐 Credenciais Bancárias</div>
+          <div style={{ color:C.td, fontSize:12, marginTop:2 }}>Gerencie seus usuários e senhas dos bancos parceiros</div>
+        </div>
+        <button onClick={()=>setBancoSel("credencial")}
+          style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          Gerenciar Credenciais →
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Credenciais ───────────────────────────────────────────────
+  if (bancoSel === "credencial") return (
+    <div style={{ padding:"0 30px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, padding:"20px 0 16px", borderBottom:`1px solid ${C.b1}`, marginBottom:20 }}>
+        <button onClick={()=>setBancoSel(null)}
+          style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, color:C.tm, cursor:"pointer" }}>
+          ← Bancos
+        </button>
+        <h1 style={{ color:C.tp, fontSize:17, fontWeight:700, margin:0 }}>🔐 Credenciais Bancárias</h1>
+      </div>
+      <ErrorBoundary key="cred"><CredenciaisTab currentUser={currentUser} /></ErrorBoundary>
+    </div>
+  );
+
+  // ── Banco selecionado ─────────────────────────────────────────
   return (
     <div style={{ padding:"0", maxWidth:"100%" }}>
-      <div style={{ padding:"20px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
-        <h1 style={{ color:C.tp, fontSize:18, fontWeight:700, margin:"0 0 14px" }}>🏦 Bancos</h1>
-        <div style={{ display:"flex", gap:4, alignItems:"center", flexWrap:"wrap" }}>
-          {tabBtn(abaBanco==="v8",    "⚡ V8 Digital",    ()=>setAbaBanco("v8"))}
-          {tabBtn(abaBanco==="prata", "🪙 Prata Digital", ()=>setAbaBanco("prata"))}
-          <button onClick={()=>setAbaBanco("credencial")}
-            style={{ background:abaBanco==="credencial"?"rgba(59,110,245,0.2)":"rgba(59,110,245,0.08)", border:"1px solid rgba(59,110,245,0.4)", borderRadius:10, cursor:"pointer", padding:"8px 20px", fontSize:13.5, fontWeight:abaBanco==="credencial"?700:500, color:abaBanco==="credencial"?"#60A5FA":"#94A3B8", transition:"all 0.15s", whiteSpace:"nowrap" }}>
-            🔐 Credenciais
+      {/* Header */}
+      <div style={{ padding:"16px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+          <button onClick={()=>setBancoSel(null)}
+            style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 12px", fontSize:12, color:C.tm, cursor:"pointer" }}>
+            ← Bancos
           </button>
+          <span style={{ fontSize:22 }}>{banco?.icon}</span>
+          <h1 style={{ color:banco?.cor||C.tp, fontSize:18, fontWeight:800, margin:0 }}>{banco?.nome}</h1>
+        </div>
+        {/* Sub-tabs por banco */}
+        <div style={{ display:"flex", gap:0 }}>
+          {banco?.subs.includes("fgts")    && tabBtn(abaSim==="fgts",    "📋 FGTS",                  ()=>setAbaSim("fgts"),    banco?.cor)}
+          {banco?.subs.includes("credito") && tabBtn(abaSim==="credito", "💼 Crédito do Trabalhador", ()=>setAbaSim("credito"), banco?.cor)}
         </div>
       </div>
 
-      {abaBanco==="v8" && (
-        <div style={{ background:C.deep, borderBottom:`1px solid ${C.b1}`, padding:"0 30px", display:"flex", gap:0 }}>
-          {tabBtn(abaV8==="fgts",    "📋 FGTS",                  ()=>setAbaV8("fgts"),    true)}
-          {tabBtn(abaV8==="credito", "💼 Crédito do Trabalhador", ()=>setAbaV8("credito"), true)}
-        </div>
-      )}
-
+      {/* Conteúdo */}
       <div style={{ padding:"0 30px" }}>
-        <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
-          <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
-        </div>
-        {abaBanco==="v8"         && abaV8==="credito" && <ErrorBoundary key="clt"><CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} /></ErrorBoundary>}
-        {abaBanco==="prata"      && <ErrorBoundary key="prata"><PrataDigitalTab  currentUser={currentUser} /></ErrorBoundary>}
-        {abaBanco==="credencial" && <ErrorBoundary key="cred"><CredenciaisTab   currentUser={currentUser} /></ErrorBoundary>}
+        {/* V8 Digital */}
+        {bancoSel==="v8" && (
+          <>
+            <div style={{ display: abaSim==="fgts" ? "block" : "none" }}>
+              <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
+            </div>
+            {abaSim==="credito" && <ErrorBoundary key="clt"><CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} /></ErrorBoundary>}
+          </>
+        )}
+        {/* Prata Digital */}
+        {bancoSel==="prata" && abaSim==="fgts" && <ErrorBoundary key="prata"><PrataDigitalTab currentUser={currentUser} /></ErrorBoundary>}
       </div>
     </div>
   );
 }
+
 
 // ── UFs do Brasil ──────────────────────────────────────────────
 const UF_BRASIL = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
