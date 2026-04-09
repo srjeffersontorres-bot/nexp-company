@@ -1883,7 +1883,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
     </div>
   );
 }
-function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
+function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig, onSysConfig }) {
   // eslint-disable-next-line no-unused-vars
   const uObj = users.find((u) => u.id === user.id) || user;
 
@@ -2180,8 +2180,8 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
               return (
                 <button onClick={()=>{
                   const newMode = !sysConfig?.lightMode;
-                  // store in localStorage as well
                   localStorage.setItem("nexp_light_mode", newMode?"1":"0");
+                  if (onSysConfig) onSysConfig(prev => ({ ...prev, lightMode: newMode }));
                 }}
                   style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", background:"transparent", border:`1px solid ${C.b1}`, borderRadius:10, padding:"8px 12px", cursor:"pointer", marginBottom:8, transition:"all 0.18s" }}
                   onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
@@ -2422,7 +2422,7 @@ function HomePageInicial({ currentUser }) {
       </div>
 
       {/* Layout */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:20, alignItems:"start" }}>
+      <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
         {/* Coluna esquerda */}
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
 
@@ -2432,7 +2432,6 @@ function HomePageInicial({ currentUser }) {
               {[...Array(4)].map((_,i)=>(
                 <div key={i} style={{ position:"absolute", width:60+i*45, height:60+i*45, borderRadius:"50%", border:"1px solid rgba(59,110,245,0.12)", top:`${10+i*18}%`, left:`${20+i*8}%`, animation:`techPulse ${2.5+i*0.6}s ease-in-out infinite`, animationDelay:`${i*0.4}s` }} />
               ))}
-              <div style={{ position:"absolute", top:"10%", right:0, width:100, height:100, background:"radial-gradient(circle,rgba(59,110,245,0.12) 0%,transparent 70%)", animation:"glowPulse 3s ease-in-out infinite" }} />
             </div>
             <div style={{ position:"relative", zIndex:1, padding:"22px 24px" }}>
               <div style={{ color:"#60A5FA", fontSize:9.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
@@ -2494,62 +2493,88 @@ function HomePageInicial({ currentUser }) {
           </div>
         </div>
 
-        {/* Coluna direita — Notícias */}
-        <TechCard accent="#D97706" style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          <div style={{ padding:"18px 20px 0" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ fontSize:18 }}>📰</span>
-                <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Notícias</div>
-              </div>
-              {isAdmin && (
-                <button onClick={()=>setShowAddNoticia(p=>!p)}
-                  style={{ background:"linear-gradient(135deg,#D97706,#B45309)", color:"#fff", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16, fontWeight:700, boxShadow:"0 4px 12px rgba(217,119,6,0.4)" }}>+</button>
-              )}
+      </div>
+
+      {/* ── Últimas Notícias ── */}
+      <div style={{ marginTop:24 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:22 }}>📰</span>
+            <div>
+              <div style={{ color:C.tp, fontSize:17, fontWeight:900 }}>Últimas Notícias</div>
+              <div style={{ color:C.td, fontSize:11 }}>Informações e comunicados da equipe</div>
             </div>
+          </div>
+          {isAdmin && (
+            <button onClick={()=>setShowAddNoticia(p=>!p)}
+              style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6, boxShadow:`0 4px 14px ${C.acc}44` }}>
+              + Adicionar Notícia
+            </button>
+          )}
+        </div>
 
-            {showAddNoticia && (
-              <div style={{ background:"rgba(217,119,6,0.06)", borderRadius:12, padding:"12px", border:"1px solid rgba(217,119,6,0.2)", marginBottom:12 }}>
-                <input value={novaTitulo} onChange={e=>setNovaTitulo(e.target.value)}
-                  placeholder="Título da notícia..." style={{ ...S.input, width:"100%", marginBottom:7, fontSize:12 }} />
-                <textarea value={novaDescricao} onChange={e=>setNovaDescricao(e.target.value)}
-                  placeholder="Descrição curta (aparece no card)..." rows={2}
-                  style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:7 }} />
-                <textarea value={novaTextoFull} onChange={e=>setNovaTextoFull(e.target.value)}
-                  placeholder="Texto completo (aparece em Ler notícia completa)..." rows={3}
-                  style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:8 }} />
-                <div style={{ display:"flex", gap:6 }}>
-                  <button onClick={()=>setShowAddNoticia(false)} style={{ flex:1, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
-                  <button onClick={salvarNoticia} style={{ flex:1, background:"linear-gradient(135deg,#D97706,#B45309)", color:"#fff", border:"none", borderRadius:8, padding:"7px", fontSize:12, fontWeight:700, cursor:"pointer" }}>Publicar</button>
+        {/* Form adicionar notícia */}
+        {showAddNoticia && (
+          <div style={{ ...S.card, padding:"20px", marginBottom:18, border:"1px solid rgba(59,110,245,0.2)", animation:"fadeInDown 0.25s ease-out" }}>
+            <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:14, textTransform:"uppercase", letterSpacing:"1px" }}>📝 Nova Notícia</div>
+            <input value={novaTitulo} onChange={e=>setNovaTitulo(e.target.value)}
+              placeholder="Título da notícia..." style={{ ...S.input, width:"100%", marginBottom:9, fontSize:13 }} />
+            <textarea value={novaDescricao} onChange={e=>setNovaDescricao(e.target.value)}
+              placeholder="Descrição curta (aparece no card)..." rows={2}
+              style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:9 }} />
+            <textarea value={novaTextoFull} onChange={e=>setNovaTextoFull(e.target.value)}
+              placeholder="Texto completo (aparece ao clicar em Ler notícia completa)..." rows={4}
+              style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:12 }} />
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>setShowAddNoticia(false)} style={{ flex:1, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:10, padding:"9px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+              <button onClick={salvarNoticia} style={{ flex:2, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px", fontSize:13, fontWeight:700, cursor:"pointer" }}>✅ Publicar</button>
+            </div>
+          </div>
+        )}
+
+        {noticias.length === 0 && (
+          <div style={{ ...S.card, padding:"32px", textAlign:"center" }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>📰</div>
+            <div style={{ color:C.td, fontSize:13 }}>Nenhuma notícia publicada ainda</div>
+          </div>
+        )}
+
+        {/* Grid de cards de notícias */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
+          {noticias.map((n, idx) => {
+            const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626","#EC4899"];
+            const cor = CORES[idx % CORES.length];
+            return (
+              <div key={n.id}
+                style={{ background:`linear-gradient(145deg,${cor}0A,rgba(0,0,0,0.3))`, border:`1px solid ${cor}33`, borderRadius:16, padding:"20px", position:"relative", overflow:"hidden", transition:"all 0.25s ease-in-out", cursor:"pointer" }}
+                onMouseEnter={e=>{ e.currentTarget.style.transform="translateY(-4px)"; e.currentTarget.style.boxShadow=`0 12px 32px ${cor}33`; e.currentTarget.style.border=`1px solid ${cor}66`; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform="none"; e.currentTarget.style.boxShadow="none"; e.currentTarget.style.border=`1px solid ${cor}33`; }}>
+                {/* Deco circles */}
+                <div style={{ position:"absolute", top:-20, right:-20, width:100, height:100, borderRadius:"50%", border:`1px solid ${cor}18`, pointerEvents:"none" }} />
+                <div style={{ position:"absolute", top:-10, right:-10, width:60, height:60, borderRadius:"50%", border:`1px solid ${cor}22`, pointerEvents:"none" }} />
+                {/* Notícia label */}
+                <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:`${cor}18`, border:`1px solid ${cor}33`, borderRadius:99, padding:"3px 10px", marginBottom:10 }}>
+                  <div style={{ width:5, height:5, borderRadius:"50%", background:cor, animation:"pulse 2s ease-in-out infinite" }} />
+                  <span style={{ color:cor, fontSize:9.5, fontWeight:800, textTransform:"uppercase", letterSpacing:"1px" }}>Notícia</span>
+                </div>
+                {/* Título */}
+                <div style={{ color:cor, fontSize:15, fontWeight:800, lineHeight:1.35, marginBottom:8 }}>{n.titulo}</div>
+                {/* Descrição */}
+                <div style={{ color:C.tm, fontSize:12, lineHeight:1.6, marginBottom:14 }}>{n.descricao || (n.texto||"").slice(0,120)}{(n.descricao||(n.texto||"")).length>120?"...":""}</div>
+                {/* Footer */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <span style={{ color:C.td, fontSize:10 }}>📅 {n.criadaEm}{n.autor?` · ${n.autor}`:""}</span>
+                  <button onClick={(e)=>{ e.stopPropagation(); setNoticiaModal(n); }}
+                    style={{ background:`${cor}18`, border:`1px solid ${cor}44`, color:cor, borderRadius:8, padding:"5px 12px", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
+                    onMouseEnter={e=>{ e.currentTarget.style.background=`${cor}30`; e.currentTarget.style.boxShadow=`0 0 12px ${cor}44`; }}
+                    onMouseLeave={e=>{ e.currentTarget.style.background=`${cor}18`; e.currentTarget.style.boxShadow="none"; }}>
+                    Ler notícia completa →
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-
-          <div style={{ display:"flex", flexDirection:"column", gap:10, overflowY:"auto", maxHeight:480, padding:"0 20px 18px" }}>
-            {noticias.length === 0 && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"24px 0" }}>Nenhuma notícia ainda</div>}
-            {noticias.map((n, idx) => {
-              const cor = CORES[idx % CORES.length];
-              return (
-                <div key={n.id} style={{ background:`${cor}0D`, border:`1px solid ${cor}33`, borderLeft:`3px solid ${cor}`, borderRadius:12, padding:"13px 15px", transition:"transform 0.15s" }}
-                  onMouseEnter={e=>e.currentTarget.style.transform="translateX(3px)"}
-                  onMouseLeave={e=>e.currentTarget.style.transform="none"}>
-                  <div style={{ color:cor, fontSize:13, fontWeight:800, marginBottom:4, lineHeight:1.3 }}>{n.titulo}</div>
-                  <div style={{ color:C.tm, fontSize:11, marginBottom:10, lineHeight:1.55 }}>{n.descricao || n.texto?.slice(0,100) || ""}</div>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span style={{ color:C.td, fontSize:9.5 }}>{n.criadaEm}</span>
-                    <button onClick={()=>setNoticiaModal(n)}
-                      style={{ background:`${cor}18`, border:`1px solid ${cor}44`, color:cor, borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
-                      onMouseEnter={e=>{e.currentTarget.style.background=`${cor}33`;e.currentTarget.style.boxShadow=`0 0 12px ${cor}44`;}}
-                      onMouseLeave={e=>{e.currentTarget.style.background=`${cor}18`;e.currentTarget.style.boxShadow="none";}}>
-                      Ler notícia completa →
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </TechCard>
+            );
+          })}
+        </div>
       </div>
 
       {/* Modal notícia completa */}
@@ -21221,6 +21246,7 @@ export default function App() {
         flashUserId={flashUserId}
         stories={chatStories}
         sysConfig={sysConfig}
+        onSysConfig={setSysConfig}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={()=>setMobileSidebarOpen(false)}
       />
