@@ -1756,6 +1756,7 @@ function SidebarCover({ user, sidebarOpen, setSidebarOpen }) {
   );
 }
 function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif, unreadStories, unreadPropostas, unreadDigitacao, presence, flashUserId, stories, sysConfig }) {
+  // eslint-disable-next-line no-unused-vars
   const uObj = users.find((u) => u.id === user.id) || user;
 
   // ── Grupos de navegação ─────────────────────────────────────
@@ -1832,6 +1833,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     return true;
   };
 
+  // eslint-disable-next-line no-unused-vars
   const roleLabel = ROLE_LABEL;
   const isConfig  = page === "config";
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1842,6 +1844,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 
   const toggleGrupo = (id) => setOpenGrupo(o => o === id ? null : id);
 
+  // eslint-disable-next-line no-unused-vars
   const btnStyle = (active, isOver) => ({
     display:"flex", alignItems:"center", gap:10,
     padding:"9px 13px", borderRadius:12, cursor:"pointer",
