@@ -20227,6 +20227,14 @@ export default function App() {
     };
   }, [currentUser]); // eslint-disable-line
 
+  // Listener para o botão "Sair" do popup de perfil no TopBar
+  // DEVE ficar antes de qualquer early return para não violar rules-of-hooks
+  useEffect(() => {
+    const handler = () => { firebaseLogout(); setCurrentUser(null); localStorage.removeItem("nexp_page"); };
+    window.addEventListener("nexp_logout", handler);
+    return () => window.removeEventListener("nexp_logout", handler);
+  }, []); // eslint-disable-line
+
     if (authLoading)
     return (
       <div
@@ -20261,13 +20269,6 @@ export default function App() {
     localStorage.removeItem("nexp_page");
     setPage("dashboard");
   };
-
-  // Listener para o botão "Sair" do popup de perfil no TopBar
-  useEffect(() => {
-    const handler = () => logout();
-    window.addEventListener("nexp_logout", handler);
-    return () => window.removeEventListener("nexp_logout", handler);
-  }, []); // eslint-disable-line
 
   return (
     <>
