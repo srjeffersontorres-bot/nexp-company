@@ -1336,9 +1336,10 @@ function ProfilePasswordTab() {
 
 function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unreadChat, users, presence, stories }) {
   const pageTitles = {
+    home:"Página Inicial",
     dashboard:"Relatório de Leads", contacts:"Contatos", add:"Adicionar", import:"Importar",
     review:"Ver Clientes", cstatus:"Status", leds:"Leads", atalhos:"Atalhos", premium:"Premium Nexp",
-    config:"Configurações", notificacoes:"Notificações", stories:"Stories", chat:"Nexp Chat",
+    config:"Configuração", notificacoes:"Notificações", stories:"Stories", chat:"Nexp Chat",
     digitacao:"Digitação", propostas:"Propostas", simulador:"Simulador", usuarios_page:"Gestão de Usuários",
     calendario:"Agenda", pagamentos:"Pagamentos", apis:"Bancos",
   };
@@ -1894,6 +1895,15 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   // ── Grupos de navegação ─────────────────────────────────────
   const GRUPOS = [
     {
+      id: "home_grupo",
+      label: "Página Inicial",
+      icon: "🏠",
+      roles: ["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"],
+      subs: [
+        { id:"home", label:"Página Inicial", icon:"🏠", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+      ],
+    },
+    {
       id: "gestao_clientes",
       label: "Gestão de Clientes",
       icon: "👥",
@@ -1930,15 +1940,16 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   ];
 
   // Abas avulsas — emojis mapeados
-  const AVULSAS_EMOJI = { calendario:"📅", usuarios_page:"👤", premium:"⭐", pagamentos:"💳", config:"⚙️" };
+  const AVULSAS_EMOJI = { calendario:"📅", usuarios_page:"👤", premium:"⭐", pagamentos:"💳", config:"⚙️", calculadora:"🧮" };
 
   // Abas avulsas — ordem customizável pelo usuário
   const AVULSAS_DEFAULT = [
-    { id:"calendario",   label:"Agenda",             icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"usuarios_page",label:"Gestão de Usuários", icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
-    { id:"premium",      label:"Premium Nexp",       icon:"◈", roles:["administrador","mestre"] },
-    { id:"pagamentos",   label:"Pagamentos",         icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
-    { id:"config",       label:"Configurações",      icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"calendario",   label:"Agenda",              icon:"📅", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"usuarios_page",label:"Gestão de Usuários",  icon:"👤", roles:["administrador","gerente","supervisor","mestre","master"] },
+    { id:"premium",      label:"Premium Nexp",        icon:"⭐", roles:["administrador","mestre"] },
+    { id:"pagamentos",   label:"Pagamentos",          icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
+    { id:"calculadora",  label:"Calculadora",         icon:"🧮", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"config",       label:"Configuração",        icon:"⚙️", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
   ];
   const [avulsasOrder, setAvulsasOrder] = useState(() => {
     try { const s = localStorage.getItem("nexp_avulsas_order"); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -2194,6 +2205,292 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 }
 
 // ── Dashboard ──────────────────────────────────────────────────
+// ── Calculadora Modal ──────────────────────────────────────────
+function CalcModal({ onClose }) {
+  const [val, setVal] = useState("");
+  const [res, setRes] = useState(null);
+
+  const press = (v) => {
+    if (v === "C") { setVal(""); setRes(null); return; }
+    if (v === "=") {
+      try {
+        // eslint-disable-next-line no-new-func
+        const r = new Function("return " + val.replace(/×/g,"*").replace(/÷/g,"/"))();
+        setRes(String(parseFloat(r.toFixed(10)))); setVal(String(parseFloat(r.toFixed(10))));
+      } catch { setRes("Erro"); } return;
+    }
+    if (v === "⌫") { setVal(p=>p.slice(0,-1)); setRes(null); return; }
+    setRes(null); setVal(p=>p+v);
+  };
+
+  const BTNS = [["C","⌫","%","÷"],["7","8","9","×"],["4","5","6","-"],["1","2","3","+"],[" ","0",".","="]];
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(8px)" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:"rgba(8,10,24,0.98)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:22, padding:"24px", width:280, boxShadow:"0 24px 80px rgba(0,0,0,0.8)", animation:"modalPop 0.3s cubic-bezier(.34,1.56,.64,1)" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div style={{ color:C.tp, fontSize:15, fontWeight:700 }}>🧮 Calculadora</div>
+          <button onClick={onClose} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:14 }}>✕</button>
+        </div>
+        <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"12px 16px", marginBottom:12, textAlign:"right", minHeight:60 }}>
+          <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, wordBreak:"break-all", minHeight:16 }}>{val||"0"}</div>
+          {res !== null && <div style={{ color:C.atxt, fontSize:26, fontWeight:800 }}>{res}</div>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+          {BTNS.flat().map((btn,i) => {
+            const isEq=btn==="=", isOp=["÷","×","-","+"].includes(btn), isCl=btn==="C";
+            return (
+              <button key={i} onClick={()=>press(btn.trim()||"0")}
+                style={{ background:isEq?`linear-gradient(135deg,${C.lg1},${C.lg2})`:isCl?"rgba(239,68,68,0.15)":isOp?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.06)", color:isEq?"#fff":isCl?"#F87171":isOp?C.atxt:"#f0f2ff", border:"none", borderRadius:10, padding:"13px 0", fontSize:isEq?16:14, fontWeight:600, cursor:"pointer", transition:"all 0.1s" }}
+                onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.3)"}
+                onMouseLeave={e=>e.currentTarget.style.filter="none"}>
+                {btn||"0"}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Página Inicial ─────────────────────────────────────────────
+function HomePageInicial({ currentUser, contacts }) {
+  const myId = currentUser?.uid || currentUser?.id;
+  const firstName = (currentUser?.name || "Usuário").split(" ")[0];
+
+  // Frases do dia
+  const FRASES = [
+    "O sucesso é a soma de pequenos esforços repetidos dia após dia.",
+    "Cada cliente atendido é uma oportunidade de fazer a diferença.",
+    "Sua dedicação de hoje é o resultado de amanhã.",
+    "Grandes conquistas começam com pequenas ações consistentes.",
+    "Acredite no processo. O esforço sempre compensa.",
+    "O melhor momento para agir é agora.",
+    "Transforme desafios em oportunidades a cada dia.",
+  ];
+  const fraseIdx = new Date().getDate() % FRASES.length;
+  const frase = FRASES[fraseIdx];
+
+  // Agendamentos do dia
+  const [notas, setNotas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`nexp_home_notas_${myId}`) || "[]"); } catch { return []; }
+  });
+  const [novaNotaTxt, setNovaNotaTxt] = useState("");
+  const [noticias, setNoticias] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nexp_noticias") || "[]"); } catch { return []; }
+  });
+  const [noticiaModal, setNoticiaModal] = useState(null);
+  const [showAddNoticia, setShowAddNoticia] = useState(false);
+  const [novaNoticiaTitulo, setNovaNoticiaTitulo] = useState("");
+  const [novaNoticiaTexto, setNovaNoticiaTexto] = useState("");
+  const [calNotes, setCalNotes] = useState([]);
+
+  const isAdmin = ["administrador","mestre"].includes(currentUser?.role);
+  const today = new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    const unsub = listenCalendarNotes(myId, setCalNotes);
+    return () => unsub();
+  }, [myId]);
+
+  const compromissos = calNotes.filter(n => n.date === today).sort((a,b) => (a.hour||"").localeCompare(b.hour||""));
+
+  const salvarNota = () => {
+    if (!novaNotaTxt.trim()) return;
+    const lista = [{ id: Date.now(), texto: novaNotaTxt.trim(), criadaEm: new Date().toLocaleString("pt-BR") }, ...notas];
+    setNotas(lista);
+    localStorage.setItem(`nexp_home_notas_${myId}`, JSON.stringify(lista));
+    setNovaNotaTxt("");
+  };
+
+  const removerNota = (id) => {
+    const lista = notas.filter(n => n.id !== id);
+    setNotas(lista);
+    localStorage.setItem(`nexp_home_notas_${myId}`, JSON.stringify(lista));
+  };
+
+  const salvarNoticia = () => {
+    if (!novaNoticiaTitulo.trim() || !novaNoticiaTexto.trim()) return;
+    const lista = [{ id: Date.now(), titulo: novaNoticiaTitulo.trim(), texto: novaNoticiaTexto.trim(), criadaEm: new Date().toLocaleDateString("pt-BR"), autor: currentUser?.name }, ...noticias];
+    setNoticias(lista);
+    localStorage.setItem("nexp_noticias", JSON.stringify(lista));
+    setNovaNoticiaTitulo(""); setNovaNoticiaTexto(""); setShowAddNoticia(false);
+  };
+
+  const CORES_NOTICIAS = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626"];
+
+  return (
+    <div style={{ padding:"28px 32px", maxWidth:1300, overflowY:"auto", height:"100%" }}>
+      {/* Cabeçalho boas-vindas */}
+      <div style={{ marginBottom:28 }}>
+        <div style={{ fontSize:36, marginBottom:6 }}>👋</div>
+        <h1 style={{ color:C.tp, fontSize:26, fontWeight:900, margin:"0 0 4px", letterSpacing:"-0.5px" }}>
+          Olá, {firstName}!
+        </h1>
+        <div style={{ color:C.td, fontSize:14 }}>Bem-vindo ao seu painel exclusivo de parceiro</div>
+      </div>
+
+      {/* Layout principal */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:20, alignItems:"start" }}>
+        {/* Coluna esquerda */}
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+          {/* Card frase do dia */}
+          <div style={{ ...S.card, padding:"22px 24px", position:"relative", overflow:"hidden", border:"1px solid rgba(59,110,245,0.2)" }}>
+            {/* Animação tech background */}
+            <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden" }}>
+              {[...Array(6)].map((_,i) => (
+                <div key={i} style={{
+                  position:"absolute",
+                  width: 80+i*40, height: 80+i*40,
+                  borderRadius:"50%",
+                  border:"1px solid rgba(59,110,245,0.08)",
+                  top: `${10+i*12}%`, left: `${60+i*5}%`,
+                  animation:`techPulse ${3+i*0.5}s ease-in-out infinite`,
+                  animationDelay:`${i*0.4}s`,
+                }} />
+              ))}
+              <div style={{ position:"absolute", bottom:0, right:0, width:180, height:180, background:"radial-gradient(circle, rgba(59,110,245,0.08) 0%, transparent 70%)" }} />
+            </div>
+            <div style={{ position:"relative", zIndex:1 }}>
+              <div style={{ color:C.atxt, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:10 }}>✨ Frase do Dia</div>
+              <div style={{ color:C.tp, fontSize:17, fontWeight:600, lineHeight:1.6, fontStyle:"italic" }}>"{frase}"</div>
+            </div>
+          </div>
+
+          {/* Grid: Compromissos + Notas */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+
+            {/* Compromissos do dia */}
+            <div style={{ ...S.card, padding:"18px 20px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+                <span style={{ fontSize:18 }}>📌</span>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Compromissos de Hoje</div>
+              </div>
+              {compromissos.length === 0 ? (
+                <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"16px 0" }}>
+                  Nenhum compromisso para hoje 🎉
+                </div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {compromissos.slice(0,5).map(c => (
+                    <div key={c.id} style={{ background:C.deep, borderRadius:9, padding:"9px 12px", border:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-start" }}>
+                      {c.hour && <div style={{ color:C.acc, fontSize:11, fontWeight:700, flexShrink:0 }}>🕐 {c.hour}</div>}
+                      <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{c.text}</div>
+                    </div>
+                  ))}
+                  {compromissos.length > 5 && <div style={{ color:C.td, fontSize:11, textAlign:"center" }}>+{compromissos.length-5} mais</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Notas rápidas */}
+            <div style={{ ...S.card, padding:"18px 20px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                <span style={{ fontSize:18 }}>📝</span>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Minhas Notas</div>
+              </div>
+              <div style={{ display:"flex", gap:6, marginBottom:12 }}>
+                <input value={novaNotaTxt} onChange={e=>setNovaNotaTxt(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&salvarNota()}
+                  placeholder="Nova nota..." style={{ ...S.input, flex:1, fontSize:12, padding:"8px 10px" }} />
+                <button onClick={salvarNota} style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"8px 12px", fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>+</button>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:180, overflowY:"auto" }}>
+                {notas.length === 0 && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"8px 0" }}>Nenhuma nota ainda</div>}
+                {notas.map(n => (
+                  <div key={n.id} style={{ background:C.deep, borderRadius:8, padding:"8px 10px", border:`1px solid ${C.b1}`, display:"flex", gap:8, alignItems:"flex-start" }}>
+                    <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{n.texto}</div>
+                    <button onClick={()=>removerNota(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:14, flexShrink:0, lineHeight:1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Coluna direita — Notícias */}
+        <div style={{ ...S.card, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:18 }}>📰</span>
+              <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Notícias</div>
+            </div>
+            {isAdmin && (
+              <button onClick={()=>setShowAddNoticia(p=>!p)}
+                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16, fontWeight:700 }}>+</button>
+            )}
+          </div>
+
+          {/* Form adicionar notícia (admin) */}
+          {showAddNoticia && (
+            <div style={{ background:C.deep, borderRadius:10, padding:"12px", border:`1px solid ${C.b2}` }}>
+              <input value={novaNoticiaTitulo} onChange={e=>setNovaNoticiaTitulo(e.target.value)}
+                placeholder="Título da notícia..." style={{ ...S.input, width:"100%", marginBottom:8, fontSize:12 }} />
+              <textarea value={novaNoticiaTexto} onChange={e=>setNovaNoticiaTexto(e.target.value)}
+                placeholder="Texto completo da notícia..." rows={4}
+                style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:8 }} />
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={()=>setShowAddNoticia(false)} style={{ flex:1, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                <button onClick={salvarNoticia} style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px", fontSize:12, fontWeight:700, cursor:"pointer" }}>Publicar</button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de notícias */}
+          <div style={{ display:"flex", flexDirection:"column", gap:12, overflowY:"auto", maxHeight:500 }}>
+            {noticias.length === 0 && (
+              <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"24px 0" }}>Nenhuma notícia ainda</div>
+            )}
+            {noticias.map((n, idx) => {
+              const cor = CORES_NOTICIAS[idx % CORES_NOTICIAS.length];
+              return (
+                <div key={n.id} style={{ background:`${cor}0D`, border:`1px solid ${cor}33`, borderRadius:12, padding:"14px 16px", borderLeft:`3px solid ${cor}` }}>
+                  <div style={{ color:cor, fontSize:13, fontWeight:800, marginBottom:4, lineHeight:1.3 }}>{n.titulo}</div>
+                  <div style={{ color:C.tm, fontSize:11, marginBottom:8, lineHeight:1.5 }}>{n.texto.slice(0,100)}{n.texto.length>100?"...":""}</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <span style={{ color:C.td, fontSize:10 }}>{n.criadaEm}</span>
+                    <button onClick={()=>setNoticiaModal(n)}
+                      style={{ background:"transparent", border:`1px solid ${cor}55`, color:cor, borderRadius:7, padding:"3px 10px", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
+                      onMouseEnter={e=>{e.currentTarget.style.background=`${cor}22`;}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
+                      Ler mais →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal notícia completa */}
+      {noticiaModal && (
+        <div onClick={()=>setNoticiaModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", backdropFilter:"blur(8px)" }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:"rgba(8,10,24,0.98)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:22, padding:"32px 36px", maxWidth:560, width:"100%", maxHeight:"80vh", overflowY:"auto", animation:"modalPop 0.35s cubic-bezier(.34,1.56,.64,1)", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20, gap:16 }}>
+              <div style={{ color:C.atxt, fontSize:20, fontWeight:900, lineHeight:1.3 }}>{noticiaModal.titulo}</div>
+              <button onClick={()=>setNoticiaModal(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16, flexShrink:0 }}>✕</button>
+            </div>
+            {noticiaModal.criadaEm && (
+              <div style={{ color:C.td, fontSize:11, marginBottom:16 }}>📅 {noticiaModal.criadaEm}{noticiaModal.autor ? ` · por ${noticiaModal.autor}` : ""}</div>
+            )}
+            <div style={{ color:C.ts, fontSize:14, lineHeight:1.8, whiteSpace:"pre-wrap" }}>{noticiaModal.texto}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Animações CSS */}
+      <style>{`
+        @keyframes techPulse { 0%,100%{opacity:0.3;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.05)} }
+        @keyframes modalPop  { from{opacity:0;transform:scale(0.85) translateY(20px)} to{opacity:1;transform:scale(1) translateY(0)} }
+      `}</style>
+    </div>
+  );
+}
+
 function Dashboard({ contacts }) {
   const total = contacts.length,
     withOpp = contacts.filter((c) => c.status === "Com oportunidade").length,
@@ -20132,9 +20429,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
-  const [page, setPageRaw] = useState(() => localStorage.getItem("nexp_page") || "dashboard");
+  const [page, setPageRaw] = useState(() => localStorage.getItem("nexp_page") || "home");
   const [loteSimFimGlobal, setLoteSimFimGlobal] = useState(false); // popup fim de lote
   const setPage = (p) => { setPageRaw(p); localStorage.setItem("nexp_page", p); };
+  const [showCalcModal, setShowCalcModal] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem("nexp_theme") || "Padrão");
   const [unreadChat, setUnreadChat] = useState(0);
   const [shake, setShake] = useState(false);
@@ -20162,6 +20460,7 @@ export default function App() {
   // Salva a página ativa ao trocar — chat vira painel flutuante
   const setPageAndSave = (p) => {
     if (p === "chat") { setChatOpen(prev => !prev); return; }
+    if (p === "calculadora") { setShowCalcModal(true); return; }
     localStorage.setItem("nexp_page", p);
     setPage(p);
   };
@@ -20625,6 +20924,7 @@ export default function App() {
         />
         {/* Widget tempo + calculadora — moved to TopBar */}
         <div style={{ flex:1, position:"relative" }}>
+        {page === "home" && <HomePageInicial currentUser={currentUser} contacts={contacts} />}
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
           <ContactsPage contacts={contacts} setContacts={setContacts} />
@@ -20689,6 +20989,8 @@ export default function App() {
         {page === "pagamentos" && (currentUser.role === "mestre" || currentUser.role === "administrador") && <PagamentosPage currentUser={currentUser} />}
         </div>
       </div>
+      {/* ── Modal Calculadora ── */}
+      {showCalcModal && <CalcModal onClose={()=>setShowCalcModal(false)} />}
       {/* ── Popup global: consultas de lote concluídas ── */}
       {loteSimFimGlobal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
