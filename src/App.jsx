@@ -15108,19 +15108,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     }).catch(()=>{});
   }, [isTokenValid]); // eslint-disable-line
 
-  // ── Atualizar paginação quando termos mudam ──
-  useEffect(() => {
-    const filtrados = termos.filter(t=>{
-      if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
-      if(!termosSearch) return true;
-      const s=termosSearch.toLowerCase();
-      return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-    });
-    const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS) || 1;
-    setTermosPages({total:filtrados.length,totalPages,hasNext:termosPage<totalPages,hasPrev:termosPage>1});
-    if(termosPage > totalPages) setTermosPage(1);
-  }, [termos, termosPage, termosFiltroStatus, termosSearch, PAGE_SIZE_TERMOS]); // eslint-disable-line
-
   // ── GERADOR DE TERMO ─────────────────────────────────────────
   const [termoForm, setTermoForm] = useState({
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
@@ -15143,6 +15130,19 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   const [termoBuscando, setTermoBuscando] = useState(false);
   const [termoAutoPreenchido, setTermoAutoPreenchido] = useState(false);
+
+  // ── Atualizar paginação quando termos mudam (movido para APÓS todos os useState) ──
+  useEffect(() => {
+    const filtrados = termos.filter(t=>{
+      if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
+      if(!termosSearch) return true;
+      const s=termosSearch.toLowerCase();
+      return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
+    });
+    const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS) || 1;
+    setTermosPages({total:filtrados.length,totalPages,hasNext:termosPage<totalPages,hasPrev:termosPage>1});
+    if(termosPage > totalPages) setTermosPage(1);
+  }, [termos, termosPage, termosFiltroStatus, termosSearch, PAGE_SIZE_TERMOS]); // eslint-disable-line
 
   // Versão com cpf como parâmetro — evita race condition com setState
   const buscarContatoTermoCpf = async (cpfRaw) => {
