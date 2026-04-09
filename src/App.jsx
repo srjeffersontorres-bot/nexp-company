@@ -2025,6 +2025,9 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
               <span style={{ color: "#25D366", fontSize: 12, fontWeight: 700 }}>💬 Falar com suporte</span>
             </a>
           </div>
+        </div>
+      </div>
+    </div>
 
       {/* Botão reabrir — aparece só quando sidebar está fechada */}
       {!sidebarOpen && (
