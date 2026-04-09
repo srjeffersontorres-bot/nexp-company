@@ -2027,7 +2027,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
           </div>
         </div>
       </div>
-    </div>
 
       {/* Botão reabrir — aparece só quando sidebar está fechada */}
       {!sidebarOpen && (
