@@ -1343,6 +1343,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
     digitacao:"Digitação", propostas:"Propostas", simulador:"Simulador", usuarios_page:"Gestão de Usuários",
     calendario:"Agenda", pagamentos:"Pagamentos", apis:"Bancos",
   };
+  // eslint-disable-next-line no-unused-vars
   const title = pageTitles[page] || "NEXP CONSULTAS";
   const uid = currentUser?.uid || currentUser?.id;
   // eslint-disable-next-line no-unused-vars
