@@ -1353,7 +1353,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   // ── Notificações popup ──────────────────────────────────────
   const [showNotifPop,  setShowNotifPop]  = useState(false);
   const [toastNotif,    setToastNotif]    = useState(null);  // notif temporária (20s)
-  const [notifList,     setNotifList]     = useState([]);    // todas as notifs
+  const [notifList,     setNotifList]     = useState([]);    // eslint-disable-line no-unused-vars
   const [notifLikes,    setNotifLikes]    = useState({});    // {id: count}
   const prevUnreadNotif = useRef(unreadNotif);
 
@@ -1947,6 +1947,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     ? avulsasOrder.map(id => AVULSAS_DEFAULT.find(a => a.id === id)).filter(Boolean).concat(AVULSAS_DEFAULT.filter(a => !avulsasOrder.includes(a.id)))
     : AVULSAS_DEFAULT;
 
+  // eslint-disable-next-line no-unused-vars
   const moveAvulsa = (id, dir) => {
     const visible = AVULSAS.filter(canSee).map(a => a.id);
     const idx = visible.indexOf(id);
