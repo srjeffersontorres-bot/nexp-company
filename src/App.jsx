@@ -1412,19 +1412,13 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   return (
     <div style={{
       position:"sticky", top:0, zIndex:100,
-      display:"flex", alignItems:"center", justifyContent:"space-between",
-      padding:"10px 24px",
+      display:"flex", alignItems:"center", justifyContent:"flex-end",
+      padding:"8px 24px",
       background:"rgba(0,0,0,0.88)",
       backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
       borderBottom:"1px solid rgba(255,255,255,0.05)",
     }}>
-      {/* Page title */}
-      <div>
-        <h1 style={{ color:"#f0f2ff", fontSize:18, fontWeight:800, letterSpacing:"-0.5px", margin:0, lineHeight:1 }}>{title}</h1>
-        <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, marginTop:2 }}>NEXP CONSULTAS</div>
-      </div>
-
-      {/* Right side */}
+      {/* Right side only */}
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
 
         {/* Stories button + popup */}
@@ -2098,7 +2092,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
             <div style={{height:1,background:"rgba(255,255,255,0.06)",margin:"4px 4px"}} />
 
             {/* ── Abas avulsas — grid de quadradinhos ── */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,padding:"4px 0"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,padding:"4px 0"}}>
               {AVULSAS.filter(canSee).map((it) => {
                 const active = it.id==="config" ? isConfig : page===it.id;
                 const emoji  = AVULSAS_EMOJI[it.id] || it.icon;
@@ -2127,7 +2121,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                       e.currentTarget.style.border=`1px solid ${active?C.atxt+"55":"rgba(255,255,255,0.08)"}`;
                     }}
                   >
-                    <span style={{fontSize:17}}>{emoji}</span>
+                    <span style={{fontSize:17, filter:it.id==="calculadora"?"hue-rotate(200deg) saturate(2)":"none"}}>{emoji}</span>
                     <span style={{fontSize:8.5,lineHeight:1.2,wordBreak:"break-word",whiteSpace:"normal",maxWidth:"100%",padding:"0 2px"}}>{it.label}</span>
                     {it.id==="premium" && <span style={{position:"absolute",top:2,right:3,fontSize:7,color:"#FBBF24"}}>PRO</span>}
                   </button>
@@ -2179,6 +2173,26 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
               ))}
             </div>
 
+            {/* Modo claro/escuro */}
+            {(() => {
+              const isDark = !sysConfig?.lightMode;
+              return (
+                <button onClick={()=>{
+                  const newMode = !sysConfig?.lightMode;
+                  // store in localStorage as well
+                  localStorage.setItem("nexp_light_mode", newMode?"1":"0");
+                }}
+                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", background:"transparent", border:`1px solid ${C.b1}`, borderRadius:10, padding:"8px 12px", cursor:"pointer", marginBottom:8, transition:"all 0.18s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span style={{ color:C.tm, fontSize:12 }}>{isDark ? "🌙 Modo Escuro" : "☀️ Modo Claro"}</span>
+                  <div style={{ width:32, height:18, borderRadius:9, background:isDark?"rgba(255,255,255,0.12)":"linear-gradient(135deg,#3B6EF5,#7C3AED)", position:"relative", transition:"all 0.3s" }}>
+                    <div style={{ position:"absolute", top:2, left:isDark?2:16, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.3s cubic-bezier(.4,0,.2,1)", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }} />
+                  </div>
+                </button>
+              );
+            })()}
+
             {/* Falar com suporte */}
             <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "10px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 10, textDecoration: "none", cursor:"pointer" }}>
@@ -2214,11 +2228,27 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 }
 
 // ── Dashboard ──────────────────────────────────────────────────
-// ── Calculadora Modal 3D Azul ──────────────────────────────────
+// ── Calculadora 3D Flutuante (draggable, persiste entre abas) ──
 function CalcModal({ onClose }) {
   const [val, setVal] = useState("");
   const [res, setRes] = useState(null);
   const [history, setHistory] = useState([]);
+  const [pos, setPos] = useState({ x: Math.max(0, window.innerWidth - 320), y: 80 });
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x:0, y:0 });
+
+  const onMouseDown = (e) => {
+    dragging.current = true;
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    e.preventDefault();
+  };
+  useEffect(() => {
+    const onMove = (e) => { if (!dragging.current) return; setPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y }); };
+    const onUp   = () => { dragging.current = false; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
 
   const press = (v) => {
     if (v === "C") { setVal(""); setRes(null); return; }
@@ -2240,44 +2270,41 @@ function CalcModal({ onClose }) {
   const btn3d = (isEq, isOp, isCl) => ({
     base: isEq ? "linear-gradient(145deg,#1E88E5,#1565C0)" : isCl ? "linear-gradient(145deg,#F44336,#C62828)" : isOp ? "linear-gradient(145deg,#1976D2,#0D47A1)" : "linear-gradient(145deg,#1A2A4A,#0D1B33)",
     shadow: isEq ? "0 6px 0 #0D47A1,0 8px 16px rgba(21,101,192,0.5)" : isCl ? "0 6px 0 #B71C1C,0 8px 16px rgba(198,40,40,0.4)" : isOp ? "0 6px 0 #0A3272,0 8px 12px rgba(13,71,161,0.4)" : "0 6px 0 #060D1A,0 8px 12px rgba(0,0,0,0.5)",
-    color: "#fff",
   });
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,5,20,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(12px)" }}>
-      <div onClick={e=>e.stopPropagation()} style={{ width:300, animation:"modalPop 0.35s cubic-bezier(.34,1.56,.64,1)" }}>
-        {/* Corpo 3D da calculadora */}
-        <div style={{ background:"linear-gradient(145deg,#0A1628,#060E1E)", border:"1px solid rgba(30,136,229,0.4)", borderRadius:24, padding:"20px", boxShadow:"0 20px 60px rgba(0,0,0,0.9),0 0 40px rgba(30,136,229,0.15),inset 0 1px 0 rgba(255,255,255,0.08)" }}>
-          {/* Header */}
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <div style={{ width:8, height:8, borderRadius:"50%", background:"#1E88E5", boxShadow:"0 0 8px #1E88E5" }} />
-              <span style={{ color:"#60A5FA", fontSize:13, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase" }}>Calculadora</span>
-            </div>
-            <button onClick={onClose} style={{ background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.3)", color:"#F87171", borderRadius:8, width:26, height:26, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+    <div style={{ position:"fixed", left:pos.x, top:pos.y, zIndex:10000, width:280, animation:"fadeIn 0.2s ease-out" }}>
+      <style>{`@keyframes glowCalc{0%,100%{box-shadow:0 0 6px #1E88E5}50%{box-shadow:0 0 18px #1E88E5,0 0 30px rgba(30,136,229,0.4)}}`}</style>
+      <div style={{ background:"linear-gradient(145deg,#0A1628,#060E1E)", border:"1px solid rgba(30,136,229,0.5)", borderRadius:22, boxShadow:"0 20px 60px rgba(0,0,0,0.9),0 0 40px rgba(30,136,229,0.15),inset 0 1px 0 rgba(255,255,255,0.08)" }}>
+        <div onMouseDown={onMouseDown} style={{ padding:"12px 14px 8px", cursor:"grab", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+            <div style={{ width:7, height:7, borderRadius:"50%", background:"#1E88E5", animation:"glowCalc 2s ease-in-out infinite" }} />
+            <span style={{ color:"#60A5FA", fontSize:11.5, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase" }}>Calculadora</span>
           </div>
-
-          {/* Display */}
-          <div style={{ background:"linear-gradient(145deg,#060E1E,#0A1628)", border:"1px solid rgba(30,136,229,0.2)", borderRadius:14, padding:"14px 16px", marginBottom:14, minHeight:80, boxShadow:"inset 0 4px 16px rgba(0,0,0,0.6),0 0 20px rgba(30,136,229,0.05)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ color:"rgba(96,165,250,0.25)", fontSize:8 }}>⠿ arraste</span>
+            <button onClick={onClose} style={{ background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.3)", color:"#F87171", borderRadius:7, width:22, height:22, cursor:"pointer", fontSize:11, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+          </div>
+        </div>
+        <div style={{ padding:"4px 14px 16px" }}>
+          <div style={{ background:"linear-gradient(145deg,#060E1E,#0A1628)", border:"1px solid rgba(30,136,229,0.2)", borderRadius:12, padding:"10px 13px", marginBottom:10, minHeight:68, boxShadow:"inset 0 4px 16px rgba(0,0,0,0.6)" }}>
             {history.slice(0,2).map((h,i) => (
-              <div key={i} style={{ color:"rgba(96,165,250,0.35)", fontSize:9.5, textAlign:"right", lineHeight:1.4 }}>{h}</div>
+              <div key={i} style={{ color:"rgba(96,165,250,0.3)", fontSize:8.5, textAlign:"right", lineHeight:1.3 }}>{h}</div>
             ))}
-            <div style={{ color:"rgba(96,165,250,0.5)", fontSize:11, wordBreak:"break-all", textAlign:"right", marginTop:4 }}>{val||"0"}</div>
-            {res !== null && <div style={{ color:"#60A5FA", fontSize:28, fontWeight:800, textAlign:"right", textShadow:"0 0 20px rgba(96,165,250,0.6)", lineHeight:1 }}>{res}</div>}
+            <div style={{ color:"rgba(96,165,250,0.45)", fontSize:10.5, wordBreak:"break-all", textAlign:"right", marginTop:2 }}>{val||"0"}</div>
+            {res !== null && <div style={{ color:"#60A5FA", fontSize:24, fontWeight:800, textAlign:"right", textShadow:"0 0 20px rgba(96,165,250,0.6)", lineHeight:1 }}>{res}</div>}
           </div>
-
-          {/* Botões */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
             {BTNS.flat().map((btn,i) => {
               const isEq=btn==="=", isOp=["÷","×","-","+"].includes(btn), isCl=btn==="C";
               const s = btn3d(isEq, isOp, isCl);
               return (
                 <button key={i} onClick={()=>press(btn.trim()||"0")}
-                  style={{ background:s.base, color:s.color, border:"none", borderRadius:10, padding:"13px 0", fontSize:isEq?18:14, fontWeight:700, cursor:"pointer", boxShadow:s.shadow, transition:"all 0.08s", transform:"translateY(0)", letterSpacing:"0.5px" }}
-                  onMouseEnter={e=>{ e.currentTarget.style.transform="translateY(2px)"; e.currentTarget.style.boxShadow=s.shadow.replace(/0 6px 0/,"0 3px 0"); }}
+                  style={{ background:s.base, color:"#fff", border:"none", borderRadius:9, padding:"12px 0", fontSize:isEq?16:13, fontWeight:700, cursor:"pointer", boxShadow:s.shadow, transition:"transform 0.06s, box-shadow 0.06s" }}
+                  onMouseEnter={e=>e.currentTarget.style.transform="translateY(2px)"}
                   onMouseLeave={e=>{ e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow=s.shadow; }}
-                  onMouseDown={e=>{ e.currentTarget.style.transform="translateY(5px)"; e.currentTarget.style.boxShadow=s.shadow.replace(/0 6px 0/,"0 1px 0"); }}
-                  onMouseUp={e=>{ e.currentTarget.style.transform="translateY(2px)"; }}>
+                  onMouseDown={e=>{ e.currentTarget.style.transform="translateY(5px)"; e.currentTarget.style.boxShadow=s.shadow.replace("0 6px 0","0 1px 0"); }}
+                  onMouseUp={e=>{ e.currentTarget.style.transform="translateY(2px)"; e.currentTarget.style.boxShadow=s.shadow; }}>
                   {btn||"0"}
                 </button>
               );
@@ -2288,8 +2315,25 @@ function CalcModal({ onClose }) {
     </div>
   );
 }
-
 // ── Página Inicial ─────────────────────────────────────────────
+// ── TechCard — card com efeito tecnológico hover ───────────────
+function TechCard({ children, accent="#3B6EF5", style={} }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{ ...S.card, position:"relative", overflow:"hidden",
+        border:`1px solid ${hov ? accent+"66" : accent+"22"}`,
+        boxShadow: hov ? `0 0 0 1px ${accent}22, 0 8px 32px ${accent}18` : "none",
+        transform: hov ? "translateY(-2px)" : "none",
+        transition:"all 0.3s ease-in-out", ...style }}>
+      {hov && <div style={{ position:"absolute", inset:0, background:`linear-gradient(180deg,transparent 0%,${accent}06 50%,transparent 100%)`, animation:"scanline 1.8s linear infinite", pointerEvents:"none" }} />}
+      <div style={{ position:"absolute", top:0, left:0, width:50, height:50, background:`radial-gradient(circle,${accent}15 0%,transparent 70%)`, pointerEvents:"none", transition:"opacity 0.4s ease-in-out", opacity:hov?1:0.25 }} />
+      {children}
+    </div>
+  );
+}
+
 function HomePageInicial({ currentUser }) {
   const myId = currentUser?.uid || currentUser?.id;
   const firstName = (currentUser?.name || "Usuário").split(" ")[0];
@@ -2354,25 +2398,6 @@ function HomePageInicial({ currentUser }) {
   const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626"];
 
   // Card wrapper with tech hover effect
-  const TechCard = ({ children, accent="#3B6EF5", style={} }) => {
-    const [hov, setHov] = useState(false);
-    return (
-      <div
-        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-        style={{ ...S.card, position:"relative", overflow:"hidden",
-          border:`1px solid ${hov ? accent+"66" : accent+"22"}`,
-          boxShadow: hov ? `0 0 0 1px ${accent}33, 0 8px 32px ${accent}22` : "none",
-          transform: hov ? "translateY(-2px)" : "none",
-          transition:"all 0.25s cubic-bezier(.4,0,.2,1)", ...style }}>
-        {/* Scanline shimmer */}
-        {hov && <div style={{ position:"absolute", inset:0, background:`linear-gradient(180deg,transparent 0%,${accent}08 50%,transparent 100%)`, animation:"scanline 1.5s linear infinite", pointerEvents:"none" }} />}
-        {/* Corner glow */}
-        <div style={{ position:"absolute", top:0, left:0, width:60, height:60, background:`radial-gradient(circle,${accent}18 0%,transparent 70%)`, pointerEvents:"none", transition:"opacity 0.3s", opacity:hov?1:0.3 }} />
-        {children}
-      </div>
-    );
-  };
-
   return (
     <div style={{ padding:"28px 32px", maxWidth:1300, overflowY:"auto", height:"100%" }}>
       <style>{`
@@ -2402,15 +2427,15 @@ function HomePageInicial({ currentUser }) {
 
           {/* Frase do dia */}
           <TechCard accent="#3B6EF5">
-            <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden" }}>
-              {[...Array(5)].map((_,i)=>(
-                <div key={i} style={{ position:"absolute", width:70+i*50, height:70+i*50, borderRadius:"50%", border:"1px solid rgba(59,110,245,0.1)", top:`${5+i*14}%`, left:`${55+i*4}%`, animation:`techPulse ${2.5+i*0.6}s ease-in-out infinite`, animationDelay:`${i*0.35}s` }} />
+            <div style={{ position:"absolute", right:0, top:0, bottom:0, width:"45%", pointerEvents:"none", overflow:"hidden" }}>
+              {[...Array(4)].map((_,i)=>(
+                <div key={i} style={{ position:"absolute", width:60+i*45, height:60+i*45, borderRadius:"50%", border:"1px solid rgba(59,110,245,0.12)", top:`${10+i*18}%`, left:`${20+i*8}%`, animation:`techPulse ${2.5+i*0.6}s ease-in-out infinite`, animationDelay:`${i*0.4}s` }} />
               ))}
-              <div style={{ position:"absolute", top:0, right:0, width:120, height:120, background:"radial-gradient(circle,rgba(59,110,245,0.1) 0%,transparent 70%)", animation:"glowPulse 3s ease-in-out infinite" }} />
+              <div style={{ position:"absolute", top:"10%", right:0, width:100, height:100, background:"radial-gradient(circle,rgba(59,110,245,0.12) 0%,transparent 70%)", animation:"glowPulse 3s ease-in-out infinite" }} />
             </div>
-            <div style={{ position:"relative", zIndex:1, padding:"20px 22px" }}>
+            <div style={{ position:"relative", zIndex:1, padding:"22px 24px" }}>
               <div style={{ color:"#60A5FA", fontSize:9.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
-              <div style={{ color:C.tp, fontSize:16, fontWeight:600, lineHeight:1.7, fontStyle:"italic" }}>"{frase}"</div>
+              <div style={{ color:C.tp, fontSize:16, fontWeight:600, lineHeight:1.75, fontStyle:"italic", maxWidth:"70%" }}>"{frase}"</div>
             </div>
           </TechCard>
 
@@ -2419,7 +2444,8 @@ function HomePageInicial({ currentUser }) {
 
             {/* Compromissos */}
             <TechCard accent="#059669">
-              <div style={{ padding:"18px 20px" }}>
+              <div style={{ position:"absolute", right:0, bottom:0, width:80, height:80, background:"radial-gradient(circle,rgba(5,150,105,0.12) 0%,transparent 70%)", pointerEvents:"none" }} />
+              <div style={{ padding:"18px 20px", position:"relative", zIndex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
                   <span style={{ fontSize:18, animation:"floatDot 2s ease-in-out infinite" }}>📌</span>
                   <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Compromissos de Hoje</div>
@@ -2442,7 +2468,8 @@ function HomePageInicial({ currentUser }) {
 
             {/* Notas */}
             <TechCard accent="#7C3AED">
-              <div style={{ padding:"18px 20px" }}>
+              <div style={{ position:"absolute", left:0, top:0, width:60, height:60, background:"radial-gradient(circle,rgba(124,58,237,0.1) 0%,transparent 70%)", pointerEvents:"none" }} />
+              <div style={{ padding:"18px 20px", position:"relative", zIndex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
                   <span style={{ fontSize:18 }}>📝</span>
                   <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Minhas Notas</div>
