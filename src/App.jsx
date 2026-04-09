@@ -1207,6 +1207,133 @@ function RainCanvas() {
   );
 }
 
+// ── Upload de foto de perfil ────────────────────────────────────
+function ProfilePhotoTab({ currentUser }) {
+  const [preview, setPreview]   = useState(currentUser?.photo || null);
+  const [file,    setFile]      = useState(null);
+  const [saving,  setSaving]    = useState(false);
+  const [msg,     setMsg]       = useState("");
+  const [err,     setErr]       = useState("");
+
+  const handleFile = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { setErr("Arquivo muito grande. Máximo 5MB."); return; }
+    if (!f.type.startsWith("image/")) { setErr("Selecione uma imagem válida."); return; }
+    setErr(""); setFile(f);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPreview(ev.target.result);
+    reader.readAsDataURL(f);
+  };
+
+  const salvar = async () => {
+    if (!file) return;
+    setSaving(true); setMsg(""); setErr("");
+    try {
+      const url = await uploadArquivo(file, `fotos_perfil/${currentUser.uid||currentUser.id}_${Date.now()}`);
+      const { doc: fbDoc, setDoc: fbSet } = await import("firebase/firestore");
+      await fbSet(fbDoc(db, "users", currentUser.uid||currentUser.id), { photo: url }, { merge: true });
+      setMsg("✅ Foto atualizada com sucesso!");
+    } catch(e) { setErr("Erro ao salvar: " + e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ textAlign:"center" }}>
+      <div style={{ width:70, height:70, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", margin:"0 auto 12px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>
+        {preview ? <img src={preview} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : "🙂"}
+      </div>
+      {err  && <div style={{ color:"#F87171", fontSize:11, marginBottom:8 }}>{err}</div>}
+      {msg  && <div style={{ color:"#34D399", fontSize:11, marginBottom:8 }}>{msg}</div>}
+      <label style={{ display:"block", width:"100%", background:"rgba(79,142,247,0.12)", color:"#60A5FA", border:"1px solid rgba(79,142,247,0.3)", borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer", marginBottom:8 }}>
+        📁 Procurar foto (máx 5MB)
+        <input type="file" accept="image/*" onChange={handleFile} style={{ display:"none" }} />
+      </label>
+      {file && (
+        <button onClick={salvar} disabled={saving}
+          style={{ width:"100%", background:`linear-gradient(135deg,#3B6EF5,#7C3AED)`, color:"#fff", border:"none", borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer", opacity:saving?0.7:1 }}>
+          {saving ? "⏳ Salvando..." : "💾 Salvar foto"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Alterar senha ───────────────────────────────────────────────
+function ProfilePasswordTab() {
+  const [atual,    setAtual]    = useState("");
+  const [nova,     setNova]     = useState("");
+  const [confirma, setConfirma] = useState("");
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState("");
+  const [err,      setErr]      = useState("");
+  const [showA,    setShowA]    = useState(false);
+  const [showN,    setShowN]    = useState(false);
+  const [showC,    setShowC]    = useState(false);
+
+  const validar = (s) => {
+    if (s.length < 7)          return "Mínimo 7 caracteres.";
+    if (!/[A-Z]/.test(s))      return "Necessário ao menos uma letra maiúscula.";
+    if (!/[a-z]/.test(s))      return "Necessário ao menos uma letra minúscula.";
+    if (!/[0-9]/.test(s))      return "Necessário ao menos um número.";
+    if (!/[^A-Za-z0-9]/.test(s)) return "Necessário ao menos um caractere especial (!@#$...).";
+    return null;
+  };
+
+  const alterar = async () => {
+    if (!atual || !nova || !confirma) { setErr("Preencha todos os campos."); return; }
+    const vErr = validar(nova);
+    if (vErr) { setErr(vErr); return; }
+    if (nova !== confirma) { setErr("As senhas não coincidem."); return; }
+    setSaving(true); setErr(""); setMsg("");
+    try {
+      const { EmailAuthProvider, reauthenticateWithCredential, updatePassword, getAuth } = await import("firebase/auth");
+      const authInst = getAuth();
+      const user = authInst.currentUser;
+      if (!user) throw new Error("Usuário não autenticado.");
+      const cred = EmailAuthProvider.credential(user.email, atual);
+      await reauthenticateWithCredential(user, cred);
+      await updatePassword(user, nova);
+      setMsg("✅ Senha atualizada com sucesso!");
+      setAtual(""); setNova(""); setConfirma("");
+    } catch(e) {
+      const msg2 = e.code === "auth/wrong-password" ? "Senha atual incorreta." : e.code === "auth/too-many-requests" ? "Muitas tentativas. Tente mais tarde." : e.message;
+      setErr(msg2);
+    }
+    setSaving(false);
+  };
+
+  const inp = (label, val, setVal, show, setShow) => (
+    <div style={{ marginBottom:10 }}>
+      <label style={{ color:"rgba(255,255,255,0.4)", fontSize:9, textTransform:"uppercase", display:"block", marginBottom:3 }}>{label}</label>
+      <div style={{ position:"relative" }}>
+        <input value={val} onChange={e=>setVal(e.target.value)} type={show?"text":"password"}
+          style={{ ...S.input, width:"100%", paddingRight:34, fontSize:12 }} />
+        <button onClick={()=>setShow(p=>!p)} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:12 }}>
+          {show?"🙈":"👁"}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {inp("Senha atual",         atual,    setAtual,    showA, setShowA)}
+      {inp("Nova senha",          nova,     setNova,     showN, setShowN)}
+      {inp("Confirme a nova senha", confirma, setConfirma, showC, setShowC)}
+      <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9, marginBottom:10, lineHeight:1.5 }}>
+        Mín. 7 caracteres · Maiúscula · Minúscula · Número · Caractere especial
+      </div>
+      {err && <div style={{ color:"#F87171", fontSize:11, marginBottom:8 }}>{err}</div>}
+      {msg && <div style={{ color:"#34D399", fontSize:11, marginBottom:8 }}>{msg}</div>}
+      <button onClick={alterar} disabled={saving}
+        style={{ width:"100%", background:`linear-gradient(135deg,#3B6EF5,#7C3AED)`, color:"#fff", border:"none", borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer", opacity:saving?0.7:1 }}>
+        {saving ? "⏳ Alterando..." : "🔒 Confirmar"}
+      </button>
+    </div>
+  );
+}
+
 function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unreadChat, users, presence, stories }) {
   const pageTitles = {
     dashboard:"Relatório de Leads", contacts:"Contatos", add:"Adicionar", import:"Importar",
@@ -1251,27 +1378,27 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
 
         {/* Stories */}
-        <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
+        <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
           <span style={{ fontSize:14 }}>◎</span>
-          {unreadStories > 0 && <span style={{ position:"absolute", top:5, right:5, width:7, height:7, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block" }} />}
+          {unreadStories > 0 && <span style={{ position:"absolute", top:1, right:1, width:9, height:9, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block", border:"1.5px solid rgba(0,0,0,0.98)" }} />}
         </button>
 
         {/* Notification bell */}
-        <button onClick={()=>setPage("notificacoes")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
+        <button onClick={()=>setPage("notificacoes")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
           <span style={{ fontSize:14 }}>🔔</span>
-          {unreadNotif > 0 && <span style={{ position:"absolute", top:3, right:3, background:"#F59E0B", color:"#000", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadNotif}</span>}
+          {unreadNotif > 0 && <span style={{ position:"absolute", top:1, right:1, background:"#F59E0B", color:"#000", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadNotif}</span>}
         </button>
 
         {/* Chat */}
-        <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
+        <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:"50%", width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
           <svg width="15" height="13" viewBox="0 0 22 18" fill="none"><circle cx="11" cy="5" r="3.2" fill="currentColor"/><path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="3.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/><circle cx="18.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/></svg>
-          {unreadChat > 0 && <span style={{ position:"absolute", top:3, right:3, background:"#16A34A", color:"#fff", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadChat}</span>}
+          {unreadChat > 0 && <span style={{ position:"absolute", top:1, right:1, background:"#16A34A", color:"#fff", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadChat}</span>}
         </button>
 
         {/* Profile avatar — popup "Minha conta" */}
@@ -1288,7 +1415,10 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
               </div>
               <div style={{ position:"absolute", bottom:0, right:0, width:8, height:8, borderRadius:"50%", background:"#16A34A", border:"1.5px solid rgba(0,0,0,0.98)" }} />
             </div>
-            <span style={{ color:"#f0f2ff", fontSize:12, fontWeight:700, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{firstName}</span>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ color:"#f0f2ff", fontSize:11.5, fontWeight:700, whiteSpace:"nowrap" }}>{firstName}</div>
+              <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9.5, textTransform:"capitalize" }}>{currentUser?.role}</div>
+            </div>
           </button>
 
           {/* Popup Minha Conta */}
@@ -1296,7 +1426,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
             <>
               <div onClick={()=>setShowProfile(false)} style={{ position:"fixed", inset:0, zIndex:498 }} />
               <PopoverWrap>
-                {/* Header */}
+                {/* Header popup */}
                 <div style={{ padding:"16px 16px 10px", borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
                   <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9, textTransform:"uppercase", letterSpacing:"1px", marginBottom:10 }}>Minha Conta</div>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -1307,7 +1437,7 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
                     </div>
                     <div>
                       <div style={{ color:"#f0f2ff", fontSize:13, fontWeight:700 }}>{currentUser?.name}</div>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{currentUser?.role}</div>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, textTransform:"capitalize" }}>{currentUser?.role}</div>
                     </div>
                   </div>
                 </div>
@@ -1336,27 +1466,8 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
                       </button>
                     </div>
                   )}
-                  {profileTab==="foto" && (
-                    <div style={{ textAlign:"center" }}>
-                      <div style={{ width:60, height:60, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", margin:"0 auto 12px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>
-                        {currentUser?.photo ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : "🙂"}
-                      </div>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:12 }}>Acesse Configurações para trocar sua foto de perfil</div>
-                      <button onClick={()=>{ setShowProfile(false); setPage("config"); }}
-                        style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                        📷 Trocar Foto
-                      </button>
-                    </div>
-                  )}
-                  {profileTab==="senha" && (
-                    <div>
-                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:12 }}>Acesse Configurações para alterar sua senha</div>
-                      <button onClick={()=>{ setShowProfile(false); setPage("config"); }}
-                        style={{ width:"100%", background:"rgba(79,142,247,0.12)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                        🔒 Alterar Senha
-                      </button>
-                    </div>
-                  )}
+                  {profileTab==="foto" && <ProfilePhotoTab currentUser={currentUser} />}
+                  {profileTab==="senha" && <ProfilePasswordTab />}
                 </div>
                 {/* Sair */}
                 <div style={{ borderTop:"1px solid rgba(255,255,255,0.07)", padding:"10px 16px" }}>
@@ -1685,14 +1796,33 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     },
   ];
 
-  // Abas avulsas (mantidas fora dos grupos)
-  const AVULSAS = [
-    { id:"usuarios_page",label:"Gestão de Usuários", icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
+  // Abas avulsas — ordem customizável pelo usuário
+  const AVULSAS_DEFAULT = [
     { id:"calendario",   label:"Agenda",             icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"pagamentos",   label:"Pagamentos",         icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
+    { id:"usuarios_page",label:"Gestão de Usuários", icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
     { id:"premium",      label:"Premium Nexp",       icon:"◈", roles:["administrador","mestre"] },
+    { id:"pagamentos",   label:"Pagamentos",         icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
     { id:"config",       label:"Configurações",      icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
   ];
+  const [avulsasOrder, setAvulsasOrder] = useState(() => {
+    try { const s = localStorage.getItem("nexp_avulsas_order"); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const AVULSAS = avulsasOrder
+    ? avulsasOrder.map(id => AVULSAS_DEFAULT.find(a => a.id === id)).filter(Boolean).concat(AVULSAS_DEFAULT.filter(a => !avulsasOrder.includes(a.id)))
+    : AVULSAS_DEFAULT;
+
+  const moveAvulsa = (id, dir) => {
+    const visible = AVULSAS.filter(canSee).map(a => a.id);
+    const idx = visible.indexOf(id);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= visible.length) return;
+    const arr = [...visible];
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    // reconstruct full order
+    const full = arr.concat(AVULSAS.filter(a => !visible.includes(a.id)).map(a => a.id));
+    setAvulsasOrder(full);
+    localStorage.setItem("nexp_avulsas_order", JSON.stringify(full));
+  };
 
   const cfg = sysConfig?.visitanteTabs || {};
   const canSee = (it) => {
@@ -1759,11 +1889,18 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                   <button
                     onClick={() => toggleGrupo(grupo.id)}
                     style={{
-                      ...btnStyle(isGrupoActive && !isOpen, false),
+                      display:"flex", alignItems:"center", gap:10,
+                      padding:"9px 13px", borderRadius:12, cursor:"pointer",
+                      textAlign:"left", width:"100%", border:"none",
+                      background: isGrupoActive ? `linear-gradient(135deg,${C.acc}99,${C.lg2}99)` : isOpen ? "rgba(255,255,255,0.06)" : "transparent",
+                      color: isGrupoActive ? "#fff" : isOpen ? C.atxt : C.ts,
+                      fontSize:12.5, fontWeight:isGrupoActive?700:400,
+                      boxShadow: isGrupoActive ? `0 2px 10px ${C.acc}33` : "none",
+                      transition:"all 0.18s cubic-bezier(.4,0,.2,1)",
                       justifyContent:"space-between",
                     }}
-                    onMouseEnter={e=>{ if(!isGrupoActive||isOpen){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";}}}
-                    onMouseLeave={e=>{ if(!isGrupoActive||isOpen){e.currentTarget.style.background=isGrupoActive&&!isOpen?`linear-gradient(135deg,${C.acc},${C.lg2})`:"transparent";e.currentTarget.style.color=isGrupoActive&&!isOpen?"#fff":C.ts;}}}
+                    onMouseEnter={e=>{if(!isGrupoActive){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";}}}
+                    onMouseLeave={e=>{if(!isGrupoActive){e.currentTarget.style.background=isOpen?"rgba(255,255,255,0.06)":"transparent";e.currentTarget.style.color=isOpen?C.atxt:C.ts;}}}
                   >
                     <span style={{display:"flex",alignItems:"center",gap:10}}>
                       <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0}}>{grupo.icon}</span>
@@ -1801,29 +1938,47 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
             {/* ── Divisor ── */}
             <div style={{height:1,background:"rgba(255,255,255,0.06)",margin:"4px 4px"}} />
 
-            {/* ── Abas avulsas ── */}
-            {AVULSAS.filter(canSee).map(it => {
-              const active = it.id==="config" ? isConfig : page===it.id;
-              return (
-                <button key={it.id} onClick={()=>setPage(it.id)}
-                  style={btnStyle(active, false)}
-                  onMouseEnter={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";e.currentTarget.style.transform="translateX(4px)";}}}
-                  onMouseLeave={e=>{if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.ts;e.currentTarget.style.transform="none";}}}
-                >
-                  <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0}}>{it.icon}</span>
-                  <span style={{flex:1}}>{it.label}</span>
-                  {it.id==="premium" && <span style={{background:active?"rgba(255,255,255,0.2)":C.abg,color:active?"#fff":C.atxt,fontSize:9,padding:"1px 5px",borderRadius:9}}>★</span>}
-                  <span style={{fontSize:10,color:active?"rgba(255,255,255,0.35)":C.td,cursor:"grab"}} title="Arrastar">⠿</span>
-                </button>
-              );
-            })}
+            {/* ── Abas avulsas — grid de quadradinhos ── */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5,padding:"4px 0"}}>
+              {AVULSAS.filter(canSee).map((it, idx, arr) => {
+                const active = it.id==="config" ? isConfig : page===it.id;
+                return (
+                  <div key={it.id} style={{position:"relative",display:"flex",flexDirection:"column"}}>
+                    <button onClick={()=>setPage(it.id)}
+                      style={{
+                        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+                        gap:4, padding:"10px 4px 8px", borderRadius:10, cursor:"pointer",
+                        border:`1px solid ${active?C.atxt+"55":"rgba(255,255,255,0.07)"}`,
+                        background: active?`linear-gradient(135deg,${C.acc},${C.lg2})`:"rgba(255,255,255,0.04)",
+                        color: active?"#fff":"rgba(255,255,255,0.7)",
+                        fontSize:10, fontWeight:active?700:400,
+                        boxShadow: active?`0 3px 12px ${C.acc}44`:"none",
+                        transition:"all 0.15s", width:"100%", minHeight:58, textAlign:"center",
+                      }}
+                      onMouseEnter={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.09)";e.currentTarget.style.color="#fff";}}}
+                      onMouseLeave={e=>{if(!active){e.currentTarget.style.background="rgba(255,255,255,0.04)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}}
+                    >
+                      <span style={{fontSize:16,color:"#fff"}}>{it.icon}</span>
+                      <span style={{lineHeight:1.2,wordBreak:"break-word",fontSize:9.5}}>{it.label}</span>
+                      {it.id==="premium" && <span style={{position:"absolute",top:3,right:4,fontSize:8,color:C.atxt}}>★</span>}
+                    </button>
+                    {/* Botões reordenar */}
+                    <div style={{display:"flex",gap:2,marginTop:2,justifyContent:"center"}}>
+                      <button onClick={()=>moveAvulsa(it.id,-1)} disabled={idx===0}
+                        style={{background:"transparent",border:"none",color:idx===0?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.4)",cursor:idx===0?"default":"pointer",fontSize:8,padding:"1px 4px",borderRadius:3}}>↑</button>
+                      <button onClick={()=>moveAvulsa(it.id,1)} disabled={idx===arr.length-1}
+                        style={{background:"transparent",border:"none",color:idx===arr.length-1?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.4)",cursor:idx===arr.length-1?"default":"pointer",fontSize:8,padding:"1px 4px",borderRadius:3}}>↓</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </nav>
 
-          {/* Bottom: Notificações + Stories + Chat + User card */}
+          {/* Bottom: Notificações + Stories + Chat + Suporte */}
           <div style={{ padding: "0 12px" }}>
             <div style={{ borderTop: `1px solid ${C.b1}`, paddingTop: 10, marginBottom: 10, display: "flex", flexDirection: "column", gap: 4 }}>
               {[{ id:"notificacoes", label:"Notificações", icon:"🔔" }, { id:"stories", label:"Stories", icon:"◎" }, { id:"chat", label:"Nexp Chat", icon:null }].filter(item => {
-                // Hide chat based on sysConfig
                 if (item.id === "chat") {
                   if (user.role === "visitante" && !sysConfig?.visitanteChatEnabled) return false;
                   if (user.role === "indicado" && !sysConfig?.indicadoChatEnabled) return false;
@@ -1834,8 +1989,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                 <button key={item.id} onClick={() => setPage(item.id)} style={{
                   display: "flex", alignItems: "center", gap: 9,
                   padding: "9px 13px", borderRadius: 12, width: "100%",
-                  border: "none",
-                  cursor: "pointer", textAlign: "left",
+                  border: "none", cursor: "pointer", textAlign: "left",
                   background: page === item.id ? `linear-gradient(135deg,${C.acc},${C.lg2})` : "transparent",
                   color: page === item.id ? "#fff" : C.tm,
                   fontSize: 12.5, fontWeight: page === item.id ? 700 : 400, transition: "all 0.18s",
@@ -1857,84 +2011,20 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                     <span style={{ fontSize: 15, width: 17, textAlign: "center" }}>{item.icon}</span>
                   )}
                   {item.label}
-                  {item.id === "chat" && unreadChat > 0 && (
-                    <span style={{ marginLeft: "auto", background: "#16A34A", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadChat}</span>
-                  )}
-                  {item.id === "notificacoes" && unreadNotif > 0 && (
-                    <span style={{ marginLeft: "auto", background: "#F59E0B", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadNotif}</span>
-                  )}
-                  {item.id === "stories" && unreadStories > 0 && (
-                    <span style={{ marginLeft: "auto", background: "linear-gradient(135deg,#3B6EF5,#7C3AED)", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700, animation: "pulse 1.5s infinite" }}>{unreadStories}</span>
-                  )}
+                  {item.id === "chat" && unreadChat > 0 && <span style={{ marginLeft: "auto", background: "#16A34A", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700 }}>{unreadChat}</span>}
+                  {item.id === "notificacoes" && unreadNotif > 0 && <span style={{ marginLeft: "auto", background: "#F59E0B", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700 }}>{unreadNotif}</span>}
+                  {item.id === "stories" && unreadStories > 0 && <span style={{ marginLeft: "auto", background: "linear-gradient(135deg,#3B6EF5,#7C3AED)", color: "#fff", fontSize: 9, padding: "2px 7px", borderRadius: 9, fontWeight: 700 }}>{unreadStories}</span>}
                 </button>
               ))}
             </div>
 
-            {/* User card */}
-            <div style={{ background: "rgba(255,255,255,0.04)", backdropFilter:"blur(12px)", borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  {/* Story ring on profile */}
-                  {(() => {
-                    const myId = uObj.uid || uObj.id;
-                    const now = Date.now();
-                    const myStories = (stories||[]).filter(s => s.authorId === myId && s.expiresAt > now);
-                    const iHaveStory = myStories.length > 0;
-                    const allSeen = iHaveStory && myStories.every(s => (s.views||[]).length > 0);
-                    const ringBg = iHaveStory
-                      ? (allSeen ? "#6B7280" : "linear-gradient(135deg,#3B6EF5,#7C3AED,#F5376B)")
-                      : "transparent";
-                    return (
-                      <div
-                        onClick={() => iHaveStory && setPage("stories")}
-                        style={{
-                          width:32, height:32, borderRadius:"50%",
-                          padding: iHaveStory ? 2 : 0,
-                          boxSizing:"border-box",
-                          background: ringBg,
-                          cursor: iHaveStory ? "pointer" : "default",
-                          display:"flex", alignItems:"center", justifyContent:"center",
-                        }}>
-                        <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: iHaveStory ? C.sb : "transparent", padding: iHaveStory ? 1 : 0, boxSizing:"border-box" }}>
-                          {uObj.photo
-                            ? <img src={uObj.photo} alt="" style={{ width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block", border: !iHaveStory ? `1.5px solid ${C.atxt}33` : "none" }} />
-                            : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background: flashUserId === (uObj.uid || uObj.id) ? "#16A34A" : C.abg, color: flashUserId === (uObj.uid || uObj.id) ? "#fff" : C.atxt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: flashUserId === (uObj.uid || uObj.id) ? 10 : 16, fontWeight: 700, animation: flashUserId === (uObj.uid || uObj.id) ? "pulse 0.8s infinite" : "none", transition: "background 0.3s" }}>{flashUserId === (uObj.uid || uObj.id) ? ini(uObj.name || "OP") : "🙂"}</div>
-                          }
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  <div style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#16A34A", border: `1.5px solid ${C.sb}`, animation: "pulse 2s infinite" }} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: C.ts, fontSize: 12, fontWeight: 600 }}>{uObj.name || uObj.username}</div>
-                  <div style={{ color: C.td, fontSize: 10, display: "flex", alignItems: "center", gap: 4, flexWrap:"wrap" }}>
-                    {roleLabel[user.role]}
-                    {(() => {
-                      const uid2 = uObj.uid||uObj.id;
-                      const override = sysConfig?.userOverrides?.[uid2];
-                      const chatOff = override?.chat === false;
-                      return chatOff ? <span style={{ color:"#F87171", fontSize:9 }}>· Chat desativado</span> : null;
-                    })()}
-                  </div>
-                </div>
-                <button onClick={() => setPage("stories")} title="Criar story" style={{ width: 20, height: 20, borderRadius: "50%", background: C.acc, color: "#fff", border: `1.5px solid ${C.bg}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, lineHeight: 1, padding: 0 }}>+</button>
-              </div>
-              <button onClick={onLogout} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#F87171", borderRadius: 10, padding: "7px 12px", fontSize: 11.5, cursor: "pointer", width: "100%", fontWeight:600, transition:"all 0.15s" }} onMouseEnter={e=>{e.currentTarget.style.background="rgba(239,68,68,0.15)"}} onMouseLeave={e=>{e.currentTarget.style.background="rgba(239,68,68,0.08)"}}>Sair</button>
-            </div>
-
-            {/* WhatsApp */}
+            {/* Falar com suporte */}
             <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 10, padding: "9px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 9, textDecoration: "none" }}>
+              style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "10px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 10, textDecoration: "none", cursor:"pointer" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M20.52 3.48A11.93 11.93 0 0 0 12 0C5.37 0 0 5.37 0 12c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62A11.94 11.94 0 0 0 12 24c6.63 0 12-5.37 12-12 0-3.2-1.25-6.21-3.48-8.52zM12 21.94a9.9 9.9 0 0 1-5.04-1.38l-.36-.21-3.73.98.99-3.63-.23-.37A9.93 9.93 0 0 1 2.06 12C2.06 6.5 6.5 2.06 12 2.06S21.94 6.5 21.94 12 17.5 21.94 12 21.94zm5.44-7.42c-.3-.15-1.76-.87-2.03-.97s-.47-.15-.67.15-.77.97-.94 1.17-.35.22-.65.07a8.15 8.15 0 0 1-2.4-1.48 9.01 9.01 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5s.05-.38-.02-.52c-.07-.15-.67-1.61-.91-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37s-1.04 1.02-1.04 2.48 1.07 2.88 1.22 3.08 2.1 3.2 5.09 4.49c.71.31 1.27.49 1.7.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg>
-              <div>
-                <div style={{ color: "#25D366", fontSize: 11, fontWeight: 700, lineHeight: 1.2 }}>Suporte WhatsApp</div>
-                <div style={{ color: "#2D6B47", fontSize: 10, marginTop: 1 }}>(84) 98132-3542</div>
-              </div>
+              <span style={{ color: "#25D366", fontSize: 12, fontWeight: 700 }}>💬 Falar com suporte</span>
             </a>
           </div>
-        </div>
-      </div>
 
       {/* Botão reabrir — aparece só quando sidebar está fechada */}
       {!sidebarOpen && (
