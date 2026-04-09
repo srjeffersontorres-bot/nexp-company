@@ -377,6 +377,28 @@ const C = {
   lg2:  "#7C3AED",
 };
 
+// ── ErrorBoundary — captura crashes e mostra mensagem em vez de tela branca ──
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { erro: null }; }
+  static getDerivedStateFromError(e) { return { erro: e }; }
+  componentDidCatch(e, info) { console.error("ErrorBoundary:", e, info); }
+  render() {
+    if (this.state.erro) return (
+      <div style={{ padding:"32px", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:16, margin:"20px 0" }}>
+        <div style={{ color:"#F87171", fontSize:15, fontWeight:700, marginBottom:8 }}>⚠ Erro ao carregar este módulo</div>
+        <div style={{ color:"#FDA4A4", fontSize:12, fontFamily:"monospace", whiteSpace:"pre-wrap", wordBreak:"break-all" }}>
+          {this.state.erro?.message || String(this.state.erro)}
+        </div>
+        <button onClick={()=>this.setState({erro:null})}
+          style={{ marginTop:14, background:"#EF4444", color:"#fff", border:"none", borderRadius:8, padding:"8px 18px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          🔄 Tentar novamente
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 const S = {
   card: {
     background: "rgba(255,255,255,0.04)",
@@ -17273,9 +17295,9 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
         <div style={{ display: abaBanco==="v8" && abaV8==="fgts" ? "block" : "none" }}>
           <V8DigitalTab currentUser={currentUser} contacts={contacts} onLoteSimFim={onLoteSimFim} />
         </div>
-        {abaBanco==="v8"         && abaV8==="credito" && <CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} />}
-        {abaBanco==="prata"      && <PrataDigitalTab  currentUser={currentUser} />}
-        {abaBanco==="credencial" && <CredenciaisTab   currentUser={currentUser} />}
+        {abaBanco==="v8"         && abaV8==="credito" && <ErrorBoundary key="clt"><CreditoTrabalhadorTab currentUser={currentUser} contacts={contacts} /></ErrorBoundary>}
+        {abaBanco==="prata"      && <ErrorBoundary key="prata"><PrataDigitalTab  currentUser={currentUser} /></ErrorBoundary>}
+        {abaBanco==="credencial" && <ErrorBoundary key="cred"><CredenciaisTab   currentUser={currentUser} /></ErrorBoundary>}
       </div>
     </div>
   );
