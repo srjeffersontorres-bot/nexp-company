@@ -1336,7 +1336,7 @@ function ProfilePasswordTab() {
 
 function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unreadChat, users, presence, stories }) {
   const pageTitles = {
-    home:"Página Inicial",
+    roteiros:"Roteiros Operacionais",
     dashboard:"Relatório de Leads", contacts:"Contatos", add:"Adicionar", import:"Importar",
     review:"Ver Clientes", cstatus:"Status", leds:"Leads", atalhos:"Atalhos", premium:"Premium Nexp",
     config:"Configuração", notificacoes:"Notificações", stories:"Stories", chat:"Nexp Chat",
@@ -1895,15 +1895,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
   // ── Grupos de navegação ─────────────────────────────────────
   const GRUPOS = [
     {
-      id: "home_grupo",
-      label: "Página Inicial",
-      icon: "🏠",
-      roles: ["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"],
-      subs: [
-        { id:"home", label:"Página Inicial", icon:"🏠", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-      ],
-    },
-    {
       id: "gestao_clientes",
       label: "Gestão de Clientes",
       icon: "👥",
@@ -1935,6 +1926,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
       subs: [
         { id:"propostas", label:"Propostas",  icon:"📋", roles:["administrador","gerente","mestre","master","digitador"], badge:"propostas" },
         { id:"digitacao", label:"Digitações", icon:"📝", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","digitador"], badge:"digitacao" },
+        { id:"roteiros",  label:"Roteiros",   icon:"📒", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
       ],
     },
   ];
@@ -2011,7 +2003,7 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
     color: active ? C.atxt : C.tm,
     fontSize:12, fontWeight:active?700:400,
     borderLeft: active ? `2px solid ${C.atxt}` : "2px solid transparent",
-    transition:"all 0.15s",
+    transition:"all 0.18s cubic-bezier(.4,0,.2,1)",
   });
 
   return (
@@ -2026,6 +2018,23 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
           <SidebarCover user={user} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
           <nav style={{ flex:1, padding:"4px 8px 6px", display:"flex", flexDirection:"column", gap:2, overflowY:"auto" }}>
+
+            {/* ── Página Inicial — botão direto ── */}
+            {canSee({ id:"home", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] }) && (
+              <button onClick={()=>setPage("home")}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 13px", borderRadius:12, cursor:"pointer", textAlign:"left", width:"100%", border:"none",
+                  background: page==="home" ? `linear-gradient(135deg,${C.acc},${C.lg2})` : "transparent",
+                  color: page==="home" ? "#fff" : C.ts,
+                  fontSize:12.5, fontWeight:page==="home"?700:400,
+                  boxShadow: page==="home" ? `0 4px 16px ${C.acc}44` : "none",
+                  transition:"all 0.18s cubic-bezier(.4,0,.2,1)",
+                }}
+                onMouseEnter={e=>{ if(page!=="home"){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";e.currentTarget.style.transform="translateX(4px)";} }}
+                onMouseLeave={e=>{ if(page!=="home"){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.ts;e.currentTarget.style.transform="none";} }}>
+                <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0}}>🏠</span>
+                <span style={{flex:1}}>Página Inicial</span>
+              </button>
+            )}
 
             {/* ── Grupos colapsáveis ── */}
             {GRUPOS.map(grupo => {
@@ -2065,8 +2074,8 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
                         return (
                           <button key={sub.id} onClick={()=>setPage(sub.id)}
                             style={subBtnStyle(active)}
-                            onMouseEnter={e=>{ if(!active){e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#fff";}}}
-                            onMouseLeave={e=>{ if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.tm;}}}
+                            onMouseEnter={e=>{ if(!active){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#fff";e.currentTarget.style.transform="translateX(4px)";e.currentTarget.style.borderLeft=`2px solid ${C.atxt}55`;}}}
+                            onMouseLeave={e=>{ if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=C.tm;e.currentTarget.style.transform="none";e.currentTarget.style.borderLeft="2px solid transparent";}}}
                           >
                             <span style={{fontSize:13}}>{sub.icon}</span>
                             <span style={{flex:1}}>{sub.label}</span>
@@ -2205,10 +2214,11 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 }
 
 // ── Dashboard ──────────────────────────────────────────────────
-// ── Calculadora Modal ──────────────────────────────────────────
+// ── Calculadora Modal 3D Azul ──────────────────────────────────
 function CalcModal({ onClose }) {
   const [val, setVal] = useState("");
   const [res, setRes] = useState(null);
+  const [history, setHistory] = useState([]);
 
   const press = (v) => {
     if (v === "C") { setVal(""); setRes(null); return; }
@@ -2216,38 +2226,63 @@ function CalcModal({ onClose }) {
       try {
         // eslint-disable-next-line no-new-func
         const r = new Function("return " + val.replace(/×/g,"*").replace(/÷/g,"/"))();
-        setRes(String(parseFloat(r.toFixed(10)))); setVal(String(parseFloat(r.toFixed(10))));
+        const result = String(parseFloat(r.toFixed(10)));
+        setHistory(h => [`${val} = ${result}`, ...h].slice(0,4));
+        setRes(result); setVal(result);
       } catch { setRes("Erro"); } return;
     }
     if (v === "⌫") { setVal(p=>p.slice(0,-1)); setRes(null); return; }
-    setRes(null); setVal(p=>p+v);
+    setRes(null); setVal(p => res && !["÷","×","-","+","%"].includes(v) ? v : p+v);
   };
 
   const BTNS = [["C","⌫","%","÷"],["7","8","9","×"],["4","5","6","-"],["1","2","3","+"],[" ","0",".","="]];
 
+  const btn3d = (isEq, isOp, isCl) => ({
+    base: isEq ? "linear-gradient(145deg,#1E88E5,#1565C0)" : isCl ? "linear-gradient(145deg,#F44336,#C62828)" : isOp ? "linear-gradient(145deg,#1976D2,#0D47A1)" : "linear-gradient(145deg,#1A2A4A,#0D1B33)",
+    shadow: isEq ? "0 6px 0 #0D47A1,0 8px 16px rgba(21,101,192,0.5)" : isCl ? "0 6px 0 #B71C1C,0 8px 16px rgba(198,40,40,0.4)" : isOp ? "0 6px 0 #0A3272,0 8px 12px rgba(13,71,161,0.4)" : "0 6px 0 #060D1A,0 8px 12px rgba(0,0,0,0.5)",
+    color: "#fff",
+  });
+
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(8px)" }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:"rgba(8,10,24,0.98)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:22, padding:"24px", width:280, boxShadow:"0 24px 80px rgba(0,0,0,0.8)", animation:"modalPop 0.3s cubic-bezier(.34,1.56,.64,1)" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-          <div style={{ color:C.tp, fontSize:15, fontWeight:700 }}>🧮 Calculadora</div>
-          <button onClick={onClose} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:28, height:28, cursor:"pointer", fontSize:14 }}>✕</button>
-        </div>
-        <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:12, padding:"12px 16px", marginBottom:12, textAlign:"right", minHeight:60 }}>
-          <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, wordBreak:"break-all", minHeight:16 }}>{val||"0"}</div>
-          {res !== null && <div style={{ color:C.atxt, fontSize:26, fontWeight:800 }}>{res}</div>}
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
-          {BTNS.flat().map((btn,i) => {
-            const isEq=btn==="=", isOp=["÷","×","-","+"].includes(btn), isCl=btn==="C";
-            return (
-              <button key={i} onClick={()=>press(btn.trim()||"0")}
-                style={{ background:isEq?`linear-gradient(135deg,${C.lg1},${C.lg2})`:isCl?"rgba(239,68,68,0.15)":isOp?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.06)", color:isEq?"#fff":isCl?"#F87171":isOp?C.atxt:"#f0f2ff", border:"none", borderRadius:10, padding:"13px 0", fontSize:isEq?16:14, fontWeight:600, cursor:"pointer", transition:"all 0.1s" }}
-                onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.3)"}
-                onMouseLeave={e=>e.currentTarget.style.filter="none"}>
-                {btn||"0"}
-              </button>
-            );
-          })}
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,5,20,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(12px)" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ width:300, animation:"modalPop 0.35s cubic-bezier(.34,1.56,.64,1)" }}>
+        {/* Corpo 3D da calculadora */}
+        <div style={{ background:"linear-gradient(145deg,#0A1628,#060E1E)", border:"1px solid rgba(30,136,229,0.4)", borderRadius:24, padding:"20px", boxShadow:"0 20px 60px rgba(0,0,0,0.9),0 0 40px rgba(30,136,229,0.15),inset 0 1px 0 rgba(255,255,255,0.08)" }}>
+          {/* Header */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background:"#1E88E5", boxShadow:"0 0 8px #1E88E5" }} />
+              <span style={{ color:"#60A5FA", fontSize:13, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase" }}>Calculadora</span>
+            </div>
+            <button onClick={onClose} style={{ background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.3)", color:"#F87171", borderRadius:8, width:26, height:26, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+          </div>
+
+          {/* Display */}
+          <div style={{ background:"linear-gradient(145deg,#060E1E,#0A1628)", border:"1px solid rgba(30,136,229,0.2)", borderRadius:14, padding:"14px 16px", marginBottom:14, minHeight:80, boxShadow:"inset 0 4px 16px rgba(0,0,0,0.6),0 0 20px rgba(30,136,229,0.05)" }}>
+            {history.slice(0,2).map((h,i) => (
+              <div key={i} style={{ color:"rgba(96,165,250,0.35)", fontSize:9.5, textAlign:"right", lineHeight:1.4 }}>{h}</div>
+            ))}
+            <div style={{ color:"rgba(96,165,250,0.5)", fontSize:11, wordBreak:"break-all", textAlign:"right", marginTop:4 }}>{val||"0"}</div>
+            {res !== null && <div style={{ color:"#60A5FA", fontSize:28, fontWeight:800, textAlign:"right", textShadow:"0 0 20px rgba(96,165,250,0.6)", lineHeight:1 }}>{res}</div>}
+          </div>
+
+          {/* Botões */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+            {BTNS.flat().map((btn,i) => {
+              const isEq=btn==="=", isOp=["÷","×","-","+"].includes(btn), isCl=btn==="C";
+              const s = btn3d(isEq, isOp, isCl);
+              return (
+                <button key={i} onClick={()=>press(btn.trim()||"0")}
+                  style={{ background:s.base, color:s.color, border:"none", borderRadius:10, padding:"13px 0", fontSize:isEq?18:14, fontWeight:700, cursor:"pointer", boxShadow:s.shadow, transition:"all 0.08s", transform:"translateY(0)", letterSpacing:"0.5px" }}
+                  onMouseEnter={e=>{ e.currentTarget.style.transform="translateY(2px)"; e.currentTarget.style.boxShadow=s.shadow.replace(/0 6px 0/,"0 3px 0"); }}
+                  onMouseLeave={e=>{ e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow=s.shadow; }}
+                  onMouseDown={e=>{ e.currentTarget.style.transform="translateY(5px)"; e.currentTarget.style.boxShadow=s.shadow.replace(/0 6px 0/,"0 1px 0"); }}
+                  onMouseUp={e=>{ e.currentTarget.style.transform="translateY(2px)"; }}>
+                  {btn||"0"}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -2255,11 +2290,10 @@ function CalcModal({ onClose }) {
 }
 
 // ── Página Inicial ─────────────────────────────────────────────
-function HomePageInicial({ currentUser, contacts }) {
+function HomePageInicial({ currentUser }) {
   const myId = currentUser?.uid || currentUser?.id;
   const firstName = (currentUser?.name || "Usuário").split(" ")[0];
 
-  // Frases do dia
   const FRASES = [
     "O sucesso é a soma de pequenos esforços repetidos dia após dia.",
     "Cada cliente atendido é uma oportunidade de fazer a diferença.",
@@ -2269,22 +2303,19 @@ function HomePageInicial({ currentUser, contacts }) {
     "O melhor momento para agir é agora.",
     "Transforme desafios em oportunidades a cada dia.",
   ];
-  const fraseIdx = new Date().getDate() % FRASES.length;
-  const frase = FRASES[fraseIdx];
+  const frase = FRASES[new Date().getDate() % FRASES.length];
 
-  // Agendamentos do dia
-  const [notas, setNotas] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(`nexp_home_notas_${myId}`) || "[]"); } catch { return []; }
-  });
-  const [novaNotaTxt, setNovaNotaTxt] = useState("");
-  const [noticias, setNoticias] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("nexp_noticias") || "[]"); } catch { return []; }
-  });
-  const [noticiaModal, setNoticiaModal] = useState(null);
-  const [showAddNoticia, setShowAddNoticia] = useState(false);
-  const [novaNoticiaTitulo, setNovaNoticiaTitulo] = useState("");
-  const [novaNoticiaTexto, setNovaNoticiaTexto] = useState("");
-  const [calNotes, setCalNotes] = useState([]);
+  const [notas,           setNotas]           = useState(() => { try { return JSON.parse(localStorage.getItem(`nexp_home_notas_${myId}`) || "[]"); } catch { return []; } });
+  const [novaNotaTxt,     setNovaNotaTxt]     = useState("");
+  const [noticias,        setNoticias]        = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_noticias") || "[]"); } catch { return []; } });
+  const [noticiaModal,    setNoticiaModal]    = useState(null);
+  const [showAddNoticia,  setShowAddNoticia]  = useState(false);
+  const [novaTitulo,      setNovaTitulo]      = useState("");
+  const [novaDescricao,   setNovaDescricao]   = useState("");
+  const [novaTextoFull,   setNovaTextoFull]   = useState("");
+  const [calNotes,        setCalNotes]        = useState([]);
+  // eslint-disable-next-line no-unused-vars
+  const [waveAnim,        setWaveAnim]        = useState(false);
 
   const isAdmin = ["administrador","mestre"].includes(currentUser?.role);
   const today = new Date().toISOString().slice(0, 10);
@@ -2294,199 +2325,464 @@ function HomePageInicial({ currentUser, contacts }) {
     return () => unsub();
   }, [myId]);
 
+  // Wave animation loop
+  useEffect(() => {
+    const t = setInterval(() => setWaveAnim(p => !p), 1800);
+    return () => clearInterval(t);
+  }, []);
+
   const compromissos = calNotes.filter(n => n.date === today).sort((a,b) => (a.hour||"").localeCompare(b.hour||""));
 
   const salvarNota = () => {
     if (!novaNotaTxt.trim()) return;
-    const lista = [{ id: Date.now(), texto: novaNotaTxt.trim(), criadaEm: new Date().toLocaleString("pt-BR") }, ...notas];
-    setNotas(lista);
-    localStorage.setItem(`nexp_home_notas_${myId}`, JSON.stringify(lista));
-    setNovaNotaTxt("");
+    const lista = [{ id:Date.now(), texto:novaNotaTxt.trim(), criadaEm:new Date().toLocaleString("pt-BR") }, ...notas];
+    setNotas(lista); localStorage.setItem(`nexp_home_notas_${myId}`, JSON.stringify(lista)); setNovaNotaTxt("");
   };
 
   const removerNota = (id) => {
     const lista = notas.filter(n => n.id !== id);
-    setNotas(lista);
-    localStorage.setItem(`nexp_home_notas_${myId}`, JSON.stringify(lista));
+    setNotas(lista); localStorage.setItem(`nexp_home_notas_${myId}`, JSON.stringify(lista));
   };
 
   const salvarNoticia = () => {
-    if (!novaNoticiaTitulo.trim() || !novaNoticiaTexto.trim()) return;
-    const lista = [{ id: Date.now(), titulo: novaNoticiaTitulo.trim(), texto: novaNoticiaTexto.trim(), criadaEm: new Date().toLocaleDateString("pt-BR"), autor: currentUser?.name }, ...noticias];
-    setNoticias(lista);
-    localStorage.setItem("nexp_noticias", JSON.stringify(lista));
-    setNovaNoticiaTitulo(""); setNovaNoticiaTexto(""); setShowAddNoticia(false);
+    if (!novaTitulo.trim()) return;
+    const lista = [{ id:Date.now(), titulo:novaTitulo.trim(), descricao:novaDescricao.trim(), textoFull:novaTextoFull.trim(), criadaEm:new Date().toLocaleDateString("pt-BR"), autor:currentUser?.name }, ...noticias];
+    setNoticias(lista); localStorage.setItem("nexp_noticias", JSON.stringify(lista));
+    setNovaTitulo(""); setNovaDescricao(""); setNovaTextoFull(""); setShowAddNoticia(false);
   };
 
-  const CORES_NOTICIAS = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626"];
+  const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626"];
+
+  // Card wrapper with tech hover effect
+  const TechCard = ({ children, accent="#3B6EF5", style={} }) => {
+    const [hov, setHov] = useState(false);
+    return (
+      <div
+        onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+        style={{ ...S.card, position:"relative", overflow:"hidden",
+          border:`1px solid ${hov ? accent+"66" : accent+"22"}`,
+          boxShadow: hov ? `0 0 0 1px ${accent}33, 0 8px 32px ${accent}22` : "none",
+          transform: hov ? "translateY(-2px)" : "none",
+          transition:"all 0.25s cubic-bezier(.4,0,.2,1)", ...style }}>
+        {/* Scanline shimmer */}
+        {hov && <div style={{ position:"absolute", inset:0, background:`linear-gradient(180deg,transparent 0%,${accent}08 50%,transparent 100%)`, animation:"scanline 1.5s linear infinite", pointerEvents:"none" }} />}
+        {/* Corner glow */}
+        <div style={{ position:"absolute", top:0, left:0, width:60, height:60, background:`radial-gradient(circle,${accent}18 0%,transparent 70%)`, pointerEvents:"none", transition:"opacity 0.3s", opacity:hov?1:0.3 }} />
+        {children}
+      </div>
+    );
+  };
 
   return (
     <div style={{ padding:"28px 32px", maxWidth:1300, overflowY:"auto", height:"100%" }}>
-      {/* Cabeçalho boas-vindas */}
+      <style>{`
+        @keyframes techPulse { 0%,100%{opacity:0.3;transform:scale(1)} 50%{opacity:0.8;transform:scale(1.06)} }
+        @keyframes waveHand  { 0%,100%{transform:rotate(0deg)} 25%{transform:rotate(20deg)} 75%{transform:rotate(-8deg)} }
+        @keyframes scanline  { 0%{transform:translateY(-100%)} 100%{transform:translateY(100%)} }
+        @keyframes modalPop  { from{opacity:0;transform:scale(0.85) translateY(24px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        @keyframes floatDot  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes glowPulse { 0%,100%{box-shadow:0 0 8px rgba(59,110,245,0.3)} 50%{box-shadow:0 0 24px rgba(59,110,245,0.7)} }
+      `}</style>
+
+      {/* Greeting */}
       <div style={{ marginBottom:28 }}>
-        <div style={{ fontSize:36, marginBottom:6 }}>👋</div>
-        <h1 style={{ color:C.tp, fontSize:26, fontWeight:900, margin:"0 0 4px", letterSpacing:"-0.5px" }}>
-          Olá, {firstName}!
-        </h1>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+          <span style={{ fontSize:32, display:"inline-block", animation:"waveHand 1.8s ease-in-out infinite", transformOrigin:"70% 70%" }}>👋</span>
+          <h1 style={{ color:C.tp, fontSize:26, fontWeight:900, margin:0, letterSpacing:"-0.5px" }}>
+            Olá, {firstName}!
+          </h1>
+        </div>
         <div style={{ color:C.td, fontSize:14 }}>Bem-vindo ao seu painel exclusivo de parceiro</div>
       </div>
 
-      {/* Layout principal */}
+      {/* Layout */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:20, alignItems:"start" }}>
         {/* Coluna esquerda */}
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
 
-          {/* Card frase do dia */}
-          <div style={{ ...S.card, padding:"22px 24px", position:"relative", overflow:"hidden", border:"1px solid rgba(59,110,245,0.2)" }}>
-            {/* Animação tech background */}
+          {/* Frase do dia */}
+          <TechCard accent="#3B6EF5">
             <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden" }}>
-              {[...Array(6)].map((_,i) => (
-                <div key={i} style={{
-                  position:"absolute",
-                  width: 80+i*40, height: 80+i*40,
-                  borderRadius:"50%",
-                  border:"1px solid rgba(59,110,245,0.08)",
-                  top: `${10+i*12}%`, left: `${60+i*5}%`,
-                  animation:`techPulse ${3+i*0.5}s ease-in-out infinite`,
-                  animationDelay:`${i*0.4}s`,
-                }} />
+              {[...Array(5)].map((_,i)=>(
+                <div key={i} style={{ position:"absolute", width:70+i*50, height:70+i*50, borderRadius:"50%", border:"1px solid rgba(59,110,245,0.1)", top:`${5+i*14}%`, left:`${55+i*4}%`, animation:`techPulse ${2.5+i*0.6}s ease-in-out infinite`, animationDelay:`${i*0.35}s` }} />
               ))}
-              <div style={{ position:"absolute", bottom:0, right:0, width:180, height:180, background:"radial-gradient(circle, rgba(59,110,245,0.08) 0%, transparent 70%)" }} />
+              <div style={{ position:"absolute", top:0, right:0, width:120, height:120, background:"radial-gradient(circle,rgba(59,110,245,0.1) 0%,transparent 70%)", animation:"glowPulse 3s ease-in-out infinite" }} />
             </div>
-            <div style={{ position:"relative", zIndex:1 }}>
-              <div style={{ color:C.atxt, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:10 }}>✨ Frase do Dia</div>
-              <div style={{ color:C.tp, fontSize:17, fontWeight:600, lineHeight:1.6, fontStyle:"italic" }}>"{frase}"</div>
+            <div style={{ position:"relative", zIndex:1, padding:"20px 22px" }}>
+              <div style={{ color:"#60A5FA", fontSize:9.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
+              <div style={{ color:C.tp, fontSize:16, fontWeight:600, lineHeight:1.7, fontStyle:"italic" }}>"{frase}"</div>
             </div>
-          </div>
+          </TechCard>
 
-          {/* Grid: Compromissos + Notas */}
+          {/* Compromissos + Notas */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
 
-            {/* Compromissos do dia */}
-            <div style={{ ...S.card, padding:"18px 20px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <span style={{ fontSize:18 }}>📌</span>
-                <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Compromissos de Hoje</div>
-              </div>
-              {compromissos.length === 0 ? (
-                <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"16px 0" }}>
-                  Nenhum compromisso para hoje 🎉
+            {/* Compromissos */}
+            <TechCard accent="#059669">
+              <div style={{ padding:"18px 20px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+                  <span style={{ fontSize:18, animation:"floatDot 2s ease-in-out infinite" }}>📌</span>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Compromissos de Hoje</div>
                 </div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {compromissos.slice(0,5).map(c => (
-                    <div key={c.id} style={{ background:C.deep, borderRadius:9, padding:"9px 12px", border:`1px solid ${C.b1}`, display:"flex", gap:10, alignItems:"flex-start" }}>
-                      {c.hour && <div style={{ color:C.acc, fontSize:11, fontWeight:700, flexShrink:0 }}>🕐 {c.hour}</div>}
-                      <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{c.text}</div>
+                {compromissos.length === 0 ? (
+                  <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"16px 0" }}>Nenhum compromisso 🎉</div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+                    {compromissos.slice(0,5).map(c => (
+                      <div key={c.id} style={{ background:"rgba(5,150,105,0.07)", borderRadius:9, padding:"8px 12px", border:"1px solid rgba(5,150,105,0.15)", display:"flex", gap:9, alignItems:"flex-start" }}>
+                        {c.hour && <div style={{ color:"#34D399", fontSize:11, fontWeight:700, flexShrink:0 }}>🕐 {c.hour}</div>}
+                        <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{c.text}</div>
+                      </div>
+                    ))}
+                    {compromissos.length > 5 && <div style={{ color:C.td, fontSize:10, textAlign:"center" }}>+{compromissos.length-5} mais</div>}
+                  </div>
+                )}
+              </div>
+            </TechCard>
+
+            {/* Notas */}
+            <TechCard accent="#7C3AED">
+              <div style={{ padding:"18px 20px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                  <span style={{ fontSize:18 }}>📝</span>
+                  <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Minhas Notas</div>
+                </div>
+                <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                  <input value={novaNotaTxt} onChange={e=>setNovaNotaTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&salvarNota()}
+                    placeholder="Nova nota..." style={{ ...S.input, flex:1, fontSize:12, padding:"7px 10px" }} />
+                  <button onClick={salvarNota} style={{ background:"linear-gradient(135deg,#7C3AED,#5B21B6)", color:"#fff", border:"none", borderRadius:9, padding:"7px 12px", fontSize:14, fontWeight:700, cursor:"pointer" }}>+</button>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:5, maxHeight:170, overflowY:"auto" }}>
+                  {notas.length === 0 && <div style={{ color:C.td, fontSize:11, textAlign:"center", padding:"6px 0" }}>Nenhuma nota ainda</div>}
+                  {notas.map(n => (
+                    <div key={n.id} style={{ background:"rgba(124,58,237,0.06)", borderRadius:8, padding:"7px 10px", border:"1px solid rgba(124,58,237,0.12)", display:"flex", gap:7, alignItems:"flex-start" }}>
+                      <div style={{ color:C.ts, fontSize:11.5, lineHeight:1.4, flex:1 }}>{n.texto}</div>
+                      <button onClick={()=>removerNota(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:13, flexShrink:0 }}>×</button>
                     </div>
                   ))}
-                  {compromissos.length > 5 && <div style={{ color:C.td, fontSize:11, textAlign:"center" }}>+{compromissos.length-5} mais</div>}
                 </div>
-              )}
-            </div>
-
-            {/* Notas rápidas */}
-            <div style={{ ...S.card, padding:"18px 20px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
-                <span style={{ fontSize:18 }}>📝</span>
-                <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Minhas Notas</div>
               </div>
-              <div style={{ display:"flex", gap:6, marginBottom:12 }}>
-                <input value={novaNotaTxt} onChange={e=>setNovaNotaTxt(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&salvarNota()}
-                  placeholder="Nova nota..." style={{ ...S.input, flex:1, fontSize:12, padding:"8px 10px" }} />
-                <button onClick={salvarNota} style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"8px 12px", fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>+</button>
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:180, overflowY:"auto" }}>
-                {notas.length === 0 && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"8px 0" }}>Nenhuma nota ainda</div>}
-                {notas.map(n => (
-                  <div key={n.id} style={{ background:C.deep, borderRadius:8, padding:"8px 10px", border:`1px solid ${C.b1}`, display:"flex", gap:8, alignItems:"flex-start" }}>
-                    <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{n.texto}</div>
-                    <button onClick={()=>removerNota(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:14, flexShrink:0, lineHeight:1 }}>×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
+            </TechCard>
           </div>
         </div>
 
         {/* Coluna direita — Notícias */}
-        <div style={{ ...S.card, padding:"18px 20px", display:"flex", flexDirection:"column", gap:14 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span style={{ fontSize:18 }}>📰</span>
-              <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Notícias</div>
+        <TechCard accent="#D97706" style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div style={{ padding:"18px 20px 0" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:18 }}>📰</span>
+                <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Notícias</div>
+              </div>
+              {isAdmin && (
+                <button onClick={()=>setShowAddNoticia(p=>!p)}
+                  style={{ background:"linear-gradient(135deg,#D97706,#B45309)", color:"#fff", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16, fontWeight:700, boxShadow:"0 4px 12px rgba(217,119,6,0.4)" }}>+</button>
+              )}
             </div>
-            {isAdmin && (
-              <button onClick={()=>setShowAddNoticia(p=>!p)}
-                style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16, fontWeight:700 }}>+</button>
+
+            {showAddNoticia && (
+              <div style={{ background:"rgba(217,119,6,0.06)", borderRadius:12, padding:"12px", border:"1px solid rgba(217,119,6,0.2)", marginBottom:12 }}>
+                <input value={novaTitulo} onChange={e=>setNovaTitulo(e.target.value)}
+                  placeholder="Título da notícia..." style={{ ...S.input, width:"100%", marginBottom:7, fontSize:12 }} />
+                <textarea value={novaDescricao} onChange={e=>setNovaDescricao(e.target.value)}
+                  placeholder="Descrição curta (aparece no card)..." rows={2}
+                  style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:7 }} />
+                <textarea value={novaTextoFull} onChange={e=>setNovaTextoFull(e.target.value)}
+                  placeholder="Texto completo (aparece em Ler notícia completa)..." rows={3}
+                  style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:8 }} />
+                <div style={{ display:"flex", gap:6 }}>
+                  <button onClick={()=>setShowAddNoticia(false)} style={{ flex:1, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                  <button onClick={salvarNoticia} style={{ flex:1, background:"linear-gradient(135deg,#D97706,#B45309)", color:"#fff", border:"none", borderRadius:8, padding:"7px", fontSize:12, fontWeight:700, cursor:"pointer" }}>Publicar</button>
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Form adicionar notícia (admin) */}
-          {showAddNoticia && (
-            <div style={{ background:C.deep, borderRadius:10, padding:"12px", border:`1px solid ${C.b2}` }}>
-              <input value={novaNoticiaTitulo} onChange={e=>setNovaNoticiaTitulo(e.target.value)}
-                placeholder="Título da notícia..." style={{ ...S.input, width:"100%", marginBottom:8, fontSize:12 }} />
-              <textarea value={novaNoticiaTexto} onChange={e=>setNovaNoticiaTexto(e.target.value)}
-                placeholder="Texto completo da notícia..." rows={4}
-                style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:8 }} />
-              <div style={{ display:"flex", gap:6 }}>
-                <button onClick={()=>setShowAddNoticia(false)} style={{ flex:1, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:8, padding:"7px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
-                <button onClick={salvarNoticia} style={{ flex:1, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:8, padding:"7px", fontSize:12, fontWeight:700, cursor:"pointer" }}>Publicar</button>
-              </div>
-            </div>
-          )}
-
-          {/* Lista de notícias */}
-          <div style={{ display:"flex", flexDirection:"column", gap:12, overflowY:"auto", maxHeight:500 }}>
-            {noticias.length === 0 && (
-              <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"24px 0" }}>Nenhuma notícia ainda</div>
-            )}
+          <div style={{ display:"flex", flexDirection:"column", gap:10, overflowY:"auto", maxHeight:480, padding:"0 20px 18px" }}>
+            {noticias.length === 0 && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"24px 0" }}>Nenhuma notícia ainda</div>}
             {noticias.map((n, idx) => {
-              const cor = CORES_NOTICIAS[idx % CORES_NOTICIAS.length];
+              const cor = CORES[idx % CORES.length];
               return (
-                <div key={n.id} style={{ background:`${cor}0D`, border:`1px solid ${cor}33`, borderRadius:12, padding:"14px 16px", borderLeft:`3px solid ${cor}` }}>
+                <div key={n.id} style={{ background:`${cor}0D`, border:`1px solid ${cor}33`, borderLeft:`3px solid ${cor}`, borderRadius:12, padding:"13px 15px", transition:"transform 0.15s" }}
+                  onMouseEnter={e=>e.currentTarget.style.transform="translateX(3px)"}
+                  onMouseLeave={e=>e.currentTarget.style.transform="none"}>
                   <div style={{ color:cor, fontSize:13, fontWeight:800, marginBottom:4, lineHeight:1.3 }}>{n.titulo}</div>
-                  <div style={{ color:C.tm, fontSize:11, marginBottom:8, lineHeight:1.5 }}>{n.texto.slice(0,100)}{n.texto.length>100?"...":""}</div>
+                  <div style={{ color:C.tm, fontSize:11, marginBottom:10, lineHeight:1.55 }}>{n.descricao || n.texto?.slice(0,100) || ""}</div>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <span style={{ color:C.td, fontSize:10 }}>{n.criadaEm}</span>
+                    <span style={{ color:C.td, fontSize:9.5 }}>{n.criadaEm}</span>
                     <button onClick={()=>setNoticiaModal(n)}
-                      style={{ background:"transparent", border:`1px solid ${cor}55`, color:cor, borderRadius:7, padding:"3px 10px", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
-                      onMouseEnter={e=>{e.currentTarget.style.background=`${cor}22`;}}
-                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                      Ler mais →
+                      style={{ background:`${cor}18`, border:`1px solid ${cor}44`, color:cor, borderRadius:7, padding:"4px 11px", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
+                      onMouseEnter={e=>{e.currentTarget.style.background=`${cor}33`;e.currentTarget.style.boxShadow=`0 0 12px ${cor}44`;}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=`${cor}18`;e.currentTarget.style.boxShadow="none";}}>
+                      Ler notícia completa →
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </TechCard>
       </div>
 
       {/* Modal notícia completa */}
       {noticiaModal && (
-        <div onClick={()=>setNoticiaModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", backdropFilter:"blur(8px)" }}>
-          <div onClick={e=>e.stopPropagation()}
-            style={{ background:"rgba(8,10,24,0.98)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:22, padding:"32px 36px", maxWidth:560, width:"100%", maxHeight:"80vh", overflowY:"auto", animation:"modalPop 0.35s cubic-bezier(.34,1.56,.64,1)", boxShadow:"0 24px 80px rgba(0,0,0,0.8)" }}>
-            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20, gap:16 }}>
-              <div style={{ color:C.atxt, fontSize:20, fontWeight:900, lineHeight:1.3 }}>{noticiaModal.titulo}</div>
-              <button onClick={()=>setNoticiaModal(null)} style={{ background:"rgba(255,255,255,0.08)", border:"none", color:C.tm, borderRadius:8, width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16, flexShrink:0 }}>✕</button>
+        <div onClick={()=>setNoticiaModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", backdropFilter:"blur(12px)" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"linear-gradient(145deg,rgba(8,12,30,0.99),rgba(5,8,20,0.99))", border:"1px solid rgba(59,110,245,0.3)", borderRadius:24, padding:"36px 40px", maxWidth:580, width:"100%", maxHeight:"82vh", overflowY:"auto", animation:"modalPop 0.4s cubic-bezier(.34,1.56,.64,1)", boxShadow:"0 32px 100px rgba(0,0,0,0.9),0 0 60px rgba(59,110,245,0.1)" }}>
+            {/* Deco top */}
+            <div style={{ position:"absolute", top:0, right:0, width:200, height:200, background:"radial-gradient(circle,rgba(59,110,245,0.08) 0%,transparent 70%)", pointerEvents:"none" }} />
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:6, gap:16, position:"relative" }}>
+              <div style={{ color:C.atxt, fontSize:21, fontWeight:900, lineHeight:1.3 }}>{noticiaModal.titulo}</div>
+              <button onClick={()=>setNoticiaModal(null)} style={{ background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", color:C.tm, borderRadius:9, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:15, flexShrink:0, transition:"all 0.15s" }}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}
+                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.07)"}>✕</button>
             </div>
             {noticiaModal.criadaEm && (
-              <div style={{ color:C.td, fontSize:11, marginBottom:16 }}>📅 {noticiaModal.criadaEm}{noticiaModal.autor ? ` · por ${noticiaModal.autor}` : ""}</div>
+              <div style={{ color:C.td, fontSize:11, marginBottom:20, position:"relative" }}>📅 {noticiaModal.criadaEm}{noticiaModal.autor?` · ${noticiaModal.autor}`:""}</div>
             )}
-            <div style={{ color:C.ts, fontSize:14, lineHeight:1.8, whiteSpace:"pre-wrap" }}>{noticiaModal.texto}</div>
+            {noticiaModal.descricao && (
+              <div style={{ color:C.atxt, fontSize:13, fontWeight:600, marginBottom:16, padding:"12px 16px", background:"rgba(59,110,245,0.06)", borderRadius:10, borderLeft:"3px solid rgba(59,110,245,0.5)", lineHeight:1.6, position:"relative" }}>
+                {noticiaModal.descricao}
+              </div>
+            )}
+            <div style={{ color:C.ts, fontSize:14, lineHeight:1.9, whiteSpace:"pre-wrap", position:"relative" }}>
+              {noticiaModal.textoFull || noticiaModal.texto || ""}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Roteiros Operacionais ──────────────────────────────────────
+function RoteirosPage({ currentUser }) {
+  const isAdmin = ["administrador","gerente","mestre"].includes(currentUser?.role);
+
+  const BANCOS = ["V8 Digital","Prata Digital","Novo Saque","Hub Crédito","Go Fintech","Outro"];
+  const PRODUTOS = ["FGTS","Crédito do Trabalhador (CLT)","Consignado","Cartão","Capital de Giro","Outro"];
+
+  const [roteiros, setRoteiros]       = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_roteiros") || "[]"); } catch { return []; } });
+  const [showModal, setShowModal]     = useState(false);
+  const [nome, setNome]               = useState("");
+  const [banco, setBanco]             = useState(BANCOS[0]);
+  const [produto, setProduto]         = useState(PRODUTOS[0]);
+  const [arquivo, setArquivo]         = useState(null);
+  const [arqPreview, setArqPreview]   = useState("");
+  const [saving, setSaving]           = useState(false);
+  const [filtroNome, setFiltroNome]   = useState("");
+  const [filtroBanco, setFiltroBanco] = useState("Todos");
+  const [filtroProd, setFiltroProd]   = useState("Todos");
+  const [viewModal, setViewModal]     = useState(null);
+
+  const handleFile = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setArquivo(f);
+    if (f.type.startsWith("image/")) {
+      const r = new FileReader();
+      r.onload = ev => setArqPreview(ev.target.result);
+      r.readAsDataURL(f);
+    } else setArqPreview("");
+  };
+
+  const salvar = async () => {
+    if (!nome.trim()) return;
+    setSaving(true);
+    try {
+      let url = "";
+      if (arquivo) url = await uploadArquivo(arquivo, `roteiros/${Date.now()}_${arquivo.name}`);
+      const novo = { id:Date.now(), nome:nome.trim(), banco, produto, url, tipo:arquivo?.type||"", nomeArq:arquivo?.name||"", criadoEm:new Date().toLocaleDateString("pt-BR"), autor:currentUser?.name };
+      const lista = [novo, ...roteiros];
+      setRoteiros(lista); localStorage.setItem("nexp_roteiros", JSON.stringify(lista));
+      setNome(""); setBanco(BANCOS[0]); setProduto(PRODUTOS[0]); setArquivo(null); setArqPreview(""); setShowModal(false);
+    } catch(e) { alert("Erro ao salvar: "+e.message); }
+    setSaving(false);
+  };
+
+  const remover = (id) => {
+    const lista = roteiros.filter(r=>r.id!==id);
+    setRoteiros(lista); localStorage.setItem("nexp_roteiros", JSON.stringify(lista));
+  };
+
+  const filtrados = roteiros.filter(r => {
+    if (filtroNome && !r.nome.toLowerCase().includes(filtroNome.toLowerCase())) return false;
+    if (filtroBanco !== "Todos" && r.banco !== filtroBanco) return false;
+    if (filtroProd  !== "Todos" && r.produto !== filtroProd) return false;
+    return true;
+  });
+
+  const inputSel = { ...S.input, fontSize:12, padding:"8px 10px" };
+
+  return (
+    <div style={{ padding:"28px 32px", maxWidth:1100 }}>
+      <style>{`@keyframes modalPop{from{opacity:0;transform:scale(0.88) translateY(24px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+
+      {/* Header */}
+      <div style={{ marginBottom:24 }}>
+        <h1 style={{ color:C.tp, fontSize:22, fontWeight:900, margin:"0 0 4px" }}>📒 Roteiros Operacionais</h1>
+        <div style={{ color:C.td, fontSize:13 }}>Acesse os roteiros e materiais de apoio</div>
+      </div>
+
+      {/* Filtros + botão */}
+      <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", marginBottom:20 }}>
+        <input value={filtroNome} onChange={e=>setFiltroNome(e.target.value)} placeholder="🔍 Pesquisar por nome..." style={{ ...inputSel, flex:1, minWidth:180 }} />
+        <select value={filtroBanco} onChange={e=>setFiltroBanco(e.target.value)} style={{ ...inputSel, minWidth:140 }}>
+          <option value="Todos">Todos os bancos</option>
+          {BANCOS.map(b=><option key={b} value={b}>{b}</option>)}
+        </select>
+        <select value={filtroProd} onChange={e=>setFiltroProd(e.target.value)} style={{ ...inputSel, minWidth:160 }}>
+          <option value="Todos">Todos os produtos</option>
+          {PRODUTOS.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+        {isAdmin && (
+          <button onClick={()=>setShowModal(true)}
+            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0, boxShadow:`0 4px 16px ${C.acc}44` }}>
+            + Adicionar Roteiro
+          </button>
+        )}
+      </div>
+
+      {/* Lista de roteiros */}
+      {filtrados.length === 0 ? (
+        <div style={{ ...S.card, padding:"40px", textAlign:"center" }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>📒</div>
+          <div style={{ color:C.td, fontSize:14 }}>Nenhum roteiro encontrado</div>
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {filtrados.map((r, idx) => {
+            const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626"];
+            const cor = CORES[idx % CORES.length];
+            return (
+              <div key={r.id}
+                style={{ ...S.card, padding:"16px 20px", display:"flex", alignItems:"center", gap:16, border:`1px solid ${cor}22`, transition:"all 0.2s cubic-bezier(.4,0,.2,1)" }}
+                onMouseEnter={e=>{ e.currentTarget.style.transform="translateX(4px)"; e.currentTarget.style.border=`1px solid ${cor}55`; e.currentTarget.style.boxShadow=`0 4px 20px ${cor}22`; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform="none"; e.currentTarget.style.border=`1px solid ${cor}22`; e.currentTarget.style.boxShadow="none"; }}>
+                <div style={{ width:42, height:42, borderRadius:12, background:`${cor}18`, border:`1px solid ${cor}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>📄</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.nome}</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <span style={{ background:`${cor}18`, color:cor, fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99 }}>{r.banco}</span>
+                    <span style={{ background:"rgba(255,255,255,0.06)", color:C.tm, fontSize:10, padding:"2px 8px", borderRadius:99 }}>{r.produto}</span>
+                    <span style={{ color:C.td, fontSize:10 }}>📅 {r.criadoEm}</span>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:7, flexShrink:0 }}>
+                  {r.url && (
+                    <button onClick={()=>setViewModal(r)}
+                      style={{ background:`${cor}18`, color:cor, border:`1px solid ${cor}33`, borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
+                      onMouseEnter={e=>e.currentTarget.style.background=`${cor}33`}
+                      onMouseLeave={e=>e.currentTarget.style.background=`${cor}18`}>
+                      👁 Visualizar
+                    </button>
+                  )}
+                  {r.url && (
+                    <a href={r.url} download={r.nomeArq} target="_blank" rel="noopener noreferrer"
+                      style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", border:"1px solid rgba(52,211,153,0.25)", borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer", textDecoration:"none", display:"flex", alignItems:"center", gap:5, transition:"all 0.15s" }}
+                      onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.2)"}
+                      onMouseLeave={e=>e.currentTarget.style.background="rgba(52,211,153,0.1)"}>
+                      ⬇ Baixar
+                    </a>
+                  )}
+                  {isAdmin && (
+                    <button onClick={()=>remover(r.id)}
+                      style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"7px 12px", fontSize:12, cursor:"pointer", transition:"all 0.15s" }}
+                      onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.18)"}
+                      onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}>
+                      🗑
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal adicionar roteiro */}
+      {showModal && (
+        <div onClick={()=>setShowModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(12px)" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"linear-gradient(145deg,rgba(8,12,30,0.99),rgba(5,8,20,0.99))", border:"1px solid rgba(59,110,245,0.3)", borderRadius:22, padding:"32px 36px", maxWidth:480, width:"calc(100% - 40px)", animation:"modalPop 0.38s cubic-bezier(.34,1.56,.64,1)", boxShadow:"0 32px 100px rgba(0,0,0,0.9),0 0 60px rgba(59,110,245,0.1)" }}>
+            {/* Glow corner */}
+            <div style={{ position:"absolute", top:0, left:0, width:150, height:150, background:"radial-gradient(circle,rgba(59,110,245,0.1) 0%,transparent 70%)", pointerEvents:"none" }} />
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22, position:"relative" }}>
+              <div>
+                <div style={{ color:C.atxt, fontSize:9.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"1.5px", marginBottom:4 }}>🚀 Novo Roteiro</div>
+                <div style={{ color:C.tp, fontSize:18, fontWeight:900 }}>Adicionar Roteiro Operacional</div>
+              </div>
+              <button onClick={()=>setShowModal(false)} style={{ background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", color:C.tm, borderRadius:9, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:15 }}>✕</button>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:12, position:"relative" }}>
+              <div>
+                <label style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:5 }}>Nome do Roteiro *</label>
+                <input value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Roteiro FGTS Saque Aniversário..." style={{ ...S.input, width:"100%", fontSize:13 }} autoFocus />
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                <div>
+                  <label style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:5 }}>Banco</label>
+                  <select value={banco} onChange={e=>setBanco(e.target.value)} style={{ ...S.input, width:"100%", fontSize:12 }}>
+                    {BANCOS.map(b=><option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:5 }}>Produto</label>
+                  <select value={produto} onChange={e=>setProduto(e.target.value)} style={{ ...S.input, width:"100%", fontSize:12 }}>
+                    {PRODUTOS.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:5 }}>Arquivo (PDF, imagem, etc.)</label>
+                <label style={{ display:"block", background:"rgba(59,110,245,0.06)", border:"1.5px dashed rgba(59,110,245,0.35)", borderRadius:12, padding:"20px", textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(59,110,245,0.12)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="rgba(59,110,245,0.06)"}>
+                  {arquivo ? (
+                    <>
+                      {arqPreview ? <img src={arqPreview} alt="" style={{ maxHeight:60, borderRadius:6, marginBottom:6 }} /> : <div style={{ fontSize:28, marginBottom:6 }}>📄</div>}
+                      <div style={{ color:C.atxt, fontSize:12, fontWeight:700 }}>{arquivo.name}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:28, marginBottom:6 }}>📁</div>
+                      <div style={{ color:C.tm, fontSize:12 }}>Clique para selecionar arquivo</div>
+                    </>
+                  )}
+                  <input type="file" onChange={handleFile} style={{ display:"none" }} />
+                </label>
+              </div>
+              <button onClick={salvar} disabled={saving||!nome.trim()}
+                style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"13px", fontSize:14, fontWeight:800, cursor:"pointer", opacity:saving||!nome.trim()?0.6:1, boxShadow:`0 6px 24px ${C.acc}44`, letterSpacing:"0.5px" }}>
+                {saving ? "⏳ Salvando..." : "✅ Adicionar Roteiro"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Animações CSS */}
-      <style>{`
-        @keyframes techPulse { 0%,100%{opacity:0.3;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.05)} }
-        @keyframes modalPop  { from{opacity:0;transform:scale(0.85) translateY(20px)} to{opacity:1;transform:scale(1) translateY(0)} }
-      `}</style>
+      {/* Modal visualizar */}
+      {viewModal && (
+        <div onClick={()=>setViewModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(12px)" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"rgba(8,12,30,0.99)", border:"1px solid rgba(59,110,245,0.25)", borderRadius:20, padding:"24px", maxWidth:700, width:"calc(100% - 40px)", maxHeight:"85vh", display:"flex", flexDirection:"column", animation:"modalPop 0.35s cubic-bezier(.34,1.56,.64,1)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+              <div style={{ color:C.tp, fontSize:15, fontWeight:700 }}>👁 {viewModal.nome}</div>
+              <button onClick={()=>setViewModal(null)} style={{ background:"rgba(255,255,255,0.07)", border:"none", color:C.tm, borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:15 }}>✕</button>
+            </div>
+            <div style={{ flex:1, overflow:"auto", borderRadius:12, background:"rgba(0,0,0,0.3)" }}>
+              {viewModal.tipo?.startsWith("image/") ? (
+                <img src={viewModal.url} alt={viewModal.nome} style={{ width:"100%", borderRadius:12 }} />
+              ) : viewModal.tipo === "application/pdf" ? (
+                <iframe src={viewModal.url} title={viewModal.nome} style={{ width:"100%", height:500, border:"none", borderRadius:12 }} />
+              ) : (
+                <div style={{ padding:"32px", textAlign:"center", color:C.td, fontSize:13 }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>📄</div>
+                  <div>Pré-visualização não disponível para este tipo de arquivo.</div>
+                  <a href={viewModal.url} download={viewModal.nomeArq} style={{ color:C.atxt, fontSize:13, fontWeight:700, display:"inline-block", marginTop:12 }}>⬇ Baixar arquivo</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -20925,6 +21221,7 @@ export default function App() {
         {/* Widget tempo + calculadora — moved to TopBar */}
         <div style={{ flex:1, position:"relative" }}>
         {page === "home" && <HomePageInicial currentUser={currentUser} contacts={contacts} />}
+        {page === "roteiros" && <RoteirosPage currentUser={currentUser} />}
         {page === "dashboard" && <Dashboard contacts={contacts} />}
         {page === "contacts" && (
           <ContactsPage contacts={contacts} setContacts={setContacts} />
