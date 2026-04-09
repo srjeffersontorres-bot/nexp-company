@@ -1210,9 +1210,9 @@ function RainCanvas() {
 function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unreadChat, users, presence, stories }) {
   const pageTitles = {
     dashboard:"Relatório de Leads", contacts:"Contatos", add:"Adicionar", import:"Importar",
-    review:"Ver Clientes", cstatus:"Status", leds:"Leds", atalhos:"Atalhos", premium:"Premium Nexp",
+    review:"Ver Clientes", cstatus:"Status", leds:"Leads", atalhos:"Atalhos", premium:"Premium Nexp",
     config:"Configurações", notificacoes:"Notificações", stories:"Stories", chat:"Nexp Chat",
-    digitacao:"Digitação", propostas:"Propostas", simulador:"Simulador", usuarios_page:"Usuários",
+    digitacao:"Digitação", propostas:"Propostas", simulador:"Simulador", usuarios_page:"Gestão de Usuários",
     calendario:"Agenda", pagamentos:"Pagamentos", apis:"Bancos",
   };
   const title = pageTitles[page] || "NEXP CONSULTAS";
@@ -1220,49 +1220,14 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
   // eslint-disable-next-line no-unused-vars
   const isOnline = presence?.[uid]?.online;
 
-  // ── Inline weather + calc state ───────────────────────────────
-  const [showWeather, setShowWeather] = useState(false);
-  const [showCalc, setShowCalc] = useState(false);
-  const [weather, setWeather] = useState(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
-  const [calcVal, setCalcVal] = useState("");
-  const [calcResult, setCalcResult] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileTab, setProfileTab] = useState("perfil");
 
-  useEffect(() => {
-    if (!showWeather || weather) return;
-    setWeatherLoading(true);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(async (pos) => {
-        try {
-          const { latitude: lat, longitude: lon } = pos.coords;
-          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&current_weather=true&timezone=auto&forecast_days=5`);
-          setWeather(await res.json());
-        } catch {}
-        setWeatherLoading(false);
-      }, () => setWeatherLoading(false));
-    } else setWeatherLoading(false);
-  }, [showWeather]); // eslint-disable-line
-
-  const WMO_ICON = {0:"☀️",1:"🌤",2:"⛅",3:"☁️",45:"🌫",51:"🌦",53:"🌦",55:"🌧",61:"🌧",63:"🌧",65:"🌧",80:"🌦",81:"🌧",82:"⛈",95:"⛈",99:"⛈"};
-  const WMO_DESC = {0:"Céu limpo",1:"Princ. limpo",2:"Parc. nublado",3:"Nublado",45:"Névoa",51:"Garoa leve",53:"Garoa",55:"Garoa forte",61:"Chuva leve",63:"Chuva",65:"Chuva forte",80:"Pancadas",81:"Pancadas",82:"Pancadas fortes",95:"Trovoada",99:"Trovoada"};
-  const weekDay = (d) => new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"});
-
-  const calcPress = (v) => {
-    if (v==="C") { setCalcVal(""); setCalcResult(null); return; }
-    if (v==="=") {
-      try {
-        // eslint-disable-next-line no-new-func
-        const r=new Function("return "+calcVal.replace(/×/g,"*").replace(/÷/g,"/"))();
-        setCalcResult(String(parseFloat(r.toFixed(10)))); setCalcVal(String(parseFloat(r.toFixed(10))));
-      } catch { setCalcResult("Erro"); } return;
-    }
-    if (v==="⌫") { setCalcVal(p=>p.slice(0,-1)); setCalcResult(null); return; }
-    setCalcResult(null); setCalcVal(p=>p+v);
-  };
-  const calcBtns = [["C","⌫","%","÷"],["7","8","9","×"],["4","5","6","-"],["1","2","3","+"],[" ","0",".","="]];
+  // Primeiro nome apenas
+  const firstName = (currentUser?.name || "Usuário").split(" ")[0];
 
   const PopoverWrap = ({ children }) => (
-    <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, zIndex:500, minWidth:240, background:"rgba(0,0,0,0.95)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:16, boxShadow:"0 8px 40px rgba(0,0,0,0.7)", overflow:"hidden", animation:"fadeIn 0.15s ease" }}>
+    <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, zIndex:500, minWidth:260, background:"rgba(8,10,24,0.98)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:18, boxShadow:"0 8px 40px rgba(0,0,0,0.8)", overflow:"hidden" }}>
       {children}
     </div>
   );
@@ -1271,136 +1236,144 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
     <div style={{
       position:"sticky", top:0, zIndex:100,
       display:"flex", alignItems:"center", justifyContent:"space-between",
-      padding:"14px 28px 14px 28px",
-      background:"rgba(0,0,0,0.85)",
+      padding:"10px 24px",
+      background:"rgba(0,0,0,0.88)",
       backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
       borderBottom:"1px solid rgba(255,255,255,0.05)",
     }}>
       {/* Page title */}
       <div>
-        <h1 style={{ color:"#f0f2ff", fontSize:20, fontWeight:800, letterSpacing:"-0.5px", margin:0, lineHeight:1 }}>{title}</h1>
-        <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:3 }}>NEXP CONSULTAS</div>
+        <h1 style={{ color:"#f0f2ff", fontSize:18, fontWeight:800, letterSpacing:"-0.5px", margin:0, lineHeight:1 }}>{title}</h1>
+        <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10, marginTop:2 }}>NEXP CONSULTAS</div>
       </div>
 
       {/* Right side */}
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-
-        {/* Weather button */}
-        <div style={{ position:"relative" }}>
-          <button onClick={()=>{ setShowWeather(p=>!p); setShowCalc(false); }}
-            style={{ background:showWeather?"rgba(59,110,245,0.2)":"rgba(255,255,255,0.05)", border:`1px solid ${showWeather?"rgba(59,110,245,0.4)":"rgba(255,255,255,0.08)"}`, borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", fontSize:16 }}
-            title="Previsão do Tempo">
-            {weather?.current_weather ? WMO_ICON[weather.current_weather.weathercode]||"🌤" : "🌤"}
-          </button>
-          {showWeather && (
-            <PopoverWrap>
-              <div style={{ padding:"12px 14px" }}>
-                <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10, marginBottom:10, textTransform:"uppercase", letterSpacing:"0.5px" }}>Previsão do Tempo</div>
-                {weatherLoading && <div style={{ color:"rgba(255,255,255,0.4)", fontSize:12, textAlign:"center", padding:"12px 0" }}>Carregando...</div>}
-                {weather?.current_weather && (
-                  <>
-                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                      <span style={{ fontSize:32 }}>{WMO_ICON[weather.current_weather.weathercode]||"🌡"}</span>
-                      <div>
-                        <div style={{ color:"#f0f2ff", fontSize:24, fontWeight:700 }}>{Math.round(weather.current_weather.temperature)}°C</div>
-                        <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10.5 }}>{WMO_DESC[weather.current_weather.weathercode]||"—"}</div>
-                      </div>
-                    </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:4 }}>
-                      {(weather.daily?.time||[]).map((d,i)=>(
-                        <div key={d} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"6px 4px", textAlign:"center" }}>
-                          <div style={{ color:"rgba(255,255,255,0.35)", fontSize:9 }}>{i===0?"Hoje":weekDay(d)}</div>
-                          <div style={{ fontSize:14, margin:"3px 0" }}>{WMO_ICON[weather.daily.weathercode[i]]||"🌡"}</div>
-                          <div style={{ color:"#f0f2ff", fontSize:9.5, fontWeight:700 }}>{Math.round(weather.daily.temperature_2m_max[i])}°</div>
-                          <div style={{ color:"rgba(255,255,255,0.3)", fontSize:9 }}>{Math.round(weather.daily.temperature_2m_min[i])}°</div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </PopoverWrap>
-          )}
-        </div>
-
-        {/* Calculator button */}
-        <div style={{ position:"relative" }}>
-          <button onClick={()=>{ setShowCalc(p=>!p); setShowWeather(false); }}
-            style={{ background:showCalc?"rgba(59,110,245,0.2)":"rgba(255,255,255,0.05)", border:`1px solid ${showCalc?"rgba(59,110,245,0.4)":"rgba(255,255,255,0.08)"}`, borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", fontSize:16 }}
-            title="Calculadora">
-            🧮
-          </button>
-          {showCalc && (
-            <PopoverWrap>
-              <div style={{ padding:"12px" }}>
-                <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"12px 14px", marginBottom:10, textAlign:"right", minHeight:56 }}>
-                  <div style={{ color:"rgba(255,255,255,0.3)", fontSize:10.5, wordBreak:"break-all" }}>{calcVal||"0"}</div>
-                  {calcResult!==null && <div style={{ color:"#6898FF", fontSize:22, fontWeight:700 }}>{calcResult}</div>}
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:5 }}>
-                  {calcBtns.flat().map((btn,i)=>{
-                    const isEq=btn==="="; const isOp=["÷","×","-","+"].includes(btn);
-                    const isClear=btn==="C"; const isSpec=["⌫","%"].includes(btn);
-                    return (
-                      <button key={i} onClick={()=>calcPress(btn.trim()||"0")}
-                        style={{ background:isEq?`linear-gradient(135deg,#3B6EF5,#7C3AED)`:isClear?"rgba(239,68,68,0.15)":isSpec||isOp?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.05)", color:isEq?"#fff":isClear?"#F87171":isOp?"#6898FF":"#f0f2ff", border:"none", borderRadius:8, padding:"10px 0", fontSize:isEq?16:13, fontWeight:600, cursor:"pointer", transition:"all 0.1s" }}
-                        onMouseEnter={e=>{e.currentTarget.style.filter="brightness(1.25)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.filter="none";}}>
-                        {btn||"0"}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </PopoverWrap>
-          )}
-        </div>
+      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
 
         {/* Stories */}
-        <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
+        <button onClick={()=>setPage("stories")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
-          <span style={{ fontSize:16 }}>◎</span>
-          {unreadStories > 0 && <span style={{ position:"absolute", top:6, right:6, width:8, height:8, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block" }} />}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
+          <span style={{ fontSize:14 }}>◎</span>
+          {unreadStories > 0 && <span style={{ position:"absolute", top:5, right:5, width:7, height:7, borderRadius:"50%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"block" }} />}
         </button>
 
         {/* Notification bell */}
-        <button onClick={()=>setPage("notificacoes")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
+        <button onClick={()=>setPage("notificacoes")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
-          <span style={{ fontSize:16 }}>🔔</span>
-          {unreadNotif > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#F59E0B", color:"#000", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadNotif}</span>}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
+          <span style={{ fontSize:14 }}>🔔</span>
+          {unreadNotif > 0 && <span style={{ position:"absolute", top:3, right:3, background:"#F59E0B", color:"#000", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadNotif}</span>}
         </button>
 
         {/* Chat */}
-        <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"#a0a8cc" }}
+        <button onClick={()=>setPage("chat")} style={{ position:"relative", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.18s", color:"rgba(255,255,255,0.7)" }}
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.color="#fff";}}
-          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="#a0a8cc";}}>
-          <svg width="17" height="14" viewBox="0 0 22 18" fill="none"><circle cx="11" cy="5" r="3.2" fill="currentColor"/><path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="3.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/><circle cx="18.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/></svg>
-          {unreadChat > 0 && <span style={{ position:"absolute", top:4, right:4, background:"#16A34A", color:"#fff", fontSize:8, fontWeight:800, minWidth:16, height:16, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{unreadChat}</span>}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}>
+          <svg width="15" height="13" viewBox="0 0 22 18" fill="none"><circle cx="11" cy="5" r="3.2" fill="currentColor"/><path d="M4 17c0-3.866 3.134-7 7-7h0c3.866 0 7 3.134 7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="3.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M0 16c0-2.761 1.567-5 3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/><circle cx="18.5" cy="6" r="2.2" fill="currentColor" opacity="0.6"/><path d="M22 16c0-2.761-1.567-5-3.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/></svg>
+          {unreadChat > 0 && <span style={{ position:"absolute", top:3, right:3, background:"#16A34A", color:"#fff", fontSize:7, fontWeight:800, minWidth:14, height:14, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2px" }}>{unreadChat}</span>}
         </button>
 
-        {/* Profile avatar */}
-        <button onClick={()=>setPage("config")} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"6px 14px 6px 6px", cursor:"pointer", transition:"all 0.18s" }}
-          onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
-          onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}>
-          <div style={{ position:"relative" }}>
-            <div style={{ width:32, height:32, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff" }}>
-              {currentUser?.photo
-                ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                : <span style={{ fontSize:18 }}>🙂</span>}
+        {/* Profile avatar — popup "Minha conta" */}
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>{ setShowProfile(p=>!p); setProfileTab("perfil"); }}
+            style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:12, padding:"5px 10px 5px 5px", cursor:"pointer", transition:"all 0.18s" }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.09)"}
+            onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}>
+            <div style={{ position:"relative" }}>
+              <div style={{ width:30, height:30, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                {currentUser?.photo
+                  ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                  : <span style={{ fontSize:16, color:"#fff" }}>🙂</span>}
+              </div>
+              <div style={{ position:"absolute", bottom:0, right:0, width:8, height:8, borderRadius:"50%", background:"#16A34A", border:"1.5px solid rgba(0,0,0,0.98)" }} />
             </div>
-            <div style={{ position:"absolute", bottom:0, right:0, width:9, height:9, borderRadius:"50%", background:"#16A34A", border:"2px solid rgba(0,0,0,0.98)", animation:"pulse 2s infinite" }} />
-          </div>
-          <div style={{ textAlign:"left" }}>
-            <div style={{ color:"#f0f2ff", fontSize:12.5, fontWeight:700, lineHeight:1.2, maxWidth:90, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentUser?.name || "Usuário"}</div>
-            <div style={{ color:"rgba(255,255,255,0.35)", fontSize:10 }}>{currentUser?.role}</div>
-          </div>
-        </button>
+            <span style={{ color:"#f0f2ff", fontSize:12, fontWeight:700, maxWidth:70, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{firstName}</span>
+          </button>
+
+          {/* Popup Minha Conta */}
+          {showProfile && (
+            <>
+              <div onClick={()=>setShowProfile(false)} style={{ position:"fixed", inset:0, zIndex:498 }} />
+              <PopoverWrap>
+                {/* Header */}
+                <div style={{ padding:"16px 16px 10px", borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
+                  <div style={{ color:"rgba(255,255,255,0.4)", fontSize:9, textTransform:"uppercase", letterSpacing:"1px", marginBottom:10 }}>Minha Conta</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ width:40, height:40, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", flexShrink:0 }}>
+                      {currentUser?.photo
+                        ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🙂</div>}
+                    </div>
+                    <div>
+                      <div style={{ color:"#f0f2ff", fontSize:13, fontWeight:700 }}>{currentUser?.name}</div>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:10 }}>{currentUser?.role}</div>
+                    </div>
+                  </div>
+                </div>
+                {/* Tabs */}
+                <div style={{ display:"flex", borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
+                  {[["perfil","Perfil"],["foto","Trocar Foto"],["senha","Alterar Senha"]].map(([id,lbl])=>(
+                    <button key={id} onClick={()=>setProfileTab(id)}
+                      style={{ flex:1, background:"transparent", border:"none", cursor:"pointer", padding:"9px 4px", fontSize:10.5, fontWeight:profileTab===id?700:400, color:profileTab===id?C.atxt:"rgba(255,255,255,0.4)", borderBottom:profileTab===id?`2px solid ${C.atxt}`:"2px solid transparent", marginBottom:"-1px", transition:"all 0.12s" }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                {/* Tab content */}
+                <div style={{ padding:"14px 16px" }}>
+                  {profileTab==="perfil" && (
+                    <div>
+                      {[["Nome", currentUser?.name||"—"],["E-mail", currentUser?.email||"—"],["Cargo", currentUser?.role||"—"]].map(([l,v])=>(
+                        <div key={l} style={{ marginBottom:10 }}>
+                          <div style={{ color:"rgba(255,255,255,0.35)", fontSize:9, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:2 }}>{l}</div>
+                          <div style={{ color:"#f0f2ff", fontSize:12, fontWeight:600 }}>{v}</div>
+                        </div>
+                      ))}
+                      <button onClick={()=>{ setShowProfile(false); setPage("config"); }}
+                        style={{ marginTop:6, width:"100%", background:C.abg, color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"8px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        ⚙ Abrir Configurações
+                      </button>
+                    </div>
+                  )}
+                  {profileTab==="foto" && (
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ width:60, height:60, borderRadius:"50%", overflow:"hidden", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", margin:"0 auto 12px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>
+                        {currentUser?.photo ? <img src={currentUser.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : "🙂"}
+                      </div>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:12 }}>Acesse Configurações para trocar sua foto de perfil</div>
+                      <button onClick={()=>{ setShowProfile(false); setPage("config"); }}
+                        style={{ width:"100%", background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        📷 Trocar Foto
+                      </button>
+                    </div>
+                  )}
+                  {profileTab==="senha" && (
+                    <div>
+                      <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginBottom:12 }}>Acesse Configurações para alterar sua senha</div>
+                      <button onClick={()=>{ setShowProfile(false); setPage("config"); }}
+                        style={{ width:"100%", background:"rgba(79,142,247,0.12)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        🔒 Alterar Senha
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Sair */}
+                <div style={{ borderTop:"1px solid rgba(255,255,255,0.07)", padding:"10px 16px" }}>
+                  <button onClick={()=>{ setShowProfile(false); window.dispatchEvent(new CustomEvent("nexp_logout")); }}
+                    style={{ width:"100%", background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:9, padding:"9px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                    🚪 Sair
+                  </button>
+                </div>
+              </PopoverWrap>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
 
 function LoginPage({ onLogin }) {
   const [un, setUn] = useState("");
@@ -1682,11 +1655,12 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
       icon: "👥",
       roles: ["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"],
       subs: [
-        { id:"review",    label:"Ver Clientes", icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-        { id:"leds",      label:"Leads",        icon:"⬦", roles:["administrador","gerente","mestre","master"] },
-        { id:"import",    label:"Importar",     icon:"⤓", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
-        { id:"atalhos",   label:"Atalhos",      icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-        { id:"contacts",  label:"Contatos",     icon:"⬡", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+        { id:"review",    label:"Ver Clientes",       icon:"◎", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+        { id:"leds",      label:"Leads",               icon:"⬦", roles:["administrador","gerente","mestre","master"] },
+        { id:"dashboard", label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+        { id:"import",    label:"Importar",            icon:"⤓", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+        { id:"atalhos",   label:"Atalhos",             icon:"⌘", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+        { id:"contacts",  label:"Contatos",            icon:"⬡", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
       ],
     },
     {
@@ -1713,14 +1687,11 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
 
   // Abas avulsas (mantidas fora dos grupos)
   const AVULSAS = [
-    { id:"dashboard",    label:"Relatório de Leads",  icon:"◈", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"add",          label:"Adicionar",            icon:"⊕", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
-    { id:"cstatus",      label:"Status",               icon:"◐", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"usuarios_page",label:"Usuários",             icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
-    { id:"calendario",   label:"Agenda",               icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
-    { id:"pagamentos",   label:"Pagamentos",           icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
-    { id:"premium",      label:"Premium Nexp",         icon:"◈", roles:["administrador","mestre"] },
-    { id:"config",       label:"Configurações",        icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
+    { id:"usuarios_page",label:"Gestão de Usuários", icon:"👥", roles:["administrador","gerente","supervisor","mestre","master"] },
+    { id:"calendario",   label:"Agenda",             icon:"◷", roles:["administrador","gerente","supervisor","operador","mestre","master","indicado","visitante"] },
+    { id:"pagamentos",   label:"Pagamentos",         icon:"💳", roles:["administrador","mestre"], requireConfig:"pagamentosEnabled" },
+    { id:"premium",      label:"Premium Nexp",       icon:"◈", roles:["administrador","mestre"] },
+    { id:"config",       label:"Configurações",      icon:"⊞", roles:["administrador","gerente","supervisor","mestre","master","indicado"] },
   ];
 
   const cfg = sysConfig?.visitanteTabs || {};
@@ -10231,6 +10202,30 @@ function CalendarPage({ currentUser }) {
   const WEEK = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const today = new Date().toISOString().slice(0, 10);
 
+  // ── Previsão do tempo ─────────────────────────────────────────
+  const [weather,        setWeather]        = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherDay,     setWeatherDay]     = useState(0); // dia selecionado na previsão
+
+  const WMO_ICON = {0:"☀️",1:"🌤️",2:"⛅",3:"☁️",45:"🌫️",51:"🌦️",53:"🌦️",55:"🌧️",61:"🌧️",63:"🌧️",65:"🌧️",80:"🌦️",81:"🌧️",82:"⛈️",95:"⛈️",99:"⛈️"};
+  const WMO_DESC = {0:"Céu limpo",1:"Princ. limpo",2:"Parc. nublado",3:"Nublado",45:"Névoa",51:"Garoa leve",53:"Garoa",55:"Garoa forte",61:"Chuva leve",63:"Chuva",65:"Chuva forte",80:"Pancadas leves",81:"Pancadas",82:"Pancadas fortes",95:"Trovoada",99:"Trovoada forte"};
+  const weekDayShort = (d) => new Date(d+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"});
+
+  useEffect(() => {
+    setWeatherLoading(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+          const { latitude: lat, longitude: lon } = pos.coords;
+          const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum&current_weather=true&timezone=auto&forecast_days=7`;
+          const res = await fetch(url);
+          setWeather(await res.json());
+        } catch {}
+        setWeatherLoading(false);
+      }, () => setWeatherLoading(false));
+    } else setWeatherLoading(false);
+  }, []); // eslint-disable-line
+
   useEffect(() => {
     const unsub = listenCalendarNotes(myId, setNotes);
     return () => unsub();
@@ -10537,15 +10532,62 @@ function CalendarPage({ currentUser }) {
         </div>
       </div>
 
-      {/* Conteúdo */}
-      {selectedMonth !== null
-        ? renderMonthExpanded()
-        : (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:12 }}>
-            {Array.from({length:12},(_,i)=>renderMonthMini(i))}
+      {/* Conteúdo + Clima lado a lado */}
+      <div style={{ display:"flex", gap:18, alignItems:"flex-start" }}>
+        {/* Calendário */}
+        <div style={{ flex:1, minWidth:0 }}>
+          {selectedMonth !== null
+            ? renderMonthExpanded()
+            : (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))", gap:12 }}>
+                {Array.from({length:12},(_,i)=>renderMonthMini(i))}
+              </div>
+            )
+          }
+        </div>
+
+        {/* Widget Previsão do Tempo */}
+        <div style={{ width:220, flexShrink:0 }}>
+          <div style={{ ...S.card, padding:"16px", border:`1px solid rgba(59,110,245,0.2)` }}>
+            <div style={{ color:C.atxt, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:12 }}>🌤️ Previsão do Tempo</div>
+            {weatherLoading && <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"16px 0" }}>Carregando...</div>}
+            {!weatherLoading && !weather && <div style={{ color:C.td, fontSize:11, textAlign:"center", padding:"12px 0" }}>Localização não disponível</div>}
+            {weather?.current_weather && (
+              <>
+                {/* Hoje destaque */}
+                <div style={{ background:"rgba(59,110,245,0.1)", borderRadius:12, padding:"12px", marginBottom:10, textAlign:"center" }}>
+                  <div style={{ fontSize:36, marginBottom:4 }}>{WMO_ICON[weather.daily?.weathercode?.[weatherDay]??weather.current_weather.weathercode]||"🌡️"}</div>
+                  <div style={{ color:"#f0f2ff", fontSize:26, fontWeight:800 }}>
+                    {weatherDay===0
+                      ? `${Math.round(weather.current_weather.temperature)}°C`
+                      : `${Math.round(weather.daily.temperature_2m_max[weatherDay])}°C`}
+                  </div>
+                  <div style={{ color:C.td, fontSize:10.5, marginTop:2 }}>
+                    {WMO_DESC[weather.daily?.weathercode?.[weatherDay]??weather.current_weather.weathercode]||"—"}
+                  </div>
+                  {weatherDay > 0 && (
+                    <div style={{ color:C.tm, fontSize:10, marginTop:4 }}>
+                      {Math.round(weather.daily.temperature_2m_min[weatherDay])}° ↓ · {Math.round(weather.daily.temperature_2m_max[weatherDay])}° ↑
+                    </div>
+                  )}
+                </div>
+                {/* 7 dias */}
+                <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                  {(weather.daily?.time||[]).map((d, i) => (
+                    <button key={d} onClick={()=>setWeatherDay(i)}
+                      style={{ display:"flex", alignItems:"center", gap:8, background:weatherDay===i?"rgba(59,110,245,0.15)":"transparent", border:weatherDay===i?"1px solid rgba(59,110,245,0.3)":"1px solid transparent", borderRadius:9, padding:"6px 8px", cursor:"pointer", transition:"all 0.12s", width:"100%" }}>
+                      <span style={{ color:weatherDay===i?C.atxt:C.tm, fontSize:10.5, width:30, textAlign:"left" }}>{i===0?"Hoje":weekDayShort(d)}</span>
+                      <span style={{ fontSize:14 }}>{WMO_ICON[weather.daily.weathercode[i]]||"🌡️"}</span>
+                      <span style={{ color:"#f0f2ff", fontSize:10.5, fontWeight:700, marginLeft:"auto" }}>{Math.round(weather.daily.temperature_2m_max[i])}°</span>
+                      <span style={{ color:C.td, fontSize:10 }}>{Math.round(weather.daily.temperature_2m_min[i])}°</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        )
-      }
+        </div>
+      </div>
 
       {/* Painel dia selecionado na grade anual */}
       {selectedMonth === null && selectedDay && (
@@ -20219,6 +20261,13 @@ export default function App() {
     localStorage.removeItem("nexp_page");
     setPage("dashboard");
   };
+
+  // Listener para o botão "Sair" do popup de perfil no TopBar
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener("nexp_logout", handler);
+    return () => window.removeEventListener("nexp_logout", handler);
+  }, []); // eslint-disable-line
 
   return (
     <>
