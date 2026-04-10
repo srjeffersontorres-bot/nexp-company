@@ -2494,7 +2494,7 @@ function HomePageInicial({ currentUser }) {
               </div>
             </TechCard>
           </div>
-          </div>{/* /🚀 Seus compromissos section */}
+          </div>
         </div>
 
       </div>
