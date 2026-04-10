@@ -17959,16 +17959,20 @@ function PrataDigitalTab({ currentUser }) {
   const fmtR   = (v) => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
   const maskCPF = (v) => { const d=v.replace(/\D/g,"").slice(0,11); if(d.length<=3)return d; if(d.length<=6)return d.slice(0,3)+"."+d.slice(3); if(d.length<=9)return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6); return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6,9)+"-"+d.slice(9); };
 
+  // ── Auth state ────────────────────────────────────────────────
   const [tkn,      setTkn]      = useState(null);
   const [tknExp,   setTknExp]   = useState(null);
+  const [partId,   setPartId]   = useState(null);  // partnerAccountId
+  const [partTkn,  setPartTkn]  = useState(null);  // partnerAccountToken
   const [cred,     setCred]     = useState(null);
   const [credOk,   setCredOk]   = useState(false);
   const [authErr,  setAuthErr]  = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const [subPrata, setSubPrata] = useState("fgts");
+  const [aba,      setAba]      = useState("fgts"); // fgts | clt
 
   const valid = tkn && tknExp && Date.now() < tknExp;
 
+  // ── Load credentials from Firestore ──────────────────────────
   useEffect(() => {
     if (!uid) { setCredOk(true); return; }
     const timer = setTimeout(() => setCredOk(true), 6000);
@@ -17976,62 +17980,59 @@ function PrataDigitalTab({ currentUser }) {
     try {
       unsub = onSnapshot(collection(db, "credenciais_bancos"), snap => {
         clearTimeout(timer);
-        try {
-          const found = snap.docs
-            .map(d => { try { return {...d.data()}; } catch { return null; } })
-            .filter(Boolean)
-            .find(c => c.uid === uid && c.bancoId === "prata_digital" && c.status === "ativo") || null;
-          setCred(found);
-        } catch { /* ignore */ }
-        setCredOk(true);
+        const found = snap.docs.map(d=>({...d.data()}))
+          .find(c => c.uid===uid && c.bancoId==="prata_digital" && c.status==="ativo") || null;
+        setCred(found); setCredOk(true);
       }, () => { clearTimeout(timer); setCredOk(true); });
     } catch { clearTimeout(timer); setCredOk(true); }
     return () => { clearTimeout(timer); unsub(); };
   }, [uid]); // eslint-disable-line
 
   useEffect(() => {
-    if (!credOk || !cred || valid) return;
-    doLogin(cred);
+    if (credOk && cred && !valid) doLogin(cred);
   }, [cred, credOk]); // eslint-disable-line
 
   const doLogin = async (c) => {
     setAuthBusy(true); setAuthErr("");
     try {
-      const body = JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" });
-      const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"}, body });
+      const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
       const txt = await r.text();
-      if (txt.trim().startsWith("<")) throw new Error("Arquivo api/prataproxy.js não encontrado no servidor. Verifique o deploy.");
+      if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique o deploy.");
       const j = JSON.parse(txt);
       if (!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
       const exp = Date.now() + 23*3600*1000;
       setTkn(j.data.token); setTknExp(exp);
+      setPartId(j.data.account?.id||null);
+      setPartTkn(j.data.account?.token||null);
     } catch(e) { setAuthErr(e.message); }
     setAuthBusy(false);
   };
 
   const prataAPI = async (path, method="GET", reqBody=null) => {
     if (!valid) throw new Error("Sessão expirada.");
-    const body = JSON.stringify({ action:"bff", path, method, token:tkn, prataClient:cred?.prataClient||"", body:reqBody });
-    const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"}, body });
+    const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ action:"bff", path, method, token:tkn, prataClient:cred?.prataClient||"", body:reqBody }) });
     const txt = await r.text();
-    if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado no servidor.");
-    let j; try { j = JSON.parse(txt); } catch { throw new Error(`Resposta inválida (${r.status})`); }
+    if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado.");
+    let j; try { j=JSON.parse(txt); } catch { throw new Error(`Resposta inválida (${r.status})`); }
     if (!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
     return j;
   };
 
-  const [fCpf,     setFCpf]     = useState("");
-  const [fFornec,  setFFornec]  = useState("qitech");
-  const [fBusy,    setFBusy]    = useState(false);
-  const [fErr,     setFErr]     = useState("");
-  const [fSaldo,   setFSaldo]   = useState(null);
-  const [fSim,     setFSim]     = useState(null);
-  const [fSimBusy, setFSimBusy] = useState(false);
-  const [fSimErr,  setFSimErr]  = useState("");
+  // ── FGTS state ────────────────────────────────────────────────
+  const [fCpf,    setFCpf]    = useState("");
+  const [fFornec, setFFornec] = useState("qitech"); // qitech | bmp
+  const [fBusy,   setFBusy]   = useState(false);
+  const [fErr,    setFErr]    = useState("");
+  const [fSaldo,  setFSaldo]  = useState(null);
+  const [fSim,    setFSim]    = useState(null);
+  const [fSBusy,  setFSBusy]  = useState(false);
+  const [fSErr,   setFSErr]   = useState("");
 
   const fPath = fFornec === "qitech" ? "qitech" : "bmp";
 
-  const buscarSaldo = async () => {
+  const buscarSaldoFGTS = async () => {
     const cpf = fCpf.replace(/\D/g,"");
     if (cpf.length !== 11) { setFErr("CPF inválido."); return; }
     setFBusy(true); setFErr(""); setFSaldo(null); setFSim(null);
@@ -18040,23 +18041,78 @@ function PrataDigitalTab({ currentUser }) {
     setFBusy(false);
   };
 
-  const criarSim = async () => {
+  const criarSimFGTS = async () => {
     const cpf = fCpf.replace(/\D/g,"");
-    setFSimBusy(true); setFSimErr(""); setFSim(null);
+    setFSBusy(true); setFSErr(""); setFSim(null);
     try {
-      const rates = fFornec === "qitech" ? [16] : [45];
+      const rates = fFornec==="qitech" ? [16] : [45];
       const d = await prataAPI(`/v1/${fPath}/fgts/simulation`, "POST", { document:cpf, rates });
       setFSim(d.data||d);
-    } catch(e) { setFSimErr(e.message); }
-    setFSimBusy(false);
+    } catch(e) { setFSErr(e.message); }
+    setFSBusy(false);
   };
 
-  const periodos = fSaldo?.periods || [];
-  const total    = periodos.reduce((a,p) => a + (parseFloat(p.total_amount)||0), 0);
-  const sPer     = fSim?.periods || fSim?.installments || [];
+  // ── CLT state ─────────────────────────────────────────────────
+  const [cCpf,    setCCpf]    = useState("");
+  const [cFornec, setCFornec] = useState("qitech"); // qitech | celcoin
+  const [cBusy,   setCBusy]   = useState(false);
+  const [cErr,    setCErr]    = useState("");
+  const [cSaldo,  setCSaldo]  = useState(null);
+  const [cSim,    setCSim]    = useState(null);
+  const [cSBusy,  setCSBusy]  = useState(false);
+  const [cSErr,   setCSErr]   = useState("");
+  const [cTermo,  setCTermo]  = useState(null); // authorization_term result
+  const [cTBusy,  setCTBusy]  = useState(false);
+  const [cTErr,   setCTErr]   = useState("");
+  const [cNome,   setCNome]   = useState("");
+  const [cEmail,  setCEmail]  = useState("");
+  const [cTel,    setCTel]    = useState("");
 
-  if (!credOk)   return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando...</div>;
-  if (!cred)     return (
+  const cPath = cFornec==="qitech" ? "private-payroll" : "private-payroll/celcoin";
+
+  const assinarTermo = async () => {
+    const cpf = cCpf.replace(/\D/g,"");
+    if (cpf.length!==11 || !cNome.trim() || !cEmail.trim()) { setCTErr("Preencha nome, e-mail e CPF."); return; }
+    setCTBusy(true); setCTErr(""); setCTermo(null);
+    try {
+      const tel = cTel.replace(/\D/g,"");
+      const termPath = cFornec==="qitech" ? "/v1/private-payroll/authorization_term" : "/v1/private-payroll/celcoin/authorization_term";
+      const body = {
+        name: cNome.trim(), document: cpf, email: cEmail.trim(),
+        number: tel.slice(2)||tel, area_code: tel.slice(0,2)||"11",
+        ip_address: "192.168.0.1",
+        lat: "-15.7942", long: "-47.8825",
+        model: navigator.userAgent.slice(0,200),
+        account_id: partId, token: partTkn,
+      };
+      const d = await prataAPI(termPath, "POST", body);
+      setCTermo(d.data||d);
+    } catch(e) { setCTErr(e.message); }
+    setCTBusy(false);
+  };
+
+  const buscarSaldoCLT = async () => {
+    const cpf = cCpf.replace(/\D/g,"");
+    if (cpf.length!==11) { setCErr("CPF inválido."); return; }
+    setCBusy(true); setCErr(""); setCSaldo(null); setCSim(null);
+    try { const d = await prataAPI(`/v1/${cPath}/balance?document=${cpf}`); setCSaldo(d.data||d); }
+    catch(e) { setCErr(e.message); }
+    setCBusy(false);
+  };
+
+  const criarSimCLT = async () => {
+    const cpf = cCpf.replace(/\D/g,"");
+    setCSBusy(true); setCSErr(""); setCSim(null);
+    try {
+      const d = await prataAPI(`/v1/${cPath}/simulation`, "POST", { document:cpf });
+      setCSim(d.data||d);
+    } catch(e) { setCSErr(e.message); }
+    setCSBusy(false);
+  };
+
+  // ── Guards ────────────────────────────────────────────────────
+  if (!credOk)  return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando credenciais...</div>;
+  if (!cred)    return (
     <div style={{padding:"28px 0",maxWidth:440}}>
       <div style={{...S.card,padding:"28px 32px",textAlign:"center"}}>
         <div style={{fontSize:34,marginBottom:12}}>🪙</div>
@@ -18072,23 +18128,56 @@ function PrataDigitalTab({ currentUser }) {
       </div>
     </div>
   );
-  if (authBusy)  return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando na Prata Digital...</div>;
-  if (authErr)   return (
+  if (authBusy) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando na Prata Digital...</div>;
+  if (authErr)  return (
     <div style={{padding:"28px 0",maxWidth:440}}>
       <div style={{...S.card,padding:"24px 28px"}}>
         <div style={{color:"#F87171",fontSize:14,fontWeight:700,marginBottom:8}}>⚠ Erro de autenticação</div>
         <div style={{color:C.td,fontSize:13,marginBottom:14}}>{authErr}</div>
-        <button onClick={()=>doLogin(cred)}
-          style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-          🔄 Tentar novamente
-        </button>
+        <button onClick={()=>doLogin(cred)} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer"}}>🔄 Tentar novamente</button>
       </div>
     </div>
   );
 
+  // ── Helpers render ────────────────────────────────────────────
+  const tabBtn2 = (ativa, label, onClick, cor=C.atxt) => (
+    <button onClick={onClick} style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:ativa?700:400,color:ativa?cor:C.tm,borderBottom:ativa?`2px solid ${cor}`:"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>
+      {label}
+    </button>
+  );
+
+  const fornecBtn = (id, label, cor, current, setCurrent, reset) => (
+    <button key={id} onClick={()=>{ setCurrent(id); reset(); }}
+      style={{background:current===id?`${cor}22`:"rgba(255,255,255,0.04)",border:`2px solid ${current===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:current===id?cor:C.td,fontSize:13,fontWeight:current===id?700:400,transition:"all 0.15s"}}>
+      {label}
+    </button>
+  );
+
+  const simCard = (titulo, data, extras=[]) => (
+    <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(59,110,245,0.25)",marginTop:14}}>
+      <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>{titulo}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:extras.length?14:0}}>
+        {data.map(([l,v])=>(
+          <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
+            <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{l}</div>
+            <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v||"—"}</div>
+          </div>
+        ))}
+      </div>
+      {extras}
+    </div>
+  );
+
+  const periodosFGTS = fSaldo?.periods||[];
+  const totalFGTS    = periodosFGTS.reduce((a,p)=>a+(parseFloat(p.total_amount)||0),0);
+  const sPerFGTS     = fSim?.periods||fSim?.installments||[];
+  const margemCLT    = cSaldo?.available_margin||cSaldo?.margin||cSaldo?.net_margin;
+  const sPerCLT      = cSim?.installments||cSim?.periods||[];
+
   return (
     <div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0 10px",borderBottom:`1px solid ${C.b1}`,flexWrap:"wrap",gap:8}}>
+      {/* Header sessão */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0 10px",borderBottom:`1px solid ${C.b1}`,flexWrap:"wrap",gap:8,marginBottom:4}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:20}}>🪙</span>
           <div>
@@ -18096,38 +18185,30 @@ function PrataDigitalTab({ currentUser }) {
             <div style={{color:"#34D399",fontSize:11}}>● Sessão ativa · {cred.usuario}</div>
           </div>
         </div>
-        <button onClick={()=>{ setTkn(null); setTknExp(null); doLogin(cred); }}
-          style={{background:"rgba(79,142,247,0.10)",color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-          🔄 Reconectar
-        </button>
+        <button onClick={()=>{setTkn(null);setTknExp(null);doLogin(cred);}} style={{background:"rgba(79,142,247,0.10)",color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>🔄 Reconectar</button>
       </div>
 
+      {/* Tabs FGTS | CLT */}
       <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18}}>
-        {[["fgts","📋 FGTS"]].map(([id,lbl]) => (
-          <button key={id} onClick={()=>setSubPrata(id)}
-            style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:subPrata===id?700:400,color:subPrata===id?"#34D399":C.tm,borderBottom:subPrata===id?"2px solid #34D399":"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>
-            {lbl}
-          </button>
-        ))}
+        {tabBtn2(aba==="fgts","📋 FGTS",()=>setAba("fgts"),"#34D399")}
+        {tabBtn2(aba==="clt","💼 Crédito do Trabalhador (CLT)",()=>setAba("clt"),"#60A5FA")}
       </div>
 
-      {subPrata === "fgts" && (
-        <div style={{maxWidth:620}}>
-          <div style={{display:"flex",gap:8,marginBottom:14}}>
-            {[["qitech","QI Tech","#3B6EF5"],["bmp","BMP","#F97316"]].map(([id,lbl,cor]) => (
-              <button key={id} onClick={()=>{ setFFornec(id); setFSaldo(null); setFSim(null); setFErr(""); setFSimErr(""); }}
-                style={{background:fFornec===id?`${cor}22`:"rgba(255,255,255,0.04)",border:`2px solid ${fFornec===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fFornec===id?cor:C.td,fontSize:13,fontWeight:fFornec===id?700:400,transition:"all 0.15s"}}>
-                {lbl}
-              </button>
-            ))}
+      {/* ════ ABA FGTS ════ */}
+      {aba==="fgts" && (
+        <div style={{maxWidth:640}}>
+          {/* Fornecedor */}
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            {[["qitech","QI Tech","#3B6EF5"],["bmp","BMP","#F97316"]].map(([id,lbl,cor])=>
+              fornecBtn(id,lbl,cor,fFornec,setFFornec,()=>{setFSaldo(null);setFSim(null);setFErr("");setFSErr("");})
+            )}
           </div>
 
-          <div style={{display:"flex",gap:10,marginBottom:18}}>
-            <input value={fCpf} onChange={e=>setFCpf(maskCPF(e.target.value))}
-              onKeyDown={e=>e.key==="Enter"&&buscarSaldo()} placeholder="000.000.000-00" maxLength={14}
-              style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
-            <button onClick={buscarSaldo} disabled={fBusy}
-              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",opacity:fBusy?0.7:1}}>
+          {/* CPF */}
+          <div style={{display:"flex",gap:10,marginBottom:16}}>
+            <input value={fCpf} onChange={e=>setFCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&buscarSaldoFGTS()}
+              placeholder="000.000.000-00" maxLength={14} style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
+            <button onClick={buscarSaldoFGTS} disabled={fBusy} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:fBusy?0.7:1,whiteSpace:"nowrap"}}>
               {fBusy?"⏳ Consultando...":"🔍 Consultar Saldo"}
             </button>
           </div>
@@ -18137,19 +18218,19 @@ function PrataDigitalTab({ currentUser }) {
           {fSaldo && (
             <div style={{...S.card,padding:"18px 22px",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
-                <div style={{color:C.tp,fontSize:14,fontWeight:700}}>📊 Saldo FGTS</div>
+                <div style={{color:C.tp,fontSize:14,fontWeight:700}}>📊 Saldo FGTS — {fFornec==="qitech"?"QI Tech":"BMP"}</div>
                 <span style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid #34D39933",borderRadius:20,padding:"3px 14px",fontSize:12,fontWeight:700}}>
-                  Total: {fmtR(total)}
+                  Total: {fmtR(totalFGTS)}
                 </span>
               </div>
-              {periodos.length > 0 ? (
+              {periodosFGTS.length > 0 ? (
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                   <thead><tr>
-                    {["Período","Disponível"].map(h => <th key={h} style={{color:C.tm,fontWeight:700,padding:"6px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
+                    {["Período","Disponível"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"6px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {periodos.map((p,i) => {
-                      const dt = new Date(p.due_date||p.dueDate);
+                    {periodosFGTS.map((p,i)=>{
+                      const dt=new Date(p.due_date||p.dueDate);
                       return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
                         <td style={{padding:"7px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"long"})}</td>
                         <td style={{padding:"7px 10px",color:"#34D399",fontWeight:700}}>{fmtR(p.total_amount)}</td>
@@ -18158,43 +18239,114 @@ function PrataDigitalTab({ currentUser }) {
                   </tbody>
                 </table>
               ) : <div style={{color:C.td,fontSize:13}}>Nenhum período disponível.</div>}
-              {fSimErr && <div style={{marginTop:10,background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:8,padding:"9px 12px",color:"#F87171",fontSize:12}}>⚠ {fSimErr}</div>}
-              <button onClick={criarSim} disabled={fSimBusy}
-                style={{marginTop:14,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:fSimBusy?0.7:1}}>
-                {fSimBusy?"⏳ Simulando...":"⚡ Criar Simulação"}
+
+              {fSErr && <div style={{marginTop:10,background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:8,padding:"9px 12px",color:"#F87171",fontSize:12}}>⚠ {fSErr}</div>}
+              <button onClick={criarSimFGTS} disabled={fSBusy} style={{marginTop:14,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:fSBusy?0.7:1}}>
+                {fSBusy?"⏳ Simulando...":"⚡ Criar Simulação"}
               </button>
             </div>
           )}
 
-          {fSim && (
-            <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(59,110,245,0.25)"}}>
-              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📋 Simulação</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-                {[["Valor Bruto",fmtR(fSim.amount??fSim.totalAmount)],["Valor Líquido",fmtR(fSim.net_amount??fSim.netAmount)],["Parcelas",sPer.length||fSim.quota_qty||"—"],["Bancarizadora",fFornec==="qitech"?"QI Tech":"BMP"]].map(([l,v]) => (
+          {fSim && simCard("📋 Simulação FGTS — "+( fFornec==="qitech"?"QI Tech":"BMP"), [
+            ["Valor Bruto",     fmtR(fSim.amount??fSim.totalAmount)],
+            ["Valor Líquido",   fmtR(fSim.net_amount??fSim.netAmount)],
+            ["Parcelas",        String(sPerFGTS.length||fSim.quota_qty||"—")],
+            ["Bancarizadora",   fFornec==="qitech"?"QI Tech":"BMP"],
+          ], sPerFGTS.length > 0 ? [
+            <table key="t" style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr>{["Vencimento","Valor"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}</tr></thead>
+              <tbody>{sPerFGTS.map((p,i)=>{
+                const dt=new Date(p.due_date||p.dueDate);
+                return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
+                  <td style={{padding:"5px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
+                  <td style={{padding:"5px 10px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.amount||p.total_amount)}</td>
+                </tr>;
+              })}</tbody>
+            </table>
+          ] : [])}
+        </div>
+      )}
+
+      {/* ════ ABA CLT ════ */}
+      {aba==="clt" && (
+        <div style={{maxWidth:640}}>
+          {/* Fornecedor */}
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            {[["qitech","QI Tech","#3B6EF5"],["celcoin","Celcoin","#A855F7"]].map(([id,lbl,cor])=>
+              fornecBtn(id,lbl,cor,cFornec,setCFornec,()=>{setCSaldo(null);setCSim(null);setCTermo(null);setCErr("");setCSErr("");setCTErr("");})
+            )}
+          </div>
+
+          {/* Passo 1 — Assinar Termo IN138 */}
+          <div style={{...S.card,padding:"18px 22px",marginBottom:16,border:"1px solid rgba(96,165,250,0.2)"}}>
+            <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Passo 1 — Assinar Termo de Autorização (IN138)</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <input value={cNome} onChange={e=>setCNome(e.target.value)} placeholder="Nome completo do cliente" style={{...S.input,fontSize:12}} />
+              <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} placeholder="CPF" maxLength={14} style={{...S.input,fontSize:12}} />
+              <input value={cEmail} onChange={e=>setCEmail(e.target.value)} placeholder="E-mail" style={{...S.input,fontSize:12}} />
+              <input value={cTel} onChange={e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11))} placeholder="DDD + Telefone (ex: 84999999999)" style={{...S.input,fontSize:12}} />
+            </div>
+            {cTErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cTErr}</div>}
+            {cTermo && <div style={{color:"#34D399",fontSize:12,marginBottom:8}}>✅ Termo assinado! ID: {cTermo.id||cTermo.external_id||"OK"}</div>}
+            <button onClick={assinarTermo} disabled={cTBusy} style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cTBusy?0.7:1}}>
+              {cTBusy?"⏳ Assinando...":"✍️ Assinar Termo"}
+            </button>
+          </div>
+
+          {/* Passo 2 — Consultar Saldo/Margem */}
+          <div style={{...S.card,padding:"18px 22px",marginBottom:16,border:"1px solid rgba(96,165,250,0.2)"}}>
+            <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Passo 2 — Consultar Saldo / Margem CLT</div>
+            <div style={{display:"flex",gap:10,marginBottom:10}}>
+              <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&buscarSaldoCLT()}
+                placeholder="CPF do cliente" maxLength={14} style={{...S.input,flex:1,fontSize:14,padding:"11px 14px"}} />
+              <button onClick={buscarSaldoCLT} disabled={cBusy} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:cBusy?0.7:1,whiteSpace:"nowrap"}}>
+                {cBusy?"⏳ Consultando...":"🔍 Consultar Margem"}
+              </button>
+            </div>
+            {cErr && <div style={{color:"#F87171",fontSize:12}}>⚠ {cErr}</div>}
+          </div>
+
+          {cSaldo && (
+            <div style={{...S.card,padding:"18px 22px",marginBottom:14}}>
+              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📊 Margem CLT — {cFornec==="qitech"?"QI Tech":"Celcoin"}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+                {[
+                  ["Margem Disponível", fmtR(cSaldo.available_margin||cSaldo.margin)],
+                  ["Margem Bruta",      fmtR(cSaldo.gross_margin||cSaldo.total_margin)],
+                  ["Margem Usada",      fmtR(cSaldo.used_margin||cSaldo.committed_margin)],
+                ].map(([l,v])=>(
                   <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
-                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{l}</div>
-                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div>
+                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase"}}>{l}</div>
+                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v||"—"}</div>
                   </div>
                 ))}
               </div>
-              {sPer.length > 0 && (
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                  <thead><tr>
-                    {["Vencimento","Valor"].map(h => <th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
-                  </tr></thead>
-                  <tbody>
-                    {sPer.map((p,i) => {
-                      const dt = new Date(p.due_date||p.dueDate);
-                      return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
-                        <td style={{padding:"5px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
-                        <td style={{padding:"5px 10px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.amount||p.total_amount)}</td>
-                      </tr>;
-                    })}
-                  </tbody>
-                </table>
-              )}
+              {cSErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cSErr}</div>}
+              <button onClick={criarSimCLT} disabled={cSBusy||!margemCLT}
+                style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:(cSBusy||!margemCLT)?0.7:1}}>
+                {cSBusy?"⏳ Simulando...":"⚡ Criar Simulação CLT"}
+              </button>
             </div>
           )}
+
+          {cSim && simCard("📋 Simulação CLT — "+(cFornec==="qitech"?"QI Tech":"Celcoin"), [
+            ["Valor Liberado", fmtR(cSim.disbursed_amount||cSim.net_amount||cSim.amount)],
+            ["Parcelas",       String(sPerCLT.length||cSim.installment_count||"—")],
+            ["Taxa Mensal",    cSim.monthly_rate ? cSim.monthly_rate+"%" : "—"],
+            ["CET Anual",      cSim.annual_cet   ? cSim.annual_cet+"%" : "—"],
+          ], sPerCLT.length > 0 ? [
+            <table key="t" style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr>{["Parcela","Vencimento","Valor"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}</tr></thead>
+              <tbody>{sPerCLT.map((p,i)=>{
+                const dt=new Date(p.due_date||p.dueDate);
+                return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
+                  <td style={{padding:"5px 10px",color:C.td,fontSize:11}}>{i+1}x</td>
+                  <td style={{padding:"5px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
+                  <td style={{padding:"5px 10px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.amount||p.installment_face_value)}</td>
+                </tr>;
+              })}</tbody>
+            </table>
+          ] : [])}
         </div>
       )}
     </div>
@@ -18207,7 +18359,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
 
   const BANCOS = [
     { id:"v8",      nome:"V8 Digital",      icon:"⚡", cor:"#3B6EF5", bg:"rgba(59,110,245,0.12)", ativo:true,  subs:["fgts","credito"] },
-    { id:"prata",   nome:"Prata Digital",   icon:"🪙", cor:"#94A3B8", bg:"rgba(148,163,184,0.10)", ativo:true,  subs:["fgts"] },
+    { id:"prata",   nome:"Prata Digital",   icon:"🪙", cor:"#94A3B8", bg:"rgba(148,163,184,0.10)", ativo:true,  subs:["fgts","credito"] },
     { id:"nsaque",  nome:"Novo Saque",      icon:"💳", cor:"#34D399", bg:"rgba(52,211,153,0.10)", ativo:false, subs:[] },
     { id:"hub",     nome:"Hub Crédito",     icon:"🔗", cor:"#C084FC", bg:"rgba(192,132,252,0.10)", ativo:false, subs:[] },
     { id:"gofintech",nome:"Go Fintech",     icon:"🚀", cor:"#F97316", bg:"rgba(249,115,22,0.10)",  ativo:false, subs:[] },
@@ -18322,7 +18474,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
           </>
         )}
         {/* Prata Digital */}
-        {bancoSel==="prata" && abaSim==="fgts" && <ErrorBoundary key="prata"><PrataDigitalTab currentUser={currentUser} /></ErrorBoundary>}
+        {bancoSel==="prata" && <ErrorBoundary key="prata"><PrataDigitalTab currentUser={currentUser} /></ErrorBoundary>}
       </div>
     </div>
   );
