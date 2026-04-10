@@ -18539,7 +18539,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
   const [loteAnos,     setLoteAnos]     = useState("todos"); // "1"…"5" ou "todos"
   const [loteMargemFgts, setLoteMargemFgts] = useState(""); // valor custom de margem
   const [loteCltParcelas,setLoteCltParcelas]= useState("12");
-  const [loteCltValor,   setLoteCltValor]   = useState("5000");
+  const loteCltValor = "5000"; // default - use loteMargemFgts to override
   const [loteTipo,       setLoteTipo]        = useState("fgts"); // "fgts" | "clt"
 
   const loteAbortRef = useRef(false);
