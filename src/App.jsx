@@ -2173,26 +2173,6 @@ function Sidebar({ page, setPage, user, users, onLogout, unreadChat, unreadNotif
               ))}
             </div>
 
-            {/* Modo claro/escuro */}
-            {(() => {
-              const isDark = !sysConfig?.lightMode;
-              return (
-                <button onClick={()=>{
-                  const newMode = !sysConfig?.lightMode;
-                  localStorage.setItem("nexp_light_mode", newMode?"1":"0");
-                  if (onSysConfig) onSysConfig(prev => ({ ...prev, lightMode: newMode }));
-                }}
-                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", background:"transparent", border:`1px solid ${C.b1}`, borderRadius:10, padding:"8px 12px", cursor:"pointer", marginBottom:8, transition:"all 0.18s" }}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <span style={{ color:C.tm, fontSize:12 }}>{isDark ? "🌙 Modo Escuro" : "☀️ Modo Claro"}</span>
-                  <div style={{ width:32, height:18, borderRadius:9, background:isDark?"rgba(255,255,255,0.12)":"linear-gradient(135deg,#3B6EF5,#7C3AED)", position:"relative", transition:"all 0.3s" }}>
-                    <div style={{ position:"absolute", top:2, left:isDark?2:16, width:14, height:14, borderRadius:"50%", background:"#fff", transition:"left 0.3s cubic-bezier(.4,0,.2,1)", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }} />
-                  </div>
-                </button>
-              );
-            })()}
-
             {/* Falar com suporte */}
             <a href="https://wa.me/5584981323542" target="_blank" rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "10px 12px", background: "#0A2918", border: "1px solid #16A34A44", borderRadius: 10, textDecoration: "none", cursor:"pointer" }}>
@@ -17702,6 +17682,11 @@ function CredenciaisTab({ currentUser, standalone=false }) {
 
   const salvar = async () => {
     if (!bancSel || !form.usuario.trim() || !form.senha.trim()) return;
+    // x-prata-client obrigatório para Prata Digital
+    if (bancSel.id === "prata_digital" && !form.prataClient.trim()) {
+      alert("O campo x-prata-client é obrigatório para a Prata Digital. Solicite esse código à Prata Digital.");
+      return;
+    }
     setSalvando(true);
     try {
       const id = `cred_${uid}_${bancSel.id}_${Date.now()}`;
@@ -17715,7 +17700,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
         criadoEm: Date.now(),
         criadoEmStr: new Date().toLocaleDateString("pt-BR"),
       };
-      if (bancSel.id === "prata_digital" && form.prataClient.trim())
+      if (bancSel.id === "prata_digital")
         payload.prataClient = form.prataClient.trim();
       await setDoc(doc(db, "credenciais_bancos", id), payload);
       setShowModal(false); setBancSel(null); setForm({ usuario:"", senha:"", prataClient:"" });
@@ -17994,6 +17979,10 @@ function PrataDigitalTab({ currentUser }) {
 
   const doLogin = async (c) => {
     setAuthBusy(true); setAuthErr("");
+    if (!c.prataClient) {
+      setAuthErr("x-prata-client não encontrado na credencial. Delete a credencial Prata Digital e recadastre incluindo o código x-prata-client.");
+      setAuthBusy(false); return;
+    }
     try {
       const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
