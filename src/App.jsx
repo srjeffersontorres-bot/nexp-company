@@ -2500,7 +2500,6 @@ function HomePageInicial({ currentUser }) {
       </div>
 
 
-        </div>
       {/* ── Últimas Notícias ── */}
       <div style={{ marginTop:24 }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -2621,12 +2620,13 @@ function HomePageInicial({ currentUser }) {
         </div>
       )}
     </div>
-    </div>
-    </div>
-    </div>
-    </div>
-    </div>
   );
+      </div>
+      </div>
+      </div>
+      </div>
+      </div>
+      </div>
 }
 
 // ── Roteiros Operacionais ──────────────────────────────────────
