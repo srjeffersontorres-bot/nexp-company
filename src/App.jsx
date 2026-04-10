@@ -17657,9 +17657,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 const BANCOS_PARCEIROS = [
   { id:"prata_digital",  nome:"Prata Digital",    icon:"🪙", cor:"#94A3B8", disponivel:true  },
   { id:"v8_digital",     nome:"V8 Digital",        icon:"⚡", cor:"#3B6EF5", disponivel:true  },
+  { id:"hub_credito",    nome:"Hub Crédito",        icon:"🔗", cor:"#C084FC", disponivel:true  },
   { id:"novo_saque",     nome:"Novo Saque",         icon:"💳", cor:"#34D399", disponivel:false },
   { id:"facta",          nome:"Facta Financeira",   icon:"🏦", cor:"#F97316", disponivel:false },
-  { id:"banco_hub",      nome:"Banco Hub",          icon:"🔗", cor:"#C084FC", disponivel:false },
 ];
 
 function CredenciaisTab({ currentUser, standalone=false }) {
@@ -18367,6 +18367,433 @@ function PrataDigitalTab({ currentUser }) {
   );
 }
 
+// ── Hub Crédito Tab ────────────────────────────────────────────
+function HubCreditoTab({ currentUser }) {
+  const PROXY   = "/api/hubproxy";
+  const LOJA_ID = 9624;
+  const uid     = currentUser?.uid || currentUser?.id;
+  const fmtR    = (v) => { const n=parseFloat(v); return isNaN(n)?"—":n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
+  const maskCPF = (v) => { const d=v.replace(/\D/g,"").slice(0,11); if(d.length<=3)return d; if(d.length<=6)return d.slice(0,3)+"."+d.slice(3); if(d.length<=9)return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6); return d.slice(0,3)+"."+d.slice(3,6)+"."+d.slice(6,9)+"-"+d.slice(9); };
+
+  // ── Auth ─────────────────────────────────────────────────────
+  const [tkn,      setTkn]      = useState(null);
+  const [tknExp,   setTknExp]   = useState(null);
+  const [cred,     setCred]     = useState(null);
+  const [credOk,   setCredOk]   = useState(false);
+  const [authErr,  setAuthErr]  = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [aba,      setAba]      = useState("fgts");
+
+  const valid = tkn && tknExp && Date.now() < tknExp;
+
+  useEffect(() => {
+    if (!uid) { setCredOk(true); return; }
+    const timer = setTimeout(() => setCredOk(true), 6000);
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(collection(db,"credenciais_bancos"), snap => {
+        clearTimeout(timer);
+        const found = snap.docs.map(d=>({...d.data()}))
+          .find(c => c.uid===uid && c.bancoId==="hub_credito" && c.status==="ativo") || null;
+        setCred(found); setCredOk(true);
+      }, () => { clearTimeout(timer); setCredOk(true); });
+    } catch { clearTimeout(timer); setCredOk(true); }
+    return () => { clearTimeout(timer); unsub(); };
+  }, [uid]); // eslint-disable-line
+
+  useEffect(() => {
+    if (credOk && cred && !valid) doLogin(cred);
+  }, [cred, credOk]); // eslint-disable-line
+
+  const hubAPI = async (path, method="GET", body=null, base="https://api.hubcredito.com.br/api") => {
+    const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ action:"bff", path, method, token:tkn, body, base }) });
+    const txt = await r.text();
+    if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado.");
+    let j; try { j=JSON.parse(txt); } catch { throw new Error(`Resposta inválida (${r.status})`); }
+    if (!r.ok || j.hasError) throw new Error(
+      (Array.isArray(j.errors)&&j.errors.length ? j.errors.join("; ") : null) ||
+      j.message || j.error || `Erro ${r.status}`
+    );
+    return j;
+  };
+
+  const doLogin = async (c) => {
+    setAuthBusy(true); setAuthErr("");
+    try {
+      const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"auth", userName:c.usuario, password:c.senha }) });
+      const txt = await r.text();
+      if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado.");
+      let j; try { j=JSON.parse(txt); } catch { throw new Error("Resposta inválida"); }
+      if (!r.ok || !j.hasSuccess) throw new Error(
+        (Array.isArray(j.errors)&&j.errors.length ? j.errors.join("; ") : null) || j.message || `Erro ${r.status}`
+      );
+      const exp = Date.now() + 58*60*1000; // 58 min
+      setTkn(j.value.token.accessToken); setTknExp(exp);
+    } catch(e) { setAuthErr(e.message); }
+    setAuthBusy(false);
+  };
+
+  // ── FGTS state ───────────────────────────────────────────────
+  const [fCpf,    setFCpf]    = useState("");
+  const [fBanc,   setFBanc]   = useState("BMP");
+  const [fBusy,   setFBusy]   = useState(false);
+  const [fErr,    setFErr]    = useState("");
+  const [fSims,   setFSims]   = useState([]); // array de simulações
+  const [fSel,    setFSel]    = useState(null);
+
+  const simularFGTS = async () => {
+    const cpf = fCpf.replace(/\D/g,"");
+    if (cpf.length!==11) { setFErr("CPF inválido."); return; }
+    setFBusy(true); setFErr(""); setFSims([]); setFSel(null);
+    try {
+      const j = await hubAPI("/proposta/simulacaoFGTSBancarizador","POST",{ cpfCliente:cpf, lojaId:LOJA_ID, bancarizador:fBanc });
+      const sims = Array.isArray(j.value) ? j.value : (j.value ? [j.value] : []);
+      if (sims.length===0) throw new Error("Nenhuma simulação disponível para este CPF/bancarizador.");
+      setFSims(sims); setFSel(sims[0]);
+    } catch(e) { setFErr(e.message); }
+    setFBusy(false);
+  };
+
+  // ── CLT state ────────────────────────────────────────────────
+  const [cCpf,     setCCpf]     = useState("");
+  const [cNome,    setCNome]    = useState("");
+  const [cEmail,   setCEmail]   = useState("");
+  const [cTel,     setCTel]     = useState("");
+  const [cNasc,    setCNasc]    = useState("");
+  const [cSexo,    setCSexo]    = useState("Masculino");
+  const [cParcelas,setCParcelas]= useState("12");
+  const [cValor,   setCValor]   = useState("5000");
+  const [cBusy,    setCBusy]    = useState(false);
+  const [cErr,     setCErr]     = useState("");
+  const [cPreSim,  setCPreSim]  = useState(null); // pre-simulação result
+  const [cPollMsg, setCPollMsg] = useState("");
+  const [cSim,     setCSim]     = useState(null); // simulação result
+  const [cSBusy,   setCSBusy]   = useState(false);
+  const [cSErr,    setCSErr]    = useState("");
+  const [cVinculo, setCVinculo] = useState(null); // vínculo selecionado
+
+  const CLT_STATUS = {
+    0:"Pendente",1:"Em Processamento",2:"Não Elegível",3:"Escolher Vínculo",
+    4:"Selecionando Vínculo",5:"Sem Opções",6:"Simulações Disponíveis",7:"Erro",
+    8:"Cancelada",9:"Não Encontrado DataPrev",10:"Tipo Operação Inativo",
+    11:"Aguardando Assinatura do Termo",12:"Concluída",13:"Aguardando Bancarizador",
+    14:"Empresa Irregular",15:"Dados Inválidos"
+  };
+
+  const criarPreSim = async () => {
+    const cpf = cCpf.replace(/\D/g,"");
+    if (cpf.length!==11 || !cNome.trim() || !cEmail.trim() || !cNasc.trim()) {
+      setCErr("Preencha todos os campos obrigatórios."); return;
+    }
+    setCBusy(true); setCErr(""); setCPreSim(null); setCPollMsg(""); setCSim(null); setCVinculo(null);
+    try {
+      const j = await hubAPI("/presimulacao","POST",{
+        cpf, lojaId:LOJA_ID, numeroParcelas:parseInt(cParcelas)||12,
+        valor:parseFloat(cValor)||5000, tipoOperacao:"27",
+        nome:cNome.trim(), email:cEmail.trim(),
+        telefone:cTel.replace(/\D/g,""),
+        dataNascimento:new Date(cNasc).toISOString(),
+        sexo:cSexo, cidade:"",
+      });
+      const ps = j.value || j;
+      setCPreSim(ps);
+      // Polling até status mudar
+      pollPreSim(ps.id||ps.presimulacaoId);
+    } catch(e) { setCErr(e.message); }
+    setCBusy(false);
+  };
+
+  const pollPreSim = async (id, tentativa=0) => {
+    if (tentativa > 30) { setCPollMsg("Timeout: verifique o status manualmente."); return; }
+    setCPollMsg(`⏳ Processando... (${tentativa+1}/30)`);
+    await new Promise(r=>setTimeout(r,3000));
+    try {
+      const j = await hubAPI(`/presimulacao/${id}`);
+      const ps = j.value || j;
+      setCPreSim(ps);
+      const status = ps.idStatus ?? ps.status;
+      // Status finais
+      if ([6,2,5,7,8,9,10,12,14,15].includes(status)) {
+        setCPollMsg("");
+        if (status===6) setCPollMsg("✅ Simulações disponíveis! Clique em Simular.");
+        else setCPollMsg(`ℹ️ Status: ${CLT_STATUS[status]||status}${ps.mensagemErro?` — ${ps.mensagemErro}`:""}`);
+        return;
+      }
+      // Aguardando assinatura
+      if (status===11) {
+        setCPollMsg("✍️ Cliente deve assinar o termo em: https://termo.hubcredito.com.br/");
+        return;
+      }
+      pollPreSim(id, tentativa+1);
+    } catch(e) { setCPollMsg(`Erro ao consultar: ${e.message}`); }
+  };
+
+  const simularCLT = async () => {
+    if (!cPreSim) return;
+    setCSBusy(true); setCSErr(""); setCSim(null);
+    try {
+      const body = {
+        cpf: cCpf.replace(/\D/g,""),
+        lojaId: LOJA_ID,
+        numeroParcelas: parseInt(cParcelas)||12,
+        valor: parseFloat(cValor)||5000,
+        PreSimulacaoId: cPreSim.id||cPreSim.presimulacaoId,
+      };
+      if (cPreSim.requerVinculo && cVinculo) {
+        body.idCotacao           = cVinculo.vinculoId||cVinculo.idCotacao;
+        body.matricula           = cVinculo.matricula;
+        body.codigoInscricaoEmpregador  = cVinculo.tipoInscricao;
+        body.numeroInscricaoEmpregador  = cVinculo.numeroInscricao;
+      }
+      const j = await hubAPI("/Clt/simular","POST",body);
+      const sims = Array.isArray(j.value) ? j.value : (j.value ? [j.value] : []);
+      if (!sims.length) throw new Error("Nenhuma simulação retornada.");
+      setCSim(sims[0]);
+    } catch(e) { setCSErr(e.message); }
+    setCSBusy(false);
+  };
+
+  // ── Guards ────────────────────────────────────────────────────
+  if (!credOk)  return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando...</div>;
+  if (!cred)    return (
+    <div style={{padding:"28px 0",maxWidth:440}}>
+      <div style={{...S.card,padding:"28px 32px",textAlign:"center"}}>
+        <div style={{fontSize:34,marginBottom:12}}>🔗</div>
+        <div style={{color:C.tp,fontSize:15,fontWeight:700,marginBottom:8}}>Hub Crédito</div>
+        <div style={{color:C.td,fontSize:13,lineHeight:1.6,marginBottom:18}}>
+          Cadastre suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong> para usar este banco.
+        </div>
+        <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",fontSize:12,color:C.tm,textAlign:"left"}}>
+          <div style={{fontWeight:700,marginBottom:6,color:C.tp}}>Você vai precisar de:</div>
+          <div>• Usuário (e-mail) da conta Hub Crédito</div>
+          <div>• Senha da conta Hub Crédito</div>
+          <div style={{marginTop:8,color:C.td,fontSize:11}}>lojaID: 9624 · lojistaID: 28 (já configurados)</div>
+        </div>
+      </div>
+    </div>
+  );
+  if (authBusy) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando na Hub Crédito...</div>;
+  if (authErr)  return (
+    <div style={{padding:"28px 0",maxWidth:440}}>
+      <div style={{...S.card,padding:"24px 28px"}}>
+        <div style={{color:"#F87171",fontSize:14,fontWeight:700,marginBottom:8}}>⚠ Erro de autenticação</div>
+        <div style={{color:C.td,fontSize:13,marginBottom:14}}>{authErr}</div>
+        <button onClick={()=>doLogin(cred)} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer"}}>🔄 Tentar novamente</button>
+      </div>
+    </div>
+  );
+
+  const tabBtn = (id, lbl, cor=C.atxt) => (
+    <button onClick={()=>setAba(id)} style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:aba===id?700:400,color:aba===id?cor:C.tm,borderBottom:aba===id?`2px solid ${cor}`:"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>{lbl}</button>
+  );
+
+  const vinculos = cPreSim?.vinculos||[];
+  const statusCode = cPreSim?.idStatus ?? cPreSim?.status;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0 10px",borderBottom:`1px solid ${C.b1}`,marginBottom:4,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>🔗</span>
+          <div>
+            <div style={{color:C.tp,fontSize:14,fontWeight:700}}>Hub Crédito</div>
+            <div style={{color:"#C084FC",fontSize:11}}>● Sessão ativa · lojaID {LOJA_ID}</div>
+          </div>
+        </div>
+        <button onClick={()=>{setTkn(null);setTknExp(null);doLogin(cred);}} style={{background:"rgba(192,132,252,0.10)",color:"#C084FC",border:"1px solid #C084FC33",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>🔄 Reconectar</button>
+      </div>
+
+      {/* Abas */}
+      <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18}}>
+        {tabBtn("fgts","📋 FGTS","#C084FC")}
+        {tabBtn("clt","💼 Crédito do Trabalhador (CLT)","#60A5FA")}
+      </div>
+
+      {/* ════ FGTS ════ */}
+      {aba==="fgts" && (
+        <div style={{maxWidth:640}}>
+          {/* Bancarizador */}
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            {[["BMP","BMP","#3B6EF5"],["J17","J17","#F97316"]].map(([id,lbl,cor])=>(
+              <button key={id} onClick={()=>{ setFBanc(id); setFSims([]); setFSel(null); setFErr(""); }}
+                style={{background:fBanc===id?`${cor}22`:"rgba(255,255,255,0.04)",border:`2px solid ${fBanc===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fBanc===id?cor:C.td,fontSize:13,fontWeight:fBanc===id?700:400,transition:"all 0.15s"}}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:10,marginBottom:16}}>
+            <input value={fCpf} onChange={e=>setFCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&simularFGTS()}
+              placeholder="CPF do cliente" maxLength={14} style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
+            <button onClick={simularFGTS} disabled={fBusy} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:fBusy?0.7:1,whiteSpace:"nowrap"}}>
+              {fBusy?"⏳ Simulando...":"⚡ Simular FGTS"}
+            </button>
+          </div>
+
+          {fErr && <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:10,padding:"11px 14px",color:"#F87171",fontSize:13,marginBottom:14}}>⚠ {fErr}</div>}
+
+          {fSims.length > 1 && (
+            <div style={{...S.card,padding:"14px 16px",marginBottom:14}}>
+              <div style={{color:C.td,fontSize:11,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>Selecionar tabela</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {fSims.map((s,i)=>(
+                  <button key={i} onClick={()=>setFSel(s)} style={{background:fSel===s?"rgba(192,132,252,0.12)":"rgba(255,255,255,0.04)",border:`1px solid ${fSel===s?"#C084FC55":"rgba(255,255,255,0.08)"}`,borderRadius:9,padding:"9px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all 0.15s"}}>
+                    <span style={{color:fSel===s?"#C084FC":C.ts,fontSize:13,fontWeight:fSel===s?700:400}}>{s.nomeTabela||s.financeira||`Tabela ${i+1}`}</span>
+                    <span style={{color:"#34D399",fontSize:13,fontWeight:700}}>{fmtR(s.valorCliente)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {fSel && (
+            <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(192,132,252,0.25)"}}>
+              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📊 Simulação FGTS — {fBanc}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+                {[
+                  ["Tabela",         fSel.nomeTabela||"—"],
+                  ["Valor Bruto",    fmtR(fSel.valorbruto)],
+                  ["Valor Cliente",  fmtR(fSel.valorCliente)],
+                  ["Parcelas",       String(fSel.quantidadeParcelas||"—")],
+                  ["Valor TAC",      fmtR(fSel.valorTac)],
+                  ["Valor Bloqueado",fmtR(fSel.valorBloqueado)],
+                ].map(([l,v])=>(
+                  <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
+                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase"}}>{l}</div>
+                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {(fSel.parcelas||[]).length > 0 && (
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr>{["Vencimento","Parcela","Amortização","Juros"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 8px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}</tr></thead>
+                  <tbody>{fSel.parcelas.slice(0,10).map((p,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
+                      <td style={{padding:"5px 8px",color:C.tp}}>{p.dataVencimento?new Date(p.dataVencimento).toLocaleDateString("pt-BR"):p.DataVencimento||"—"}</td>
+                      <td style={{padding:"5px 8px",color:"#C084FC",fontWeight:600}}>{fmtR(p.valorParcela||p.ValorParcela)}</td>
+                      <td style={{padding:"5px 8px",color:C.ts}}>{fmtR(p.amortizacao||p.Amortizacao)}</td>
+                      <td style={{padding:"5px 8px",color:C.ts}}>{fmtR(p.juros||p.Juros)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════ CLT ════ */}
+      {aba==="clt" && (
+        <div style={{maxWidth:640}}>
+          {/* Passo 1 — Dados do cliente */}
+          <div style={{...S.card,padding:"18px 22px",marginBottom:16,border:"1px solid rgba(96,165,250,0.2)"}}>
+            <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Passo 1 — Dados do Cliente</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} placeholder="CPF *" maxLength={14} style={{...S.input,fontSize:12}} />
+              <input value={cNome} onChange={e=>setCNome(e.target.value)} placeholder="Nome completo *" style={{...S.input,fontSize:12}} />
+              <input value={cEmail} onChange={e=>setCEmail(e.target.value)} placeholder="E-mail *" style={{...S.input,fontSize:12}} />
+              <input value={cTel} onChange={e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11))} placeholder="Telefone DDD+número *" style={{...S.input,fontSize:12}} />
+              <input value={cNasc} onChange={e=>setCNasc(e.target.value)} placeholder="Data nascimento *" type="date" style={{...S.input,fontSize:12}} />
+              <select value={cSexo} onChange={e=>setCSexo(e.target.value)} style={{...S.input,fontSize:12}}>
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+              </select>
+              <input value={cParcelas} onChange={e=>setCParcelas(e.target.value.replace(/\D/g,""))} placeholder="Nº parcelas" style={{...S.input,fontSize:12}} />
+              <input value={cValor} onChange={e=>setCValor(e.target.value.replace(/[^\d.]/g,""))} placeholder="Valor solicitado (R$)" style={{...S.input,fontSize:12}} />
+            </div>
+            {cErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cErr}</div>}
+            {cPollMsg && <div style={{color:cPollMsg.startsWith("✅")?"#34D399":cPollMsg.startsWith("⏳")?"#60A5FA":"#FCD34D",fontSize:12,marginBottom:8}}>{cPollMsg}</div>}
+            <button onClick={criarPreSim} disabled={cBusy} style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cBusy?0.7:1}}>
+              {cBusy?"⏳ Criando...":"🚀 Criar Pré-Simulação"}
+            </button>
+          </div>
+
+          {/* Status e vínculos */}
+          {cPreSim && (
+            <div style={{...S.card,padding:"18px 22px",marginBottom:14,border:"1px solid rgba(96,165,250,0.2)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                <div style={{color:C.tp,fontSize:13,fontWeight:700}}>Status da Pré-Simulação</div>
+                <span style={{background:"rgba(96,165,250,0.12)",color:"#60A5FA",border:"1px solid rgba(96,165,250,0.3)",borderRadius:99,padding:"2px 12px",fontSize:11,fontWeight:700}}>
+                  {CLT_STATUS[statusCode]||`Status ${statusCode}`}
+                </span>
+              </div>
+              {cPreSim.mensagemErro && <div style={{color:"#F87171",fontSize:12,marginBottom:10}}>⚠ {cPreSim.mensagemErro}</div>}
+
+              {/* Aguardando assinatura */}
+              {statusCode===11 && (
+                <a href="https://termo.hubcredito.com.br/" target="_blank" rel="noopener noreferrer"
+                  style={{display:"flex",alignItems:"center",gap:6,background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:10,padding:"10px 16px",textDecoration:"none",marginBottom:12}}>
+                  <span style={{fontSize:16}}>✍️</span>
+                  <span style={{color:"#FCD34D",fontSize:13,fontWeight:700}}>Abrir página de assinatura do termo</span>
+                </a>
+              )}
+
+              {/* Escolher vínculo */}
+              {(statusCode===3||statusCode===6) && vinculos.length > 0 && (
+                <div style={{marginBottom:14}}>
+                  <div style={{color:C.td,fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Selecionar vínculo:</div>
+                  {vinculos.map((v,i)=>(
+                    <button key={i} onClick={()=>setCVinculo(v)}
+                      style={{display:"block",width:"100%",textAlign:"left",background:cVinculo===v?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.04)",border:`1px solid ${cVinculo===v?"#60A5FA55":"rgba(255,255,255,0.08)"}`,borderRadius:9,padding:"9px 14px",cursor:"pointer",marginBottom:6,transition:"all 0.15s"}}>
+                      <div style={{color:cVinculo===v?"#60A5FA":C.ts,fontSize:13,fontWeight:cVinculo===v?700:400}}>{v.nomeEmpregador||v.numeroInscricao||`Vínculo ${i+1}`}</div>
+                      <div style={{color:C.td,fontSize:10}}>Matrícula: {v.matricula||"—"} · {v.elegivel?"✅ Elegível":"❌ Não elegível"}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Botão simular */}
+              {(statusCode===6||(statusCode===3&&cVinculo)) && (
+                <>
+                  {cSErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cSErr}</div>}
+                  <button onClick={simularCLT} disabled={cSBusy} style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cSBusy?0.7:1}}>
+                    {cSBusy?"⏳ Simulando...":"⚡ Criar Simulação CLT"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Resultado simulação CLT */}
+          {cSim && (
+            <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(96,165,250,0.25)"}}>
+              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📋 Simulação CLT</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+                {[
+                  ["Tabela",          cSim.nomeTabela||cSim.tabelaFinanciamento?.descricao||"—"],
+                  ["Valor Liberado",  fmtR(cSim.valorDesembolsoTrabalhador||cSim.valorCliente)],
+                  ["Valor Parcela",   fmtR(cSim.valorParcela)],
+                  ["Qtd Parcelas",    String(cSim.quantidadeParcelas||"—")],
+                ].map(([l,v])=>(
+                  <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
+                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase"}}>{l}</div>
+                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              {(cSim.parcelas||[]).length > 0 && (
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr>{["Vencimento","Valor"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 8px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}</tr></thead>
+                  <tbody>{cSim.parcelas.slice(0,10).map((p,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
+                      <td style={{padding:"5px 8px",color:C.tp}}>{p.dataVencimento?new Date(p.dataVencimento).toLocaleDateString("pt-BR"):p.DataVencimento||"—"}</td>
+                      <td style={{padding:"5px 8px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.valorParcela||p.ValorParcela)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
   const [bancoSel, setBancoSel] = useState(null); // null = tela de cards
   const [abaSim,   setAbaSim]   = useState("fgts"); // fgts | credito
@@ -18375,7 +18802,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
     { id:"v8",      nome:"V8 Digital",      icon:"⚡", cor:"#3B6EF5", bg:"rgba(59,110,245,0.12)", ativo:true,  subs:["fgts","credito"] },
     { id:"prata",   nome:"Prata Digital",   icon:"🪙", cor:"#94A3B8", bg:"rgba(148,163,184,0.10)", ativo:true,  subs:["fgts","credito"] },
     { id:"nsaque",  nome:"Novo Saque",      icon:"💳", cor:"#34D399", bg:"rgba(52,211,153,0.10)", ativo:false, subs:[] },
-    { id:"hub",     nome:"Hub Crédito",     icon:"🔗", cor:"#C084FC", bg:"rgba(192,132,252,0.10)", ativo:false, subs:[] },
+    { id:"hub",     nome:"Hub Crédito",     icon:"🔗", cor:"#C084FC", bg:"rgba(192,132,252,0.10)", ativo:true,  subs:["fgts","credito"] },
     { id:"gofintech",nome:"Go Fintech",     icon:"🚀", cor:"#F97316", bg:"rgba(249,115,22,0.10)",  ativo:false, subs:[] },
   ];
 
@@ -18489,6 +18916,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
         )}
         {/* Prata Digital */}
         {bancoSel==="prata" && <ErrorBoundary key="prata"><PrataDigitalTab currentUser={currentUser} /></ErrorBoundary>}
+        {bancoSel==="hub"   && <ErrorBoundary key="hub"><HubCreditoTab  currentUser={currentUser} /></ErrorBoundary>}
       </div>
     </div>
   );
