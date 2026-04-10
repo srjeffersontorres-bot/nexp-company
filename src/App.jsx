@@ -17979,17 +17979,21 @@ function PrataDigitalTab({ currentUser }) {
 
   const doLogin = async (c) => {
     setAuthBusy(true); setAuthErr("");
-    if (!c.prataClient) {
-      setAuthErr("x-prata-client não encontrado na credencial. Delete a credencial Prata Digital e recadastre incluindo o código x-prata-client.");
-      setAuthBusy(false); return;
-    }
+    // prataClient pode vir da credencial ou da env var PRATA_CLIENT no Vercel
     try {
       const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ action:"auth", email:c.usuario, password:c.senha, prataClient:c.prataClient||"" }) });
       const txt = await r.text();
       if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado. Verifique o deploy.");
-      const j = JSON.parse(txt);
-      if (!r.ok) throw new Error(j.message||j.error||`Erro ${r.status}`);
+      let j; try { j = JSON.parse(txt); } catch { throw new Error(`Resposta inválida do servidor (${r.status})`); }
+      if (!r.ok) {
+        const msg = j?.error?.message || j?.message || (typeof j?.error === "string" ? j.error : null) ||
+          (j?.diagnostico?.dica ? `${j.error || "Erro"} — ${j.diagnostico.dica}` : null) || `Erro ${r.status}`;
+        // Specific helpful messages
+        if (msg.includes("parceiro") && msg.includes("autorizado"))
+          throw new Error("A conta não tem acesso via API parceiro habilitado. Contate a Prata Digital para ativar o acesso API para a sua conta parceiro.");
+        throw new Error(msg);
+      }
       const exp = Date.now() + 23*3600*1000;
       setTkn(j.data.token); setTknExp(exp);
       setPartId(j.data.account?.id||null);
@@ -17999,12 +18003,15 @@ function PrataDigitalTab({ currentUser }) {
   };
 
   const extractErrMsg = (j, status) => {
+    // Handle nested {error: {message: "..."}}
+    if (j?.error?.message) return j.error.message;
     if (typeof j.message === "string" && j.message) return j.message;
     if (typeof j.error   === "string" && j.error)   return j.error;
     if (Array.isArray(j.errors) && j.errors.length)
       return j.errors.map(x => (typeof x === "string" ? x : x.message||x.detail||JSON.stringify(x))).join("; ");
     if (j.diagnostico?.respostaPreview) return j.diagnostico.respostaPreview.slice(0,200);
-    try { return JSON.stringify(j).slice(0,200); } catch { return `Erro ${status}`; }
+    if (j.raw?.error?.message) return j.raw.error.message;
+    try { return JSON.stringify(j).slice(0,300); } catch { return `Erro ${status}`; }
   };
 
   const prataAPI = async (path, method="GET", reqBody=null) => {
