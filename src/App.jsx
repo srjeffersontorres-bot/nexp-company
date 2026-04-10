@@ -1415,9 +1415,8 @@ function TopBar({ currentUser, page, setPage, unreadNotif, unreadStories, unread
       position:"sticky", top:0, zIndex:100,
       display:"flex", alignItems:"center", justifyContent:"flex-end",
       padding:"8px 24px",
-      background:"rgba(0,0,0,0.88)",
-      backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
-      borderBottom:"1px solid rgba(255,255,255,0.05)",
+      background:C.sb,
+      borderBottom:`1px solid ${C.b1}`,
     }}>
       {/* Right side only */}
       <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -2358,6 +2357,7 @@ function HomePageInicial({ currentUser }) {
   const [novaTitulo,      setNovaTitulo]      = useState("");
   const [novaDescricao,   setNovaDescricao]   = useState("");
   const [novaTextoFull,   setNovaTextoFull]   = useState("");
+  const [novoLink,        setNovoLink]        = useState("");
   const [calNotes,        setCalNotes]        = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [waveAnim,        setWaveAnim]        = useState(false);
@@ -2391,9 +2391,9 @@ function HomePageInicial({ currentUser }) {
 
   const salvarNoticia = () => {
     if (!novaTitulo.trim()) return;
-    const lista = [{ id:Date.now(), titulo:novaTitulo.trim(), descricao:novaDescricao.trim(), textoFull:novaTextoFull.trim(), criadaEm:new Date().toLocaleDateString("pt-BR"), autor:currentUser?.name }, ...noticias];
+    const lista = [{ id:Date.now(), titulo:novaTitulo.trim(), descricao:novaDescricao.trim(), textoFull:novaTextoFull.trim(), link:novoLink.trim(), criadaEm:new Date().toLocaleDateString("pt-BR"), autor:currentUser?.name }, ...noticias];
     setNoticias(lista); localStorage.setItem("nexp_noticias", JSON.stringify(lista));
-    setNovaTitulo(""); setNovaDescricao(""); setNovaTextoFull(""); setShowAddNoticia(false);
+    setNovaTitulo(""); setNovaDescricao(""); setNovaTextoFull(""); setNovoLink(""); setShowAddNoticia(false);
   };
 
   // Card wrapper with tech hover effect
@@ -2432,12 +2432,17 @@ function HomePageInicial({ currentUser }) {
               ))}
             </div>
             <div style={{ position:"relative", zIndex:1, padding:"22px 24px" }}>
-              <div style={{ color:"#60A5FA", fontSize:9.5, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
+              <div style={{ color:"#60A5FA", fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
               <div style={{ color:C.tp, fontSize:16, fontWeight:600, lineHeight:1.75, fontStyle:"italic", maxWidth:"70%" }}>"{frase}"</div>
             </div>
           </TechCard>
 
           {/* Compromissos + Notas */}
+          <div style={{ marginTop:4, marginBottom:4 }}>
+            <div style={{ color:C.tp, fontSize:15, fontWeight:800, marginBottom:12, display:"flex", alignItems:"center", gap:8 }}>
+              <span>🚀</span> Seus compromissos
+            </div>
+          </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
 
             {/* Compromissos */}
@@ -2489,6 +2494,7 @@ function HomePageInicial({ currentUser }) {
               </div>
             </TechCard>
           </div>
+          </div>{/* /🚀 Seus compromissos section */}
         </div>
 
       </div>
@@ -2522,7 +2528,9 @@ function HomePageInicial({ currentUser }) {
               style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:9 }} />
             <textarea value={novaTextoFull} onChange={e=>setNovaTextoFull(e.target.value)}
               placeholder="Texto completo (aparece ao clicar em Ler notícia completa)..." rows={4}
-              style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:12 }} />
+              style={{ ...S.input, width:"100%", resize:"vertical", fontSize:12, marginBottom:9 }} />
+            <input value={novoLink} onChange={e=>setNovoLink(e.target.value)}
+              placeholder="🔗 Link externo (opcional) — ex: https://..." style={{ ...S.input, width:"100%", fontSize:12, marginBottom:12 }} />
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>setShowAddNoticia(false)} style={{ flex:1, background:"transparent", border:`1px solid ${C.b2}`, color:C.tm, borderRadius:10, padding:"9px", fontSize:12, cursor:"pointer" }}>Cancelar</button>
               <button onClick={salvarNoticia} style={{ flex:2, background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:10, padding:"9px", fontSize:13, fontWeight:700, cursor:"pointer" }}>✅ Publicar</button>
@@ -2598,6 +2606,15 @@ function HomePageInicial({ currentUser }) {
             <div style={{ color:C.ts, fontSize:14, lineHeight:1.9, whiteSpace:"pre-wrap", position:"relative" }}>
               {noticiaModal.textoFull || noticiaModal.texto || ""}
             </div>
+            {noticiaModal.link && (
+              <a href={noticiaModal.link} target="_blank" rel="noopener noreferrer"
+                style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:22, width:"100%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", color:"#fff", borderRadius:12, padding:"12px", fontSize:13, fontWeight:700, textDecoration:"none", boxShadow:"0 6px 20px rgba(59,110,245,0.4)", transition:"all 0.18s" }}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(59,110,245,0.6)"}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow="0 6px 20px rgba(59,110,245,0.4)"}>
+                🔗 Leia mais sobre essa notícia
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 10L10 2M10 2H5M10 2v5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -2609,20 +2626,17 @@ function HomePageInicial({ currentUser }) {
 function RoteirosPage({ currentUser }) {
   const isAdmin = ["administrador","gerente","mestre"].includes(currentUser?.role);
 
-  const BANCOS = ["V8 Digital","Prata Digital","Novo Saque","Hub Crédito","Go Fintech","Outro"];
-  const PRODUTOS = ["FGTS","Crédito do Trabalhador (CLT)","Consignado","Cartão","Capital de Giro","Outro"];
-
   const [roteiros, setRoteiros]       = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_roteiros") || "[]"); } catch { return []; } });
   const [showModal, setShowModal]     = useState(false);
   const [nome, setNome]               = useState("");
-  const [banco, setBanco]             = useState(BANCOS[0]);
-  const [produto, setProduto]         = useState(PRODUTOS[0]);
+  const [banco, setBanco]             = useState("");
+  const [produto, setProduto]         = useState("");
   const [arquivo, setArquivo]         = useState(null);
   const [arqPreview, setArqPreview]   = useState("");
   const [saving, setSaving]           = useState(false);
   const [filtroNome, setFiltroNome]   = useState("");
-  const [filtroBanco, setFiltroBanco] = useState("Todos");
-  const [filtroProd, setFiltroProd]   = useState("Todos");
+  const [filtroBanco, setFiltroBanco] = useState("");
+  const [filtroProd, setFiltroProd]   = useState("");
   const [viewModal, setViewModal]     = useState(null);
 
   const handleFile = (e) => {
@@ -2645,7 +2659,7 @@ function RoteirosPage({ currentUser }) {
       const novo = { id:Date.now(), nome:nome.trim(), banco, produto, url, tipo:arquivo?.type||"", nomeArq:arquivo?.name||"", criadoEm:new Date().toLocaleDateString("pt-BR"), autor:currentUser?.name };
       const lista = [novo, ...roteiros];
       setRoteiros(lista); localStorage.setItem("nexp_roteiros", JSON.stringify(lista));
-      setNome(""); setBanco(BANCOS[0]); setProduto(PRODUTOS[0]); setArquivo(null); setArqPreview(""); setShowModal(false);
+      setNome(""); setBanco(""); setProduto(""); setArquivo(null); setArqPreview(""); setShowModal(false);
     } catch(e) { alert("Erro ao salvar: "+e.message); }
     setSaving(false);
   };
@@ -2657,8 +2671,8 @@ function RoteirosPage({ currentUser }) {
 
   const filtrados = roteiros.filter(r => {
     if (filtroNome && !r.nome.toLowerCase().includes(filtroNome.toLowerCase())) return false;
-    if (filtroBanco !== "Todos" && r.banco !== filtroBanco) return false;
-    if (filtroProd  !== "Todos" && r.produto !== filtroProd) return false;
+    if (filtroBanco && !r.banco.toLowerCase().includes(filtroBanco.toLowerCase())) return false;
+    if (filtroProd  && !r.produto.toLowerCase().includes(filtroProd.toLowerCase())) return false;
     return true;
   });
 
@@ -2675,16 +2689,10 @@ function RoteirosPage({ currentUser }) {
       </div>
 
       {/* Filtros + botão */}
-      <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", marginBottom:20 }}>
-        <input value={filtroNome} onChange={e=>setFiltroNome(e.target.value)} placeholder="🔍 Pesquisar por nome..." style={{ ...inputSel, flex:1, minWidth:180 }} />
-        <select value={filtroBanco} onChange={e=>setFiltroBanco(e.target.value)} style={{ ...inputSel, minWidth:140 }}>
-          <option value="Todos">Todos os bancos</option>
-          {BANCOS.map(b=><option key={b} value={b}>{b}</option>)}
-        </select>
-        <select value={filtroProd} onChange={e=>setFiltroProd(e.target.value)} style={{ ...inputSel, minWidth:160 }}>
-          <option value="Todos">Todos os produtos</option>
-          {PRODUTOS.map(p=><option key={p} value={p}>{p}</option>)}
-        </select>
+      <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:20 }}>
+        <input value={filtroNome} onChange={e=>setFiltroNome(e.target.value)} placeholder="🔍 Nome..." style={{ ...inputSel, flex:1, minWidth:140 }} />
+        <input value={filtroBanco} onChange={e=>setFiltroBanco(e.target.value)} placeholder="🏦 Banco..." style={{ ...inputSel, width:120 }} />
+        <input value={filtroProd} onChange={e=>setFiltroProd(e.target.value)} placeholder="📦 Produto..." style={{ ...inputSel, width:130 }} />
         {isAdmin && (
           <button onClick={()=>setShowModal(true)}
             style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:12, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0, boxShadow:`0 4px 16px ${C.acc}44` }}>
@@ -2771,15 +2779,11 @@ function RoteirosPage({ currentUser }) {
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                 <div>
                   <label style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:5 }}>Banco</label>
-                  <select value={banco} onChange={e=>setBanco(e.target.value)} style={{ ...S.input, width:"100%", fontSize:12 }}>
-                    {BANCOS.map(b=><option key={b} value={b}>{b}</option>)}
-                  </select>
+                  <input value={banco} onChange={e=>setBanco(e.target.value)} placeholder="Ex: V8 Digital..." style={{ ...S.input, width:"100%", fontSize:12 }} />
                 </div>
                 <div>
                   <label style={{ color:C.td, fontSize:10, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:5 }}>Produto</label>
-                  <select value={produto} onChange={e=>setProduto(e.target.value)} style={{ ...S.input, width:"100%", fontSize:12 }}>
-                    {PRODUTOS.map(p=><option key={p} value={p}>{p}</option>)}
-                  </select>
+                  <input value={produto} onChange={e=>setProduto(e.target.value)} placeholder="Ex: FGTS, CLT..." style={{ ...S.input, width:"100%", fontSize:12 }} />
                 </div>
               </div>
               <div>
@@ -20797,11 +20801,12 @@ export default function App() {
   const lastChatCount = useRef(0);
   // System config — mestre controls what others can access
   const [sysConfig, setSysConfig] = useState({
-    masterChatEnabled: true,     // mestre can disable chat for masters
-    indicadoChatEnabled: true,   // master can disable chat for indicados
+    masterChatEnabled: true,
+    indicadoChatEnabled: true,
     visitanteChatEnabled: true,
-    pagamentosEnabled: true,     // admin can toggle pagamentos tab
+    pagamentosEnabled: true,
     visitanteTabs: { dashboard:true, contacts:true, add:false, import:false, review:true, cstatus:true, leds:false, atalhos:true, premium:false, config:false },
+    lightMode: localStorage.getItem("nexp_light_mode") === "1",
   });
 
   // Salva a página ativa ao trocar — chat vira painel flutuante
@@ -21151,9 +21156,16 @@ export default function App() {
 
   return (
     <>
+      {sysConfig?.lightMode && (
+        <style>{`
+          body, #root { background:#f0f4f8 !important; }
+          .nexp-sidebar { background:#ffffff !important; border-right:1px solid #e2e8f0 !important; }
+          .nexp-main { background:#f0f4f8 !important; }
+        `}</style>
+      )}
       <style>{`
         * { box-sizing: border-box; }
-        html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; background:${sysConfig?.lightMode?"#f0f4f8":"#000000"}; }
         @media (max-width: 768px) {
           .nexp-sidebar { width: 0 !important; overflow: hidden !important; }
           .nexp-sidebar-open { width: 220px !important; position: fixed !important; z-index: 999 !important; height: 100vh !important; }
