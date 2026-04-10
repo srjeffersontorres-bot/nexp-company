@@ -2349,18 +2349,18 @@ function HomePageInicial({ currentUser }) {
   ];
   const frase = FRASES[new Date().getDate() % FRASES.length];
 
-  const [notas,           setNotas]           = useState(() => { try { return JSON.parse(localStorage.getItem(`nexp_home_notas_${myId}`) || "[]"); } catch { return []; } });
-  const [novaNotaTxt,     setNovaNotaTxt]     = useState("");
-  const [noticias,        setNoticias]        = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_noticias") || "[]"); } catch { return []; } });
-  const [noticiaModal,    setNoticiaModal]    = useState(null);
-  const [showAddNoticia,  setShowAddNoticia]  = useState(false);
-  const [novaTitulo,      setNovaTitulo]      = useState("");
-  const [novaDescricao,   setNovaDescricao]   = useState("");
-  const [novaTextoFull,   setNovaTextoFull]   = useState("");
-  const [novoLink,        setNovoLink]        = useState("");
-  const [calNotes,        setCalNotes]        = useState([]);
+  const [notas,          setNotas]          = useState(() => { try { return JSON.parse(localStorage.getItem(`nexp_home_notas_${myId}`) || "[]"); } catch { return []; } });
+  const [novaNotaTxt,    setNovaNotaTxt]    = useState("");
+  const [noticias,       setNoticias]       = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_noticias") || "[]"); } catch { return []; } });
+  const [noticiaModal,   setNoticiaModal]   = useState(null);
+  const [showAddNoticia, setShowAddNoticia] = useState(false);
+  const [novaTitulo,     setNovaTitulo]     = useState("");
+  const [novaDescricao,  setNovaDescricao]  = useState("");
+  const [novaTextoFull,  setNovaTextoFull]  = useState("");
+  const [novoLink,       setNovoLink]       = useState("");
+  const [calNotes,       setCalNotes]       = useState([]);
   // eslint-disable-next-line no-unused-vars
-  const [waveAnim,        setWaveAnim]        = useState(false);
+  const [waveAnim,       setWaveAnim]       = useState(false);
 
   const isAdmin = ["administrador","mestre"].includes(currentUser?.role);
   const today = new Date().toISOString().slice(0, 10);
@@ -2370,7 +2370,6 @@ function HomePageInicial({ currentUser }) {
     return () => unsub();
   }, [myId]);
 
-  // Wave animation loop
   useEffect(() => {
     const t = setInterval(() => setWaveAnim(p => !p), 1800);
     return () => clearInterval(t);
@@ -2396,7 +2395,8 @@ function HomePageInicial({ currentUser }) {
     setNovaTitulo(""); setNovaDescricao(""); setNovaTextoFull(""); setNovoLink(""); setShowAddNoticia(false);
   };
 
-  // Card wrapper with tech hover effect
+  const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626","#EC4899"];
+
   return (
     <div style={{ padding:"28px 32px", maxWidth:1300, overflowY:"auto", height:"100%" }}>
       <style>{`
@@ -2412,96 +2412,86 @@ function HomePageInicial({ currentUser }) {
       <div style={{ marginBottom:28 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
           <span style={{ fontSize:32, display:"inline-block", animation:"waveHand 1.8s ease-in-out infinite", transformOrigin:"70% 70%" }}>👋</span>
-          <h1 style={{ color:C.tp, fontSize:26, fontWeight:900, margin:0, letterSpacing:"-0.5px" }}>
-            Olá, {firstName}!
-          </h1>
+          <h1 style={{ color:C.tp, fontSize:26, fontWeight:900, margin:0, letterSpacing:"-0.5px" }}>Olá, {firstName}!</h1>
         </div>
         <div style={{ color:C.td, fontSize:14 }}>Bem-vindo ao seu painel exclusivo de parceiro</div>
       </div>
 
-      {/* Layout */}
-      <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
-        {/* Coluna esquerda */}
-        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-
-          {/* Frase do dia */}
-          <TechCard accent="#3B6EF5">
-            <div style={{ position:"absolute", right:0, top:0, bottom:0, width:"45%", pointerEvents:"none", overflow:"hidden" }}>
-              {[...Array(4)].map((_,i)=>(
-                <div key={i} style={{ position:"absolute", width:60+i*45, height:60+i*45, borderRadius:"50%", border:"1px solid rgba(59,110,245,0.12)", top:`${10+i*18}%`, left:`${20+i*8}%`, animation:`techPulse ${2.5+i*0.6}s ease-in-out infinite`, animationDelay:`${i*0.4}s` }} />
-              ))}
-            </div>
-            <div style={{ position:"relative", zIndex:1, padding:"22px 24px" }}>
-              <div style={{ color:"#60A5FA", fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
-              <div style={{ color:C.tp, fontSize:16, fontWeight:600, lineHeight:1.75, fontStyle:"italic", maxWidth:"70%" }}>"{frase}"</div>
-            </div>
-          </TechCard>
-
-          {/* Compromissos + Notas */}
-          <div style={{ marginTop:4, marginBottom:4 }}>
-            <div style={{ color:C.tp, fontSize:15, fontWeight:800, marginBottom:12, display:"flex", alignItems:"center", gap:8 }}>
-              <span>🚀</span> Seus compromissos
-            </div>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-
-            {/* Compromissos */}
-            <TechCard accent="#059669">
-              <div style={{ position:"absolute", right:0, bottom:0, width:80, height:80, background:"radial-gradient(circle,rgba(5,150,105,0.12) 0%,transparent 70%)", pointerEvents:"none" }} />
-              <div style={{ padding:"18px 20px", position:"relative", zIndex:1 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                  <span style={{ fontSize:18, animation:"floatDot 2s ease-in-out infinite" }}>📌</span>
-                  <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Compromissos de Hoje</div>
-                </div>
-                {compromissos.length === 0 ? (
-                  <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"16px 0" }}>Nenhum compromisso 🎉</div>
-                ) : (
-                  <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-                    {compromissos.slice(0,5).map(c => (
-                      <div key={c.id} style={{ background:"rgba(5,150,105,0.07)", borderRadius:9, padding:"8px 12px", border:"1px solid rgba(5,150,105,0.15)", display:"flex", gap:9, alignItems:"flex-start" }}>
-                        {c.hour && <div style={{ color:"#34D399", fontSize:11, fontWeight:700, flexShrink:0 }}>🕐 {c.hour}</div>}
-                        <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{c.text}</div>
-                      </div>
-                    ))}
-                    {compromissos.length > 5 && <div style={{ color:C.td, fontSize:10, textAlign:"center" }}>+{compromissos.length-5} mais</div>}
-                  </div>
-                )}
-              </div>
-            </TechCard>
-
-            {/* Notas */}
-            <TechCard accent="#7C3AED">
-              <div style={{ position:"absolute", left:0, top:0, width:60, height:60, background:"radial-gradient(circle,rgba(124,58,237,0.1) 0%,transparent 70%)", pointerEvents:"none" }} />
-              <div style={{ padding:"18px 20px", position:"relative", zIndex:1 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
-                  <span style={{ fontSize:18 }}>📝</span>
-                  <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Minhas Notas</div>
-                </div>
-                <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-                  <input value={novaNotaTxt} onChange={e=>setNovaNotaTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&salvarNota()}
-                    placeholder="Nova nota..." style={{ ...S.input, flex:1, fontSize:12, padding:"7px 10px" }} />
-                  <button onClick={salvarNota} style={{ background:"linear-gradient(135deg,#7C3AED,#5B21B6)", color:"#fff", border:"none", borderRadius:9, padding:"7px 12px", fontSize:14, fontWeight:700, cursor:"pointer" }}>+</button>
-                </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:5, maxHeight:170, overflowY:"auto" }}>
-                  {notas.length === 0 && <div style={{ color:C.td, fontSize:11, textAlign:"center", padding:"6px 0" }}>Nenhuma nota ainda</div>}
-                  {notas.map(n => (
-                    <div key={n.id} style={{ background:"rgba(124,58,237,0.06)", borderRadius:8, padding:"7px 10px", border:"1px solid rgba(124,58,237,0.12)", display:"flex", gap:7, alignItems:"flex-start" }}>
-                      <div style={{ color:C.ts, fontSize:11.5, lineHeight:1.4, flex:1 }}>{n.texto}</div>
-                      <button onClick={()=>removerNota(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:13, flexShrink:0 }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </TechCard>
-          </div>
-          </div>
+      {/* Frase do dia */}
+      <TechCard accent="#3B6EF5">
+        <div style={{ position:"absolute", right:0, top:0, bottom:0, width:"45%", pointerEvents:"none", overflow:"hidden" }}>
+          {[...Array(4)].map((_,i)=>(
+            <div key={i} style={{ position:"absolute", width:60+i*45, height:60+i*45, borderRadius:"50%", border:"1px solid rgba(59,110,245,0.12)", top:`${10+i*18}%`, left:`${20+i*8}%`, animation:`techPulse ${2.5+i*0.6}s ease-in-out infinite`, animationDelay:`${i*0.4}s` }} />
+          ))}
         </div>
+        <div style={{ position:"relative", zIndex:1, padding:"22px 24px" }}>
+          <div style={{ color:"#60A5FA", fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"2px", marginBottom:10 }}>✨ Frase do Dia</div>
+          <div style={{ color:C.tp, fontSize:16, fontWeight:600, lineHeight:1.75, fontStyle:"italic", maxWidth:"70%" }}>"{frase}"</div>
+        </div>
+      </TechCard>
 
+      {/* Seus compromissos */}
+      <div style={{ marginTop:20, marginBottom:12 }}>
+        <div style={{ color:C.tp, fontSize:15, fontWeight:800, display:"flex", alignItems:"center", gap:8 }}>
+          <span>🚀</span> Seus compromissos
+        </div>
       </div>
 
+      {/* Grid compromissos + notas */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:24 }}>
 
-      {/* ── Últimas Notícias ── */}
-      <div style={{ marginTop:24 }}>
+        {/* Compromissos */}
+        <TechCard accent="#059669">
+          <div style={{ position:"absolute", right:0, bottom:0, width:80, height:80, background:"radial-gradient(circle,rgba(5,150,105,0.12) 0%,transparent 70%)", pointerEvents:"none" }} />
+          <div style={{ padding:"18px 20px", position:"relative", zIndex:1 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+              <span style={{ fontSize:18, animation:"floatDot 2s ease-in-out infinite" }}>📌</span>
+              <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Compromissos de Hoje</div>
+            </div>
+            {compromissos.length === 0 ? (
+              <div style={{ color:C.td, fontSize:12, textAlign:"center", padding:"16px 0" }}>Nenhum compromisso 🎉</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+                {compromissos.slice(0,5).map(c => (
+                  <div key={c.id} style={{ background:"rgba(5,150,105,0.07)", borderRadius:9, padding:"8px 12px", border:"1px solid rgba(5,150,105,0.15)", display:"flex", gap:9, alignItems:"flex-start" }}>
+                    {c.hour && <div style={{ color:"#34D399", fontSize:11, fontWeight:700, flexShrink:0 }}>🕐 {c.hour}</div>}
+                    <div style={{ color:C.ts, fontSize:12, lineHeight:1.4, flex:1 }}>{c.text}</div>
+                  </div>
+                ))}
+                {compromissos.length > 5 && <div style={{ color:C.td, fontSize:10, textAlign:"center" }}>+{compromissos.length-5} mais</div>}
+              </div>
+            )}
+          </div>
+        </TechCard>
+
+        {/* Notas */}
+        <TechCard accent="#7C3AED">
+          <div style={{ position:"absolute", left:0, top:0, width:60, height:60, background:"radial-gradient(circle,rgba(124,58,237,0.1) 0%,transparent 70%)", pointerEvents:"none" }} />
+          <div style={{ padding:"18px 20px", position:"relative", zIndex:1 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+              <span style={{ fontSize:18 }}>📝</span>
+              <div style={{ color:C.tp, fontSize:13, fontWeight:700 }}>Minhas Notas</div>
+            </div>
+            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+              <input value={novaNotaTxt} onChange={e=>setNovaNotaTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&salvarNota()}
+                placeholder="Nova nota..." style={{ ...S.input, flex:1, fontSize:12, padding:"7px 10px" }} />
+              <button onClick={salvarNota} style={{ background:"linear-gradient(135deg,#7C3AED,#5B21B6)", color:"#fff", border:"none", borderRadius:9, padding:"7px 12px", fontSize:14, fontWeight:700, cursor:"pointer" }}>+</button>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:5, maxHeight:170, overflowY:"auto" }}>
+              {notas.length === 0 && <div style={{ color:C.td, fontSize:11, textAlign:"center", padding:"6px 0" }}>Nenhuma nota ainda</div>}
+              {notas.map(n => (
+                <div key={n.id} style={{ background:"rgba(124,58,237,0.06)", borderRadius:8, padding:"7px 10px", border:"1px solid rgba(124,58,237,0.12)", display:"flex", gap:7, alignItems:"flex-start" }}>
+                  <div style={{ color:C.ts, fontSize:11.5, lineHeight:1.4, flex:1 }}>{n.texto}</div>
+                  <button onClick={()=>removerNota(n.id)} style={{ background:"none", border:"none", color:"#F87171", cursor:"pointer", fontSize:13, flexShrink:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </TechCard>
+      </div>
+
+      {/* Últimas Notícias */}
+      <div style={{ marginBottom:8 }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <span style={{ fontSize:22 }}>📰</span>
@@ -2518,9 +2508,8 @@ function HomePageInicial({ currentUser }) {
           )}
         </div>
 
-        {/* Form adicionar notícia */}
         {showAddNoticia && (
-          <div style={{ ...S.card, padding:"20px", marginBottom:18, border:"1px solid rgba(59,110,245,0.2)", animation:"fadeInDown 0.25s ease-out" }}>
+          <div style={{ ...S.card, padding:"20px", marginBottom:18, border:"1px solid rgba(59,110,245,0.2)" }}>
             <div style={{ color:C.atxt, fontSize:12, fontWeight:700, marginBottom:14, textTransform:"uppercase", letterSpacing:"1px" }}>📝 Nova Notícia</div>
             <input value={novaTitulo} onChange={e=>setNovaTitulo(e.target.value)}
               placeholder="Título da notícia..." style={{ ...S.input, width:"100%", marginBottom:9, fontSize:13 }} />
@@ -2546,35 +2535,27 @@ function HomePageInicial({ currentUser }) {
           </div>
         )}
 
-        {/* Grid de cards de notícias */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
           {noticias.map((n, idx) => {
-            const CORES = ["#3B6EF5","#7C3AED","#059669","#D97706","#DC2626","#EC4899"];
             const cor = CORES[idx % CORES.length];
             return (
               <div key={n.id}
-                style={{ background:`linear-gradient(145deg,${cor}0A,rgba(0,0,0,0.3))`, border:`1px solid ${cor}33`, borderRadius:16, padding:"20px", position:"relative", overflow:"hidden", transition:"all 0.25s ease-in-out", cursor:"pointer" }}
+                style={{ background:`linear-gradient(145deg,${cor}0A,rgba(0,0,0,0.3))`, border:`1px solid ${cor}33`, borderRadius:16, padding:"20px", position:"relative", overflow:"hidden", transition:"all 0.25s ease-in-out" }}
                 onMouseEnter={e=>{ e.currentTarget.style.transform="translateY(-4px)"; e.currentTarget.style.boxShadow=`0 12px 32px ${cor}33`; e.currentTarget.style.border=`1px solid ${cor}66`; }}
                 onMouseLeave={e=>{ e.currentTarget.style.transform="none"; e.currentTarget.style.boxShadow="none"; e.currentTarget.style.border=`1px solid ${cor}33`; }}>
-                {/* Deco circles */}
                 <div style={{ position:"absolute", top:-20, right:-20, width:100, height:100, borderRadius:"50%", border:`1px solid ${cor}18`, pointerEvents:"none" }} />
-                <div style={{ position:"absolute", top:-10, right:-10, width:60, height:60, borderRadius:"50%", border:`1px solid ${cor}22`, pointerEvents:"none" }} />
-                {/* Notícia label */}
                 <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:`${cor}18`, border:`1px solid ${cor}33`, borderRadius:99, padding:"3px 10px", marginBottom:10 }}>
                   <div style={{ width:5, height:5, borderRadius:"50%", background:cor, animation:"pulse 2s ease-in-out infinite" }} />
                   <span style={{ color:cor, fontSize:9.5, fontWeight:800, textTransform:"uppercase", letterSpacing:"1px" }}>Notícia</span>
                 </div>
-                {/* Título */}
                 <div style={{ color:cor, fontSize:15, fontWeight:800, lineHeight:1.35, marginBottom:8 }}>{n.titulo}</div>
-                {/* Descrição */}
-                <div style={{ color:C.tm, fontSize:12, lineHeight:1.6, marginBottom:14 }}>{n.descricao || (n.texto||"").slice(0,120)}{(n.descricao||(n.texto||"")).length>120?"...":""}</div>
-                {/* Footer */}
+                <div style={{ color:C.tm, fontSize:12, lineHeight:1.6, marginBottom:14 }}>{n.descricao || (n.texto||"").slice(0,120)}{((n.descricao||n.texto||"").length>120)?"...":""}</div>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <span style={{ color:C.td, fontSize:10 }}>📅 {n.criadaEm}{n.autor?` · ${n.autor}`:""}</span>
-                  <button onClick={(e)=>{ e.stopPropagation(); setNoticiaModal(n); }}
+                  <button onClick={e=>{ e.stopPropagation(); setNoticiaModal(n); }}
                     style={{ background:`${cor}18`, border:`1px solid ${cor}44`, color:cor, borderRadius:8, padding:"5px 12px", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all 0.15s" }}
-                    onMouseEnter={e=>{ e.currentTarget.style.background=`${cor}30`; e.currentTarget.style.boxShadow=`0 0 12px ${cor}44`; }}
-                    onMouseLeave={e=>{ e.currentTarget.style.background=`${cor}18`; e.currentTarget.style.boxShadow="none"; }}>
+                    onMouseEnter={e2=>{ e2.currentTarget.style.background=`${cor}30`; }}
+                    onMouseLeave={e2=>{ e2.currentTarget.style.background=`${cor}18`; }}>
                     Ler notícia completa →
                   </button>
                 </div>
@@ -2587,31 +2568,25 @@ function HomePageInicial({ currentUser }) {
       {/* Modal notícia completa */}
       {noticiaModal && (
         <div onClick={()=>setNoticiaModal(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", backdropFilter:"blur(12px)" }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"linear-gradient(145deg,rgba(8,12,30,0.99),rgba(5,8,20,0.99))", border:"1px solid rgba(59,110,245,0.3)", borderRadius:24, padding:"36px 40px", maxWidth:580, width:"100%", maxHeight:"82vh", overflowY:"auto", animation:"modalPop 0.4s cubic-bezier(.34,1.56,.64,1)", boxShadow:"0 32px 100px rgba(0,0,0,0.9),0 0 60px rgba(59,110,245,0.1)" }}>
-            {/* Deco top */}
-            <div style={{ position:"absolute", top:0, right:0, width:200, height:200, background:"radial-gradient(circle,rgba(59,110,245,0.08) 0%,transparent 70%)", pointerEvents:"none" }} />
-            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:6, gap:16, position:"relative" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"linear-gradient(145deg,rgba(8,12,30,0.99),rgba(5,8,20,0.99))", border:"1px solid rgba(59,110,245,0.3)", borderRadius:24, padding:"36px 40px", maxWidth:580, width:"100%", maxHeight:"82vh", overflowY:"auto", animation:"modalPop 0.4s cubic-bezier(.34,1.56,.64,1)", boxShadow:"0 32px 100px rgba(0,0,0,0.9)" }}>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:6, gap:16 }}>
               <div style={{ color:C.atxt, fontSize:21, fontWeight:900, lineHeight:1.3 }}>{noticiaModal.titulo}</div>
-              <button onClick={()=>setNoticiaModal(null)} style={{ background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", color:C.tm, borderRadius:9, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:15, flexShrink:0, transition:"all 0.15s" }}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}
-                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.07)"}>✕</button>
+              <button onClick={()=>setNoticiaModal(null)} style={{ background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", color:C.tm, borderRadius:9, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:15, flexShrink:0 }}>✕</button>
             </div>
             {noticiaModal.criadaEm && (
-              <div style={{ color:C.td, fontSize:11, marginBottom:20, position:"relative" }}>📅 {noticiaModal.criadaEm}{noticiaModal.autor?` · ${noticiaModal.autor}`:""}</div>
+              <div style={{ color:C.td, fontSize:11, marginBottom:20 }}>📅 {noticiaModal.criadaEm}{noticiaModal.autor?` · ${noticiaModal.autor}`:""}</div>
             )}
             {noticiaModal.descricao && (
-              <div style={{ color:C.atxt, fontSize:13, fontWeight:600, marginBottom:16, padding:"12px 16px", background:"rgba(59,110,245,0.06)", borderRadius:10, borderLeft:"3px solid rgba(59,110,245,0.5)", lineHeight:1.6, position:"relative" }}>
+              <div style={{ color:C.atxt, fontSize:13, fontWeight:600, marginBottom:16, padding:"12px 16px", background:"rgba(59,110,245,0.06)", borderRadius:10, borderLeft:"3px solid rgba(59,110,245,0.5)", lineHeight:1.6 }}>
                 {noticiaModal.descricao}
               </div>
             )}
-            <div style={{ color:C.ts, fontSize:14, lineHeight:1.9, whiteSpace:"pre-wrap", position:"relative" }}>
+            <div style={{ color:C.ts, fontSize:14, lineHeight:1.9, whiteSpace:"pre-wrap" }}>
               {noticiaModal.textoFull || noticiaModal.texto || ""}
             </div>
             {noticiaModal.link && (
               <a href={noticiaModal.link} target="_blank" rel="noopener noreferrer"
-                style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:22, width:"100%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", color:"#fff", borderRadius:12, padding:"12px", fontSize:13, fontWeight:700, textDecoration:"none", boxShadow:"0 6px 20px rgba(59,110,245,0.4)", transition:"all 0.18s" }}
-                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px rgba(59,110,245,0.6)"}
-                onMouseLeave={e=>e.currentTarget.style.boxShadow="0 6px 20px rgba(59,110,245,0.4)"}>
+                style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:22, width:"100%", background:"linear-gradient(135deg,#3B6EF5,#7C3AED)", color:"#fff", borderRadius:12, padding:"12px", fontSize:13, fontWeight:700, textDecoration:"none", boxShadow:"0 6px 20px rgba(59,110,245,0.4)" }}>
                 🔗 Leia mais sobre essa notícia
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 10L10 2M10 2H5M10 2v5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </a>
@@ -2621,12 +2596,6 @@ function HomePageInicial({ currentUser }) {
       )}
     </div>
   );
-      </div>
-      </div>
-      </div>
-      </div>
-      </div>
-      </div>
 }
 
 // ── Roteiros Operacionais ──────────────────────────────────────
