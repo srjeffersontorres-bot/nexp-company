@@ -17998,6 +17998,15 @@ function PrataDigitalTab({ currentUser }) {
     setAuthBusy(false);
   };
 
+  const extractErrMsg = (j, status) => {
+    if (typeof j.message === "string" && j.message) return j.message;
+    if (typeof j.error   === "string" && j.error)   return j.error;
+    if (Array.isArray(j.errors) && j.errors.length)
+      return j.errors.map(x => (typeof x === "string" ? x : x.message||x.detail||JSON.stringify(x))).join("; ");
+    if (j.diagnostico?.respostaPreview) return j.diagnostico.respostaPreview.slice(0,200);
+    try { return JSON.stringify(j).slice(0,200); } catch { return `Erro ${status}`; }
+  };
+
   const prataAPI = async (path, method="GET", reqBody=null) => {
     if (!valid) throw new Error("Sessão expirada.");
     const r = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
@@ -18005,7 +18014,7 @@ function PrataDigitalTab({ currentUser }) {
     const txt = await r.text();
     if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado.");
     let j; try { j=JSON.parse(txt); } catch { throw new Error(`Resposta inválida (${r.status})`); }
-    if (!r.ok) throw new Error(j.message||j.error||(Array.isArray(j.errors)?j.errors.map(x=>x.message||x).join("; "):null)||`Erro ${r.status}`);
+    if (!r.ok) throw new Error(extractErrMsg(j, r.status));
     return j;
   };
 
