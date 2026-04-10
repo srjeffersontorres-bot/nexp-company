@@ -2524,6 +2524,15 @@ function HomePageInicial({ currentUser }) {
                 onMouseEnter={e=>{ e.currentTarget.style.transform="translateY(-4px)"; e.currentTarget.style.boxShadow=`0 12px 32px ${cor}33`; e.currentTarget.style.border=`1px solid ${cor}66`; }}
                 onMouseLeave={e=>{ e.currentTarget.style.transform="none"; e.currentTarget.style.boxShadow="none"; e.currentTarget.style.border=`1px solid ${cor}33`; }}>
                 <div style={{ position:"absolute", top:-20, right:-20, width:100, height:100, borderRadius:"50%", border:`1px solid ${cor}18`, pointerEvents:"none" }} />
+                {/* Botão excluir - só admin */}
+                {isAdmin && (
+                  <button onClick={e=>{ e.stopPropagation(); const nova = noticias.filter(x=>x.id!==n.id); setNoticias(nova); localStorage.setItem("nexp_noticias", JSON.stringify(nova)); }}
+                    style={{ position:"absolute", top:10, right:10, background:"rgba(239,68,68,0.12)", border:"1px solid rgba(239,68,68,0.3)", color:"#F87171", borderRadius:7, width:26, height:26, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13, transition:"all 0.15s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.25)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.12)"}>
+                    🗑
+                  </button>
+                )}
                 <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:`${cor}18`, border:`1px solid ${cor}33`, borderRadius:99, padding:"3px 10px", marginBottom:10 }}>
                   <div style={{ width:5, height:5, borderRadius:"50%", background:cor, animation:"pulse 2s ease-in-out infinite" }} />
                   <span style={{ color:cor, fontSize:9.5, fontWeight:800, textTransform:"uppercase", letterSpacing:"1px" }}>Notícia</span>
