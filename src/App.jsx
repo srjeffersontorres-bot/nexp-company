@@ -16464,6 +16464,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [margemLoteRunning, setMargemLoteRunning] = useState(false);
   const [margemLotePaused, setMargemLotePaused] = useState(false);
   const [margemLoteProgress, setMargemLoteProgress] = useState(0);
+  // eslint-disable-next-line no-unused-vars
   const [margemLoteBanc, setMargemLoteBanc] = useState("QI");
   const [margemLoteFilter, setMargemLoteFilter] = useState("Todos");
   const [margemLoteLogs, setMargemLoteLogs] = useState([]);
