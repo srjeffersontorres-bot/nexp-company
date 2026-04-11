@@ -17091,6 +17091,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                       const {resultados:res2}=simConfigs[cur2];
                                       const margem=t.availableMarginValue?fmtBRL(t.availableMarginValue):"—";
                                       let txt=`Oba! 🎉 Sua simulação do Crédito do Trabalhador chegou, confira:
+Margem disponível: *${margem}*
 
 `;
                                       res2.forEach((r,i)=>{
