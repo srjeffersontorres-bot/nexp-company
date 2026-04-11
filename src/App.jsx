@@ -16200,8 +16200,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
     const rows=[["CPF","Nome","Banco","Status","Margem QI","Margem Celcoin","Sign URL"]];
     items.forEach(it=>rows.push([it.cpfFmt,it.nome||"—",it.banco,it.status,
       it.margemQI!=null?it.margemQI:"",it.margemCelcoin!=null?it.margemCelcoin:"",it.signUrl||""]));
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("
-");
+    const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");
     const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote.csv";a.click();
   };
 
