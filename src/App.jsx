@@ -18093,7 +18093,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       )}
       {simModal&&simConfigs&&Object.keys(simConfigs).length>0&&!simLoading&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);setSimCardCopiarPopup(null);}}>
-          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(null);}}
+          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(null);}}>
             {/* Header: título + tabela atual + botão trocar tabela */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
