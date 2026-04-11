@@ -17010,33 +17010,29 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
   useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(1); },[aba,isTokenValid]); // eslint-disable-line
 
-  // Polling automático: atualiza status dos termos pendentes a cada 8s
+  // Polling automático: consulta cada termo pendente por CPF (evita RBAC sem filtro)
   useEffect(()=>{
     if(!isTokenValid) return;
-    const pendentes = ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"];
+    const PENDENTES = ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"];
     const iv = setInterval(async()=>{
-      const comPendentes = termos.filter(t=>pendentes.includes(t.status));
+      const comPendentes = termos.filter(t=>PENDENTES.includes(t.status));
       if(!comPendentes.length) return;
-      // Busca atualização dos últimos 3 dias para pegar mudanças recentes
       const end   = new Date().toISOString();
-      const start = new Date(Date.now()-3*86400000).toISOString();
-      try {
-        const r = await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
-        const fresh = r?.data||[];
-        if(!fresh.length) return;
-        setTermos(prev=>{
-          let changed = false;
-          const updated = prev.map(t=>{
-            if(!pendentes.includes(t.status)) return t;
-            const f = fresh.find(x=>x.id===t.id);
-            if(!f||f.status===t.status) return t;
-            changed = true;
-            return { ...t, ...f, link: t.link||f.consent_url||f.link };
-          });
-          return changed ? updated : prev;
-        });
-      } catch {}
-    }, 8000);
+      const start = new Date(Date.now()-7*86400000).toISOString();
+      // Consulta cada CPF individualmente (search=cpf obrigatório pela V8)
+      for (const t of comPendentes) {
+        const cpf = (t.documentNumber||t.cpf||"").replace(/\D/g,"");
+        if(!cpf) continue;
+        try {
+          const r = await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
+          const found = (r?.data||[]).find(x=>x.id===t.id);
+          if(found&&found.status!==t.status) {
+            setTermos(prev=>prev.map(x=>x.id===t.id?{...x,...found,link:t.link||found.consent_url||found.link}:x));
+          }
+        } catch {}
+        await new Promise(r=>setTimeout(r,500)); // pequeno delay entre CPFs
+      }
+    }, 10000);
     return () => clearInterval(iv);
   },[isTokenValid, termos]); // eslint-disable-line
   // Pre-load configs immediately on mount
