@@ -16191,7 +16191,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const body={
         borrowerDocumentNumber:cpfLimpo,
         gender:dados.genero||"male",
-        birthDate:dados.dataNasc,
+        birthDate:toISODate(dados.dataNasc),
         signerName:dados.nome,
         signerEmail:dados.email,
         signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.slice(0,2)},
@@ -16232,6 +16232,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
+  // Converte YYYY-MM-DD para YYYY-MM-DDT00:00:00.000Z (formato "date" exigido pela API V8)
+  const toISODate = (d) => {
+    if (!d) return "";
+    if (/^\d{4}-\d{2}-\d{2}T/.test(d)) return d; // já está em ISO
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return `${d}T00:00:00.000Z`;
+    return d;
+  };
+
   const gerarTermo = async () => {
     setErr(""); setTermoLoading(true);
     try {
@@ -16239,7 +16247,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const body = {
         borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""),
         gender: termoForm.genero,
-        birthDate: termoForm.dataNasc,
+        birthDate: toISODate(termoForm.dataNasc),
         signerName: termoForm.nome,
         signerEmail: termoForm.email,
         signerPhone: { phoneNumber: tel.slice(-9), countryCode:"55", areaCode: tel.length>=11?tel.slice(0,2):tel.slice(0,2) },
@@ -16362,6 +16370,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // eslint-disable-next-line no-unused-vars
   const [simTermoAtivo, setSimTermoAtivo] = useState(null); // eslint-disable-line no-unused-vars
   const [limparModal, setLimparModal] = useState(false);
+  const [simCardCopiarPopup, setSimCardCopiarPopup] = useState(null); // key do card com popup copiar aberto
 
   const PARCELAS_PADRAO = [6,8,10,12,18,24,36,48];
 
@@ -16821,7 +16830,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     try{
                       const tel=item.telefone.replace(/\D/g,"");
                       const body={
-                        borrowerDocumentNumber:item.cpf,gender:item.genero||"male",birthDate:item.dataNasc,
+                        borrowerDocumentNumber:item.cpf,gender:item.genero||"male",birthDate:toISODate(item.dataNasc),
                         signerName:item.nome,signerEmail:item.email,
                         signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.slice(0,2)},
                         provider:"QI",
@@ -17071,6 +17080,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                       style={{background:"linear-gradient(135deg,#3B82F6,#2563EB)",color:"#fff",border:"none",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                                       ⚡ Simular
                                     </button>
+                                    {/* Copiar todas ofertas */}
+                                    {simConfigs&&Object.keys(simConfigs).length>0&&(()=>{
+                                      const cur3=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:Object.keys(simConfigs)[0];
+                                      const res3=simConfigs[cur3]?.resultados||[];
+                                      if(!res3.length) return null;
+                                      return(
+                                        <button onClick={e=>{e.stopPropagation();setWppPopup({txt:buildWppTxt(res3),clienteNome:t.name||t.nome||"Cliente"});}}
+                                          style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                          📤 Copiar todas ofertas p/ WhatsApp
+                                        </button>
+                                      );
+                                    })()}
                                   </div>
                                   
                                   <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8}}>
@@ -17078,9 +17099,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                       const isB=idx===mi;
                                       const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
                                       const parc=parseFloat(r.sim?.installment_value||0);
+                                      const nomeT=t.name||t.nome||"";
+                                      const primeiroNomeT=nomeT.split(" ")[0]||"Cliente";
+                                      const txtInd=`Oba! ${primeiroNomeT}, Sua nova simulação do crédito do trabalhador chegou, confira:\n\n*Simulação do crédito do trabalhador*\n\nValor liberado: *${fmtBRL(desemb)}*\nValor da parcela: *${fmtBRL(parc)}/mês*\nPrazo: *${r.np}x*\n\n1° pagamento vem descontado em até 60 dias.\n\nGostaria de prosseguir com essa oferta?`;
                                       return (
-                                        <div key={r.np} onClick={()=>setDigModal({r,termo:t,isMelhor:isB})}
-                                          style={{background:isB?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"10px 8px",cursor:"pointer",textAlign:"center",position:"relative",transition:"all 0.15s"}}
+                                        <div key={r.np}
+                                          style={{background:isB?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"10px 8px",textAlign:"center",position:"relative",transition:"all 0.15s"}}
                                           onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";}}
                                           onMouseLeave={e=>{e.currentTarget.style.transform="none";}}>
                                           {isB&&<div style={{position:"absolute",top:-7,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:7,fontWeight:800,padding:"1px 6px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
@@ -17088,7 +17112,25 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                           <div style={{color:isB?"#34D399":"#fff",fontSize:15,fontWeight:900,lineHeight:1}}>{fmtBRL(desemb)}</div>
                                           <div style={{color:"rgba(255,255,255,0.4)",fontSize:8,marginBottom:4}}>liberado</div>
                                           <div style={{color:"rgba(255,255,255,0.7)",fontSize:9}}>{fmtBRL(parc)}/mês</div>
-                                          <div style={{marginTop:6,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:5,padding:"3px 0",fontSize:9,fontWeight:700,color:"#fff"}}>✍️ DIGITAR</div>
+                                          {/* Digitar + Copiar individual */}
+                                          <div style={{marginTop:6,display:"flex",gap:3}}>
+                                            <div onClick={()=>setDigModal({r,termo:t,isMelhor:isB})}
+                                              style={{flex:1,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:5,padding:"3px 0",fontSize:9,fontWeight:700,color:"#fff",cursor:"pointer"}}>✍️ DIGITAR</div>
+                                            <div style={{position:"relative"}}>
+                                              <button onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(p=>p===`inline_${t.id}_${r.np}`?null:`inline_${t.id}_${r.np}`);}}
+                                                style={{background:"rgba(52,211,153,0.2)",border:"none",borderRadius:5,padding:"3px 5px",fontSize:9,color:"#34D399",cursor:"pointer",lineHeight:1}}>📋</button>
+                                              {simCardCopiarPopup===`inline_${t.id}_${r.np}`&&(
+                                                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"110%",right:0,background:"linear-gradient(135deg,#0f1f3d,#162a50)",border:"1px solid rgba(52,211,153,0.4)",borderRadius:10,padding:"10px 12px",minWidth:200,zIndex:200,boxShadow:"0 8px 24px rgba(0,0,0,0.7)"}}>
+                                                  <div style={{color:"rgba(255,255,255,0.5)",fontSize:9.5,marginBottom:6,fontWeight:600}}>📤 Copiar p/ WhatsApp</div>
+                                                  <div style={{color:"rgba(255,255,255,0.7)",fontSize:9.5,lineHeight:1.5,whiteSpace:"pre-wrap",marginBottom:8,maxHeight:110,overflowY:"auto"}}>{txtInd}</div>
+                                                  <button onClick={()=>{navigator.clipboard?.writeText(txtInd).then(()=>{setCopied(`inl_${r.np}`);setTimeout(()=>{setCopied(null);setSimCardCopiarPopup(null);},2000);}).catch(()=>{});}}
+                                                    style={{width:"100%",background:copied===`inl_${r.np}`?"#059669":"linear-gradient(135deg,#34D399,#059669)",color:"#000",border:"none",borderRadius:6,padding:"6px",fontSize:10,fontWeight:800,cursor:"pointer"}}>
+                                                    {copied===`inl_${r.np}`?"✅ Copiado!":"📋 Copiar"}
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
                                         </div>
                                       );
                                     })}
@@ -17245,6 +17287,28 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   const col=STATUS_OP_COLOR[st]||C.td;
                   return <span style={{background:col+"22",color:col,fontSize:11,padding:"4px 12px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>{STATUS_OP_LABEL[st]||st}</span>;
                 })()}
+                {/* Botão Simular — consulta margem nova e abre modal de simulação */}
+                <button onClick={async()=>{
+                  const cpfOp=(opsDetalhe.documentNumber||opsDetalhe.individualDocumentNumber||"").replace(/\D/g,"");
+                  setOpsDetalhe(null);
+                  setSimLoading(true);setSimModal({termo:{...opsDetalhe,documentNumber:cpfOp,cpf:cpfOp,name:opsDetalhe.name||opsDetalhe.borrowerName||""}});setSimConfigs(null);setSimError("");
+                  try{
+                    // 1. Busca margem atualizada via consult
+                    const end=new Date().toISOString();
+                    const start=new Date(Date.now()-60*86400000).toISOString();
+                    const r=await apiFetch(`/private-consignment/consult?search=${cpfOp}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
+                    const items=(r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+                    const consulta=items[0];
+                    const margemAtual=parseFloat(consulta?.availableMarginValue||opsDetalhe.disbursedIssueAmount||opsDetalhe.issueAmount||0);
+                    const termoAtualizado={...opsDetalhe,documentNumber:cpfOp,cpf:cpfOp,name:opsDetalhe.name||opsDetalhe.borrowerName||"",availableMarginValue:margemAtual,id:consulta?.id||opsDetalhe.id};
+                    setSimModal({termo:termoAtualizado});
+                    // 2. Executa simulações com a margem atual
+                    await executarSimulacoes(termoAtualizado,false,margemAtual>0?margemAtual.toString():null);
+                  }catch(e){setSimError(e.message);setSimLoading(false);setSimModal(null);}
+                }}
+                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5}}>
+                  ⚡ Simular
+                </button>
                 <button onClick={()=>setOpsDetalhe(null)} style={{background:"rgba(255,255,255,0.08)",border:"none",color:"rgba(255,255,255,0.5)",borderRadius:50,width:30,height:30,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
               </div>
             </div>
@@ -17960,8 +18024,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         </div>
       )}
       {simModal&&simConfigs&&Object.keys(simConfigs).length>0&&!simLoading&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);}}>
-          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);setSimCardCopiarPopup(null);}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(null);}}
             {/* Header: título + tabela atual + botão trocar tabela */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
@@ -18031,9 +18095,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
                       const parc=parseFloat(r.sim?.installment_value||0);
                       const taxa=parseFloat(r.sim?.monthly_interest_rate||0);
+                      const nomeCliente = simModal.termo?.name||simModal.termo?.nome||"";
+                      const primeiroNome = nomeCliente.split(" ")[0]||"Cliente";
+                      const txtIndividual = `Oba! ${primeiroNome}, Sua nova simulação do crédito do trabalhador chegou, confira:\n\n*Simulação do crédito do trabalhador*\n\nValor liberado: *${fmtBRL(desemb)}*\nValor da parcela: *${fmtBRL(parc)}/mês*\nPrazo: *${r.np}x*\n\n1° pagamento vem descontado em até 60 dias.\n\nGostaria de prosseguir com essa oferta?`;
                       return(
-                        <div key={r.np} onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor:isB})}
-                          style={{background:isB?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:16,padding:"18px",cursor:"pointer",position:"relative",transition:"all 0.15s"}}
+                        <div key={r.np}
+                          style={{background:isB?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.08)"}`,borderRadius:16,padding:"18px",position:"relative",transition:"all 0.15s"}}
                           onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";}}
                           onMouseLeave={e=>{e.currentTarget.style.transform="none";}}>
                           {isB&&<div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:9,fontWeight:800,padding:"2px 10px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR OFERTA</div>}
@@ -18042,7 +18109,31 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                           <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:12}}>Valor liberado</div>
                           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"rgba(255,255,255,0.5)"}}>Parcela</span><span style={{color:"#fff",fontWeight:700}}>{fmtBRL(parc)}/mês</span></div>
                           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:14}}><span style={{color:"rgba(255,255,255,0.5)"}}>Taxa</span><span style={{color:"#FBBF24",fontWeight:700}}>{taxa}% a.m.</span></div>
-                          <div style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:8,padding:"8px",textAlign:"center",fontSize:12,fontWeight:700,color:"#fff"}}>✍️ Digitar Proposta</div>
+                          {/* Botões: Digitar + Copiar */}
+                          <div style={{display:"flex",gap:6}}>
+                            <div onClick={()=>setDigModal({r,termo:simModal.termo,isMelhor:isB})}
+                              style={{flex:1,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:8,padding:"8px",textAlign:"center",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+                              ✍️ Digitar Proposta
+                            </div>
+                            <div style={{position:"relative"}}>
+                              <button
+                                onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(p=>p===`${cur}_${r.np}`?null:`${cur}_${r.np}`);}}
+                                style={{background:"rgba(52,211,153,0.15)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:700,color:"#34D399",cursor:"pointer",whiteSpace:"nowrap",height:"100%"}}>
+                                📋
+                              </button>
+                              {simCardCopiarPopup===`${cur}_${r.np}`&&(
+                                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"110%",right:0,background:"linear-gradient(135deg,#0f1f3d,#162a50)",border:"1px solid rgba(52,211,153,0.4)",borderRadius:12,padding:"12px 14px",minWidth:220,zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,0.7)"}}>
+                                  <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,marginBottom:8,fontWeight:600}}>📤 Copiar para WhatsApp</div>
+                                  <div style={{color:"rgba(255,255,255,0.75)",fontSize:10.5,lineHeight:1.55,whiteSpace:"pre-wrap",marginBottom:10,maxHeight:120,overflowY:"auto"}}>{txtIndividual}</div>
+                                  <button
+                                    onClick={()=>{navigator.clipboard?.writeText(txtIndividual).then(()=>{setCopied(`card_${r.np}`);setTimeout(()=>{setCopied(null);setSimCardCopiarPopup(null);},2000);}).catch(()=>{});}}
+                                    style={{width:"100%",background:copied===`card_${r.np}`?"#059669":"linear-gradient(135deg,#34D399,#059669)",color:"#000",border:"none",borderRadius:8,padding:"8px",fontSize:12,fontWeight:800,cursor:"pointer"}}>
+                                    {copied===`card_${r.np}`?"✅ Copiado!":"📋 Copiar"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
