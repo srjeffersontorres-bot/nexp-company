@@ -17539,8 +17539,7 @@ Só me falar aqui para o próximo passo!`;
               <textarea ref={margemLoteCpfRef} rows={4} placeholder="Cole os CPFs aqui (um por linha): 12345678901, 98765432100..." style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
               <button onClick={()=>{
                 const val = margemLoteCpfRef.current?.value||"";
-                const novos=val.split(/[
-,;]+/).map(l=>l.trim()).filter(Boolean).map(cpf=>{
+                const novos=val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean).map(cpf=>{
                   const clean=cpf.replace(/\D/g,"").padStart(11,"0").slice(0,11);
                   const fmt=clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"..-");
                   const contato=(contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===clean);
