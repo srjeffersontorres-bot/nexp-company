@@ -16004,6 +16004,415 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 // ── APIs Bancos ────────────────────────────────────────────────
 
 
+// ══════════════════════════════════════════════════════════════════
+// MargemLoteTab — Consulta de Margem CLT em Lote (2 etapas)
+//   Etapa A: Pré-consulta (verifica termos existentes via V8)
+//   Etapa B: Formalização (cria termo + exibe link + polling de status)
+// ══════════════════════════════════════════════════════════════════
+function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, fmtBRL, fmtCPF, C, S }) {
+  const padCPF  = v => v.replace(/\D/g,"").padStart(11,"0").slice(0,11);
+  const maskCPF = v => { const c=padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
+
+  const [items,     setItems]     = useState([]); // fila
+  // cpfInput removed — CPF is read directly from textarea ref
+  const [banco,     setBanco]     = useState("QI");
+  const [filter,    setFilter]    = useState("Todos");
+  const [running,   setRunning]   = useState(false);
+  const [progress,  setProgress]  = useState(0);
+  const [logs,      setLogs]      = useState([]);
+  const [formModal, setFormModal] = useState(null); // {item} — modal Etapa B
+  const [pagando,   setPagando]   = useState(false);
+  const [formErr,   setFormErr]   = useState("");
+
+  const abortRef = useRef(false);
+  const cpfRef   = useRef(null);
+
+  // Status labels e cores
+  const ST = {
+    pendente:              { label:"⏳ Pendente",              cor:"#FBBF24" },
+    consultando:           { label:"🔄 Consultando...",         cor:"#60A5FA" },
+    margem_disponivel:     { label:"✅ Margem disponível",      cor:"#34D399" },
+    aguardando_assinatura: { label:"✍️ Aguard. assinatura",     cor:"#C084FC" },
+    pending_consent:       { label:"📋 Aguard. consentimento",  cor:"#FBBF24" },
+    awaiting_signature:    { label:"✍️ Aguard. assinatura",     cor:"#C084FC" },
+    processing:            { label:"⚙️ Processando",            cor:"#60A5FA" },
+    signed:                { label:"✅ Assinado",               cor:"#34D399" },
+    rejected:              { label:"❌ Rejeitado",              cor:"#F87171" },
+    sem_consulta:          { label:"📭 Sem consulta",           cor:"#94A3B8" },
+    necessita_formalizacao:{ label:"📝 Precisa formalizar",     cor:"#FB923C" },
+    sem_margem:            { label:"💰 Sem margem",             cor:"#F87171" },
+    erro:                  { label:"❌ Erro",                    cor:"#F87171" },
+  };
+
+  const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
+
+  // ── Adicionar CPFs à fila ──────────────────────────────────────────
+  const adicionarCPFs = () => {
+    const val = cpfRef.current?.value || "";
+    const novos = val.split(/[
+,;]+/).map(l=>l.trim()).filter(Boolean).map(raw=>{
+      const c = padCPF(raw);
+      const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===c);
+      return {
+        id: "ml_"+Date.now()+Math.random(),
+        cpf: c, cpfFmt: maskCPF(c),
+        nome: contato?.name||contato?.nome||"",
+        usuario: currentUser?.name||currentUser?.displayName||"",
+        banco,
+        status: "pendente",
+        margemQI: null, margemCelcoin: null,
+        statusQI: null, statusCelcoin: null,
+        erro: null,
+        // Etapa A
+        consultaId: null, elegivel: null,
+        // Etapa B
+        formalizacaoId: null, signUrl: null, formStatus: null, margemFinal: null,
+        // Polling
+        pollingAtivo: false,
+      };
+    }).filter(x=>x.cpf.replace(/^0+/,"").length>0);
+    if (!novos.length) return;
+    setItems(p=>[...p,...novos]);
+    if (cpfRef.current) cpfRef.current.value = "";
+  };
+
+  // ── Etapa A: Pré-consulta via /api/preconsulta ─────────────────────
+  const preConsultar = async (item) => {
+    addLog(`📡 ${item.cpfFmt}: Etapa A — pré-consulta (${item.banco})...`);
+    try {
+      const r = await fetch("/api/preconsulta", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ cpf:item.cpf, banco:item.banco, token }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.erro||"Erro na pré-consulta");
+      addLog(`✅ ${item.cpfFmt}: ${j.observacoes}`, j.elegivel);
+      return {
+        ...item,
+        status: j.status,
+        consultaId: j.consultaId,
+        elegivel: j.elegivel,
+        margemQI: item.banco==="QI"?(j.margemPreliminar||null):item.margemQI,
+        margemCelcoin: item.banco==="celcoin"?(j.margemPreliminar||null):item.margemCelcoin,
+        statusQI: item.banco==="QI"?j.status:item.statusQI,
+        statusCelcoin: item.banco==="celcoin"?j.status:item.statusCelcoin,
+        signUrl: j.termoLink||null,
+        formStatus: j.status,
+      };
+    } catch(e) {
+      addLog(`❌ ${item.cpfFmt}: ${e.message}`, false);
+      return { ...item, status:"erro", erro:e.message };
+    }
+  };
+
+  // ── Loop principal ─────────────────────────────────────────────────
+  const consultarTodos = async () => {
+    setRunning(true); abortRef.current=false; setProgress(0);
+    const lista = [...items];
+    const DONE = ["margem_disponivel","signed","rejected","erro","sem_margem"];
+    let done = lista.filter(x=>DONE.includes(x.status)).length;
+    for (let i=0; i<lista.length; i++) {
+      if (abortRef.current) break;
+      if (DONE.includes(lista[i].status)) continue;
+      lista[i] = {...lista[i], status:"consultando"}; setItems([...lista]);
+      const upd = await preConsultar(lista[i]);
+      lista[i] = upd; done++;
+      setProgress(Math.round(done/lista.length*100));
+      setItems([...lista]);
+    }
+    setRunning(false);
+  };
+
+  // ── Etapa B: Criar termo via /api/formalizacao ─────────────────────
+  const iniciarFormalizacao = async (item, dadosCliente) => {
+    setPagando(true); setFormErr("");
+    try {
+      const r = await fetch("/api/formalizacao", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          consultaId: item.consultaId,
+          cpf: item.cpf,
+          nome: dadosCliente.nome,
+          email: dadosCliente.email,
+          telefone: dadosCliente.telefone,
+          dataNascimento: dadosCliente.dataNascimento,
+          genero: dadosCliente.genero||"male",
+          banco: item.banco,
+          token,
+        }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.erro||"Erro na formalização");
+      addLog(`✅ ${item.cpfFmt}: Termo criado! ID=${j.providerDocumentId}. Link enviado.`);
+      setItems(p=>p.map(x=>x.id===item.id?{
+        ...x, status:"pending_consent",
+        formalizacaoId:j.formalizacaoId,
+        signUrl:j.signUrl,
+        formStatus:"pending_consent",
+        pollingAtivo:true,
+      }:x));
+      setFormModal(null);
+      // Inicia polling automático para este item
+      iniciarPolling(item.id, j.formalizacaoId, item.cpf, item.banco);
+    } catch(e) {
+      setFormErr(e.message);
+      addLog(`❌ ${item.cpfFmt}: ${e.message}`, false);
+    }
+    setPagando(false);
+  };
+
+  // ── Polling de status via /api/formalizacaostatus ──────────────────
+  const iniciarPolling = (itemId, formalizacaoId, cpf, bco) => {
+    const POLL_INTERVAL = 10000; // 10s
+    const MAX_POLLS = 60; // 10 min
+    let count = 0;
+    const poll = setInterval(async () => {
+      if (abortRef.current || count >= MAX_POLLS) { clearInterval(poll); return; }
+      count++;
+      try {
+        const r = await fetch("/api/formalizacaostatus", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ formalizacaoId, cpf, banco:bco, token }),
+        });
+        const j = await r.json();
+        if (!j.ok) return;
+        setItems(p=>p.map(x=>{
+          if (x.id !== itemId) return x;
+          const finalStatus = j.status;
+          const done = ["signed","rejected","margem_disponivel"].includes(finalStatus);
+          if (done) clearInterval(poll);
+          return { ...x, formStatus:finalStatus, status:finalStatus, margemFinal:j.margemFinal,
+            margemQI:bco==="QI"?(j.margemFinal||x.margemQI):x.margemQI,
+            margemCelcoin:bco==="celcoin"?(j.margemFinal||x.margemCelcoin):x.margemCelcoin,
+            pollingAtivo:!done };
+        }));
+        if (["signed","rejected"].includes(j.status)) {
+          addLog(`${j.status==="signed"?"✅":"❌"} ${fmtCPF(cpf)}: ${j.status} — margem: ${j.margemFinal!=null?fmtBRL(j.margemFinal):"—"}`);
+          clearInterval(poll);
+        }
+      } catch {}
+    }, POLL_INTERVAL);
+  };
+
+  // Exportar CSV
+  const exportar = () => {
+    const rows=[["CPF","Nome","Banco","Status","Margem QI","Margem Celcoin","Sign URL"]];
+    items.forEach(it=>rows.push([it.cpfFmt,it.nome||"—",it.banco,it.status,
+      it.margemQI!=null?it.margemQI:"",it.margemCelcoin!=null?it.margemCelcoin:"",it.signUrl||""]));
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("
+");
+    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote.csv";a.click();
+  };
+
+  const DONE_STS = ["margem_disponivel","signed","rejected","erro","sem_margem"];
+  const filtered  = items.filter(it=>filter==="Todos"||it.status===filter);
+  const countOk   = items.filter(x=>["margem_disponivel","signed"].includes(x.status)).length;
+  const countPend = items.filter(x=>x.status==="pendente").length;
+  const countErr  = items.filter(x=>["erro","rejected","sem_margem"].includes(x.status)).length;
+
+  return (
+    <div>
+      {/* Controles */}
+      <div style={{background:C.card,border:`1px solid ${C.b1}`,borderRadius:16,padding:"18px 20px",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
+          <div>
+            <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📊 Consulta de Margem em Lote — CLT</div>
+            <div style={{color:C.td,fontSize:11,marginTop:4}}>Etapa A: pré-consulta · Etapa B: formalização com polling</div>
+            <div style={{display:"flex",gap:12,marginTop:6,flexWrap:"wrap"}}>
+              <span style={{color:C.tm,fontSize:11}}>Total: <b style={{color:C.tp}}>{items.length}</b></span>
+              <span style={{color:"#34D399",fontSize:11}}>✅ {countOk}</span>
+              <span style={{color:"#FBBF24",fontSize:11}}>⏳ {countPend}</span>
+              <span style={{color:"#F87171",fontSize:11}}>❌ {countErr}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {!running && <button onClick={consultarTodos} disabled={!items.filter(x=>!DONE_STS.includes(x.status)).length||!isTokenValid}
+              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!items.filter(x=>!DONE_STS.includes(x.status)).length?0.5:1}}>▶ Consultar Todos</button>}
+            {running && <button onClick={()=>{abortRef.current=true;setRunning(false);}} style={{background:"#2D1515",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>⏹ Parar</button>}
+            <button onClick={exportar} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>📥 CSV</button>
+            <button onClick={()=>{setItems([]);setLogs([]);setProgress(0);}} style={{background:"transparent",color:C.td,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>🗑</button>
+          </div>
+        </div>
+
+        {/* Banco + CPFs */}
+        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{color:C.td,fontSize:12}}>Banco:</span>
+          {["QI","celcoin"].map(b=>(
+            <button key={b} onClick={()=>setBanco(b)} style={{background:banco===b?C.abg:C.deep,color:banco===b?C.atxt:C.tm,border:`1px solid ${banco===b?C.atxt+"44":C.b2}`,borderRadius:8,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:banco===b?700:400,textTransform:"uppercase"}}>{b}</button>
+          ))}
+        </div>
+
+        {(running||progress>0) && (
+          <div style={{marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{color:C.tm,fontSize:11}}>{running?"Consultando...":"Concluído"}</span>
+              <span style={{color:C.atxt,fontSize:11,fontWeight:700}}>{progress}%</span>
+            </div>
+            <div style={{background:C.deep,borderRadius:99,height:5,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${progress}%`,background:`linear-gradient(90deg,${C.lg1},${C.lg2})`,borderRadius:99,transition:"width 0.4s"}} />
+            </div>
+          </div>
+        )}
+
+        <textarea ref={cpfRef} rows={3} placeholder="Cole os CPFs aqui (um por linha, vírgula ou ponto e vírgula)" style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
+        <button onClick={adicionarCPFs} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Adicionar à Fila</button>
+      </div>
+
+      {/* Filtros */}
+      {items.length>0 && (
+        <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{color:C.td,fontSize:12}}>Filtrar:</span>
+          {["Todos","pendente","margem_disponivel","pending_consent","awaiting_signature","signed","necessita_formalizacao","rejected","erro"].map(s=>(
+            <button key={s} onClick={()=>setFilter(s)} style={{background:filter===s?C.abg:C.deep,color:filter===s?C.atxt:C.td,border:`1px solid ${filter===s?C.atxt+"44":C.b2}`,borderRadius:8,padding:"4px 10px",fontSize:10.5,cursor:"pointer"}}>
+              {ST[s]?.label||"Todos"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Tabela */}
+      {items.length>0 && (
+        <div style={{...S.card,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{background:C.deep}}>
+              {["CPF","Nome","Usuário","Banco","Status / Margem","Etapa B — Formalização"].map(h=>(
+                <th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {filtered.map((it,i)=>{
+                const stInfo = ST[it.status]||ST.pendente;
+                const margem = it.margemFinal || (it.banco==="QI"?it.margemQI:it.margemCelcoin);
+                const isSigned = ["margem_disponivel","signed"].includes(it.status);
+                const needsForm = ["necessita_formalizacao","sem_consulta"].includes(it.status);
+                const polling  = ["pending_consent","awaiting_signature","processing"].includes(it.formStatus||"");
+                return (
+                  <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`,transition:"background 0.1s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <td style={{padding:"9px 10px",color:C.tp,fontFamily:"monospace",fontSize:11}}>{it.cpfFmt}</td>
+                    <td style={{padding:"9px 10px",color:C.ts}}>{it.nome||"—"}</td>
+                    <td style={{padding:"9px 10px",color:C.td,fontSize:11}}>{it.usuario||"—"}</td>
+                    <td style={{padding:"9px 10px",color:C.td,fontSize:11,textTransform:"uppercase"}}>{it.banco}</td>
+                    <td style={{padding:"9px 10px"}}>
+                      <span style={{background:stInfo.cor+"18",color:stInfo.cor,border:`1px solid ${stInfo.cor}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>{stInfo.label}</span>
+                      {isSigned && margem!=null && <div style={{color:"#34D399",fontSize:12,fontWeight:700,marginTop:3}}>{fmtBRL(margem)}</div>}
+                      {it.erro && <div style={{color:"#F87171",fontSize:9.5,marginTop:2,opacity:0.8}}>{it.erro.slice(0,55)}</div>}
+                    </td>
+                    <td style={{padding:"9px 10px"}}>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                        {/* Retentar Etapa A */}
+                        {["pendente","erro","sem_margem","necessita_formalizacao","sem_consulta"].includes(it.status) && (
+                          <button onClick={async()=>{
+                            setItems(p=>p.map(x=>x.id===it.id?{...x,status:"consultando"}:x));
+                            const upd = await preConsultar({...it});
+                            setItems(p=>p.map(x=>x.id===it.id?upd:x));
+                          }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>🔄 A</button>
+                        )}
+
+                        {/* Iniciar Etapa B — formalização */}
+                        {needsForm && (
+                          <button onClick={()=>setFormModal(it)} style={{background:"rgba(251,146,60,0.15)",color:"#FB923C",border:"1px solid rgba(251,146,60,0.4)",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>📝 Formalizar</button>
+                        )}
+
+                        {/* Link do termo — quando aguardando assinatura */}
+                        {it.signUrl && ["pending_consent","awaiting_signature"].includes(it.formStatus) && (
+                          <a href={it.signUrl} target="_blank" rel="noopener noreferrer"
+                            style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",border:"1px solid rgba(192,132,252,0.3)",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>🔗 Termo</a>
+                        )}
+
+                        {/* Status do polling */}
+                        {polling && (
+                          <span style={{color:"#60A5FA",fontSize:10,animation:"pulse 1.5s infinite"}}>⏳ polling</span>
+                        )}
+
+                        {/* Remover */}
+                        <button onClick={()=>setItems(p=>p.filter(x=>x.id!==it.id))} style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"none",borderRadius:7,padding:"5px 8px",fontSize:10,cursor:"pointer"}}>✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Logs */}
+      {logs.length>0 && (
+        <div style={{...S.card,padding:"12px 16px",marginTop:12,maxHeight:160,overflowY:"auto"}}>
+          <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:6}}>Log de execução</div>
+          {logs.map((l,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:2}}><span style={{color:C.td,fontSize:10,flexShrink:0}}>{l.ts}</span><span style={{color:l.ok?"#34D399":"#F87171",fontSize:11}}>{l.msg}</span></div>)}
+        </div>
+      )}
+
+      {/* Modal Etapa B — Formulário de Formalização */}
+      {formModal && (
+        <div onClick={()=>{setFormModal(null);setFormErr("");}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,#0A1628,#060E1E)",border:"1px solid rgba(251,146,60,0.4)",borderRadius:22,padding:"28px 32px",maxWidth:500,width:"calc(100%-32px)",maxHeight:"90vh",overflowY:"auto",animation:"modalPop 0.3s cubic-bezier(.34,1.56,.64,1)"}}>
+            <div style={{color:"#FB923C",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>📝 Etapa B — Formalização CLT</div>
+            <div style={{color:C.tp,fontSize:16,fontWeight:900,marginBottom:6}}>Criar Termo de Consentimento</div>
+            <div style={{color:C.td,fontSize:12,marginBottom:18}}>CPF: <b style={{color:C.tp}}>{formModal.cpfFmt}</b> · Banco: <b style={{color:C.atxt}}>{formModal.banco.toUpperCase()}</b></div>
+            <div style={{color:"rgba(251,146,60,0.9)",background:"rgba(251,146,60,0.08)",border:"1px solid rgba(251,146,60,0.25)",borderRadius:10,padding:"10px 14px",fontSize:12,marginBottom:18,lineHeight:1.6}}>
+              ⚠️ O link de assinatura será gerado e deve ser enviado ao cliente. <strong>O sistema não assina automaticamente</strong>.
+            </div>
+            <FormalizacaoForm
+              item={formModal} contacts={contacts}
+              onSubmit={dadosCliente=>iniciarFormalizacao(formModal,dadosCliente)}
+              onClose={()=>{setFormModal(null);setFormErr("");}}
+              loading={pagando} erro={formErr} C={C} S={S}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Formulário interno de formalização ────────────────────────────
+function FormalizacaoForm({ item, contacts, onSubmit, onClose, loading, erro, C, S }) {
+  const cpfLimpo = item.cpf;
+  const contato  = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo)||null;
+  const [form, setForm] = useState({
+    nome: contato?.name||contato?.nome||"",
+    email: contato?.email||"",
+    telefone: (contato?.phone||contato?.telefone||"").replace(/\D/g,""),
+    dataNascimento: (contato?.birthdate||contato?.dataNascimento||contato?.birth_date||"").split("T")[0],
+    genero: contato?.genero||contato?.gender||"male",
+  });
+  const F = (k,v) => setForm(p=>({...p,[k]:v}));
+  const ok = form.nome&&form.email&&form.telefone.length>=10&&form.dataNascimento;
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        {[["nome","Nome completo *"],["email","E-mail *"],["telefone","Telefone DDD+número *"],["dataNascimento","Nascimento (YYYY-MM-DD) *"]].map(([k,lbl])=>(
+          <div key={k}>
+            <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div>
+            <input value={form[k]||""} onChange={e=>F(k,e.target.value)} type={k==="dataNascimento"?"date":"text"} style={{...S.input,width:"100%",fontSize:12}} />
+          </div>
+        ))}
+        <div>
+          <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Gênero</div>
+          <select value={form.genero} onChange={e=>F("genero",e.target.value)} style={{...S.input,width:"100%",fontSize:12}}>
+            <option value="male">Masculino</option>
+            <option value="female">Feminino</option>
+          </select>
+        </div>
+      </div>
+      {erro && <div style={{color:"#F87171",fontSize:12,marginBottom:10,padding:"9px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>⚠ {erro}</div>}
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={onClose} style={{flex:1,background:"transparent",border:`1px solid ${C.b2}`,color:C.tm,borderRadius:10,padding:"11px",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+        <button onClick={()=>ok&&onSubmit(form)} disabled={!ok||loading}
+          style={{flex:2,background:ok?"linear-gradient(135deg,#FB923C,#EA580C)":"rgba(255,255,255,0.06)",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:ok?"pointer":"default",opacity:loading?0.6:1}}>
+          {loading?"⏳ Criando termo...":"📝 Criar Termo e Gerar Link"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
   const fmtBRL = v => { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}); };
@@ -16109,7 +16518,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         (obj.phones?.[0]?.number||"");
       return raw.replace(/\D/g,"").slice(0,11);
     };
-    const extractNasc = (obj) => obj?.dataNasc||obj?.dataNascimento||obj?.birthDate||obj?.birth_date||obj?.nascimento||obj?.borrowerBirthDate||obj?.signerBirthDate||"";
+    const extractNasc = (obj) => { const d=obj?.dataNasc||obj?.dataNascimento||obj?.birthDate||obj?.birth_date||obj?.nascimento||obj?.borrowerBirthDate||obj?.signerBirthDate||""; return d?d.split("T")[0]:""; };
     const extractNome = (obj) => obj?.name||obj?.nome||obj?.signerName||obj?.borrowerName||obj?.clientName||"";
     const extractEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
     const extractGenero = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
@@ -16235,8 +16644,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // Converte YYYY-MM-DD para YYYY-MM-DDT00:00:00.000Z (formato "date" exigido pela API V8)
   const toISODate = (d) => {
     if (!d) return "";
-    if (/^\d{4}-\d{2}-\d{2}T/.test(d)) return d; // já está em ISO
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return `${d}T00:00:00.000Z`;
+    // V8 API birthDate espera formato "date" (YYYY-MM-DD) sem horário
+    if (/^\d{4}-\d{2}-\d{2}T/.test(d)) return d.split("T")[0]; // remove time part
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; // já correto
+    // Tenta converter DD/MM/YYYY para YYYY-MM-DD
+    const m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if(m) return `${m[3]}-${m[2]}-${m[1]}`;
     return d;
   };
 
@@ -16457,20 +16870,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [opsDetalhe, setOpsDetalhe] = useState(null);
   const [simNovamenteOp, setSimNovamenteOp] = useState(null);
   const [simNovamenteData, setSimNovamenteData] = useState(null);
-  // ── Margem em Lote ───────────────────────────────────────────
-  const [margemLoteItems, setMargemLoteItems] = useState([]);
-  // eslint-disable-next-line no-unused-vars
-  const [margemLoteCpfBox, setMargemLoteCpfBox] = useState("");
-  const [margemLoteRunning, setMargemLoteRunning] = useState(false);
-  const [margemLotePaused, setMargemLotePaused] = useState(false);
-  const [margemLoteProgress, setMargemLoteProgress] = useState(0);
-  // eslint-disable-next-line no-unused-vars
-  const [margemLoteBanc, setMargemLoteBanc] = useState("QI");
-  const [margemLoteFilter, setMargemLoteFilter] = useState("Todos");
-  const [margemLoteLogs, setMargemLoteLogs] = useState([]);
-  const margemLoteAbortRef = useRef(false);
-  const margemLotePauseRef = useRef(false);
-  const margemLoteCpfRef   = useRef(null);
+  // Margem em Lote — estado gerenciado pelo componente MargemLoteTab
   const STATUS_OP_COLOR = {
     formalization:"#C084FC",analysis:"#60A5FA",manual_analysis:"#FBBF24",
     processing:"#34D399",paid:"#10B981",canceled:"#F87171",pending:"#FBBF24",
@@ -16652,7 +17052,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -16762,7 +17162,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       (obj.signerPhone?.phoneNumber?(obj.signerPhone.areaCode||"")+(obj.signerPhone.phoneNumber||""):"")||"";
                     return raw.replace(/\D/g,"").slice(0,11);
                   };
-                  const exNasc = (obj) => obj?.dataNasc||obj?.dataNascimento||obj?.birthDate||obj?.birth_date||obj?.nascimento||obj?.borrowerBirthDate||"";
+                  const exNasc = (obj) => { const d=obj?.dataNasc||obj?.dataNascimento||obj?.birthDate||obj?.birth_date||obj?.nascimento||obj?.borrowerBirthDate||""; return d?d.split("T")[0]:""; };
                   const exNome = (obj) => obj?.name||obj?.nome||obj?.signerName||obj?.borrowerName||obj?.clientName||"";
                   const exEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
                   const exGen = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
@@ -17562,271 +17962,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         </div>
       )}
 
-      {/* ════ ABA MARGEM EM LOTE ════ */}
+      {/* ════ ABA MARGEM EM LOTE — Fluxo 2 etapas ════ */}
       {aba==="margem_lote" && (
-        <div>
-          {/* Config */}
-          <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid ${C.b1}`}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:12}}>
-              <div>
-                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📊 Consulta de Margem em Lote — CLT</div>
-                <div style={{display:"flex",gap:12,marginTop:5,flexWrap:"wrap"}}>
-                  <span style={{color:C.tm,fontSize:11}}>Total: <b style={{color:C.tp}}>{margemLoteItems.length}</b></span>
-                  <span style={{color:"#34D399",fontSize:11}}>✅ QI: {margemLoteItems.filter(x=>x.statusQI==="ok").length} · Celcoin: {margemLoteItems.filter(x=>x.statusCelcoin==="ok").length}</span>
-                  <span style={{color:"#FBBF24",fontSize:11}}>⏳ {margemLoteItems.filter(x=>x.status==="pendente").length}</span>
-                  <span style={{color:"#F87171",fontSize:11}}>❌ {margemLoteItems.filter(x=>["erro","sem_margem","nao_autorizado"].includes(x.status)).length}</span>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {!margemLoteRunning && <button onClick={async()=>{
-                  const pend = margemLoteItems.filter(x=>x.status==="pendente"||(!x.statusQI&&!x.statusCelcoin));
-                  if(!pend.length) return;
-                  setMargemLoteRunning(true); setMargemLotePaused(false); margemLoteAbortRef.current=false; margemLotePauseRef.current=false;
-                  const lista=[...margemLoteItems];
-                  const DONE=["ok","erro","sem_margem","nao_autorizado","sem_adesao","cpf_invalido"];
-                  let done=lista.filter(x=>DONE.includes(x.status)).length;
-                  for(let i=0;i<lista.length;i++){
-                    while(margemLotePauseRef.current) await new Promise(r=>setTimeout(r,300));
-                    if(margemLoteAbortRef.current) break;
-                    if(DONE.includes(lista[i].status)&&lista[i].statusQI&&lista[i].statusCelcoin) continue;
-                    lista[i]={...lista[i],status:"consultando"}; setMargemLoteItems([...lista]);
-                    const cpf=lista[i].cpf;
-                    const end=new Date().toISOString();
-                    const start=new Date(Date.now()-60*86400000).toISOString();
-                    // Consultar QI e Celcoin em paralelo
-                    const [rQI, rCelcoin] = await Promise.allSettled([
-                      apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`),
-                      apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`),
-                    ]);
-                    // Processar QI
-                    let qiMargem=null,qiStatus="sem_margem",qiNome="",qiStatusClt="",qiErro="";
-                    if(rQI.status==="fulfilled"){
-                      const items=rQI.value?.data||[];
-                      const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
-                      if(latest){qiMargem=latest.availableMarginValue;qiStatus=qiMargem>0?"ok":"sem_margem";qiNome=latest.name||"";qiStatusClt=latest.status||"";}
-                      else{qiStatus="sem_margem";qiErro="Sem consultas — gere um termo primeiro";}
-                    }else{
-                      const msg=(rQI.reason?.message||"").toLowerCase();
-                      qiStatus=msg.includes("autorizado")?"nao_autorizado":msg.includes("cpf")?"cpf_invalido":"erro";
-                      qiErro=rQI.reason?.message||"Erro";
-                    }
-                    // Processar Celcoin
-                    let celcoinMargem=null,celcoinStatus="sem_margem",celcoinNome="",celcoinStatusClt="",celcoinErro="";
-                    if(rCelcoin.status==="fulfilled"){
-                      const items=rCelcoin.value?.data||[];
-                      const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
-                      if(latest){celcoinMargem=latest.availableMarginValue;celcoinStatus=celcoinMargem>0?"ok":"sem_margem";celcoinNome=latest.name||"";celcoinStatusClt=latest.status||"";}
-                      else{celcoinStatus="sem_margem";celcoinErro="Sem consultas — gere um termo primeiro";}
-                    }else{
-                      const msg=(rCelcoin.reason?.message||"").toLowerCase();
-                      celcoinStatus=msg.includes("autorizado")?"nao_autorizado":msg.includes("cpf")?"cpf_invalido":"erro";
-                      celcoinErro=rCelcoin.reason?.message||"Erro";
-                    }
-                    const nomeFinal=qiNome||celcoinNome||lista[i].nome||"—";
-                    const globalStatus = (qiStatus==="ok"||celcoinStatus==="ok") ? "ok"
-                      : (qiStatus==="sem_margem"&&celcoinStatus==="sem_margem") ? "sem_margem"
-                      : "erro";
-                    lista[i]={...lista[i],status:globalStatus,nome:nomeFinal,
-                      margemQI:qiMargem,statusQI:qiStatus,statusCltQI:qiStatusClt,erroQI:qiErro,
-                      margemCelcoin:celcoinMargem,statusCelcoin:celcoinStatus,statusCltCelcoin:celcoinStatusClt,erroCelcoin:celcoinErro,
-                    };
-                    done++;
-                    setMargemLoteProgress(Math.round(done/lista.length*100));
-                    setMargemLoteItems([...lista]);
-                    setMargemLoteLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg:`${lista[i].cpf}: QI=${qiStatus}${qiMargem!=null?" "+fmtBRL(qiMargem):""} · Celcoin=${celcoinStatus}${celcoinMargem!=null?" "+fmtBRL(celcoinMargem):""}`,ok:globalStatus==="ok"},...p.slice(0,99)]);
-                  }
-                  setMargemLoteRunning(false);
-                }} disabled={margemLoteItems.filter(x=>x.status==="pendente"||(!x.statusQI&&!x.statusCelcoin)).length===0||!isTokenValid}
-                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:margemLoteItems.filter(x=>x.status==="pendente").length===0?0.5:1}}>▶ Consultar Todos (QI + Celcoin)</button>}
-                {margemLoteRunning && <button onClick={()=>{margemLotePauseRef.current=!margemLotePauseRef.current;setMargemLotePaused(p=>!p);}} style={{background:margemLotePaused?"#091E12":"#2B2310",color:margemLotePaused?"#34D399":"#FBBF24",border:`1px solid ${margemLotePaused?"#34D39933":"#FBBF2433"}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>{margemLotePaused?"▶ Retomar":"⏸ Pausar"}</button>}
-                {margemLoteRunning && <button onClick={()=>{margemLoteAbortRef.current=true;setMargemLoteRunning(false);}} style={{background:"#2D1515",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>⏹ Parar</button>}
-                <button onClick={()=>{setMargemLoteItems([]);setMargemLoteProgress(0);setMargemLoteLogs([]);}} style={{background:"transparent",color:C.td,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>🗑</button>
-                <button onClick={()=>{
-                  const rows=[["CPF","Nome","Status Global","QI — Margem","QI — Status","Celcoin — Margem","Celcoin — Status"]];
-                  margemLoteItems.forEach(it=>rows.push([it.cpf,it.nome||"—",it.status,it.margemQI!=null?it.margemQI:"",it.statusQI||"",it.margemCelcoin!=null?it.margemCelcoin:"",it.statusCelcoin||""]));
-                  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-                  const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote_clt.csv";a.click();
-                }} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>📥 CSV</button>
-              </div>
-            </div>
-
-            {/* Progresso */}
-            {(margemLoteRunning||margemLoteProgress>0) && (
-              <div style={{marginBottom:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{color:C.tm,fontSize:11}}>{margemLoteRunning?(margemLotePaused?"Pausado":"Consultando QI + Celcoin em paralelo..."):"Concluído"}</span>
-                  <span style={{color:C.atxt,fontSize:11,fontWeight:700}}>{margemLoteProgress}%</span>
-                </div>
-                <div style={{background:C.deep,borderRadius:99,height:5,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${margemLoteProgress}%`,background:`linear-gradient(90deg,${C.lg1},${C.lg2})`,borderRadius:99,transition:"width 0.4s"}} />
-                </div>
-              </div>
-            )}
-
-            {/* Caixa CPFs */}
-            <div>
-              <textarea ref={margemLoteCpfRef} rows={4} placeholder="Cole os CPFs aqui (um por linha): 12345678901, 98765432100..." style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
-              <button onClick={()=>{
-                const val = margemLoteCpfRef.current?.value||"";
-                const novos=val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean).map(cpf=>{
-                  const clean=cpf.replace(/\D/g,"").padStart(11,"0").slice(0,11);
-                  const fmt=clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
-                  const contato=(contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===clean);
-                  return {id:"ml_"+Date.now()+Math.random(),cpf:clean,cpfFmt:fmt,nome:contato?.name||contato?.nome||"",usuário:currentUser?.name||"",
-                    status:"pendente",
-                    margemQI:null,statusQI:null,statusCltQI:"",erroQI:"",
-                    margemCelcoin:null,statusCelcoin:null,statusCltCelcoin:"",erroCelcoin:"",
-                  };
-                }).filter(x=>x.cpf.replace(/^0+/,"").length>0);
-                if(!novos.length) return;
-                setMargemLoteItems(p=>[...p,...novos]);
-                if(margemLoteCpfRef.current) margemLoteCpfRef.current.value="";
-              }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Adicionar à Fila</button>
-            </div>
-          </div>
-
-          {/* Filtro */}
-          {margemLoteItems.length>0 && (
-            <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{color:C.td,fontSize:12}}>Filtrar:</span>
-              {["Todos","ok","pendente","sem_margem","erro","nao_autorizado"].map(s=>(
-                <button key={s} onClick={()=>setMargemLoteFilter(s)} style={{background:margemLoteFilter===s?C.abg:C.deep,color:margemLoteFilter===s?C.atxt:C.td,border:`1px solid ${margemLoteFilter===s?C.atxt+"44":C.b2}`,borderRadius:8,padding:"4px 12px",fontSize:11,cursor:"pointer"}}>
-                  {s==="ok"?"✅ Com margem":s==="pendente"?"⏳ Pendente":s==="sem_margem"?"💰 Sem margem":s==="erro"?"❌ Erro":s==="nao_autorizado"?"🚫 Não aut.":"Todos"}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Tabela unificada QI + Celcoin */}
-          {margemLoteItems.length>0 && (
-            <div style={{...S.card,overflow:"auto"}}>
-              {/* Helper para sem_margem */}
-              {margemLoteItems.some(x=>x.erroQI?.includes("termo")||x.erroCelcoin?.includes("termo")) && (
-                <div style={{background:"rgba(251,191,36,0.08)",border:"1px solid #FBBF2433",borderRadius:10,padding:"10px 16px",margin:"10px 10px 0",display:"flex",gap:10,alignItems:"flex-start"}}>
-                  <span style={{fontSize:16}}>💡</span>
-                  <div>
-                    <div style={{color:"#FBBF24",fontSize:12,fontWeight:700,marginBottom:2}}>Sem consultas anteriores para alguns CPFs</div>
-                    <div style={{color:"rgba(255,255,255,0.6)",fontSize:11,lineHeight:1.5}}>Para CPFs sem margem: <b style={{color:"#FBBF24"}}>preencha o CPF no formulário de Termo</b>, confirme os dados e gere o consentimento. Depois, consulte a margem novamente aqui.</div>
-                    <button onClick={()=>setAba("termo")} style={{marginTop:6,background:"rgba(251,191,36,0.15)",color:"#FBBF24",border:"1px solid #FBBF2433",borderRadius:7,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                      📋 Ir para Gerar Termo
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,minWidth:700}}>
-                <thead><tr style={{background:C.deep}}>
-                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>CPF</th>
-                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>Nome</th>
-                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>Usuário</th>
-                  {/* QI Sociedade */}
-                  <th style={{color:"#60A5FA",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,borderLeft:"2px solid rgba(96,165,250,0.2)",whiteSpace:"nowrap"}}>🏦 QI — Margem</th>
-                  <th style={{color:"#60A5FA",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>QI — Status</th>
-                  {/* Celcoin */}
-                  <th style={{color:"#C084FC",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,borderLeft:"2px solid rgba(192,132,252,0.2)",whiteSpace:"nowrap"}}>🟣 Celcoin — Margem</th>
-                  <th style={{color:"#C084FC",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>Celcoin — Status</th>
-                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`}}>Ação</th>
-                </tr></thead>
-                <tbody>
-                  {margemLoteItems.filter(it=>margemLoteFilter==="Todos"||it.status===margemLoteFilter).map((it,i)=>{
-                    const stLabel=(st,err)=>{
-                      const map={ok:"✅ Com margem",pendente:"⏳ Pendente",consultando:"🔄...",sem_margem:"💰 Sem margem",erro:"❌ Erro",nao_autorizado:"🚫 Não autorizado",cpf_invalido:"⚠ CPF inválido"};
-                      const col={ok:"#34D399",pendente:"#FBBF24",consultando:"#60A5FA",sem_margem:"#F87171",erro:"#F87171",nao_autorizado:"#F87171",cpf_invalido:"#F87171"}[st]||"#94A3B8";
-                      return <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                        <span style={{background:col+"18",color:col,border:`1px solid ${col}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>{map[st]||st||"—"}</span>
-                        {err&&<span style={{color:col,fontSize:9,opacity:0.75,maxWidth:120,textAlign:"center",lineHeight:1.3}}>{err.slice(0,50)}</span>}
-                      </div>;
-                    };
-                    return(
-                      <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`}}
-                        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
-                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                        <td style={{padding:"9px 10px",color:C.tp,fontFamily:"monospace",fontSize:11}}>{it.cpfFmt||fmtCPF(it.cpf)}</td>
-                        <td style={{padding:"9px 10px",color:C.ts}}>{it.nome||"—"}</td>
-                        <td style={{padding:"9px 10px",color:C.td,fontSize:11}}>{it.usuário||"—"}</td>
-                        {/* QI */}
-                        <td style={{padding:"9px 10px",textAlign:"center",borderLeft:"2px solid rgba(96,165,250,0.1)"}}>
-                          {it.statusQI==="ok" ? <span style={{color:"#34D399",fontWeight:700}}>{fmtBRL(it.margemQI)}</span>
-                           : it.statusQI ? stLabel(it.statusQI,it.erroQI)
-                           : <span style={{color:C.td,fontSize:10}}>—</span>}
-                        </td>
-                        <td style={{padding:"9px 10px",textAlign:"center"}}>
-                          {it.statusCltQI ? <span style={{background:"rgba(96,165,250,0.12)",color:"#60A5FA",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{it.statusCltQI}</span>
-                           : <span style={{color:C.td,fontSize:10}}>—</span>}
-                        </td>
-                        {/* Celcoin */}
-                        <td style={{padding:"9px 10px",textAlign:"center",borderLeft:"2px solid rgba(192,132,252,0.1)"}}>
-                          {it.statusCelcoin==="ok" ? <span style={{color:"#C084FC",fontWeight:700}}>{fmtBRL(it.margemCelcoin)}</span>
-                           : it.statusCelcoin ? stLabel(it.statusCelcoin,it.erroCelcoin)
-                           : <span style={{color:C.td,fontSize:10}}>—</span>}
-                        </td>
-                        <td style={{padding:"9px 10px",textAlign:"center"}}>
-                          {it.statusCltCelcoin ? <span style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{it.statusCltCelcoin}</span>
-                           : <span style={{color:C.td,fontSize:10}}>—</span>}
-                        </td>
-                        {/* Ação */}
-                        <td style={{padding:"9px 10px"}}>
-                          <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"center",flexWrap:"wrap"}}>
-                          {(it.statusQI==="ok"||it.statusCelcoin==="ok") && (
-                            <button onClick={async()=>{
-                              const cpf=it.cpf;
-                              const end=new Date().toISOString();
-                              const start=new Date(Date.now()-60*86400000).toISOString();
-                              const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`).catch(()=>null);
-                              const latest=(r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
-                              if(latest){setInlineSimId(latest.id);setAba("termo");executarSimulacoes(latest,true);}
-                              else setErr("Nenhum termo QI encontrado. Gere um termo primeiro.");
-                            }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                              ⚡ Simular
-                            </button>
-                          )}
-                          {(it.erroQI?.includes("termo")||it.erroCelcoin?.includes("termo")||it.statusQI==="sem_margem"||it.statusCelcoin==="sem_margem") && (
-                            <button onClick={()=>{
-                              const cpfFmt=it.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
-                              setTermoForm(p=>({...p,cpf:cpfFmt,nome:it.nome||p.nome}));
-                              setTermoAutoPreenchido(true);
-                              setAba("termo");
-                            }} style={{background:"rgba(251,191,36,0.12)",color:"#FBBF24",border:"1px solid #FBBF2433",borderRadius:7,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                              📋 Gerar Termo
-                            </button>
-                          )}
-                          <button onClick={async()=>{
-                            setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"consultando",statusQI:null,statusCelcoin:null}:x));
-                            const cpf=it.cpf;
-                            const end=new Date().toISOString();
-                            const start=new Date(Date.now()-60*86400000).toISOString();
-                            const [rQI,rCelcoin]=await Promise.allSettled([
-                              apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`),
-                              apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`),
-                            ]);
-                            let qiM=null,qiSt="sem_margem",qiNm="",qiStClt="",qiErr="";
-                            if(rQI.status==="fulfilled"){const items=rQI.value?.data||[];const l=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];if(l){qiM=l.availableMarginValue;qiSt=qiM>0?"ok":"sem_margem";qiNm=l.name||"";qiStClt=l.status||"";}else{qiErr="Sem consultas — gere um termo primeiro";}}else{qiSt="erro";qiErr=rQI.reason?.message||"";}
-                            let ccM=null,ccSt="sem_margem",ccNm="",ccStClt="",ccErr="";
-                            if(rCelcoin.status==="fulfilled"){const items=rCelcoin.value?.data||[];const l=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];if(l){ccM=l.availableMarginValue;ccSt=ccM>0?"ok":"sem_margem";ccNm=l.name||"";ccStClt=l.status||"";}else{ccErr="Sem consultas — gere um termo primeiro";}}else{ccSt="erro";ccErr=rCelcoin.reason?.message||"";}
-                            const nm=qiNm||ccNm||it.nome||"—";
-                            const gs=(qiSt==="ok"||ccSt==="ok")?"ok":(qiSt==="sem_margem"&&ccSt==="sem_margem")?"sem_margem":"erro";
-                            setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:gs,nome:nm,margemQI:qiM,statusQI:qiSt,statusCltQI:qiStClt,erroQI:qiErr,margemCelcoin:ccM,statusCelcoin:ccSt,statusCltCelcoin:ccStClt,erroCelcoin:ccErr}:x));
-                          }} style={{background:"rgba(255,255,255,0.06)",color:C.tm,border:`1px solid ${C.b2}`,borderRadius:7,padding:"4px 8px",fontSize:10,cursor:"pointer"}} title="Reconsutar">🔄</button>
-                          <button onClick={()=>setMargemLoteItems(p=>p.filter(x=>x.id!==it.id))} style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"none",borderRadius:7,padding:"4px 8px",fontSize:10,cursor:"pointer"}} title="Remover">✕</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          )}
-
-          {/* Logs */}
-          {margemLoteLogs.length>0 && (
-            <div style={{...S.card,padding:"12px 16px",marginTop:12,maxHeight:140,overflowY:"auto"}}>
-              <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:6}}>Log</div>
-              {margemLoteLogs.map((l,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:2}}><span style={{color:C.td,fontSize:10,flexShrink:0}}>{l.ts}</span><span style={{color:l.ok?"#34D399":"#F87171",fontSize:11}}>{l.msg}</span></div>)}
-            </div>
-          )}
-        </div>
+        <MargemLoteTab
+          apiFetch={apiFetch}
+          contacts={contacts}
+          currentUser={currentUser}
+          isTokenValid={isTokenValid}
+          token={token}
+          fmtBRL={fmtBRL}
+          fmtCPF={fmtCPF}
+          C={C} S={S}
+        />
       )}
 
       {/* ══════════════════════════════════════════════════════════
@@ -19130,7 +19277,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
       if (loteAbortRef.current) return {...item,status:"pendente"};
       tentPS++;
       try {
-        const j=await hubCall("/presimulacao","POST",{cpf,lojaId:LOJA_ID,numeroParcelas:parseInt(loteCltParcelas)||12,valor:parseFloat(loteMargemFgts)||5000,tipoOperacao:"27",nome:item.nome||"Cliente",email:`${cpf}@nexp.com.br`,telefone:"11999999999",dataNascimento:"1990-01-01T00:00:00.000Z",sexo:"Masculino",cidade:""});
+        const j=await hubCall("/presimulacao","POST",{cpf,lojaId:LOJA_ID,numeroParcelas:parseInt(loteCltParcelas)||12,valor:parseFloat(loteMargemFgts)||5000,tipoOperacao:"27",nome:item.nome||"Cliente",email:`${cpf}@nexp.com.br`,telefone:"11999999999",dataNascimento:"1990-01-01",sexo:"Masculino",cidade:""});
         const psId=(j.value||j).id||(j.value||j).presimulacaoId;
         let ps=null; let tent=0;
         while(tent<30) {
