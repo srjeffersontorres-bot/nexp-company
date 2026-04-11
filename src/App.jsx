@@ -17021,7 +17021,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const end   = new Date().toISOString();
       const start = new Date(Date.now()-3*86400000).toISOString();
       try {
-        const r = await apiFetch();
+        const r = await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start}&endDate=${end}`);
         const fresh = r?.data||[];
         if(!fresh.length) return;
         setTermos(prev=>{
