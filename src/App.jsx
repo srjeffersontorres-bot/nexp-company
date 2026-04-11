@@ -16290,8 +16290,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
-  const buscarTermos = async (pg=1) => {
-    setLoading(true); setErr("");
+  const buscarTermos = async (pg=1, forceRefresh=false) => {
+    // Se já tem cache e não é refresh forçado, libera UI imediatamente
+    const jaTemCache = termos.length > 0;
+    if (!jaTemCache || forceRefresh) setLoading(true);
+    setErr("");
     if(!configs.length) {
       apiFetch("/private-consignment/simulation/configs").then(d=>{
         const list=d?.configs||[];
@@ -16307,41 +16310,45 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const ids = new Set(prev.map(x=>x.id));
       const merged = [...novos.filter(x=>!ids.has(x.id)), ...prev];
       merged.sort((a,b)=>new Date(b.createdAt||b.created_at||0).getTime()-new Date(a.createdAt||a.created_at||0).getTime());
-      return merged; // sempre mais recente primeiro
+      return merged;
     };
     const saveCache = (lista) => {
-      try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,500))); } catch {}
+      try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,2000))); } catch {}
     };
     try {
       const end = new Date().toISOString();
 
-      // ── Fase 1: últimos 7 dias — resposta em <1s ─────────────
+      // ── Fase 1: últimos 7 dias — resposta rápida, atualiza novos ──
       const start7 = new Date(Date.now()-7*86400000).toISOString();
-      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=30&provider=QI&startDate=${start7}&endDate=${end}`);
+      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start7}&endDate=${end}`);
       const recentes = (r7?.data||[]).map(mapLink);
       setTermos(prev => { const merged = merge(prev, recentes); saveCache(merged); return merged; });
-      setTermosPage(1);
-      setLoading(false); // UI liberada — lista já visível
+      setTermosPage(pg);
+      setLoading(false); // UI liberada — mostra cache + novos imediatamente
 
-      // ── Fase 2: 8-365 dias — tudo em paralelo, sem travar UI ──
-      const start8   = new Date(Date.now()-365*86400000).toISOString();
-      const url365 = (p) => `/private-consignment/consult?page=${p}&limit=30&provider=QI&startDate=${start8}&endDate=${start7}`;
-
-      // Descobre total de páginas com 1 chamada
-      const rMeta = await apiFetch(url365(1)).catch(()=>null);
-      if(rMeta) {
-        const extra0 = (rMeta?.data||[]).map(mapLink);
-        if(extra0.length) setTermos(prev => { const m = merge(prev, extra0); saveCache(m); return m; });
-        const totalPgs = rMeta?.pages?.totalPages||1;
-        if(totalPgs > 1) {
-          const pages = Array.from({length:totalPgs-1},(_,i)=>i+2);
-          await Promise.allSettled(pages.map(p =>
-            apiFetch(url365(p)).then(r=>{
-              const ex=(r?.data||[]).map(mapLink);
-              if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
-            }).catch(()=>{})
-          ));
+      // ── Fase 2: histórico antigo (só se for refresh forçado ou primeira vez) ──
+      const cacheStr = localStorage.getItem("nexp_clt_termos_lastfull");
+      const lastFull = cacheStr ? parseInt(cacheStr) : 0;
+      const FULL_INTERVAL = 10 * 60 * 1000; // só refaz full a cada 10 min
+      if (forceRefresh || !jaTemCache || (Date.now() - lastFull > FULL_INTERVAL)) {
+        const start8 = new Date(Date.now()-365*86400000).toISOString();
+        const url365 = (p) => `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${start8}&endDate=${start7}`;
+        const rMeta = await apiFetch(url365(1)).catch(()=>null);
+        if(rMeta) {
+          const extra0 = (rMeta?.data||[]).map(mapLink);
+          if(extra0.length) setTermos(prev => { const m = merge(prev, extra0); saveCache(m); return m; });
+          const totalPgs = rMeta?.pages?.totalPages||1;
+          if(totalPgs > 1) {
+            const pages = Array.from({length:totalPgs-1},(_,i)=>i+2);
+            await Promise.allSettled(pages.map(p =>
+              apiFetch(url365(p)).then(r=>{
+                const ex=(r?.data||[]).map(mapLink);
+                if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
+              }).catch(()=>{})
+            ));
+          }
         }
+        localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
       }
     } catch(e) { setErr(e.message); setLoading(false); }
   };
@@ -16901,8 +16908,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"1px solid #EF444422",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:termos.length===0?"not-allowed":"pointer",opacity:termos.length===0?0.4:1}}>
                     🗑 Limpar
                   </button>
-                  <button onClick={()=>buscarTermos(termosPage)} disabled={loading}
-                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>
+                  <button onClick={()=>buscarTermos(termosPage, true)} disabled={loading}
+                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}
+                    title="Forçar atualização completa">
                     {loading?"⏳":"🔄"}
                   </button>
                 </div>
@@ -17229,22 +17237,34 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     </div>
                     <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{STATUS_OP_LABEL[st]||st}</span>
                     {st==="canceled" && (
-                      <button onClick={e=>{e.stopPropagation(); setSimNovamenteOp(op); setSimNovamenteData({loading:true,resultados:[]});
+                      <button onClick={e=>{e.stopPropagation();
+                        // Redireciona para aba Simulação com CPF pré-preenchido
+                        const cpfOp=(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,"");
+                        const cpfFmt=cpfOp.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+                        // Tenta buscar consulta existente e simular direto
                         (async()=>{
                           try{
-                            const cfgs=await apiFetch("/private-consignment/simulation/configs").then(d=>d?.configs||[]).catch(()=>[]);
-                            const cfg=cfgs[0]; if(!cfg){setSimNovamenteData({loading:false,resultados:[],err:"Sem configurações"});return;}
-                            const prazos=[6,8,10,12,18,24,36,48];
-                            const margin=parseFloat(op.disbursedIssueAmount||op.availableMarginValue||op.issueAmount||500);
-                            const resultados=[];
-                            await Promise.allSettled([...prazos.map(async np=>{
-                              try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,""),numberOfInstallments:np,requestedAmount:margin,provider:"QI"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"QI Sociedade"});}catch{}
-                            }),...prazos.map(async np=>{
-                              try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,""),numberOfInstallments:np,requestedAmount:margin,provider:"celcoin"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"Celcoin"});}catch{}
-                            })]);
-                            resultados.sort((a,b)=>parseFloat(b.sim?.disbursement_amount||0)-parseFloat(a.sim?.disbursement_amount||0));
-                            setSimNovamenteData({loading:false,resultados,margin,cfg});
-                          }catch(e){setSimNovamenteData({loading:false,resultados:[],err:e.message});}
+                            const end=new Date().toISOString();
+                            const start=new Date(Date.now()-60*86400000).toISOString();
+                            const r=await apiFetch(`/private-consignment/consult?search=${cpfOp}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
+                            const items=(r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+                            const consulta=items[0];
+                            if(consulta){
+                              // Tem consulta — simula direto
+                              setAba("termo");
+                              setInlineSimId(consulta.id);
+                              executarSimulacoes(consulta,true);
+                            } else {
+                              // Sem consulta — pré-preenche formulário para gerar termo
+                              setTermoForm(p=>({...p,cpf:cpfFmt,nome:op.name||op.clientName||p.nome,email:op.email||p.email,telefone:op.phone?(op.phoneRegionCode||"")+op.phone:p.telefone,dataNasc:op.birthDate||p.dataNasc,genero:op.gender||"male"}));
+                              setTermoAutoPreenchido(true);
+                              setAba("termo");
+                            }
+                          }catch{
+                            setTermoForm(p=>({...p,cpf:cpfFmt,nome:op.name||op.clientName||p.nome}));
+                            setTermoAutoPreenchido(true);
+                            setAba("termo");
+                          }
                         })();
                       }}
                         style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -17543,14 +17563,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📊 Consulta de Margem em Lote — CLT</div>
                 <div style={{display:"flex",gap:12,marginTop:5,flexWrap:"wrap"}}>
                   <span style={{color:C.tm,fontSize:11}}>Total: <b style={{color:C.tp}}>{margemLoteItems.length}</b></span>
-                  <span style={{color:"#34D399",fontSize:11}}>✅ {margemLoteItems.filter(x=>x.status==="ok").length}</span>
+                  <span style={{color:"#34D399",fontSize:11}}>✅ QI: {margemLoteItems.filter(x=>x.statusQI==="ok").length} · Celcoin: {margemLoteItems.filter(x=>x.statusCelcoin==="ok").length}</span>
                   <span style={{color:"#FBBF24",fontSize:11}}>⏳ {margemLoteItems.filter(x=>x.status==="pendente").length}</span>
                   <span style={{color:"#F87171",fontSize:11}}>❌ {margemLoteItems.filter(x=>["erro","sem_margem","nao_autorizado"].includes(x.status)).length}</span>
                 </div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 {!margemLoteRunning && <button onClick={async()=>{
-                  const pend = margemLoteItems.filter(x=>x.status==="pendente");
+                  const pend = margemLoteItems.filter(x=>x.status==="pendente"||(!x.statusQI&&!x.statusCelcoin));
                   if(!pend.length) return;
                   setMargemLoteRunning(true); setMargemLotePaused(false); margemLoteAbortRef.current=false; margemLotePauseRef.current=false;
                   const lista=[...margemLoteItems];
@@ -17559,60 +17579,73 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   for(let i=0;i<lista.length;i++){
                     while(margemLotePauseRef.current) await new Promise(r=>setTimeout(r,300));
                     if(margemLoteAbortRef.current) break;
-                    if(DONE.includes(lista[i].status)) continue;
+                    if(DONE.includes(lista[i].status)&&lista[i].statusQI&&lista[i].statusCelcoin) continue;
                     lista[i]={...lista[i],status:"consultando"}; setMargemLoteItems([...lista]);
-                    // Consultar margem via /private-consignment/consult (gerar termo para ver margem)
                     const cpf=lista[i].cpf;
-                    try {
-                      const end=new Date().toISOString();
-                      const start=new Date(Date.now()-30*86400000).toISOString();
-                      const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=${margemLoteBanc}&startDate=${start}&endDate=${end}`);
-                      const items=r?.data||[];
+                    const end=new Date().toISOString();
+                    const start=new Date(Date.now()-60*86400000).toISOString();
+                    // Consultar QI e Celcoin em paralelo
+                    const [rQI, rCelcoin] = await Promise.allSettled([
+                      apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`),
+                      apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`),
+                    ]);
+                    // Processar QI
+                    let qiMargem=null,qiStatus="sem_margem",qiNome="",qiStatusClt="",qiErro="";
+                    if(rQI.status==="fulfilled"){
+                      const items=rQI.value?.data||[];
                       const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
-                      if(latest){
-                        const margem=latest.availableMarginValue;
-                        lista[i]={...lista[i],status:margem>0?"ok":"sem_margem",margem,nome:latest.name||lista[i].nome||"—",statusClt:latest.status,erro:margem>0?null:"Sem margem disponível"};
-                      } else {
-                        lista[i]={...lista[i],status:"sem_margem",margem:null,erro:"Sem consultas anteriores — gere um termo primeiro"};
-                      }
-                    } catch(e) {
-                      const msg=(e.message||"").toLowerCase();
-                      const tipo=msg.includes("autorizado")||msg.includes("autorização")?"nao_autorizado":msg.includes("cpf")||msg.includes("inválido")?"cpf_invalido":"erro";
-                      lista[i]={...lista[i],status:tipo,margem:null,erro:e.message};
+                      if(latest){qiMargem=latest.availableMarginValue;qiStatus=qiMargem>0?"ok":"sem_margem";qiNome=latest.name||"";qiStatusClt=latest.status||"";}
+                      else{qiStatus="sem_margem";qiErro="Sem consultas — gere um termo primeiro";}
+                    }else{
+                      const msg=(rQI.reason?.message||"").toLowerCase();
+                      qiStatus=msg.includes("autorizado")?"nao_autorizado":msg.includes("cpf")?"cpf_invalido":"erro";
+                      qiErro=rQI.reason?.message||"Erro";
                     }
+                    // Processar Celcoin
+                    let celcoinMargem=null,celcoinStatus="sem_margem",celcoinNome="",celcoinStatusClt="",celcoinErro="";
+                    if(rCelcoin.status==="fulfilled"){
+                      const items=rCelcoin.value?.data||[];
+                      const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+                      if(latest){celcoinMargem=latest.availableMarginValue;celcoinStatus=celcoinMargem>0?"ok":"sem_margem";celcoinNome=latest.name||"";celcoinStatusClt=latest.status||"";}
+                      else{celcoinStatus="sem_margem";celcoinErro="Sem consultas — gere um termo primeiro";}
+                    }else{
+                      const msg=(rCelcoin.reason?.message||"").toLowerCase();
+                      celcoinStatus=msg.includes("autorizado")?"nao_autorizado":msg.includes("cpf")?"cpf_invalido":"erro";
+                      celcoinErro=rCelcoin.reason?.message||"Erro";
+                    }
+                    const nomeFinal=qiNome||celcoinNome||lista[i].nome||"—";
+                    const globalStatus = (qiStatus==="ok"||celcoinStatus==="ok") ? "ok"
+                      : (qiStatus==="sem_margem"&&celcoinStatus==="sem_margem") ? "sem_margem"
+                      : "erro";
+                    lista[i]={...lista[i],status:globalStatus,nome:nomeFinal,
+                      margemQI:qiMargem,statusQI:qiStatus,statusCltQI:qiStatusClt,erroQI:qiErro,
+                      margemCelcoin:celcoinMargem,statusCelcoin:celcoinStatus,statusCltCelcoin:celcoinStatusClt,erroCelcoin:celcoinErro,
+                    };
                     done++;
                     setMargemLoteProgress(Math.round(done/lista.length*100));
                     setMargemLoteItems([...lista]);
-                    setMargemLoteLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg:`${lista[i].cpf}: ${lista[i].status} ${lista[i].margem!=null?fmtBRL(lista[i].margem):(lista[i].erro||"")} `,ok:lista[i].status==="ok"},...p.slice(0,99)]);
+                    setMargemLoteLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg:`${lista[i].cpf}: QI=${qiStatus}${qiMargem!=null?" "+fmtBRL(qiMargem):""} · Celcoin=${celcoinStatus}${celcoinMargem!=null?" "+fmtBRL(celcoinMargem):""}`,ok:globalStatus==="ok"},...p.slice(0,99)]);
                   }
                   setMargemLoteRunning(false);
-                }} disabled={margemLoteItems.filter(x=>x.status==="pendente").length===0||!isTokenValid}
-                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:margemLoteItems.filter(x=>x.status==="pendente").length===0?0.5:1}}>▶ Consultar Todos</button>}
+                }} disabled={margemLoteItems.filter(x=>x.status==="pendente"||(!x.statusQI&&!x.statusCelcoin)).length===0||!isTokenValid}
+                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:margemLoteItems.filter(x=>x.status==="pendente").length===0?0.5:1}}>▶ Consultar Todos (QI + Celcoin)</button>}
                 {margemLoteRunning && <button onClick={()=>{margemLotePauseRef.current=!margemLotePauseRef.current;setMargemLotePaused(p=>!p);}} style={{background:margemLotePaused?"#091E12":"#2B2310",color:margemLotePaused?"#34D399":"#FBBF24",border:`1px solid ${margemLotePaused?"#34D39933":"#FBBF2433"}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>{margemLotePaused?"▶ Retomar":"⏸ Pausar"}</button>}
                 {margemLoteRunning && <button onClick={()=>{margemLoteAbortRef.current=true;setMargemLoteRunning(false);}} style={{background:"#2D1515",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>⏹ Parar</button>}
                 <button onClick={()=>{setMargemLoteItems([]);setMargemLoteProgress(0);setMargemLoteLogs([]);}} style={{background:"transparent",color:C.td,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>🗑</button>
                 <button onClick={()=>{
-                  const rows=[["CPF","Nome","Status","Margem Disponível","Erro"]];
-                  margemLoteItems.forEach(it=>rows.push([it.cpf,it.nome||"—",it.status,it.margem!=null?it.margem:"",it.erro||""]));
+                  const rows=[["CPF","Nome","Status Global","QI — Margem","QI — Status","Celcoin — Margem","Celcoin — Status"]];
+                  margemLoteItems.forEach(it=>rows.push([it.cpf,it.nome||"—",it.status,it.margemQI!=null?it.margemQI:"",it.statusQI||"",it.margemCelcoin!=null?it.margemCelcoin:"",it.statusCelcoin||""]));
                   const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
                   const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote_clt.csv";a.click();
                 }} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>📥 CSV</button>
               </div>
             </div>
 
-            {/* Banco e config */}
-            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{color:C.td,fontSize:12}}>Banco:</span>
-              {[["QI","QI Sociedade"],["celcoin","Celcoin"]].map(([val,label])=>(
-                <button key={val} onClick={()=>setMargemLoteBanc(val)} style={{background:margemLoteBanc===val?C.abg:C.deep,color:margemLoteBanc===val?C.atxt:C.tm,border:`1px solid ${margemLoteBanc===val?C.atxt+"44":C.b2}`,borderRadius:8,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:margemLoteBanc===val?700:400}}>{label}</button>
-              ))}
-            </div>
-
             {/* Progresso */}
             {(margemLoteRunning||margemLoteProgress>0) && (
               <div style={{marginBottom:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{color:C.tm,fontSize:11}}>{margemLoteRunning?(margemLotePaused?"Pausado":"Consultando..."):"Concluído"}</span>
+                  <span style={{color:C.tm,fontSize:11}}>{margemLoteRunning?(margemLotePaused?"Pausado":"Consultando QI + Celcoin em paralelo..."):"Concluído"}</span>
                   <span style={{color:C.atxt,fontSize:11,fontWeight:700}}>{margemLoteProgress}%</span>
                 </div>
                 <div style={{background:C.deep,borderRadius:99,height:5,overflow:"hidden"}}>
@@ -17628,9 +17661,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 const val = margemLoteCpfRef.current?.value||"";
                 const novos=val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean).map(cpf=>{
                   const clean=cpf.replace(/\D/g,"").padStart(11,"0").slice(0,11);
-                  const fmt=clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"..-");
+                  const fmt=clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
                   const contato=(contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===clean);
-                  return {id:"ml_"+Date.now()+Math.random(),cpf:clean,cpfFmt:fmt,nome:contato?.name||contato?.nome||"",usuário:currentUser?.name||"",margem:null,status:"pendente",erro:null};
+                  return {id:"ml_"+Date.now()+Math.random(),cpf:clean,cpfFmt:fmt,nome:contato?.name||contato?.nome||"",usuário:currentUser?.name||"",
+                    status:"pendente",
+                    margemQI:null,statusQI:null,statusCltQI:"",erroQI:"",
+                    margemCelcoin:null,statusCelcoin:null,statusCltCelcoin:"",erroCelcoin:"",
+                  };
                 }).filter(x=>x.cpf.replace(/^0+/,"").length>0);
                 if(!novos.length) return;
                 setMargemLoteItems(p=>[...p,...novos]);
@@ -17643,25 +17680,54 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {margemLoteItems.length>0 && (
             <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
               <span style={{color:C.td,fontSize:12}}>Filtrar:</span>
-              {["Todos","ok","pendente","sem_margem","erro","nao_autorizado","cpf_invalido"].map(s=>(
+              {["Todos","ok","pendente","sem_margem","erro","nao_autorizado"].map(s=>(
                 <button key={s} onClick={()=>setMargemLoteFilter(s)} style={{background:margemLoteFilter===s?C.abg:C.deep,color:margemLoteFilter===s?C.atxt:C.td,border:`1px solid ${margemLoteFilter===s?C.atxt+"44":C.b2}`,borderRadius:8,padding:"4px 12px",fontSize:11,cursor:"pointer"}}>
-                  {s==="ok"?"✅ Com margem":s==="pendente"?"⏳ Pendente":s==="sem_margem"?"💰 Sem margem":s==="erro"?"❌ Erro":s==="nao_autorizado"?"🚫 Não aut.":s==="cpf_invalido"?"⚠ CPF inválido":"Todos"}
+                  {s==="ok"?"✅ Com margem":s==="pendente"?"⏳ Pendente":s==="sem_margem"?"💰 Sem margem":s==="erro"?"❌ Erro":s==="nao_autorizado"?"🚫 Não aut.":"Todos"}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Fila */}
+          {/* Tabela unificada QI + Celcoin */}
           {margemLoteItems.length>0 && (
-            <div style={{...S.card,overflow:"hidden"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <div style={{...S.card,overflow:"auto"}}>
+              {/* Helper para sem_margem */}
+              {margemLoteItems.some(x=>x.erroQI?.includes("termo")||x.erroCelcoin?.includes("termo")) && (
+                <div style={{background:"rgba(251,191,36,0.08)",border:"1px solid #FBBF2433",borderRadius:10,padding:"10px 16px",margin:"10px 10px 0",display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <span style={{fontSize:16}}>💡</span>
+                  <div>
+                    <div style={{color:"#FBBF24",fontSize:12,fontWeight:700,marginBottom:2}}>Sem consultas anteriores para alguns CPFs</div>
+                    <div style={{color:"rgba(255,255,255,0.6)",fontSize:11,lineHeight:1.5}}>Para CPFs sem margem: <b style={{color:"#FBBF24"}}>preencha o CPF no formulário de Termo</b>, confirme os dados e gere o consentimento. Depois, consulte a margem novamente aqui.</div>
+                    <button onClick={()=>setAba("termo")} style={{marginTop:6,background:"rgba(251,191,36,0.15)",color:"#FBBF24",border:"1px solid #FBBF2433",borderRadius:7,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                      📋 Ir para Gerar Termo
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,minWidth:700}}>
                 <thead><tr style={{background:C.deep}}>
-                  {["CPF","Nome do Cliente","Usuário","Margem / Status","Ação"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>)}
+                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>CPF</th>
+                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>Nome</th>
+                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>Usuário</th>
+                  {/* QI Sociedade */}
+                  <th style={{color:"#60A5FA",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,borderLeft:"2px solid rgba(96,165,250,0.2)",whiteSpace:"nowrap"}}>🏦 QI — Margem</th>
+                  <th style={{color:"#60A5FA",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>QI — Status</th>
+                  {/* Celcoin */}
+                  <th style={{color:"#C084FC",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,borderLeft:"2px solid rgba(192,132,252,0.2)",whiteSpace:"nowrap"}}>🟣 Celcoin — Margem</th>
+                  <th style={{color:"#C084FC",fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>Celcoin — Status</th>
+                  <th style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"center",borderBottom:`1px solid ${C.b1}`}}>Ação</th>
                 </tr></thead>
                 <tbody>
                   {margemLoteItems.filter(it=>margemLoteFilter==="Todos"||it.status===margemLoteFilter).map((it,i)=>{
-                    const stCol={ok:"#34D399",pendente:"#FBBF24",consultando:"#60A5FA",sem_margem:"#F87171",erro:"#F87171",nao_autorizado:"#F87171",cpf_invalido:"#F87171"}[it.status]||"#94A3B8";
-                    const stLbl={ok:"✅ Com margem",pendente:"⏳ Pendente",consultando:"🔄 Consultando",sem_margem:"💰 Sem margem",erro:"❌ Erro",nao_autorizado:"🚫 Não autorizado",cpf_invalido:"⚠ CPF inválido"}[it.status]||it.status;
+                    const stLabel=(st,err)=>{
+                      const map={ok:"✅ Com margem",pendente:"⏳ Pendente",consultando:"🔄...",sem_margem:"💰 Sem margem",erro:"❌ Erro",nao_autorizado:"🚫 Não autorizado",cpf_invalido:"⚠ CPF inválido"};
+                      const col={ok:"#34D399",pendente:"#FBBF24",consultando:"#60A5FA",sem_margem:"#F87171",erro:"#F87171",nao_autorizado:"#F87171",cpf_invalido:"#F87171"}[st]||"#94A3B8";
+                      return <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                        <span style={{background:col+"18",color:col,border:`1px solid ${col}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>{map[st]||st||"—"}</span>
+                        {err&&<span style={{color:col,fontSize:9,opacity:0.75,maxWidth:120,textAlign:"center",lineHeight:1.3}}>{err.slice(0,50)}</span>}
+                      </div>;
+                    };
                     return(
                       <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`}}
                         onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
@@ -17669,69 +17735,70 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         <td style={{padding:"9px 10px",color:C.tp,fontFamily:"monospace",fontSize:11}}>{it.cpfFmt||fmtCPF(it.cpf)}</td>
                         <td style={{padding:"9px 10px",color:C.ts}}>{it.nome||"—"}</td>
                         <td style={{padding:"9px 10px",color:C.td,fontSize:11}}>{it.usuário||"—"}</td>
-                        <td style={{padding:"9px 10px"}}>
-                          {it.status==="ok" ? (
-                            <span style={{color:"#34D399",fontWeight:700,fontSize:12}}>{fmtBRL(it.margem)}</span>
-                          ) : (
-                            <div>
-                              <span style={{background:stCol+"18",color:stCol,border:`1px solid ${stCol}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{stLbl}</span>
-                              {it.erro&&<div style={{color:stCol,fontSize:9.5,marginTop:2,opacity:0.8}}>{it.erro.slice(0,60)}</div>}
-                            </div>
-                          )}
+                        {/* QI */}
+                        <td style={{padding:"9px 10px",textAlign:"center",borderLeft:"2px solid rgba(96,165,250,0.1)"}}>
+                          {it.statusQI==="ok" ? <span style={{color:"#34D399",fontWeight:700}}>{fmtBRL(it.margemQI)}</span>
+                           : it.statusQI ? stLabel(it.statusQI,it.erroQI)
+                           : <span style={{color:C.td,fontSize:10}}>—</span>}
                         </td>
+                        <td style={{padding:"9px 10px",textAlign:"center"}}>
+                          {it.statusCltQI ? <span style={{background:"rgba(96,165,250,0.12)",color:"#60A5FA",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{it.statusCltQI}</span>
+                           : <span style={{color:C.td,fontSize:10}}>—</span>}
+                        </td>
+                        {/* Celcoin */}
+                        <td style={{padding:"9px 10px",textAlign:"center",borderLeft:"2px solid rgba(192,132,252,0.1)"}}>
+                          {it.statusCelcoin==="ok" ? <span style={{color:"#C084FC",fontWeight:700}}>{fmtBRL(it.margemCelcoin)}</span>
+                           : it.statusCelcoin ? stLabel(it.statusCelcoin,it.erroCelcoin)
+                           : <span style={{color:C.td,fontSize:10}}>—</span>}
+                        </td>
+                        <td style={{padding:"9px 10px",textAlign:"center"}}>
+                          {it.statusCltCelcoin ? <span style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{it.statusCltCelcoin}</span>
+                           : <span style={{color:C.td,fontSize:10}}>—</span>}
+                        </td>
+                        {/* Ação */}
                         <td style={{padding:"9px 10px"}}>
-                          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                          {it.status==="ok" && (
-                            <>
+                          <div style={{display:"flex",gap:5,alignItems:"center",justifyContent:"center",flexWrap:"wrap"}}>
+                          {(it.statusQI==="ok"||it.statusCelcoin==="ok") && (
                             <button onClick={async()=>{
                               const cpf=it.cpf;
                               const end=new Date().toISOString();
-                              const start=new Date(Date.now()-30*86400000).toISOString();
-                              const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=${margemLoteBanc}&startDate=${start}&endDate=${end}`).catch(()=>null);
+                              const start=new Date(Date.now()-60*86400000).toISOString();
+                              const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`).catch(()=>null);
                               const latest=(r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
                               if(latest){setInlineSimId(latest.id);setAba("termo");executarSimulacoes(latest,true);}
-                              else setErr("Nenhum termo encontrado para este CPF. Gere um termo primeiro.");
-                            }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                              else setErr("Nenhum termo QI encontrado. Gere um termo primeiro.");
+                            }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                               ⚡ Simular
                             </button>
-                            <button onClick={async()=>{
-                              // Simular nos dois bancos e mostrar popup
-                              try {
-                                const cpf=it.cpf;
-                                const cfgs=await apiFetch("/private-consignment/simulation/configs").then(d=>d?.configs||[]).catch(()=>[]);
-                                const cfg=cfgs[0]; if(!cfg){setErr("Sem configurações de simulação");return;}
-                                const prazos=[6,8,10,12,18,24,36,48];
-                                const margin=it.margem||500;
-                                const resultados=[];
-                                await Promise.allSettled([...prazos.map(async np=>{
-                                  try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"QI"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"QI Sociedade"});}catch{}
-                                }),...prazos.map(async np=>{
-                                  try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"celcoin"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"Celcoin"});}catch{}
-                                })]);
-                                resultados.sort((a,b)=>parseFloat(b.sim?.disbursement_amount||0)-parseFloat(a.sim?.disbursement_amount||0));
-                                if(resultados.length>0) setWppPopup({txt:buildWppTxt(resultados),clienteNome:it.nome||"Cliente"});
-                                else setErr("Nenhuma simulação retornada para este CPF.");
-                              }catch(e){setErr(e.message);}
-                            }} style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                              📤 Copiar
+                          )}
+                          {(it.erroQI?.includes("termo")||it.erroCelcoin?.includes("termo")||it.statusQI==="sem_margem"||it.statusCelcoin==="sem_margem") && (
+                            <button onClick={()=>{
+                              const cpfFmt=it.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+                              setTermoForm(p=>({...p,cpf:cpfFmt,nome:it.nome||p.nome}));
+                              setTermoAutoPreenchido(true);
+                              setAba("termo");
+                            }} style={{background:"rgba(251,191,36,0.12)",color:"#FBBF24",border:"1px solid #FBBF2433",borderRadius:7,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                              📋 Gerar Termo
                             </button>
-                            </>
                           )}
-                          {["pendente","erro","sem_margem"].includes(it.status) && (
-                            <button onClick={async()=>{
-                              setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"consultando"}:x));
-                              const cpf=it.cpf;
-                              try {
-                                const end=new Date().toISOString();
-                                const start=new Date(Date.now()-30*86400000).toISOString();
-                                const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=${margemLoteBanc}&startDate=${start}&endDate=${end}`);
-                                const items=r?.data||[];
-                                const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
-                                if(latest){const m=latest.availableMarginValue;setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:m>0?"ok":"sem_margem",margem:m,nome:latest.name||x.nome,erro:m>0?null:"Sem margem"}:x));}
-                                else setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"sem_margem",erro:"Sem consultas — gere um termo"}:x));
-                              }catch(e){setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"erro",erro:e.message}:x));}
-                            }} style={{background:"rgba(255,255,255,0.06)",color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 10px",fontSize:11,cursor:"pointer"}}>🔄</button>
-                          )}
+                          <button onClick={async()=>{
+                            setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"consultando",statusQI:null,statusCelcoin:null}:x));
+                            const cpf=it.cpf;
+                            const end=new Date().toISOString();
+                            const start=new Date(Date.now()-60*86400000).toISOString();
+                            const [rQI,rCelcoin]=await Promise.allSettled([
+                              apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`),
+                              apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`),
+                            ]);
+                            let qiM=null,qiSt="sem_margem",qiNm="",qiStClt="",qiErr="";
+                            if(rQI.status==="fulfilled"){const items=rQI.value?.data||[];const l=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];if(l){qiM=l.availableMarginValue;qiSt=qiM>0?"ok":"sem_margem";qiNm=l.name||"";qiStClt=l.status||"";}else{qiErr="Sem consultas — gere um termo primeiro";}}else{qiSt="erro";qiErr=rQI.reason?.message||"";}
+                            let ccM=null,ccSt="sem_margem",ccNm="",ccStClt="",ccErr="";
+                            if(rCelcoin.status==="fulfilled"){const items=rCelcoin.value?.data||[];const l=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];if(l){ccM=l.availableMarginValue;ccSt=ccM>0?"ok":"sem_margem";ccNm=l.name||"";ccStClt=l.status||"";}else{ccErr="Sem consultas — gere um termo primeiro";}}else{ccSt="erro";ccErr=rCelcoin.reason?.message||"";}
+                            const nm=qiNm||ccNm||it.nome||"—";
+                            const gs=(qiSt==="ok"||ccSt==="ok")?"ok":(qiSt==="sem_margem"&&ccSt==="sem_margem")?"sem_margem":"erro";
+                            setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:gs,nome:nm,margemQI:qiM,statusQI:qiSt,statusCltQI:qiStClt,erroQI:qiErr,margemCelcoin:ccM,statusCelcoin:ccSt,statusCltCelcoin:ccStClt,erroCelcoin:ccErr}:x));
+                          }} style={{background:"rgba(255,255,255,0.06)",color:C.tm,border:`1px solid ${C.b2}`,borderRadius:7,padding:"4px 8px",fontSize:10,cursor:"pointer"}} title="Reconsutar">🔄</button>
+                          <button onClick={()=>setMargemLoteItems(p=>p.filter(x=>x.id!==it.id))} style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"none",borderRadius:7,padding:"4px 8px",fontSize:10,cursor:"pointer"}} title="Remover">✕</button>
                           </div>
                         </td>
                       </tr>
@@ -17739,6 +17806,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -18025,7 +18093,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       )}
       {simModal&&simConfigs&&Object.keys(simConfigs).length>0&&!simLoading&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>{setSimModal(null);setSimConfigs(null);setSimCardCopiarPopup(null);}}>
-          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(null);}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#111e3a)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:22,padding:"24px",width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.8)"}} onClick={e=>{e.stopPropagation();setSimCardCopiarPopup(null);}}
             {/* Header: título + tabela atual + botão trocar tabela */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
