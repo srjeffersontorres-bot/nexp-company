@@ -16051,8 +16051,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, 
   // ── Adicionar CPFs ──────────────────────────────────────────────
   const adicionarCPFs = () => {
     const val = cpfRef.current?.value || "";
-    const linhasRaw = val.split("
-").flatMap(l=>l.split(",")).flatMap(l=>l.split(";"));
+    const linhasRaw = val.replace(/\r/g,"").split(String.fromCharCode(10)).flatMap(l=>l.split(",")).flatMap(l=>l.split(";"));
     const novos = linhasRaw.map(l=>l.trim()).filter(Boolean).map(raw=>{
       const c = padCPF(raw);
       const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===c);
