@@ -16017,7 +16017,6 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, fmtCPF, C, S }) {
   const padCPF  = v => v.replace(/\D/g,"").padStart(11,"0").slice(0,11);
   const maskCPF = v => { const c=padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
-  const fmtDate = d => { if(!d) return "—"; try { return new Date(d).toLocaleDateString("pt-BR"); } catch { return d; } };
 
   const [items,     setItems]     = useState([]);
   const [banco,     setBanco]     = useState("QI");
@@ -16351,7 +16350,6 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, 
             </tr></thead>
             <tbody>
               {filtered.map((it,i)=>{
-                const stInfo = ST[it.status]||ST.pendente;
                 const isSim  = it.status==="consultando";
                 const hasMargem = (it.margemQI!=null&&it.margemQI>0)||(it.margemCelcoin!=null&&it.margemCelcoin>0);
                 return (
