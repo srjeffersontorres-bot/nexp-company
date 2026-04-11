@@ -16009,47 +16009,50 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 //   Etapa A: Pré-consulta (verifica termos existentes via V8)
 //   Etapa B: Formalização (cria termo + exibe link + polling de status)
 // ══════════════════════════════════════════════════════════════════
-function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, fmtBRL, fmtCPF, C, S }) {
+// ══════════════════════════════════════════════════════════════════
+// MargemLoteTab — Consulta de Margem CLT em Lote (2 etapas)
+//   Etapa A: Pré-consulta via apiFetch (V8 proxy existente)
+//   Etapa B: Formalização — cria termo + polling de status automático
+// ══════════════════════════════════════════════════════════════════
+function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, fmtCPF, C, S }) {
   const padCPF  = v => v.replace(/\D/g,"").padStart(11,"0").slice(0,11);
   const maskCPF = v => { const c=padCPF(v); return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4"); };
+  const fmtDate = d => { if(!d) return "—"; try { return new Date(d).toLocaleDateString("pt-BR"); } catch { return d; } };
 
-  const [items,     setItems]     = useState([]); // fila
-  // cpfInput removed — CPF is read directly from textarea ref
+  const [items,     setItems]     = useState([]);
   const [banco,     setBanco]     = useState("QI");
   const [filter,    setFilter]    = useState("Todos");
   const [running,   setRunning]   = useState(false);
   const [progress,  setProgress]  = useState(0);
   const [logs,      setLogs]      = useState([]);
-  const [formModal, setFormModal] = useState(null); // {item} — modal Etapa B
+  const [formModal, setFormModal] = useState(null);
   const [pagando,   setPagando]   = useState(false);
   const [formErr,   setFormErr]   = useState("");
 
-  const abortRef = useRef(false);
-  const cpfRef   = useRef(null);
+  const abortRef  = useRef(false);
+  const cpfRef    = useRef(null);
+  const pollRefs  = useRef({});  // { itemId: intervalId }
 
-  // Status labels e cores
+  // Status chips
   const ST = {
-    pendente:              { label:"⏳ Pendente",              cor:"#FBBF24" },
-    consultando:           { label:"🔄 Consultando...",         cor:"#60A5FA" },
-    margem_disponivel:     { label:"✅ Margem disponível",      cor:"#34D399" },
-    aguardando_assinatura: { label:"✍️ Aguard. assinatura",     cor:"#C084FC" },
-    pending_consent:       { label:"📋 Aguard. consentimento",  cor:"#FBBF24" },
-    awaiting_signature:    { label:"✍️ Aguard. assinatura",     cor:"#C084FC" },
-    processing:            { label:"⚙️ Processando",            cor:"#60A5FA" },
-    signed:                { label:"✅ Assinado",               cor:"#34D399" },
-    rejected:              { label:"❌ Rejeitado",              cor:"#F87171" },
-    sem_consulta:          { label:"📭 Sem consulta",           cor:"#94A3B8" },
-    necessita_formalizacao:{ label:"📝 Precisa formalizar",     cor:"#FB923C" },
-    sem_margem:            { label:"💰 Sem margem",             cor:"#F87171" },
-    erro:                  { label:"❌ Erro",                    cor:"#F87171" },
+    pendente:               { label:"⏳ Pendente",             cor:"#FBBF24" },
+    consultando:            { label:"🔄 Consultando...",        cor:"#60A5FA" },
+    margem_disponivel:      { label:"✅ Margem Disponível",     cor:"#34D399" },
+    necessita_formalizacao: { label:"📝 Formalizar",            cor:"#FB923C" },
+    aguardando_assinatura:  { label:"✍️ Aguard. Assinatura",    cor:"#C084FC" },
+    processando:            { label:"⚙️ Processando",           cor:"#60A5FA" },
+    signed:                 { label:"✅ Assinado",              cor:"#34D399" },
+    rejected:               { label:"❌ Rejeitado",             cor:"#F87171" },
+    sem_margem:             { label:"💰 Sem Margem",            cor:"#F87171" },
+    erro:                   { label:"❌ Erro",                   cor:"#F87171" },
   };
 
   const addLog = (msg, ok=true) => setLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
 
-  // ── Adicionar CPFs à fila ──────────────────────────────────────────
+  // ── Adicionar CPFs ──────────────────────────────────────────────
   const adicionarCPFs = () => {
     const val = cpfRef.current?.value || "";
-    const novos = val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean).map(raw=>{
+    const novos = val.split(/[,;]+/).map(l=>l.trim()).filter(Boolean).map(raw=>{
       const c = padCPF(raw);
       const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===c);
       return {
@@ -16061,12 +16064,11 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
         status: "pendente",
         margemQI: null, margemCelcoin: null,
         statusQI: null, statusCelcoin: null,
+        probabilidade: null,
         erro: null,
-        // Etapa A
         consultaId: null, elegivel: null,
-        // Etapa B
-        formalizacaoId: null, signUrl: null, formStatus: null, margemFinal: null,
-        // Polling
+        formalizacaoId: null, signUrl: null,
+        formStatus: null, margemFinal: null,
         pollingAtivo: false,
       };
     }).filter(x=>x.cpf.replace(/^0+/,"").length>0);
@@ -16075,29 +16077,99 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
     if (cpfRef.current) cpfRef.current.value = "";
   };
 
-  // ── Etapa A: Pré-consulta via /api/preconsulta ─────────────────────
+  // ── Etapa A: Pré-consulta via apiFetch (V8 proxy) ──────────────
   const preConsultar = async (item) => {
-    addLog(`📡 ${item.cpfFmt}: Etapa A — pré-consulta (${item.banco})...`);
+    const cpf = item.cpf;
+    addLog(`📡 ${item.cpfFmt}: consultando ${item.banco}...`);
     try {
-      const r = await fetch("/api/preconsulta", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ cpf:item.cpf, banco:item.banco, token }),
-      });
-      const j = await r.json();
-      if (!j.ok) throw new Error(j.erro||"Erro na pré-consulta");
-      addLog(`✅ ${item.cpfFmt}: ${j.observacoes}`, j.elegivel);
+      const end   = new Date().toISOString();
+      const start = new Date(Date.now()-365*86400000).toISOString();
+
+      // Consulta QI e Celcoin em paralelo
+      const [rQI, rCelcoin] = await Promise.allSettled([
+        apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=20&provider=QI&startDate=${start}&endDate=${end}`),
+        apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=20&provider=celcoin&startDate=${start}&endDate=${end}`),
+      ]);
+
+      // Processa QI
+      let qiMargem=null, qiStatus="sem_margem", qiNome="", qiErro="", qiSignUrl=null, qiTermoId=null;
+      if (rQI.status==="fulfilled") {
+        const itens = (rQI.value?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+        const sucesso = itens.find(x=>x.status==="SUCCESS");
+        const ativo   = itens.find(x=>["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(x.status));
+        if (sucesso) {
+          qiMargem  = parseFloat(sucesso.availableMarginValue||0)||0;
+          qiStatus  = qiMargem>0 ? "margem_disponivel" : "sem_margem";
+          qiNome    = sucesso.name||sucesso.signerName||"";
+          qiTermoId = sucesso.id;
+        } else if (ativo) {
+          qiStatus  = "aguardando_assinatura";
+          qiNome    = ativo.name||ativo.signerName||"";
+          qiSignUrl = ativo.consent_url||ativo.link||`https://app.v8sistema.com/termos-de-autorizacao/${ativo.id}`;
+          qiTermoId = ativo.id;
+        } else {
+          qiStatus = "necessita_formalizacao";
+        }
+      } else {
+        const msg = (rQI.reason?.message||"").toLowerCase();
+        qiStatus = msg.includes("autorizado")?"sem_margem":"erro";
+        qiErro   = rQI.reason?.message||"Erro QI";
+      }
+
+      // Processa Celcoin
+      let ccMargem=null, ccStatus="sem_margem", ccNome="", ccErro="", ccSignUrl=null;
+      if (rCelcoin.status==="fulfilled") {
+        const itens = (rCelcoin.value?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+        const sucesso = itens.find(x=>x.status==="SUCCESS");
+        const ativo   = itens.find(x=>["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(x.status));
+        if (sucesso) {
+          ccMargem = parseFloat(sucesso.availableMarginValue||0)||0;
+          ccStatus = ccMargem>0 ? "margem_disponivel" : "sem_margem";
+          ccNome   = sucesso.name||sucesso.signerName||"";
+        } else if (ativo) {
+          ccStatus  = "aguardando_assinatura";
+          ccNome    = ativo.name||ativo.signerName||"";
+          ccSignUrl = ativo.consent_url||ativo.link||`https://app.v8sistema.com/termos-de-autorizacao/${ativo.id}`;
+        } else {
+          ccStatus = "necessita_formalizacao";
+        }
+      } else {
+        const msg = (rCelcoin.reason?.message||"").toLowerCase();
+        ccStatus = msg.includes("autorizado")?"sem_margem":"erro";
+        ccErro   = rCelcoin.reason?.message||"Erro Celcoin";
+      }
+
+      const nomeFinal = qiNome||ccNome||item.nome||"";
+      // Status global e probabilidade
+      const hasMargem   = qiMargem>0||ccMargem>0;
+      const needsForm   = !hasMargem && (qiStatus==="necessita_formalizacao"||ccStatus==="necessita_formalizacao");
+      const isAguard    = !hasMargem && (qiStatus==="aguardando_assinatura"||ccStatus==="aguardando_assinatura");
+      const globalStatus = hasMargem ? "margem_disponivel" : needsForm ? "necessita_formalizacao" : isAguard ? "aguardando_assinatura" : "sem_margem";
+
+      // Probabilidade de aprovação
+      const maxMargem = Math.max(qiMargem||0, ccMargem||0);
+      let probabilidade = null;
+      if (maxMargem > 500) probabilidade = "🟢 Alta";
+      else if (maxMargem > 0) probabilidade = "🟡 Média";
+      else if (globalStatus==="aguardando_assinatura") probabilidade = "🔵 Aguardando";
+      else if (globalStatus==="necessita_formalizacao") probabilidade = "🟠 Formalizar";
+      else probabilidade = "🔴 Baixa";
+
+      addLog(
+        `${hasMargem?"✅":"⚠"} ${item.cpfFmt}: QI=${qiMargem!=null?fmtBRL(qiMargem):qiStatus} · Celcoin=${ccMargem!=null?fmtBRL(ccMargem):ccStatus}`,
+        hasMargem
+      );
+
       return {
         ...item,
-        status: j.status,
-        consultaId: j.consultaId,
-        elegivel: j.elegivel,
-        margemQI: item.banco==="QI"?(j.margemPreliminar||null):item.margemQI,
-        margemCelcoin: item.banco==="celcoin"?(j.margemPreliminar||null):item.margemCelcoin,
-        statusQI: item.banco==="QI"?j.status:item.statusQI,
-        statusCelcoin: item.banco==="celcoin"?j.status:item.statusCelcoin,
-        signUrl: j.termoLink||null,
-        formStatus: j.status,
+        nome: nomeFinal,
+        status: globalStatus,
+        margemQI: qiMargem, statusQI: qiStatus, erroQI: qiErro,
+        margemCelcoin: ccMargem, statusCelcoin: ccStatus, erroCelcoin: ccErro,
+        signUrl: qiSignUrl||ccSignUrl,
+        termoId: qiTermoId,
+        probabilidade,
+        erro: globalStatus==="erro"?(qiErro||ccErro):null,
       };
     } catch(e) {
       addLog(`❌ ${item.cpfFmt}: ${e.message}`, false);
@@ -16105,56 +16177,49 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
     }
   };
 
-  // ── Loop principal ─────────────────────────────────────────────────
+  // ── Loop principal ──────────────────────────────────────────────
+  const DONE_STS = ["margem_disponivel","signed","rejected","erro","sem_margem"];
   const consultarTodos = async () => {
     setRunning(true); abortRef.current=false; setProgress(0);
     const lista = [...items];
-    const DONE = ["margem_disponivel","signed","rejected","erro","sem_margem"];
-    let done = lista.filter(x=>DONE.includes(x.status)).length;
+    let done = lista.filter(x=>DONE_STS.includes(x.status)).length;
     for (let i=0; i<lista.length; i++) {
       if (abortRef.current) break;
-      if (DONE.includes(lista[i].status)) continue;
-      lista[i] = {...lista[i], status:"consultando"}; setItems([...lista]);
+      if (DONE_STS.includes(lista[i].status)) continue;
+      lista[i] = {...lista[i],status:"consultando"}; setItems([...lista]);
       const upd = await preConsultar(lista[i]);
       lista[i] = upd; done++;
       setProgress(Math.round(done/lista.length*100));
       setItems([...lista]);
+      await new Promise(r=>setTimeout(r,300)); // pequeno delay entre CPFs
     }
     setRunning(false);
   };
 
-  // ── Etapa B: Criar termo via /api/formalizacao ─────────────────────
-  const iniciarFormalizacao = async (item, dadosCliente) => {
+  // ── Etapa B: Criar termo via apiFetch ───────────────────────────
+  const iniciarFormalizacao = async (item, dados) => {
     setPagando(true); setFormErr("");
+    const tel = dados.telefone.replace(/\D/g,"");
+    const birthDate = (dados.dataNascimento||"").split("T")[0]; // YYYY-MM-DD
     try {
-      const r = await fetch("/api/formalizacao", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          consultaId: item.consultaId,
-          cpf: item.cpf,
-          nome: dadosCliente.nome,
-          email: dadosCliente.email,
-          telefone: dadosCliente.telefone,
-          dataNascimento: dadosCliente.dataNascimento,
-          genero: dadosCliente.genero||"male",
-          banco: item.banco,
-          token,
-        }),
-      });
-      const j = await r.json();
-      if (!j.ok) throw new Error(j.erro||"Erro na formalização");
-      addLog(`✅ ${item.cpfFmt}: Termo criado! ID=${j.providerDocumentId}. Link enviado.`);
+      const body = {
+        borrowerDocumentNumber: item.cpf,
+        gender: dados.genero||"male",
+        birthDate,
+        signerName: dados.nome,
+        signerEmail: dados.email,
+        signerPhone: { phoneNumber:tel.slice(-9), countryCode:"55", areaCode:tel.slice(0,2)||"11" },
+        provider: item.banco.toUpperCase()==="CELCOIN"?"celcoin":"QI",
+      };
+      const res = await apiFetch("/private-consignment/consult","POST",body);
+      const signUrl = res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${res.id}`;
+      addLog(`✅ ${item.cpfFmt}: Termo criado! Envie o link ao cliente.`);
       setItems(p=>p.map(x=>x.id===item.id?{
-        ...x, status:"pending_consent",
-        formalizacaoId:j.formalizacaoId,
-        signUrl:j.signUrl,
-        formStatus:"pending_consent",
-        pollingAtivo:true,
+        ...x, status:"aguardando_assinatura",
+        signUrl, termoId:res.id, formStatus:"aguardando_assinatura", pollingAtivo:true,
       }:x));
       setFormModal(null);
-      // Inicia polling automático para este item
-      iniciarPolling(item.id, j.formalizacaoId, item.cpf, item.banco);
+      iniciarPolling(item.id, item.cpf, item.banco, res.id);
     } catch(e) {
       setFormErr(e.message);
       addLog(`❌ ${item.cpfFmt}: ${e.message}`, false);
@@ -16162,49 +16227,52 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
     setPagando(false);
   };
 
-  // ── Polling de status via /api/formalizacaostatus ──────────────────
-  const iniciarPolling = (itemId, formalizacaoId, cpf, bco) => {
-    const POLL_INTERVAL = 10000; // 10s
-    const MAX_POLLS = 60; // 10 min
+  // ── Polling de status (a cada 10s) ──────────────────────────────
+  const iniciarPolling = (itemId, cpf, bco, termoId) => {
+    if (pollRefs.current[itemId]) clearInterval(pollRefs.current[itemId]);
     let count = 0;
-    const poll = setInterval(async () => {
-      if (abortRef.current || count >= MAX_POLLS) { clearInterval(poll); return; }
+    const iv = setInterval(async () => {
+      if (abortRef.current||count>=60) { clearInterval(iv); return; }
       count++;
       try {
-        const r = await fetch("/api/formalizacaostatus", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ formalizacaoId, cpf, banco:bco, token }),
-        });
-        const j = await r.json();
-        if (!j.ok) return;
-        setItems(p=>p.map(x=>{
-          if (x.id !== itemId) return x;
-          const finalStatus = j.status;
-          const done = ["signed","rejected","margem_disponivel"].includes(finalStatus);
-          if (done) clearInterval(poll);
-          return { ...x, formStatus:finalStatus, status:finalStatus, margemFinal:j.margemFinal,
-            margemQI:bco==="QI"?(j.margemFinal||x.margemQI):x.margemQI,
-            margemCelcoin:bco==="celcoin"?(j.margemFinal||x.margemCelcoin):x.margemCelcoin,
-            pollingAtivo:!done };
-        }));
-        if (["signed","rejected"].includes(j.status)) {
-          addLog(`${j.status==="signed"?"✅":"❌"} ${fmtCPF(cpf)}: ${j.status} — margem: ${j.margemFinal!=null?fmtBRL(j.margemFinal):"—"}`);
-          clearInterval(poll);
+        const end   = new Date().toISOString();
+        const start = new Date(Date.now()-7*86400000).toISOString();
+        const prov  = bco.toUpperCase()==="CELCOIN"?"celcoin":"QI";
+        const r = await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=${prov}&startDate=${start}&endDate=${end}`);
+        const itens = (r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+        const alvo  = termoId ? itens.find(x=>x.id===termoId)||itens[0] : itens[0];
+        if (!alvo) return;
+        const finalStatus = alvo.status;
+        const margem = parseFloat(alvo.availableMarginValue||0)||null;
+        const isDone = finalStatus==="SUCCESS"||finalStatus==="FAILED"||finalStatus==="REJECTED";
+        if (isDone) {
+          clearInterval(iv);
+          delete pollRefs.current[itemId];
         }
+        setItems(p=>p.map(x=>{
+          if (x.id!==itemId) return x;
+          const newSt = finalStatus==="SUCCESS"?(margem>0?"margem_disponivel":"sem_margem"):finalStatus==="FAILED"||finalStatus==="REJECTED"?"rejected":"aguardando_assinatura";
+          const prob  = margem>0?"🟢 Alta":margem===0&&finalStatus==="SUCCESS"?"🟡 Média":x.probabilidade;
+          return {...x, formStatus:finalStatus, status:newSt,
+            margemQI:bco!=="celcoin"?(margem??x.margemQI):x.margemQI,
+            margemCelcoin:bco==="celcoin"?(margem??x.margemCelcoin):x.margemCelcoin,
+            margemFinal:margem, probabilidade:prob, pollingAtivo:!isDone};
+        }));
+        if (isDone) addLog(`${finalStatus==="SUCCESS"?"✅":"❌"} ${maskCPF(cpf)}: ${finalStatus} — margem: ${margem!=null?fmtBRL(margem):"—"}`);
       } catch {}
-    }, POLL_INTERVAL);
+    }, 10000);
+    pollRefs.current[itemId] = iv;
   };
 
   // Exportar CSV
   const exportar = () => {
-    const rows=[["CPF","Nome","Banco","Status","Margem QI","Margem Celcoin","Sign URL"]];
+    const rows=[["CPF","Nome","Banco","Status","Margem QI","Margem Celcoin","Probabilidade","Sign URL"]];
     items.forEach(it=>rows.push([it.cpfFmt,it.nome||"—",it.banco,it.status,
-      it.margemQI!=null?it.margemQI:"",it.margemCelcoin!=null?it.margemCelcoin:"",it.signUrl||""]));
-    const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");
+      it.margemQI!=null?it.margemQI:"",it.margemCelcoin!=null?it.margemCelcoin:"",it.probabilidade||"",it.signUrl||""]));
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote.csv";a.click();
   };
 
-  const DONE_STS = ["margem_disponivel","signed","rejected","erro","sem_margem"];
   const filtered  = items.filter(it=>filter==="Todos"||it.status===filter);
   const countOk   = items.filter(x=>["margem_disponivel","signed"].includes(x.status)).length;
   const countPend = items.filter(x=>x.status==="pendente").length;
@@ -16212,12 +16280,12 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
 
   return (
     <div>
-      {/* Controles */}
+      {/* Painel de controle */}
       <div style={{background:C.card,border:`1px solid ${C.b1}`,borderRadius:16,padding:"18px 20px",marginBottom:16}}>
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
           <div>
             <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📊 Consulta de Margem em Lote — CLT</div>
-            <div style={{color:C.td,fontSize:11,marginTop:4}}>Etapa A: pré-consulta · Etapa B: formalização com polling</div>
+            <div style={{color:C.td,fontSize:11,marginTop:3}}>Etapa A: verifica margem · Etapa B: cria termo + polling automático</div>
             <div style={{display:"flex",gap:12,marginTop:6,flexWrap:"wrap"}}>
               <span style={{color:C.tm,fontSize:11}}>Total: <b style={{color:C.tp}}>{items.length}</b></span>
               <span style={{color:"#34D399",fontSize:11}}>✅ {countOk}</span>
@@ -16234,7 +16302,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
           </div>
         </div>
 
-        {/* Banco + CPFs */}
+        {/* Banco */}
         <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{color:C.td,fontSize:12}}>Banco:</span>
           {["QI","celcoin"].map(b=>(
@@ -16242,6 +16310,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
           ))}
         </div>
 
+        {/* Progresso */}
         {(running||progress>0) && (
           <div style={{marginBottom:10}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
@@ -16254,6 +16323,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
           </div>
         )}
 
+        {/* Caixa CPFs */}
         <textarea ref={cpfRef} rows={3} placeholder="Cole os CPFs aqui (um por linha, vírgula ou ponto e vírgula)" style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
         <button onClick={adicionarCPFs} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Adicionar à Fila</button>
       </div>
@@ -16262,7 +16332,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
       {items.length>0 && (
         <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
           <span style={{color:C.td,fontSize:12}}>Filtrar:</span>
-          {["Todos","pendente","margem_disponivel","pending_consent","awaiting_signature","signed","necessita_formalizacao","rejected","erro"].map(s=>(
+          {["Todos","pendente","margem_disponivel","aguardando_assinatura","necessita_formalizacao","sem_margem","rejected","erro"].map(s=>(
             <button key={s} onClick={()=>setFilter(s)} style={{background:filter===s?C.abg:C.deep,color:filter===s?C.atxt:C.td,border:`1px solid ${filter===s?C.atxt+"44":C.b2}`,borderRadius:8,padding:"4px 10px",fontSize:10.5,cursor:"pointer"}}>
               {ST[s]?.label||"Todos"}
             </button>
@@ -16270,62 +16340,85 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
         </div>
       )}
 
-      {/* Tabela */}
+      {/* Tabela de resultados */}
       {items.length>0 && (
         <div style={{...S.card,overflow:"hidden"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead><tr style={{background:C.deep}}>
-              {["CPF","Nome","Usuário","Banco","Status / Margem","Etapa B — Formalização"].map(h=>(
+              {["CPF","Nome","Usuário","🏦 QI — Margem","🟣 Celcoin — Margem","Probabilidade","Ação"].map(h=>(
                 <th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {filtered.map((it,i)=>{
                 const stInfo = ST[it.status]||ST.pendente;
-                const margem = it.margemFinal || (it.banco==="QI"?it.margemQI:it.margemCelcoin);
-                const isSigned = ["margem_disponivel","signed"].includes(it.status);
-                const needsForm = ["necessita_formalizacao","sem_consulta"].includes(it.status);
-                const polling  = ["pending_consent","awaiting_signature","processing"].includes(it.formStatus||"");
+                const isSim  = it.status==="consultando";
+                const hasMargem = (it.margemQI!=null&&it.margemQI>0)||(it.margemCelcoin!=null&&it.margemCelcoin>0);
                 return (
-                  <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`,transition:"background 0.1s"}}
+                  <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`,opacity:isSim?0.75:1,transition:"background 0.1s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <td style={{padding:"9px 10px",color:C.tp,fontFamily:"monospace",fontSize:11}}>{it.cpfFmt}</td>
-                    <td style={{padding:"9px 10px",color:C.ts}}>{it.nome||"—"}</td>
+                    <td style={{padding:"9px 10px",color:C.ts,maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.nome||"—"}</td>
                     <td style={{padding:"9px 10px",color:C.td,fontSize:11}}>{it.usuario||"—"}</td>
-                    <td style={{padding:"9px 10px",color:C.td,fontSize:11,textTransform:"uppercase"}}>{it.banco}</td>
-                    <td style={{padding:"9px 10px"}}>
-                      <span style={{background:stInfo.cor+"18",color:stInfo.cor,border:`1px solid ${stInfo.cor}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>{stInfo.label}</span>
-                      {isSigned && margem!=null && <div style={{color:"#34D399",fontSize:12,fontWeight:700,marginTop:3}}>{fmtBRL(margem)}</div>}
-                      {it.erro && <div style={{color:"#F87171",fontSize:9.5,marginTop:2,opacity:0.8}}>{it.erro.slice(0,55)}</div>}
+                    {/* QI */}
+                    <td style={{padding:"9px 10px",textAlign:"center"}}>
+                      {it.statusQI==="margem_disponivel" ? <span style={{color:"#34D399",fontWeight:800,fontSize:13}}>{fmtBRL(it.margemQI)}</span>
+                      : it.statusQI==="aguardando_assinatura" ? (
+                          <div>
+                            <span style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",border:"1px solid rgba(192,132,252,0.3)",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>✍️ Aguard.</span>
+                            {it.signUrl&&<div style={{marginTop:4}}><a href={it.signUrl} target="_blank" rel="noopener noreferrer" style={{color:"#C084FC",fontSize:10,fontWeight:700}}>🔗 Link</a></div>}
+                          </div>
+                      ) : it.statusQI==="necessita_formalizacao" ? <span style={{color:"#FB923C",fontSize:10}}>📝 Formalizar</span>
+                      : it.statusQI ? <span style={{color:C.td,fontSize:10}}>{ST[it.statusQI]?.label||it.statusQI}</span>
+                      : <span style={{color:C.td}}>—</span>}
                     </td>
+                    {/* Celcoin */}
+                    <td style={{padding:"9px 10px",textAlign:"center"}}>
+                      {it.statusCelcoin==="margem_disponivel" ? <span style={{color:"#C084FC",fontWeight:800,fontSize:13}}>{fmtBRL(it.margemCelcoin)}</span>
+                      : it.statusCelcoin==="aguardando_assinatura" ? <span style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>✍️ Aguard.</span>
+                      : it.statusCelcoin==="necessita_formalizacao" ? <span style={{color:"#FB923C",fontSize:10}}>📝 Formalizar</span>
+                      : it.statusCelcoin ? <span style={{color:C.td,fontSize:10}}>{ST[it.statusCelcoin]?.label||it.statusCelcoin}</span>
+                      : <span style={{color:C.td}}>—</span>}
+                    </td>
+                    {/* Probabilidade */}
+                    <td style={{padding:"9px 10px",textAlign:"center",fontSize:12}}>
+                      {it.probabilidade || (isSim ? <span style={{color:"#60A5FA",fontSize:10}}>calculando...</span> : "—")}
+                    </td>
+                    {/* Ação */}
                     <td style={{padding:"9px 10px"}}>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                        {/* Retentar Etapa A */}
-                        {["pendente","erro","sem_margem","necessita_formalizacao","sem_consulta"].includes(it.status) && (
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                        {/* Re-consultar */}
+                        {!isSim && !running && (
                           <button onClick={async()=>{
                             setItems(p=>p.map(x=>x.id===it.id?{...x,status:"consultando"}:x));
-                            const upd = await preConsultar({...it});
+                            const upd=await preConsultar({...it});
                             setItems(p=>p.map(x=>x.id===it.id?upd:x));
-                          }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>🔄 A</button>
+                          }} style={{background:"rgba(255,255,255,0.06)",color:C.tm,border:`1px solid ${C.b2}`,borderRadius:7,padding:"5px 9px",fontSize:10,cursor:"pointer"}} title="Re-consultar">🔄</button>
                         )}
-
-                        {/* Iniciar Etapa B — formalização */}
-                        {needsForm && (
-                          <button onClick={()=>setFormModal(it)} style={{background:"rgba(251,146,60,0.15)",color:"#FB923C",border:"1px solid rgba(251,146,60,0.4)",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>📝 Formalizar</button>
+                        {/* Formalizar */}
+                        {["necessita_formalizacao","sem_margem"].includes(it.status)&&!running && (
+                          <button onClick={()=>setFormModal(it)} style={{background:"rgba(251,146,60,0.15)",color:"#FB923C",border:"1px solid rgba(251,146,60,0.4)",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>📝 Etapa B</button>
                         )}
-
-                        {/* Link do termo — quando aguardando assinatura */}
-                        {it.signUrl && ["pending_consent","awaiting_signature"].includes(it.formStatus) && (
+                        {/* Link do termo */}
+                        {it.signUrl&&it.status==="aguardando_assinatura" && (
                           <a href={it.signUrl} target="_blank" rel="noopener noreferrer"
-                            style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",border:"1px solid rgba(192,132,252,0.3)",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>🔗 Termo</a>
+                            style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",border:"1px solid rgba(192,132,252,0.3)",borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap"}}>🔗 Assinar</a>
                         )}
-
-                        {/* Status do polling */}
-                        {polling && (
-                          <span style={{color:"#60A5FA",fontSize:10,animation:"pulse 1.5s infinite"}}>⏳ polling</span>
+                        {/* Simular se tem margem */}
+                        {hasMargem && (
+                          <button onClick={async()=>{
+                            const cpf=it.cpf;
+                            const end=new Date().toISOString();
+                            const start=new Date(Date.now()-30*86400000).toISOString();
+                            const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`).catch(()=>null);
+                            const latest=(r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+                            if(latest) { window._cltSimularTermo = latest; alert("Use o botão ⚡ Simular na aba Simulação após buscar pelo CPF"); }
+                            else alert("Nenhum termo encontrado. Gere um termo primeiro.");
+                          }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:7,padding:"5px 10px",fontSize:10,fontWeight:700,cursor:"pointer"}}>⚡ Simular</button>
                         )}
-
+                        {/* Polling indicator */}
+                        {it.pollingAtivo && <span style={{color:"#60A5FA",fontSize:9,animation:"pulse 1.5s infinite"}}>🔄 polling</span>}
                         {/* Remover */}
                         <button onClick={()=>setItems(p=>p.filter(x=>x.id!==it.id))} style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"none",borderRadius:7,padding:"5px 8px",fontSize:10,cursor:"pointer"}}>✕</button>
                       </div>
@@ -16349,19 +16442,14 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
       {/* Modal Etapa B — Formulário de Formalização */}
       {formModal && (
         <div onClick={()=>{setFormModal(null);setFormErr("");}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(12px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,#0A1628,#060E1E)",border:"1px solid rgba(251,146,60,0.4)",borderRadius:22,padding:"28px 32px",maxWidth:500,width:"calc(100%-32px)",maxHeight:"90vh",overflowY:"auto",animation:"modalPop 0.3s cubic-bezier(.34,1.56,.64,1)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,#0A1628,#060E1E)",border:"1px solid rgba(251,146,60,0.4)",borderRadius:22,padding:"28px 32px",maxWidth:500,width:"calc(100% - 32px)",maxHeight:"90vh",overflowY:"auto"}}>
             <div style={{color:"#FB923C",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>📝 Etapa B — Formalização CLT</div>
             <div style={{color:C.tp,fontSize:16,fontWeight:900,marginBottom:6}}>Criar Termo de Consentimento</div>
-            <div style={{color:C.td,fontSize:12,marginBottom:18}}>CPF: <b style={{color:C.tp}}>{formModal.cpfFmt}</b> · Banco: <b style={{color:C.atxt}}>{formModal.banco.toUpperCase()}</b></div>
+            <div style={{color:C.td,fontSize:12,marginBottom:14}}>CPF: <b style={{color:C.tp}}>{formModal.cpfFmt}</b> · Banco: <b style={{color:C.atxt}}>{formModal.banco.toUpperCase()}</b></div>
             <div style={{color:"rgba(251,146,60,0.9)",background:"rgba(251,146,60,0.08)",border:"1px solid rgba(251,146,60,0.25)",borderRadius:10,padding:"10px 14px",fontSize:12,marginBottom:18,lineHeight:1.6}}>
-              ⚠️ O link de assinatura será gerado e deve ser enviado ao cliente. <strong>O sistema não assina automaticamente</strong>.
+              ⚠️ O link de assinatura deve ser enviado ao cliente. <strong>O sistema não assina automaticamente.</strong>
             </div>
-            <FormalizacaoForm
-              item={formModal} contacts={contacts}
-              onSubmit={dadosCliente=>iniciarFormalizacao(formModal,dadosCliente)}
-              onClose={()=>{setFormModal(null);setFormErr("");}}
-              loading={pagando} erro={formErr} C={C} S={S}
-            />
+            <MLFormalizacaoForm item={formModal} contacts={contacts} onSubmit={d=>iniciarFormalizacao(formModal,d)} onClose={()=>{setFormModal(null);setFormErr("");}} loading={pagando} erro={formErr} C={C} S={S} />
           </div>
         </div>
       )}
@@ -16369,23 +16457,21 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
   );
 }
 
-// ── Formulário interno de formalização ────────────────────────────
-function FormalizacaoForm({ item, contacts, onSubmit, onClose, loading, erro, C, S }) {
-  const cpfLimpo = item.cpf;
-  const contato  = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpfLimpo)||null;
-  const [form, setForm] = useState({
-    nome: contato?.name||contato?.nome||"",
-    email: contato?.email||"",
-    telefone: (contato?.phone||contato?.telefone||"").replace(/\D/g,""),
-    dataNascimento: (contato?.birthdate||contato?.dataNascimento||contato?.birth_date||"").split("T")[0],
-    genero: contato?.genero||contato?.gender||"male",
+function MLFormalizacaoForm({ item, contacts, onSubmit, onClose, loading, erro, C, S }) {
+  const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===item.cpf)||null;
+  const [form,setForm] = useState({
+    nome: c?.name||c?.nome||"",
+    email: c?.email||"",
+    telefone: (c?.phone||c?.telefone||"").replace(/\D/g,""),
+    dataNascimento: (c?.birthdate||c?.dataNascimento||c?.birth_date||"").split("T")[0],
+    genero: c?.genero||c?.gender||"male",
   });
-  const F = (k,v) => setForm(p=>({...p,[k]:v}));
-  const ok = form.nome&&form.email&&form.telefone.length>=10&&form.dataNascimento;
+  const F=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const ok=form.nome&&form.email&&form.telefone.length>=10&&form.dataNascimento;
   return (
     <div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        {[["nome","Nome completo *"],["email","E-mail *"],["telefone","Telefone DDD+número *"],["dataNascimento","Nascimento (YYYY-MM-DD) *"]].map(([k,lbl])=>(
+        {[["nome","Nome completo *"],["email","E-mail *"],["telefone","Telefone (DDD+número) *"],["dataNascimento","Nascimento *"]].map(([k,lbl])=>(
           <div key={k}>
             <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div>
             <input value={form[k]||""} onChange={e=>F(k,e.target.value)} type={k==="dataNascimento"?"date":"text"} style={{...S.input,width:"100%",fontSize:12}} />
@@ -16394,22 +16480,22 @@ function FormalizacaoForm({ item, contacts, onSubmit, onClose, loading, erro, C,
         <div>
           <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Gênero</div>
           <select value={form.genero} onChange={e=>F("genero",e.target.value)} style={{...S.input,width:"100%",fontSize:12}}>
-            <option value="male">Masculino</option>
-            <option value="female">Feminino</option>
+            <option value="male">Masculino</option><option value="female">Feminino</option>
           </select>
         </div>
       </div>
-      {erro && <div style={{color:"#F87171",fontSize:12,marginBottom:10,padding:"9px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>⚠ {erro}</div>}
+      {erro&&<div style={{color:"#F87171",fontSize:12,marginBottom:10,padding:"9px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>⚠ {erro}</div>}
       <div style={{display:"flex",gap:10}}>
         <button onClick={onClose} style={{flex:1,background:"transparent",border:`1px solid ${C.b2}`,color:C.tm,borderRadius:10,padding:"11px",fontSize:13,cursor:"pointer"}}>Cancelar</button>
         <button onClick={()=>ok&&onSubmit(form)} disabled={!ok||loading}
           style={{flex:2,background:ok?"linear-gradient(135deg,#FB923C,#EA580C)":"rgba(255,255,255,0.06)",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:ok?"pointer":"default",opacity:loading?0.6:1}}>
-          {loading?"⏳ Criando termo...":"📝 Criar Termo e Gerar Link"}
+          {loading?"⏳ Criando...":"📝 Criar Termo e Gerar Link"}
         </button>
       </div>
     </div>
   );
 }
+
 
 function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PROXY = "/api/v8proxy";
