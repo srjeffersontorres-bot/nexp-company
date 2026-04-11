@@ -16051,7 +16051,9 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, 
   // ── Adicionar CPFs ──────────────────────────────────────────────
   const adicionarCPFs = () => {
     const val = cpfRef.current?.value || "";
-    const novos = val.split(/[,;]+/).map(l=>l.trim()).filter(Boolean).map(raw=>{
+    const linhasRaw = val.split("
+").flatMap(l=>l.split(",")).flatMap(l=>l.split(";"));
+    const novos = linhasRaw.map(l=>l.trim()).filter(Boolean).map(raw=>{
       const c = padCPF(raw);
       const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===c);
       return {
@@ -17008,6 +17010,36 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   };
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
   useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(1); },[aba,isTokenValid]); // eslint-disable-line
+
+  // Polling automático: atualiza status dos termos pendentes a cada 8s
+  useEffect(()=>{
+    if(!isTokenValid) return;
+    const pendentes = ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"];
+    const iv = setInterval(async()=>{
+      const comPendentes = termos.filter(t=>pendentes.includes(t.status));
+      if(!comPendentes.length) return;
+      // Busca atualização dos últimos 3 dias para pegar mudanças recentes
+      const end   = new Date().toISOString();
+      const start = new Date(Date.now()-3*86400000).toISOString();
+      try {
+        const r = await apiFetch();
+        const fresh = r?.data||[];
+        if(!fresh.length) return;
+        setTermos(prev=>{
+          let changed = false;
+          const updated = prev.map(t=>{
+            if(!pendentes.includes(t.status)) return t;
+            const f = fresh.find(x=>x.id===t.id);
+            if(!f||f.status===t.status) return t;
+            changed = true;
+            return { ...t, ...f, link: t.link||f.consent_url||f.link };
+          });
+          return changed ? updated : prev;
+        });
+      } catch {}
+    }, 8000);
+    return () => clearInterval(iv);
+  },[isTokenValid, termos]); // eslint-disable-line
   // Pre-load configs immediately on mount
   useEffect(()=>{
     if(!isTokenValid||configs.length) return;
