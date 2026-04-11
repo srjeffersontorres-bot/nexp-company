@@ -17536,10 +17536,7 @@ Só me falar aqui para o próximo passo!`;
 
             {/* Caixa CPFs */}
             <div>
-              <textarea ref={margemLoteCpfRef} rows={4} placeholder={"Cole os CPFs aqui (um por linha):
-12345678901
-98765432100
-..."} style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
+              <textarea ref={margemLoteCpfRef} rows={4} placeholder="Cole os CPFs aqui (um por linha): 12345678901, 98765432100..." style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
               <button onClick={()=>{
                 const val = margemLoteCpfRef.current?.value||"";
                 const novos=val.split(/[
