@@ -16049,8 +16049,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, token, f
   // ── Adicionar CPFs à fila ──────────────────────────────────────────
   const adicionarCPFs = () => {
     const val = cpfRef.current?.value || "";
-    const novos = val.split(/[
-,;]+/).map(l=>l.trim()).filter(Boolean).map(raw=>{
+    const novos = val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean).map(raw=>{
       const c = padCPF(raw);
       const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===c);
       return {
