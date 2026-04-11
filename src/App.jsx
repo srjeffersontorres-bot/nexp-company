@@ -16059,7 +16059,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [loteCLTRunning, setLoteCLTRunning] = useState(false);
   const loteCLTAbort = useRef(false);
   const [termoLoading, setTermoLoading] = useState(false);
-  const [termoStep, setTermoStep] = useState("form"); // eslint-disable-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
+  const [termoStep, setTermoStep] = useState("form");
   const [termosSearch, setTermosSearch] = useState("");
   const [termosFiltroStatus, setTermosFiltroStatus] = useState("Todos");
 
@@ -16343,6 +16344,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [avisoModal, setAvisoModal] = useState(null);
   const [simCustomParcela, setSimCustomParcela] = useState("");
   const [simMargemCustom, setSimMargemCustom] = useState(""); // margem customizada para simulação
+  // eslint-disable-next-line no-unused-vars
   const [simTermoAtivo, setSimTermoAtivo] = useState(null); // eslint-disable-line no-unused-vars
   const [limparModal, setLimparModal] = useState(false);
 
@@ -16414,6 +16416,21 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [opsLoading, setOpsLoading] = useState(false);
   const [opsSearch, setOpsSearch] = useState("");
   const [opsDetalhe, setOpsDetalhe] = useState(null);
+  const [simNovamenteOp, setSimNovamenteOp] = useState(null);
+  const [simNovamenteData, setSimNovamenteData] = useState(null);
+  // ── Margem em Lote ───────────────────────────────────────────
+  const [margemLoteItems, setMargemLoteItems] = useState([]);
+  // eslint-disable-next-line no-unused-vars
+  const [margemLoteCpfBox, setMargemLoteCpfBox] = useState("");
+  const [margemLoteRunning, setMargemLoteRunning] = useState(false);
+  const [margemLotePaused, setMargemLotePaused] = useState(false);
+  const [margemLoteProgress, setMargemLoteProgress] = useState(0);
+  const [margemLoteBanc, setMargemLoteBanc] = useState("QI");
+  const [margemLoteFilter, setMargemLoteFilter] = useState("Todos");
+  const [margemLoteLogs, setMargemLoteLogs] = useState([]);
+  const margemLoteAbortRef = useRef(false);
+  const margemLotePauseRef = useRef(false);
+  const margemLoteCpfRef   = useRef(null);
   const STATUS_OP_COLOR = {
     formalization:"#C084FC",analysis:"#60A5FA",manual_analysis:"#FBBF24",
     processing:"#34D399",paid:"#10B981",canceled:"#F87171",pending:"#FBBF24",
@@ -16595,7 +16612,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["digitacao","✍️ Digitação"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -16673,11 +16690,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </select>
               </div>
             </div>
-            <button onClick={gerarTermo}
-              disabled={termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email||!termoForm.dataNasc||(termoForm.telefone||"").length<11}
-              style={{width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:(termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email||!termoForm.dataNasc||(termoForm.telefone||"").length<11)?0.5:1,transition:"opacity 0.2s"}}>
-              {termoLoading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento"}
-            </button>
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}>
+              <button onClick={gerarTermo}
+                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",opacity:(termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email||!termoForm.dataNasc||(termoForm.telefone||"").length<11)?0.5:1,transition:"opacity 0.2s"}}>
+                {termoLoading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento"}
+              </button>
+            </div>
           </div>
 
           {/* Lote CLT */}
@@ -16898,6 +16916,10 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         if(!termosSearch) return true;
                         const s=termosSearch.toLowerCase();
                         return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
+                      }).sort((a,b)=>{
+                        const ta=new Date(a.createdAt||a.created_at||0).getTime();
+                        const tb=new Date(b.createdAt||b.created_at||0).getTime();
+                        return tb-ta; // mais recente primeiro
                       });
                       const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS); // eslint-disable-line no-unused-vars
                       const pageItems = filtrados.slice((termosPage-1)*PAGE_SIZE_TERMOS, termosPage*PAGE_SIZE_TERMOS);
@@ -17056,11 +17078,43 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                       );
                                     })}
                                   </div>
-                                  {/* Botão Gerar Termo */}
-                                  <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"flex-end"}}>
-                                    <button onClick={e=>{e.stopPropagation();setInlineSimId(null);setAba("termo");setTermoForm(p=>({...p,cpf:(t.documentNumber||t.cpf||"").replace(/\D/g,""),nome:t.name||t.nome||"",email:t.email||"",telefone:t.phone||(t.signerPhone?(t.signerPhone.areaCode||"")+(t.signerPhone.phoneNumber||""):""),dataNasc:t.birthDate||"",genero:t.gender||"male"}));}}
-                                      style={{background:"rgba(79,142,247,0.15)",color:"#60A5FA",border:"1px solid #3B6EF544",borderRadius:8,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                                  {/* Botão Gerar Termo + Copiar Simulação */}
+                                  <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                                    <button onClick={e=>{e.stopPropagation();
+                                      const preenchido={cpf:(t.documentNumber||t.cpf||"").replace(/\D/g,""),nome:t.name||t.nome||"",email:t.email||"",telefone:t.phone||(t.signerPhone?(t.signerPhone.areaCode||"")+(t.signerPhone.phoneNumber||""):""),dataNasc:t.birthDate||"",genero:t.gender||"male"};
+                                      setInlineSimId(null);setAba("termo");setTermoForm(p=>({...p,...preenchido}));setTermoAutoPreenchido(Object.values(preenchido).some(Boolean));
+                                    }} style={{background:"rgba(79,142,247,0.15)",color:"#60A5FA",border:"1px solid #3B6EF544",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                                       📋 Gerar Termo de Consentimento
+                                    </button>
+                                    <button onClick={e=>{e.stopPropagation();
+                                      const cur2=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:Object.keys(simConfigs)[0];
+                                      const {resultados:res2}=simConfigs[cur2];
+                                      const margem=t.availableMarginValue?fmtBRL(t.availableMarginValue):"—";
+                                      let txt=`Oba! 🎉 Sua simulação do Crédito do Trabalhador chegou, confira:
+
+`;
+                                      res2.forEach((r,i)=>{
+                                        const v=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                                        const p=parseFloat(r.sim?.installment_value||0);
+                                        txt+=`*Oferta ${i+1}* →
+Valor liberado: *${fmtBRL(v)}*
+Valor da parcela: *${fmtBRL(p)}*
+Prazo: *${r.np}x*
+
+`;
+                                      });
+                                      txt+=`Informações adicionais:
+*1° pagamento da parcela em até 60 dias.*
+*Pagamento via Pix ou dados bancários apenas em sua conta, de forma rápida e segura.*
+*Proposta já pré-aprovada* ✅
+
+Qual seria a melhor oferta para você hoje? 😊
+Ou gostaria de simular com outro valor de margem?
+Só me falar aqui para o próximo passo!`;
+                                      navigator.clipboard?.writeText(txt).then(()=>setCopied("sim_"+t.id)).catch(()=>{});
+                                      setTimeout(()=>setCopied(null),2500);
+                                    }} style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                      {copied==="sim_"+t.id?"✅ Copiado!":"📋 Copiar Simulação"}
                                     </button>
                                   </div>
                                 </div>
@@ -17140,6 +17194,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       <div style={{color:C.tm,fontSize:11,marginTop:2}}>{fmtCPF(op.documentNumber||"")} · {op.contractNumber||"—"}</div>
                     </div>
                     <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{STATUS_OP_LABEL[st]||st}</span>
+                    {st==="canceled" && (
+                      <button onClick={e=>{e.stopPropagation(); setSimNovamenteOp(op);}}
+                        style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        ⚡ Simular novamente
+                      </button>
+                    )}
                     <div style={{textAlign:"right",flexShrink:0}}>
                       <div style={{color:C.atxt,fontWeight:700,fontSize:13}}>{fmtBRL(op.disbursedIssueAmount||op.issueAmount)}</div>
                       <div style={{color:C.td,fontSize:10,marginTop:2}}>Ver detalhes →</div>
@@ -17310,6 +17370,278 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modal Simular Novamente — CLT operação cancelada */}
+      {simNovamenteOp && (
+        <div onClick={()=>{setSimNovamenteOp(null);setSimNovamenteData(null);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(12px)",zIndex:2001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,rgba(10,16,40,0.99),rgba(5,10,28,0.99))",border:"1px solid rgba(59,110,245,0.35)",borderRadius:22,padding:"24px 28px",width:"100%",maxWidth:680,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 32px 80px rgba(0,0,0,0.9)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div>
+                <div style={{color:C.atxt,fontSize:11,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>⚡ Simular Novamente — CLT</div>
+                <div style={{color:C.tp,fontSize:15,fontWeight:800}}>{simNovamenteOp.name||"—"} · {fmtCPF(simNovamenteOp.documentNumber||"")} </div>
+              </div>
+              <button onClick={()=>{setSimNovamenteOp(null);setSimNovamenteData(null);}} style={{background:"rgba(255,255,255,0.07)",border:"none",color:C.tm,borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:14}}>✕</button>
+            </div>
+            {!simNovamenteData ? (
+              <div style={{textAlign:"center",padding:"32px 0"}}>
+                <div style={{fontSize:32,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
+                <div style={{color:C.ts,fontSize:13,marginBottom:20}}>Calcular simulações para este cliente?</div>
+                <button onClick={async()=>{
+                  const cpf=(simNovamenteOp.documentNumber||simNovamenteOp.individualDocumentNumber||"").replace(/\D/g,"");
+                  setSimNovamenteData({loading:true,resultados:[]});
+                  try {
+                    const cfgs=await apiFetch("/private-consignment/simulation/configs").then(d=>d?.configs||configs).catch(()=>configs);
+                    const cfg=cfgs[0]; if(!cfg){setSimNovamenteData({loading:false,resultados:[],err:"Sem configurações"});return;}
+                    const prazos=[6,8,10,12,18,24,36,48];
+                    const margin=parseFloat(simNovamenteOp.disbursedIssueAmount||simNovamenteOp.availableMarginValue||simNovamenteOp.issueAmount||500);
+                    const resultados=[];
+                    await Promise.allSettled(prazos.map(async np=>{
+                      try{
+                        const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"QI"});
+                        if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0) resultados.push({np,sim});
+                      }catch{}
+                    }));
+                    resultados.sort((a,b)=>parseFloat(b.sim?.disbursement_amount||0)-parseFloat(a.sim?.disbursement_amount||0));
+                    setSimNovamenteData({loading:false,resultados,margin,cfg});
+                  }catch(e){setSimNovamenteData({loading:false,resultados:[],err:e.message});}
+                }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"12px 28px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                  ⚡ Calcular Simulações
+                </button>
+              </div>
+            ) : simNovamenteData.loading ? (
+              <div style={{textAlign:"center",padding:"32px 0"}}>
+                <div style={{fontSize:32,marginBottom:12,animation:"pulse 1.5s infinite"}}>⚡</div>
+                <div style={{color:C.ts,fontSize:13}}>Calculando simulações em todos os prazos...</div>
+              </div>
+            ) : simNovamenteData.err ? (
+              <div style={{color:"#F87171",fontSize:13,textAlign:"center",padding:"20px 0"}}>{simNovamenteData.err}</div>
+            ) : (
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
+                  {simNovamenteData.resultados.map((r,i)=>{
+                    const isB=i===0;
+                    const desemb=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+                    const parc=parseFloat(r.sim?.installment_value||0);
+                    return(
+                      <div key={r.np} onClick={()=>setDigModal({r,termo:{...simNovamenteOp,documentNumber:simNovamenteOp.documentNumber||simNovamenteOp.individualDocumentNumber,name:simNovamenteOp.name,availableMarginValue:simNovamenteData.margin},isMelhor:isB})}
+                        style={{background:isB?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.04)",border:`2px solid ${isB?"#34D399":"rgba(255,255,255,0.07)"}`,borderRadius:10,padding:"12px 10px",cursor:"pointer",textAlign:"center",position:"relative",transition:"all 0.15s"}}
+                        onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                        onMouseLeave={e=>e.currentTarget.style.transform="none"}>
+                        {isB&&<div style={{position:"absolute",top:-7,left:"50%",transform:"translateX(-50%)",background:"#34D399",color:"#000",fontSize:7,fontWeight:800,padding:"1px 6px",borderRadius:99,whiteSpace:"nowrap"}}>🏆 MELHOR</div>}
+                        <div style={{color:"rgba(255,255,255,0.4)",fontSize:9,marginBottom:2,marginTop:isB?4:0}}>{r.np}x</div>
+                        <div style={{color:isB?"#34D399":"#fff",fontSize:16,fontWeight:900,lineHeight:1}}>{fmtBRL(desemb)}</div>
+                        <div style={{color:"rgba(255,255,255,0.4)",fontSize:8,marginBottom:4}}>liberado</div>
+                        <div style={{color:"rgba(255,255,255,0.7)",fontSize:9}}>{fmtBRL(parc)}/mês</div>
+                        <div style={{marginTop:6,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,borderRadius:5,padding:"3px 0",fontSize:9,fontWeight:700,color:"#fff"}}>✍️ REDIGITAR</div>
+                      </div>
+                    );
+                  })}
+                  {!simNovamenteData.resultados.length&&<div style={{color:C.td,fontSize:12,textAlign:"center",padding:"16px 0",gridColumn:"1/-1"}}>Sem simulações disponíveis para este cliente.</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ════ ABA MARGEM EM LOTE ════ */}
+      {aba==="margem_lote" && (
+        <div>
+          {/* Config */}
+          <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid ${C.b1}`}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:12}}>
+              <div>
+                <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📊 Consulta de Margem em Lote — CLT</div>
+                <div style={{display:"flex",gap:12,marginTop:5,flexWrap:"wrap"}}>
+                  <span style={{color:C.tm,fontSize:11}}>Total: <b style={{color:C.tp}}>{margemLoteItems.length}</b></span>
+                  <span style={{color:"#34D399",fontSize:11}}>✅ {margemLoteItems.filter(x=>x.status==="ok").length}</span>
+                  <span style={{color:"#FBBF24",fontSize:11}}>⏳ {margemLoteItems.filter(x=>x.status==="pendente").length}</span>
+                  <span style={{color:"#F87171",fontSize:11}}>❌ {margemLoteItems.filter(x=>["erro","sem_margem","nao_autorizado"].includes(x.status)).length}</span>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {!margemLoteRunning && <button onClick={async()=>{
+                  const pend = margemLoteItems.filter(x=>x.status==="pendente");
+                  if(!pend.length) return;
+                  setMargemLoteRunning(true); setMargemLotePaused(false); margemLoteAbortRef.current=false; margemLotePauseRef.current=false;
+                  const lista=[...margemLoteItems];
+                  const DONE=["ok","erro","sem_margem","nao_autorizado","sem_adesao","cpf_invalido"];
+                  let done=lista.filter(x=>DONE.includes(x.status)).length;
+                  for(let i=0;i<lista.length;i++){
+                    while(margemLotePauseRef.current) await new Promise(r=>setTimeout(r,300));
+                    if(margemLoteAbortRef.current) break;
+                    if(DONE.includes(lista[i].status)) continue;
+                    lista[i]={...lista[i],status:"consultando"}; setMargemLoteItems([...lista]);
+                    // Consultar margem via /private-consignment/consult (gerar termo para ver margem)
+                    const cpf=lista[i].cpf;
+                    try {
+                      const end=new Date().toISOString();
+                      const start=new Date(Date.now()-30*86400000).toISOString();
+                      const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=${margemLoteBanc}&startDate=${start}&endDate=${end}`);
+                      const items=r?.data||[];
+                      const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+                      if(latest){
+                        const margem=latest.availableMarginValue;
+                        lista[i]={...lista[i],status:margem>0?"ok":"sem_margem",margem,nome:latest.name||lista[i].nome||"—",statusClt:latest.status,erro:margem>0?null:"Sem margem disponível"};
+                      } else {
+                        lista[i]={...lista[i],status:"sem_margem",margem:null,erro:"Sem consultas anteriores — gere um termo primeiro"};
+                      }
+                    } catch(e) {
+                      const msg=(e.message||"").toLowerCase();
+                      const tipo=msg.includes("autorizado")||msg.includes("autorização")?"nao_autorizado":msg.includes("cpf")||msg.includes("inválido")?"cpf_invalido":"erro";
+                      lista[i]={...lista[i],status:tipo,margem:null,erro:e.message};
+                    }
+                    done++;
+                    setMargemLoteProgress(Math.round(done/lista.length*100));
+                    setMargemLoteItems([...lista]);
+                    setMargemLoteLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg:`${lista[i].cpf}: ${lista[i].status} ${lista[i].margem!=null?fmtBRL(lista[i].margem):(lista[i].erro||"")} `,ok:lista[i].status==="ok"},...p.slice(0,99)]);
+                  }
+                  setMargemLoteRunning(false);
+                }} disabled={margemLoteItems.filter(x=>x.status==="pendente").length===0||!isTokenValid}
+                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:margemLoteItems.filter(x=>x.status==="pendente").length===0?0.5:1}}>▶ Consultar Todos</button>}
+                {margemLoteRunning && <button onClick={()=>{margemLotePauseRef.current=!margemLotePauseRef.current;setMargemLotePaused(p=>!p);}} style={{background:margemLotePaused?"#091E12":"#2B2310",color:margemLotePaused?"#34D399":"#FBBF24",border:`1px solid ${margemLotePaused?"#34D39933":"#FBBF2433"}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>{margemLotePaused?"▶ Retomar":"⏸ Pausar"}</button>}
+                {margemLoteRunning && <button onClick={()=>{margemLoteAbortRef.current=true;setMargemLoteRunning(false);}} style={{background:"#2D1515",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>⏹ Parar</button>}
+                <button onClick={()=>{setMargemLoteItems([]);setMargemLoteProgress(0);setMargemLoteLogs([]);}} style={{background:"transparent",color:C.td,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>🗑</button>
+                <button onClick={()=>{
+                  const rows=[["CPF","Nome","Status","Margem Disponível","Erro"]];
+                  margemLoteItems.forEach(it=>rows.push([it.cpf,it.nome||"—",it.status,it.margem!=null?it.margem:"",it.erro||""]));
+                  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("
+");
+                  const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote_clt.csv";a.click();
+                }} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>📥 CSV</button>
+              </div>
+            </div>
+
+            {/* Banco e config */}
+            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{color:C.td,fontSize:12}}>Banco:</span>
+              {["QI","cartos","bms"].map(b=>(
+                <button key={b} onClick={()=>setMargemLoteBanc(b)} style={{background:margemLoteBanc===b?C.abg:C.deep,color:margemLoteBanc===b?C.atxt:C.tm,border:`1px solid ${margemLoteBanc===b?C.atxt+"44":C.b2}`,borderRadius:8,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:margemLoteBanc===b?700:400,textTransform:"uppercase"}}>{b}</button>
+              ))}
+            </div>
+
+            {/* Progresso */}
+            {(margemLoteRunning||margemLoteProgress>0) && (
+              <div style={{marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                  <span style={{color:C.tm,fontSize:11}}>{margemLoteRunning?(margemLotePaused?"Pausado":"Consultando..."):"Concluído"}</span>
+                  <span style={{color:C.atxt,fontSize:11,fontWeight:700}}>{margemLoteProgress}%</span>
+                </div>
+                <div style={{background:C.deep,borderRadius:99,height:5,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${margemLoteProgress}%`,background:`linear-gradient(90deg,${C.lg1},${C.lg2})`,borderRadius:99,transition:"width 0.4s"}} />
+                </div>
+              </div>
+            )}
+
+            {/* Caixa CPFs */}
+            <div>
+              <textarea ref={margemLoteCpfRef} rows={4} placeholder={"Cole os CPFs aqui (um por linha):
+12345678901
+98765432100
+..."} style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
+              <button onClick={()=>{
+                const val = margemLoteCpfRef.current?.value||"";
+                const novos=val.split(/[
+,;]+/).map(l=>l.trim()).filter(Boolean).map(cpf=>{
+                  const clean=cpf.replace(/\D/g,"").padStart(11,"0").slice(0,11);
+                  const fmt=clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"..-");
+                  const contato=(contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===clean);
+                  return {id:"ml_"+Date.now()+Math.random(),cpf:clean,cpfFmt:fmt,nome:contato?.name||contato?.nome||"",usuário:currentUser?.name||"",margem:null,status:"pendente",erro:null};
+                }).filter(x=>x.cpf.replace(/^0+/,"").length>0);
+                if(!novos.length) return;
+                setMargemLoteItems(p=>[...p,...novos]);
+                if(margemLoteCpfRef.current) margemLoteCpfRef.current.value="";
+              }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Adicionar à Fila</button>
+            </div>
+          </div>
+
+          {/* Filtro */}
+          {margemLoteItems.length>0 && (
+            <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{color:C.td,fontSize:12}}>Filtrar:</span>
+              {["Todos","ok","pendente","sem_margem","erro","nao_autorizado","cpf_invalido"].map(s=>(
+                <button key={s} onClick={()=>setMargemLoteFilter(s)} style={{background:margemLoteFilter===s?C.abg:C.deep,color:margemLoteFilter===s?C.atxt:C.td,border:`1px solid ${margemLoteFilter===s?C.atxt+"44":C.b2}`,borderRadius:8,padding:"4px 12px",fontSize:11,cursor:"pointer"}}>
+                  {s==="ok"?"✅ Com margem":s==="pendente"?"⏳ Pendente":s==="sem_margem"?"💰 Sem margem":s==="erro"?"❌ Erro":s==="nao_autorizado"?"🚫 Não aut.":s==="cpf_invalido"?"⚠ CPF inválido":"Todos"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Fila */}
+          {margemLoteItems.length>0 && (
+            <div style={{...S.card,overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead><tr style={{background:C.deep}}>
+                  {["CPF","Nome do Cliente","Usuário","Margem / Status","Ação"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {margemLoteItems.filter(it=>margemLoteFilter==="Todos"||it.status===margemLoteFilter).map((it,i)=>{
+                    const stCol={ok:"#34D399",pendente:"#FBBF24",consultando:"#60A5FA",sem_margem:"#F87171",erro:"#F87171",nao_autorizado:"#F87171",cpf_invalido:"#F87171"}[it.status]||"#94A3B8";
+                    const stLbl={ok:"✅ Com margem",pendente:"⏳ Pendente",consultando:"🔄 Consultando",sem_margem:"💰 Sem margem",erro:"❌ Erro",nao_autorizado:"🚫 Não autorizado",cpf_invalido:"⚠ CPF inválido"}[it.status]||it.status;
+                    return(
+                      <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`}}
+                        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <td style={{padding:"9px 10px",color:C.tp,fontFamily:"monospace",fontSize:11}}>{it.cpfFmt||fmtCPF(it.cpf)}</td>
+                        <td style={{padding:"9px 10px",color:C.ts}}>{it.nome||"—"}</td>
+                        <td style={{padding:"9px 10px",color:C.td,fontSize:11}}>{it.usuário||"—"}</td>
+                        <td style={{padding:"9px 10px"}}>
+                          {it.status==="ok" ? (
+                            <span style={{color:"#34D399",fontWeight:700,fontSize:12}}>{fmtBRL(it.margem)}</span>
+                          ) : (
+                            <div>
+                              <span style={{background:stCol+"18",color:stCol,border:`1px solid ${stCol}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{stLbl}</span>
+                              {it.erro&&<div style={{color:stCol,fontSize:9.5,marginTop:2,opacity:0.8}}>{it.erro.slice(0,60)}</div>}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{padding:"9px 10px"}}>
+                          {it.status==="ok" && (
+                            <button onClick={async()=>{
+                              const cpf=it.cpf;
+                              const end=new Date().toISOString();
+                              const start=new Date(Date.now()-30*86400000).toISOString();
+                              const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=${margemLoteBanc}&startDate=${start}&endDate=${end}`).catch(()=>null);
+                              const latest=(r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+                              if(latest){setInlineSimId(latest.id);setAba("termo");executarSimulacoes(latest,true);}
+                              else setErr("Nenhum termo encontrado para este CPF. Gere um termo primeiro.");
+                            }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                              ⚡ Simular
+                            </button>
+                          )}
+                          {["pendente","erro","sem_margem"].includes(it.status) && (
+                            <button onClick={async()=>{
+                              setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"consultando"}:x));
+                              const cpf=it.cpf;
+                              try {
+                                const end=new Date().toISOString();
+                                const start=new Date(Date.now()-30*86400000).toISOString();
+                                const r=await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=10&provider=${margemLoteBanc}&startDate=${start}&endDate=${end}`);
+                                const items=r?.data||[];
+                                const latest=items.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+                                if(latest){const m=latest.availableMarginValue;setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:m>0?"ok":"sem_margem",margem:m,nome:latest.name||x.nome,erro:m>0?null:"Sem margem"}:x));}
+                                else setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"sem_margem",erro:"Sem consultas — gere um termo"}:x));
+                              }catch(e){setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"erro",erro:e.message}:x));}
+                            }} style={{background:"rgba(255,255,255,0.06)",color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 10px",fontSize:11,cursor:"pointer"}}>🔄</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Logs */}
+          {margemLoteLogs.length>0 && (
+            <div style={{...S.card,padding:"12px 16px",marginTop:12,maxHeight:140,overflowY:"auto"}}>
+              <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:6}}>Log</div>
+              {margemLoteLogs.map((l,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:2}}><span style={{color:C.td,fontSize:10,flexShrink:0}}>{l.ts}</span><span style={{color:l.ok?"#34D399":"#F87171",fontSize:11}}>{l.msg}</span></div>)}
+            </div>
+          )}
         </div>
       )}
 
@@ -17536,7 +17868,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               <div style={{color:"rgba(255,255,255,0.5)",fontSize:10,textTransform:"uppercase",marginBottom:6}}>Motivo</div>
               <div style={{color:"#FCA5A5",fontSize:13,lineHeight:1.6}}>{avisoModal.description||avisoModal.reason||avisoModal.detail||"Sem descrição. Contate a V8 Digital."}</div>
             </div>
-            <button onClick={()=>setAvisoModal(null)} style={{width:"100%",background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Fechar</button>
+            <div style={{display:"flex",gap:8,marginTop:0}}>
+              <button onClick={()=>{
+                setAvisoModal(null);
+                setInlineSimId(avisoModal.id);
+                executarSimulacoes(avisoModal,true);
+              }} style={{flex:1,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>⚡ Simular Novamente</button>
+              <button onClick={()=>setAvisoModal(null)} style={{flex:1,background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Fechar</button>
+            </div>
           </div>
         </div>
       )}
