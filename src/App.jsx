@@ -16301,11 +16301,19 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         if(list.length){setConfigs(list);if(!configSel)setConfigSel(list[0]);}
       }).catch(()=>{});
     }
-    const mapLink = item => ({
-      ...item,
-      link: item.consent_url||item.url||item.link||item.authorization_url
-        ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
-    });
+    const mapLink = item => {
+      // Normaliza data de criação a partir de qualquer campo que a API possa retornar
+      const rawDate = item.createdAt||item.created_at||item.grantedAt||item.granted_at
+        ||item.consentedAt||item.consented_at||item.requestedAt||item.requested_at
+        ||item.consultedAt||item.consulted_at||item.updatedAt||item.updated_at
+        ||item.timestamp||item.date||item.criadoEm||"";
+      return {
+        ...item,
+        createdAt: rawDate || new Date().toISOString(),
+        link: item.consent_url||item.url||item.link||item.authorization_url
+          ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
+      };
+    };
     const merge = (prev, novos) => {
       const ids = new Set(prev.map(x=>x.id));
       const merged = [...novos.filter(x=>!ids.has(x.id)), ...prev];
