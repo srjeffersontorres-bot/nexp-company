@@ -18413,9 +18413,9 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
       const txt = await r.text();
       if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado.");
       let j; try { j=JSON.parse(txt); } catch { throw new Error("Resposta inválida"); }
-      if (!r.ok || !j.hasSuccess) throw new Error((Array.isArray(j.errors)&&j.errors.length?j.errors.join("; "):null)||j.message||`Erro ${r.status}`);
+      if (!r.ok||!j.hasSuccess) throw new Error((Array.isArray(j.errors)&&j.errors.length?j.errors.join("; "):null)||j.message||`Erro ${r.status}`);
       setTkn(j.value.token.accessToken);
-      setTknExp(Date.now() + 58*60*1000);
+      setTknExp(Date.now()+58*60*1000);
     } catch(e) { setAuthErr(e.message); }
     setAuthBusy(false);
   };
@@ -18427,32 +18427,53 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
     const txt = await r.text();
     if (txt.trim().startsWith("<")) throw new Error("Proxy não encontrado.");
     let j; try { j=JSON.parse(txt); } catch { throw new Error(`Resposta inválida (${r.status})`); }
-    if (!r.ok || j.hasError) throw new Error((Array.isArray(j.errors)&&j.errors.length?j.errors.join("; "):null)||j.message||j.error||`Erro ${r.status}`);
+    if (!r.ok||j.hasError) throw new Error((Array.isArray(j.errors)&&j.errors.length?j.errors.join("; "):null)||j.message||j.error||`Erro ${r.status}`);
     return j;
   };
 
-  // ── FGTS Individual ──────────────────────────────────────────
-  const [fCpf,   setFCpf]   = useState("");
-  const [fBanc,  setFBanc]  = useState("BMP");
-  const [fBusy,  setFBusy]  = useState(false);
-  const [fErr,   setFErr]   = useState("");
-  const [fSims,  setFSims]  = useState([]);
-  const [fSel,   setFSel]   = useState(null);
-
-  const simularFGTS = async () => {
-    const cpf = fCpf.replace(/\D/g,"");
-    if (cpf.length!==11) { setFErr("CPF inválido."); return; }
-    setFBusy(true); setFErr(""); setFSims([]); setFSel(null);
-    try {
-      const j = await hubCall("/proposta/simulacaoFGTSBancarizador","POST",{ cpfCliente:cpf, lojaId:LOJA_ID, bancarizador:fBanc });
-      const sims = Array.isArray(j.value)?j.value:(j.value?[j.value]:[]);
-      if (!sims.length) throw new Error("Nenhuma simulação disponível para este CPF.");
-      setFSims(sims); setFSel(sims[0]);
-    } catch(e) { setFErr(e.message); }
-    setFBusy(false);
+  // ── Diagnóstico de erros Hub ──────────────────────────────────
+  const diagnosticarErroHub = (msg) => {
+    const m = (msg||"").toLowerCase();
+    if (m.includes("sem adesão")||m.includes("sem ades"))               return { tipo:"sem_adesao",    titulo:"📋 Sem Adesão FGTS",    cor:"#FBBF24", dica:"Cliente não optou pelo Saque Aniversário" };
+    if (m.includes("aniversariante")||m.includes("aniversário"))        return { tipo:"aniversariante", titulo:"🎂 Mês aniversário",     cor:"#FBBF24", dica:"Simule no mês de aniversário do cliente" };
+    if (m.includes("não autorizado")||m.includes("nao autorizado"))     return { tipo:"nao_autorizado", titulo:"🚫 Não autorizado",      cor:"#F87171", dica:"Solicite autorização para esta loja" };
+    if (m.includes("não elegível")||m.includes("nao elegivel"))         return { tipo:"sem_saldo",      titulo:"❌ Não elegível",         cor:"#F87171", dica:"Sem margem disponível" };
+    if (m.includes("sem simulaç")||m.includes("sem resultado"))         return { tipo:"sem_saldo",      titulo:"💰 Sem simulações",      cor:"#F87171", dica:"Nenhuma tabela disponível" };
+    if (m.includes("inválido")||m.includes("invalido"))                 return { tipo:"cpf_invalido",   titulo:"⚠ CPF Inválido",         cor:"#F87171", dica:"Verifique o CPF informado" };
+    if (m.includes("empresa")||m.includes("irregular"))                 return { tipo:"empresa_irreg",  titulo:"🏭 Empresa Irregular",    cor:"#FB923C", dica:"Empresa em situação irregular perante o FGTS" };
+    if (m.includes("dado")||m.includes("cliente"))                      return { tipo:"dados_inv",      titulo:"📄 Dados Inválidos",      cor:"#F87171", dica:"Verifique os dados do cliente" };
+    if (m.includes("timeout")||m.includes("time out"))                  return { tipo:"timeout",        titulo:"⏱ Timeout",              cor:"#FBBF24", dica:"Tente novamente mais tarde" };
+    return { tipo:"erro", titulo:"❌ Erro", cor:"#F87171", dica: msg?.slice(0,60)||"Erro desconhecido" };
   };
 
-  // ── CLT Individual ───────────────────────────────────────────
+  // ── LOTE estado (elevado para evitar re-mount) ────────────────
+  const [loteItems,    setLoteItems]    = useState(() => { try { const s=JSON.parse(localStorage.getItem("nexp_hub_lote_state")||"null"); return s?.items||[]; } catch { return []; } });
+  const [loteRunning,  setLoteRunning]  = useState(false);
+  const [lotePaused,   setLotePaused]   = useState(false);
+  const [loteProgress, setLoteProgress] = useState(0);
+  const [loteLogs,     setLoteLogs]     = useState([]);
+  const [loteCpfBox,   setLoteCpfBox]   = useState(() => localStorage.getItem("nexp_hub_lote_cpfbox")||"");
+  const [loteSearch,   setLoteSearch]   = useState("");
+  const [loteShowCpf,  setLoteShowCpf]  = useState(false);
+  const [loteFilterSt, setLoteFilterSt] = useState("Todos");
+  const [loteBanc,     setLoteBanc]     = useState("BMP");
+  const [loteAnos,     setLoteAnos]     = useState("todos");
+  const [loteMargemFgts, setLoteMargemFgts] = useState("");
+  const [loteCltParcelas,setLoteCltParcelas]= useState("12");
+  const [loteTipo,       setLoteTipo]    = useState("fgts");
+  const [loteDetalhe,    setLoteDetalhe] = useState(null);
+  const [loteDigModal,   setLoteDigModal]= useState(null);
+  const [lotePage,       setLotePage]    = useState(0);
+
+  // FGTS Individual
+  const [fCpf,    setFCpf]    = useState("");
+  const [fBanc,   setFBanc]   = useState("BMP");
+  const [fBusy,   setFBusy]   = useState(false);
+  const [fErr,    setFErr]    = useState("");
+  const [fSims,   setFSims]   = useState([]);
+  const [fDigModal,setFDigModal]= useState(null);
+
+  // CLT Individual
   const [cCpf,    setCCpf]    = useState("");
   const [cNome,   setCNome]   = useState("");
   const [cEmail,  setCEmail]  = useState("");
@@ -18469,44 +18490,272 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
   const [cSBusy,  setCSBusy]  = useState(false);
   const [cSErr,   setCSErr]   = useState("");
   const [cVinculo,setCVinculo]= useState(null);
+  const [cDigModal,setCDigModal]= useState(null);
 
-  const CLT_STATUS_MAP = {
-    0:"Pendente",1:"Em Processamento",2:"Não Elegível",3:"Escolher Vínculo",
-    4:"Selecionando Vínculo",5:"Sem Opções",6:"Simulações Disponíveis",7:"Erro",
-    8:"Cancelada",9:"Não Encontrado DataPrev",10:"Tipo Operação Inativo",
-    11:"Aguardando Assinatura do Termo",12:"Concluída",13:"Aguardando Bancarizador",
-    14:"Empresa Irregular",15:"Dados Inválidos"
+  // Acompanhamento de propostas
+  const [acompData,    setAcompData]    = useState([]);
+  const [acompLoading, setAcompLoading] = useState(false);
+  const [acompErr,     setAcompErr]     = useState("");
+  const [acompSearch,  setAcompSearch]  = useState("");
+  const [acompTipo,    setAcompTipo]    = useState("Todos"); // FGTS|CLT|Todos
+  const [acompDateFrom,setAcompDateFrom]= useState("");
+  const [acompDateTo,  setAcompDateTo]  = useState("");
+  const [acompDetalhe, setAcompDetalhe] = useState(null);
+
+  const loteAbortRef = useRef(false);
+  const lotePauseRef = useRef(false);
+  const cpfBoxRef    = useRef(null);
+  const PAGE_SIZE    = 50;
+
+  const ANOS_FGTS = ["1","2","3","4","5"];
+  const CLT_STATUS_MAP = { 0:"Pendente",1:"Em Processamento",2:"Não Elegível",3:"Escolher Vínculo",4:"Selecionando",5:"Sem Opções",6:"Disponível",7:"Erro",8:"Cancelada",9:"Não Encontrado",10:"Inativo",11:"Aguardando Termo",12:"Concluída",13:"Aguard. Bancarizador",14:"Empresa Irregular",15:"Dados Inválidos" };
+  const PROP_STATUS_LABEL = { 1:"⏳ Temporária",2:"📤 Em Análise",3:"👤 c/ Atendente",4:"✅ Aprovada",5:"❌ Reprovada",6:"🚫 Cancelada",7:"✅ Aprovada/Encerrada",8:"❌ Reprovada/Encerrada" };
+  const PROP_STATUS_COR   = { 1:"#FBBF24",2:"#60A5FA",3:"#C084FC",4:"#34D399",5:"#F87171",6:"#F87171",7:"#34D399",8:"#F87171" };
+
+  const addLog = (msg,ok=true) => setLoteLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
+  const saveLote = (items,prog,running=false) => { try { localStorage.setItem("nexp_hub_lote_state",JSON.stringify({items,prog,running})); } catch {} };
+
+  // ── simularUmFGTS ─────────────────────────────────────────────
+  const simUmFgts = async (item) => {
+    const cpf = padCPF(item.cpf);
+    if (!cpf.replace(/^0+/,"").length) return {...item,status:"cpf_invalido",erro:"CPF inválido",diag:diagnosticarErroHub("invalido")};
+    addLog(`📡 ${fmtCPF(cpf)}: Simulando FGTS (${loteBanc})...`);
+    try {
+      const body = { cpfCliente:cpf, lojaId:LOJA_ID, bancarizador:loteBanc };
+      if (loteMargemFgts.trim()) body.wishAmount = parseFloat(loteMargemFgts)||undefined;
+      const j = await hubCall("/proposta/simulacaoFGTSBancarizador","POST",body);
+      const rawSims = Array.isArray(j.value)?j.value:(j.value?[j.value]:[]);
+      if (!rawSims.length) { const d=diagnosticarErroHub("sem simulações"); return {...item,cpf:fmtCPF(cpf),status:d.tipo,erro:d.dica,diag:d,ts:new Date().toLocaleString("pt-BR")}; }
+
+      // Filter by anos if needed
+      let filtSims = rawSims;
+      if (loteAnos!=="todos") {
+        filtSims = rawSims.filter(s => {
+          const qtd = s.quantidadeParcelas||0;
+          const anosSim = Math.round(qtd/12);
+          return anosSim === parseInt(loteAnos);
+        });
+        if (!filtSims.length) filtSims = rawSims; // fallback to all if filter returns nothing
+      }
+
+      const melhor = filtSims.reduce((best,s)=> parseFloat(s.valorCliente||0) > parseFloat(best.valorCliente||0) ? s : best, filtSims[0]);
+      const val    = parseFloat(melhor.valorCliente||0);
+      addLog(`✅ ${fmtCPF(cpf)}: Melhor ${fmtR(val)} — ${melhor.nomeTabela||loteBanc}`);
+      return {...item, cpf:fmtCPF(cpf), status:"ok", saldo:parseFloat(melhor.valorbruto||0), margem:val,
+        sim:{ melhor, allSims:filtSims, melhorAnos:`${melhor.quantidadeParcelas||"?"}x` },
+        ts:new Date().toLocaleString("pt-BR"), nome:item.nome||"" };
+    } catch(e) {
+      const d = diagnosticarErroHub(e.message);
+      addLog(`❌ ${fmtCPF(cpf)}: ${d.titulo}`,false);
+      return {...item, cpf:fmtCPF(cpf), status:d.tipo, erro:d.dica, diag:d, ts:new Date().toLocaleString("pt-BR")};
+    }
   };
 
-  const criarPreSim = async () => {
-    const cpf = cCpf.replace(/\D/g,"");
-    if (cpf.length!==11||!cNome.trim()||!cEmail.trim()||!cNasc.trim()) { setCErr("Preencha todos os campos obrigatórios."); return; }
-    setCBusy(true); setCErr(""); setCPreSim(null); setCPollMsg(""); setCSim(null); setCVinculo(null);
+  // ── simularUmCLT ──────────────────────────────────────────────
+  const simUmClt = async (item) => {
+    const cpf = padCPF(item.cpf);
+    if (!cpf.replace(/^0+/,"").length) return {...item,status:"cpf_invalido",erro:"CPF inválido",diag:diagnosticarErroHub("invalido")};
+    addLog(`📡 ${fmtCPF(cpf)}: CLT pré-simulação...`);
     try {
       const j = await hubCall("/presimulacao","POST",{
-        cpf, lojaId:LOJA_ID, numeroParcelas:parseInt(cParcelas)||12, valor:parseFloat(cValor)||5000,
-        tipoOperacao:"27", nome:cNome.trim(), email:cEmail.trim(), telefone:cTel.replace(/\D/g,""),
-        dataNascimento:new Date(cNasc).toISOString(), sexo:cSexo, cidade:"",
+        cpf, lojaId:LOJA_ID, numeroParcelas:parseInt(loteCltParcelas)||12,
+        valor:parseFloat(loteMargemFgts)||5000, tipoOperacao:"27",
+        nome:item.nome||"Cliente", email:`${cpf}@nexp.com.br`,
+        telefone:"11999999999", dataNascimento:"1990-01-01T00:00:00.000Z",
+        sexo:"Masculino", cidade:"",
       });
-      const ps = j.value||j; setCPreSim(ps);
+      const psId = (j.value||j).id||(j.value||j).presimulacaoId;
+      let ps=null; let tent=0;
+      while (tent<20) {
+        if (loteAbortRef.current) return {...item,status:"pendente"};
+        await new Promise(r=>setTimeout(r,4000));
+        tent++;
+        addLog(`🔄 ${fmtCPF(cpf)}: CLT aguardando (${tent}/20)...`);
+        const pj = await hubCall(`/presimulacao/${psId}`);
+        ps = pj.value||pj;
+        const st = ps.idStatus??ps.status;
+        if ([6,3,2,5,7,8,9,10,12,14,15].includes(st)) break;
+        if (st===11) { const d=diagnosticarErroHub("sem adesão"); return {...item,cpf:fmtCPF(cpf),status:"sem_adesao",erro:"Aguardando assinatura do termo",diag:d,ts:new Date().toLocaleString("pt-BR")}; }
+      }
+      const st = ps?.idStatus??ps?.status;
+      if (st===2) { const d=diagnosticarErroHub("não elegível"); return {...item,cpf:fmtCPF(cpf),status:"sem_saldo",erro:"Não elegível",diag:d,ts:new Date().toLocaleString("pt-BR")}; }
+      if ([5,7,8,9,14,15].includes(st)) { const d=diagnosticarErroHub(ps?.mensagemErro||CLT_STATUS_MAP[st]); return {...item,cpf:fmtCPF(cpf),status:d.tipo,erro:ps?.mensagemErro||CLT_STATUS_MAP[st],diag:d,ts:new Date().toLocaleString("pt-BR")}; }
+
+      // Simular múltiplos prazos
+      const prazos = [6,12,18,24,36,48,60].filter(p=>p<=parseInt(loteCltParcelas||"60")||true);
+      const allSims = []; let melhor=null; let melhorVal=0;
+      for (const prazo of prazos) {
+        if (loteAbortRef.current) break;
+        try {
+          const simBody = { cpf, lojaId:LOJA_ID, numeroParcelas:prazo, valor:parseFloat(loteMargemFgts)||5000, PreSimulacaoId:psId };
+          const vinculos = ps?.vinculos||[];
+          if (ps?.requerVinculo&&vinculos.length) { const v=vinculos.find(x=>x.elegivel)||vinculos[0]; simBody.idCotacao=v.vinculoId||v.idCotacao; simBody.matricula=v.matricula; simBody.codigoInscricaoEmpregador=v.tipoInscricao; simBody.numeroInscricaoEmpregador=v.numeroInscricao; }
+          const sj = await hubCall("/Clt/simular","POST",simBody);
+          const sims = Array.isArray(sj.value)?sj.value:(sj.value?[sj.value]:[]);
+          for (const s of sims) {
+            const v=parseFloat(s.valorDesembolsoTrabalhador||s.valorCliente||0);
+            allSims.push({prazo,sim:s,val:v,ok:true});
+            if (v>melhorVal) { melhorVal=v; melhor=s; }
+          }
+        } catch { /* skip prazo */ }
+      }
+      if (!melhor) { const d=diagnosticarErroHub("sem simulações"); return {...item,cpf:fmtCPF(cpf),status:"sem_saldo",erro:"Sem simulações CLT",diag:d,ts:new Date().toLocaleString("pt-BR")}; }
+      addLog(`✅ ${fmtCPF(cpf)}: CLT ${fmtR(melhorVal)} — ${melhor.nomeTabela||"Hub"}`);
+      return {...item,cpf:fmtCPF(cpf),status:"ok",saldo:melhorVal,margem:melhorVal,
+        sim:{melhor,allSims,melhorAnos:`${melhor.quantidadeParcelas||"?"}x`,psId,vinculos:ps?.vinculos||[]},
+        ts:new Date().toLocaleString("pt-BR")};
+    } catch(e) {
+      const d=diagnosticarErroHub(e.message);
+      addLog(`❌ ${fmtCPF(cpf)}: ${d.titulo}`,false);
+      return {...item,cpf:fmtCPF(cpf),status:d.tipo,erro:d.dica,diag:d,ts:new Date().toLocaleString("pt-BR")};
+    }
+  };
+
+  // ── Loop principal lote ───────────────────────────────────────
+  const simularLote = async () => {
+    setLoteRunning(true); setLotePaused(false); loteAbortRef.current=false; lotePauseRef.current=false;
+    const lista=[...loteItems];
+    const DONE=["ok","sem_saldo","erro","sem_adesao","cpf_invalido","aniversariante","nao_autorizado","empresa_irreg","dados_inv","timeout"];
+    let done=lista.filter(x=>DONE.includes(x.status)).length;
+    for (let i=0;i<lista.length;i++) {
+      while(lotePauseRef.current) await new Promise(r=>setTimeout(r,300));
+      if(loteAbortRef.current) break;
+      if(DONE.includes(lista[i].status)) continue;
+      lista[i]={...lista[i],status:"simulando"}; setLoteItems([...lista]);
+      const upd = loteTipo==="fgts" ? await simUmFgts(lista[i]) : await simUmClt(lista[i]);
+      lista[i]=upd; done++;
+      const prog=Math.round(done/lista.length*100);
+      setLoteProgress(prog); setLoteItems([...lista]); saveLote(lista,prog,true);
+    }
+    setLoteRunning(false); setLotePaused(false);
+    saveLote(lista,lista.length?Math.round(lista.filter(x=>DONE.includes(x.status)).length/lista.length*100):100,false);
+    if (!loteAbortRef.current&&lista.length) onLoteSimFim?.();
+  };
+
+  const adicionarCPFs = () => {
+    const val=cpfBoxRef.current?cpfBoxRef.current.value:loteCpfBox;
+    const novos=val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean)
+      .map(cpf=>({id:"hub_"+Date.now()+Math.random(),nome:"Manual",cpf:padCPF(cpf),saldo:null,margem:null,status:"pendente",erro:null,sim:null,ts:null}));
+    setLoteItems(p=>{const u=[...p,...novos];saveLote(u,loteProgress,false);return u;});
+    setLoteCpfBox(val); setLoteShowCpf(false);
+  };
+
+  const exportarCSV = () => {
+    const rows=[["CPF","Status","Melhor Oferta","Prazo","Tabela","Data","Erro"]];
+    loteItems.forEach(it=>rows.push([it.cpf,it.status,fmtR(it.margem),it.sim?.melhorAnos||"",it.sim?.melhor?.nomeTabela||"",it.ts||"",it.erro||""]));
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="lote_hub.csv"; a.click();
+  };
+
+  // ── Proposta Hub ──────────────────────────────────────────────
+  // digForm is managed inside DigForm component
+  const [digBusy,  setDigBusy]  = useState(false);
+  const [digErr,   setDigErr]   = useState("");
+  const [digOk,    setDigOk]    = useState("");
+
+  const enviarProposta = async (form) => {
+    setDigBusy(true); setDigErr(""); setDigOk("");
+    try {
+      const isFGTS = form.tipoOperacao==="fgts";
+      const payload = {
+        tipoOperacao:          isFGTS ? 2 : 27,
+        tipoCliente:           isFGTS ? "Novo" : "Novo",
+        formaPagamento:        isFGTS ? "Boleto" : "DescontoFolha",
+        formaPagamentoCliente: isFGTS ? "FGTS"  : "Transferencia",
+        lojaId:   LOJA_ID,
+        cpfAtendente: form.cpfAtendente||cred?.cpfAtendente||"",
+        bancarizador: form.bancarizador||"BMP",
+        SimulacaoId:  form.simulacaoId,
+        tabelaComercial: parseInt(form.tabelaComercial)||0,
+        plano:           parseInt(form.plano)||0,
+        valorParcela:    parseFloat(form.valorParcela)||0,
+        valorVista:      parseFloat(form.valorVista)||0,
+        valorBruto:      parseFloat(form.valorBruto)||0,
+        valorTac:        parseFloat(form.valorTac)||0,
+        dataPrimeiraParcela: form.dataPrimeiraParcela,
+        cliente: {
+          documento: form.cpf.replace(/\D/g,""),
+          nome:      form.nome,
+          pessoaFisica: {
+            dataNascimento: form.dataNascimento,
+            sexo: form.sexo==="Masculino"?0:1,
+            email: form.email,
+          },
+          telefones: [{ ddd: form.telefone.slice(0,2), numero: form.telefone.slice(2), tipoTelefone: 1, renderPhone: form.telefone }],
+        },
+        dadosBancarios: form.banco ? {
+          banco: form.banco, agencia: form.agencia, conta: form.conta,
+          tipoConta: form.tipoConta==="poupanca"?2:1,
+        } : undefined,
+        chavePix: form.chavePix ? { tipoChave:"NaturalRegistrationNumber", valorChave: form.chavePix } : undefined,
+      };
+      const j = await hubCall("/proposta","POST",payload);
+      const pid = j.value?.propostaId||j.value?.id||"OK";
+      setDigOk(`✅ Proposta enviada! ID: ${pid}`);
+      setAba("acompanhamento");
+      buscarPropostas();
+    } catch(e) { setDigErr(e.message); }
+    setDigBusy(false);
+  };
+
+  // ── Acompanhamento ────────────────────────────────────────────
+  const buscarPropostas = async () => {
+    setAcompLoading(true); setAcompErr("");
+    try {
+      const hoje = new Date();
+      const d7   = new Date(hoje - 7*86400*1000);
+      const fmt  = (d) => d.toISOString().slice(0,10);
+      const from = acompDateFrom||fmt(d7);
+      const to   = acompDateTo  ||fmt(hoje);
+      let url = `/proposta/painelV4?lojasId=${LOJA_ID}&numeroPagina=1&tamanhoPagina=100&dataPropostaInicio=${from}&dataPropostaFim=${to}`;
+      if (acompTipo==="FGTS") url += "&tiposOperacao=2";
+      if (acompTipo==="CLT")  url += "&tiposOperacao=27";
+      const j = await hubCall(url);
+      setAcompData(j.value||[]);
+    } catch(e) { setAcompErr(e.message); }
+    setAcompLoading(false);
+  };
+
+  useEffect(() => { if (aba==="acompanhamento"&&valid) buscarPropostas(); }, [aba]); // eslint-disable-line
+
+  // ── FGTS Individual ──────────────────────────────────────────
+  const simularFGTS = async () => {
+    const cpf=fCpf.replace(/\D/g,"");
+    if (cpf.length!==11) { setFErr("CPF inválido."); return; }
+    setFBusy(true); setFErr(""); setFSims([]);
+    try {
+      const j = await hubCall("/proposta/simulacaoFGTSBancarizador","POST",{cpfCliente:cpf,lojaId:LOJA_ID,bancarizador:fBanc});
+      const sims = Array.isArray(j.value)?j.value:(j.value?[j.value]:[]);
+      if (!sims.length) throw new Error("Nenhuma simulação disponível para este CPF.");
+      setFSims(sims);
+    } catch(e) { setFErr(e.message); }
+    setFBusy(false);
+  };
+
+  // ── CLT Individual ───────────────────────────────────────────
+  const criarPreSim = async () => {
+    const cpf=cCpf.replace(/\D/g,"");
+    if (cpf.length!==11||!cNome.trim()||!cEmail.trim()||!cNasc.trim()) { setCErr("Preencha todos os campos."); return; }
+    setCBusy(true); setCErr(""); setCPreSim(null); setCPollMsg(""); setCSim(null); setCVinculo(null);
+    try {
+      const j=await hubCall("/presimulacao","POST",{cpf,lojaId:LOJA_ID,numeroParcelas:parseInt(cParcelas)||12,valor:parseFloat(cValor)||5000,tipoOperacao:"27",nome:cNome.trim(),email:cEmail.trim(),telefone:cTel.replace(/\D/g,""),dataNascimento:new Date(cNasc).toISOString(),sexo:cSexo,cidade:""});
+      const ps=j.value||j; setCPreSim(ps);
       pollPreSim(ps.id||ps.presimulacaoId);
     } catch(e) { setCErr(e.message); }
     setCBusy(false);
   };
 
-  const pollPreSim = async (id, n=0) => {
-    if (n>30) { setCPollMsg("Timeout. Verifique manualmente."); return; }
+  const pollPreSim = async (id,n=0) => {
+    if (n>30) { setCPollMsg("Timeout."); return; }
     setCPollMsg(`⏳ Processando... (${n+1}/30)`);
     await new Promise(r=>setTimeout(r,3000));
     try {
-      const j = await hubCall(`/presimulacao/${id}`);
-      const ps = j.value||j; setCPreSim(ps);
-      const st = ps.idStatus??ps.status;
-      if ([6,2,5,7,8,9,10,12,14,15].includes(st)) {
-        setCPollMsg(st===6?"✅ Simulações disponíveis! Clique em Simular.":`ℹ️ ${CLT_STATUS_MAP[st]||st}${ps.mensagemErro?` — ${ps.mensagemErro}`:""}`); return;
-      }
-      if (st===11) { setCPollMsg("✍️ Cliente deve assinar o termo em: https://termo.hubcredito.com.br/"); return; }
-      pollPreSim(id, n+1);
+      const j=await hubCall(`/presimulacao/${id}`);
+      const ps=j.value||j; setCPreSim(ps);
+      const st=ps.idStatus??ps.status;
+      if ([6,2,5,7,8,9,10,12,14,15].includes(st)) { setCPollMsg(st===6?"✅ Pronto! Clique em Simular.":`ℹ️ ${CLT_STATUS_MAP[st]}${ps.mensagemErro?` — ${ps.mensagemErro}`:""}`); return; }
+      if (st===11) { setCPollMsg("✍️ Assinar em: https://termo.hubcredito.com.br/"); return; }
+      pollPreSim(id,n+1);
     } catch(e) { setCPollMsg(`Erro: ${e.message}`); }
   };
 
@@ -18514,189 +18763,23 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
     if (!cPreSim) return;
     setCSBusy(true); setCSErr(""); setCSim(null);
     try {
-      const body = { cpf:cCpf.replace(/\D/g,""), lojaId:LOJA_ID, numeroParcelas:parseInt(cParcelas)||12, valor:parseFloat(cValor)||5000, PreSimulacaoId:cPreSim.id||cPreSim.presimulacaoId };
-      if (cPreSim.requerVinculo&&cVinculo) { body.idCotacao=cVinculo.vinculoId||cVinculo.idCotacao; body.matricula=cVinculo.matricula; body.codigoInscricaoEmpregador=cVinculo.tipoInscricao; body.numeroInscricaoEmpregador=cVinculo.numeroInscricao; }
-      const j = await hubCall("/Clt/simular","POST",body);
-      const sims = Array.isArray(j.value)?j.value:(j.value?[j.value]:[]);
-      if (!sims.length) throw new Error("Nenhuma simulação retornada.");
-      setCSim(sims[0]);
+      const psId=cPreSim.id||cPreSim.presimulacaoId;
+      const prazos=[6,12,18,24,36,48,parseInt(cParcelas)||12].filter((v,i,a)=>a.indexOf(v)===i).sort((a,b)=>a-b);
+      const allSims=[]; let melhor=null; let melhorVal=0;
+      for (const prazo of prazos) {
+        try {
+          const body={cpf:cCpf.replace(/\D/g,""),lojaId:LOJA_ID,numeroParcelas:prazo,valor:parseFloat(cValor)||5000,PreSimulacaoId:psId};
+          if (cPreSim.requerVinculo&&cVinculo) { body.idCotacao=cVinculo.vinculoId||cVinculo.idCotacao; body.matricula=cVinculo.matricula; body.codigoInscricaoEmpregador=cVinculo.tipoInscricao; body.numeroInscricaoEmpregador=cVinculo.numeroInscricao; }
+          const sj=await hubCall("/Clt/simular","POST",body);
+          const sims=Array.isArray(sj.value)?sj.value:(sj.value?[sj.value]:[]);
+          for (const s of sims) { const v=parseFloat(s.valorDesembolsoTrabalhador||s.valorCliente||0); allSims.push({prazo,sim:s,val:v,ok:true}); if (v>melhorVal){melhorVal=v;melhor=s;} }
+        } catch { /* skip */ }
+      }
+      if (!melhor) throw new Error("Nenhuma simulação disponível.");
+      setCSim({melhor,allSims});
     } catch(e) { setCSErr(e.message); }
     setCSBusy(false);
   };
-
-  // ── LOTE ─────────────────────────────────────────────────────
-  // Estado do lote (elevado para evitar re-mount)
-  const [loteItems,    setLoteItems]    = useState(() => { try { const s=JSON.parse(localStorage.getItem("nexp_hub_lote_state")||"null"); return s?.items||[]; } catch { return []; } });
-  const [loteRunning,  setLoteRunning]  = useState(false);
-  const [lotePaused,   setLotePaused]   = useState(false);
-  const [loteProgress, setLoteProgress] = useState(0);
-  const [loteLogs,     setLoteLogs]     = useState([]);
-  const [loteCpfBox,   setLoteCpfBox]   = useState(() => localStorage.getItem("nexp_hub_lote_cpfbox")||"");
-  const [loteSearch,   setLoteSearch]   = useState("");
-  const [loteShowCpf,  setLoteShowCpf]  = useState(false);
-  const [loteFilterSt, setLoteFilterSt] = useState("Todos");
-  const [loteBanc,     setLoteBanc]     = useState("BMP");
-  const [loteAnos,     setLoteAnos]     = useState("todos"); // "1"…"5" ou "todos"
-  const [loteMargemFgts, setLoteMargemFgts] = useState(""); // valor custom de margem
-  const [loteCltParcelas,setLoteCltParcelas]= useState("12");
-  const loteCltValor = "5000"; // default - use loteMargemFgts to override
-  const [loteTipo,       setLoteTipo]        = useState("fgts"); // "fgts" | "clt"
-
-  const loteAbortRef = useRef(false);
-  const lotePauseRef = useRef(false);
-  const cpfBoxRef    = useRef(null);
-  const PAGE_SIZE    = 50;
-  const [lotePage,   setLotePage]   = useState(0);
-
-  const addLog = (msg,ok=true) => setLoteLogs(p=>[{ts:new Date().toLocaleTimeString("pt-BR"),msg,ok},...p.slice(0,199)]);
-  const saveLote = (items,prog,running=false) => { try { localStorage.setItem("nexp_hub_lote_state",JSON.stringify({items,progress:prog,running})); } catch {} };
-
-  const ANOS_FGTS = ["1","2","3","4","5"];
-
-  // Simular um CPF FGTS
-  const simUmFgts = async (item) => {
-    const cpf = padCPF(item.cpf);
-    if (!cpf.replace(/^0+/,"").length) return {...item,status:"erro",erro:"CPF inválido"};
-    try {
-      addLog(`📡 ${fmtCPF(cpf)}: Simulando FGTS...`);
-      // Filtrar anos se necessário
-      const anosAlvo = loteAnos==="todos" ? ANOS_FGTS : [loteAnos];
-      let melhor = null; let melhorVal = 0; let melhorAnos = "—"; let allSims = [];
-
-      for (const ano of anosAlvo) {
-        if (loteAbortRef.current) break;
-        try {
-          const body = { cpfCliente:cpf, lojaId:LOJA_ID, bancarizador:loteBanc };
-          // Se há margem customizada, enviar como wish_amount
-          if (loteMargemFgts.trim()) body.wishAmount = parseFloat(loteMargemFgts)||undefined;
-          const j = await hubCall("/proposta/simulacaoFGTSBancarizador","POST",body);
-          const sims = Array.isArray(j.value)?j.value:(j.value?[j.value]:[]);
-          for (const s of sims) {
-            const v = parseFloat(s.valorCliente||0);
-            allSims.push({ label:s.nomeTabela||s.financeira||"Hub", val:v, sim:s, ano });
-            if (v>melhorVal) { melhorVal=v; melhor=s; melhorAnos=ano+"a"; }
-          }
-          break; // Hub retorna todas as tabelas de uma vez
-        } catch(e) {
-          addLog(`⚠ ${fmtCPF(cpf)}: ${e.message}`,false);
-          return {...item,cpf:fmtCPF(cpf),status:"erro",erro:e.message,ts:new Date().toLocaleString("pt-BR")};
-        }
-      }
-
-      if (!melhor) return {...item,cpf:fmtCPF(cpf),status:"sem_saldo",erro:"Sem simulações",saldo:0,margem:0,ts:new Date().toLocaleString("pt-BR")};
-      addLog(`✅ ${fmtCPF(cpf)}: Melhor ${fmtR(melhorVal)} — ${melhor.nomeTabela||loteBanc}`);
-      return {...item,cpf:fmtCPF(cpf),status:"ok",saldo:parseFloat(melhor.valorbruto||0),margem:melhorVal,sim:{melhor,melhorAnos,allSims},ts:new Date().toLocaleString("pt-BR"),nome:item.nome||""};
-    } catch(e) {
-      return {...item,cpf:fmtCPF(cpf),status:"erro",erro:e.message,ts:new Date().toLocaleString("pt-BR")};
-    }
-  };
-
-  // Simular um CPF CLT (cria pré-sim, poll, simula)
-  const simUmClt = async (item) => {
-    const cpf = padCPF(item.cpf);
-    if (!cpf.replace(/^0+/,"").length) return {...item,status:"erro",erro:"CPF inválido"};
-    addLog(`📡 ${fmtCPF(cpf)}: Iniciando CLT pré-simulação...`);
-    try {
-      // 1. Criar pré-sim com dados mínimos
-      const j = await hubCall("/presimulacao","POST",{
-        cpf, lojaId:LOJA_ID, numeroParcelas:parseInt(loteCltParcelas)||12,
-        valor:parseFloat(loteMargemFgts||loteCltValor)||5000,
-        tipoOperacao:"27", nome:item.nome||"Cliente", email:`${cpf}@nexp.com.br`,
-        telefone:"11999999999", dataNascimento:"1990-01-01T00:00:00.000Z",
-        sexo:"Masculino", cidade:"",
-      });
-      const psId = (j.value||j).id || (j.value||j).presimulacaoId;
-
-      // 2. Poll status
-      let ps = null; let tentativa = 0;
-      while (tentativa < 20) {
-        if (loteAbortRef.current) return {...item,status:"pendente"};
-        await new Promise(r=>setTimeout(r,4000));
-        tentativa++;
-        addLog(`🔄 ${fmtCPF(cpf)}: Aguardando CLT (${tentativa}/20)...`);
-        const pj = await hubCall(`/presimulacao/${psId}`);
-        ps = pj.value||pj;
-        const st = ps.idStatus??ps.status;
-        if ([6,3,2,5,7,8,9,10,12,14,15].includes(st)) break;
-        if (st===11) {
-          addLog(`✍️ ${fmtCPF(cpf)}: Aguardando assinatura do termo`,false);
-          return {...item,cpf:fmtCPF(cpf),status:"sem_adesao",erro:"Aguardando assinatura do termo",ts:new Date().toLocaleString("pt-BR")};
-        }
-      }
-      const st = ps?.idStatus??ps?.status;
-      if (st===2) return {...item,cpf:fmtCPF(cpf),status:"sem_saldo",erro:"Não elegível",ts:new Date().toLocaleString("pt-BR")};
-      if ([5,7,8,9,14,15].includes(st)) return {...item,cpf:fmtCPF(cpf),status:"erro",erro:ps?.mensagemErro||CLT_STATUS_MAP[st]||"Erro",ts:new Date().toLocaleString("pt-BR")};
-
-      // 3. Simular
-      const simBody = { cpf, lojaId:LOJA_ID, numeroParcelas:parseInt(loteCltParcelas)||12, valor:parseFloat(loteMargemFgts||loteCltValor)||5000, PreSimulacaoId:psId };
-      // Selecionar primeiro vínculo elegível se necessário
-      const vinculos = ps?.vinculos||[];
-      if (ps?.requerVinculo && vinculos.length) {
-        const v = vinculos.find(x=>x.elegivel)||vinculos[0];
-        simBody.idCotacao=v.vinculoId||v.idCotacao; simBody.matricula=v.matricula;
-        simBody.codigoInscricaoEmpregador=v.tipoInscricao; simBody.numeroInscricaoEmpregador=v.numeroInscricao;
-      }
-      const sj = await hubCall("/Clt/simular","POST",simBody);
-      const sims = Array.isArray(sj.value)?sj.value:(sj.value?[sj.value]:[]);
-      if (!sims.length) return {...item,cpf:fmtCPF(cpf),status:"sem_saldo",erro:"Sem simulações CLT",ts:new Date().toLocaleString("pt-BR")};
-      const s = sims[0];
-      const val = parseFloat(s.valorDesembolsoTrabalhador||s.valorCliente||0);
-      addLog(`✅ ${fmtCPF(cpf)}: CLT ${fmtR(val)} — ${s.nomeTabela||"Hub"}`);
-      return {...item,cpf:fmtCPF(cpf),status:"ok",saldo:val,margem:val,sim:{melhor:s,melhorAnos:`${s.quantidadeParcelas||"?"}x`},ts:new Date().toLocaleString("pt-BR")};
-    } catch(e) {
-      addLog(`❌ ${fmtCPF(cpf)}: ${e.message}`,false);
-      return {...item,cpf:fmtCPF(cpf),status:"erro",erro:e.message,ts:new Date().toLocaleString("pt-BR")};
-    }
-  };
-
-  const simularLote = async () => {
-    setLoteRunning(true); setLotePaused(false); loteAbortRef.current=false; lotePauseRef.current=false;
-    const lista = [...loteItems];
-    const DONE = ["ok","sem_saldo","erro","sem_adesao","cpf_invalido"];
-    let done = lista.filter(x=>DONE.includes(x.status)).length;
-    for (let i=0; i<lista.length; i++) {
-      while(lotePauseRef.current) await new Promise(r=>setTimeout(r,300));
-      if (loteAbortRef.current) break;
-      if (DONE.includes(lista[i].status)) continue;
-      lista[i]={...lista[i],status:"simulando"}; setLoteItems([...lista]);
-      const upd = loteTipo==="fgts" ? await simUmFgts(lista[i]) : await simUmClt(lista[i]);
-      lista[i]=upd; done++;
-      const prog = Math.round(done/lista.length*100);
-      setLoteProgress(prog); setLoteItems([...lista]); saveLote(lista,prog,true);
-    }
-    setLoteRunning(false); setLotePaused(false);
-    saveLote(lista, lista.length?Math.round(lista.filter(x=>DONE.includes(x.status)).length/lista.length*100):100, false);
-    if (!loteAbortRef.current && lista.length) onLoteSimFim?.();
-  };
-
-  const adicionarCPFs = () => {
-    const val = cpfBoxRef.current ? cpfBoxRef.current.value : loteCpfBox;
-    const linhas = val.split(/[\n,;]+/).map(l=>l.trim()).filter(Boolean);
-    const novos  = linhas.map(cpf=>({ id:"hub_"+Date.now()+Math.random(), nome:"Manual", cpf:padCPF(cpf), saldo:null, margem:null, status:"pendente", erro:null, sim:null, ts:null }));
-    setLoteItems(p=>{ const u=[...p,...novos]; saveLote(u,loteProgress,false); return u; });
-    setLoteCpfBox(val); setLoteShowCpf(false);
-  };
-
-  const exportarCSV = () => {
-    const rows=[["CPF","Status","Melhor Oferta","Tabela","Prazo","Data","Erro"]];
-    loteItems.forEach(it=>rows.push([it.cpf,it.status,fmtR(it.margem),it.sim?.melhor?.nomeTabela||"",it.sim?.melhorAnos||"",it.ts||"",it.erro||""]));
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="lote_hub.csv"; a.click();
-  };
-
-  const filtered = loteItems.filter(it=>{
-    if (loteFilterSt!=="Todos"&&it.status!==loteFilterSt) return false;
-    if (loteSearch) { const q=loteSearch.toLowerCase(); if (!(it.cpf||"").includes(loteSearch)&&!(it.nome||"").toLowerCase().includes(q)) return false; }
-    return true;
-  });
-  const totalPages = Math.ceil(filtered.length/PAGE_SIZE);
-  const pageItems  = filtered.slice(lotePage*PAGE_SIZE,(lotePage+1)*PAGE_SIZE);
-  const countOk   = loteItems.filter(x=>x.status==="ok").length;
-  const countErr  = loteItems.filter(x=>["erro","sem_saldo","sem_adesao","cpf_invalido"].includes(x.status)).length;
-  const countPend = loteItems.filter(x=>x.status==="pendente").length;
-
-  const ST_LABEL = { ok:"✅ OK", erro:"❌ Erro", pendente:"⏳ Pendente", simulando:"🔄 Simulando...", sem_saldo:"💰 Sem Saldo", sem_adesao:"📋 Sem Adesão", cpf_invalido:"⚠ CPF Inválido" };
-  const ST_COL   = { ok:"#34D399", erro:"#F87171", pendente:"#FBBF24", simulando:"#60A5FA", sem_saldo:"#F87171", sem_adesao:"#FBBF24", cpf_invalido:"#F87171" };
 
   // ── Guards ────────────────────────────────────────────────────
   if (!credOk)  return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Carregando...</div>;
@@ -18706,7 +18789,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
         <div style={{fontSize:34,marginBottom:12}}>🔗</div>
         <div style={{color:C.tp,fontSize:15,fontWeight:700,marginBottom:8}}>Hub Crédito</div>
         <div style={{color:C.td,fontSize:13,lineHeight:1.6,marginBottom:18}}>Cadastre suas credenciais na aba <strong style={{color:C.atxt}}>🔐 Credenciais</strong> para usar este banco.</div>
-        <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",fontSize:12,color:C.tm,textAlign:"left"}}>
+        <div style={{background:C.deep,borderRadius:10,padding:"12px 16px",fontSize:12,color:C.tm}}>
           <div style={{fontWeight:700,marginBottom:6,color:C.tp}}>Você vai precisar de:</div>
           <div>• Usuário (e-mail) da conta Hub Crédito</div>
           <div>• Senha da conta Hub Crédito</div>
@@ -18715,7 +18798,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
       </div>
     </div>
   );
-  if (authBusy) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando na Hub Crédito...</div>;
+  if (authBusy) return <div style={{padding:"40px 0",textAlign:"center",color:C.td,fontSize:13}}>⏳ Autenticando...</div>;
   if (authErr)  return (
     <div style={{padding:"28px 0",maxWidth:440}}>
       <div style={{...S.card,padding:"24px 28px"}}>
@@ -18726,12 +18809,89 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
     </div>
   );
 
-  const tabBtn = (id, lbl, cor="#C084FC") => (
-    <button onClick={()=>setAba(id)} style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 22px",fontSize:13.5,fontWeight:aba===id?700:400,color:aba===id?cor:C.tm,borderBottom:aba===id?`2px solid ${cor}`:"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s"}}>{lbl}</button>
+  const tabBtn = (id,lbl,cor="#C084FC") => (
+    <button onClick={()=>setAba(id)} style={{background:"transparent",border:"none",cursor:"pointer",padding:"10px 18px",fontSize:13,fontWeight:aba===id?700:400,color:aba===id?cor:C.tm,borderBottom:aba===id?`2px solid ${cor}`:"2px solid transparent",marginBottom:"-1px",transition:"all 0.12s",whiteSpace:"nowrap"}}>{lbl}</button>
   );
 
-  const vinculos    = cPreSim?.vinculos||[];
+  // ── STATUS para lote ──────────────────────────────────────────
+  const ST_LABEL = { ok:"✅ OK", erro:"❌ Erro", pendente:"⏳ Pendente", simulando:"🔄 Simulando...", sem_saldo:"💰 Sem Saldo/Margem", sem_adesao:"📋 Sem Adesão", cpf_invalido:"⚠ CPF Inválido", aniversariante:"🎂 Aniversariante", nao_autorizado:"🚫 Não Autorizado", empresa_irreg:"🏭 Empresa Irregular", dados_inv:"📄 Dados Inválidos", timeout:"⏱ Timeout" };
+  const ST_COL   = { ok:"#34D399", erro:"#F87171", pendente:"#FBBF24", simulando:"#60A5FA", sem_saldo:"#F87171", sem_adesao:"#FBBF24", cpf_invalido:"#F87171", aniversariante:"#FBBF24", nao_autorizado:"#F87171", empresa_irreg:"#FB923C", dados_inv:"#F87171", timeout:"#FBBF24" };
+  const ST_BG    = { ok:"rgba(52,211,153,0.1)", erro:"rgba(239,68,68,0.08)", pendente:"rgba(251,191,36,0.08)", simulando:"rgba(96,165,250,0.08)", sem_saldo:"rgba(239,68,68,0.08)", sem_adesao:"rgba(251,191,36,0.08)", cpf_invalido:"rgba(239,68,68,0.08)", aniversariante:"rgba(251,191,36,0.08)", nao_autorizado:"rgba(239,68,68,0.08)", empresa_irreg:"rgba(251,146,60,0.08)", dados_inv:"rgba(239,68,68,0.08)", timeout:"rgba(251,191,36,0.08)" };
+
+  const DONE_STS = ["ok","sem_saldo","erro","sem_adesao","cpf_invalido","aniversariante","nao_autorizado","empresa_irreg","dados_inv","timeout"];
+  const filtered  = loteItems.filter(it=>{ if(loteFilterSt!=="Todos"&&it.status!==loteFilterSt)return false; if(loteSearch){const q=loteSearch.toLowerCase();if(!(it.cpf||"").includes(loteSearch)&&!(it.nome||"").toLowerCase().includes(q))return false;} return true; });
+  const totalPages= Math.ceil(filtered.length/PAGE_SIZE);
+  const pageItems = filtered.slice(lotePage*PAGE_SIZE,(lotePage+1)*PAGE_SIZE);
+  const countOk   = loteItems.filter(x=>x.status==="ok").length;
+  const countErr  = loteItems.filter(x=>DONE_STS.includes(x.status)&&x.status!=="ok").length;
+  const countPend = loteItems.filter(x=>x.status==="pendente").length;
+
+  // ── DigitaçãoForm inline ──────────────────────────────────────
+  const DigForm = ({ initData, tipo, onClose }) => {
+    const [form, setForm] = useState({ nome:"", cpf:"", email:"", telefone:"", dataNascimento:"", sexo:"Masculino", bancarizador:initData?.bancarizador||"BMP", simulacaoId:initData?.simulacaoId||"", tabelaComercial:initData?.tabelaComercial||"", plano:initData?.plano||"", valorParcela:initData?.valorParcela||"", valorVista:initData?.valorVista||"", valorBruto:initData?.valorBruto||"", valorTac:initData?.valorTac||"0", dataPrimeiraParcela:"", cpfAtendente:"", banco:"", agencia:"", conta:"", tipoConta:"corrente", chavePix:"", tipoOperacao:tipo||"fgts", ...initData });
+    const F = (k,v) => setForm(p=>({...p,[k]:v}));
+    return (
+      <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(12px)"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,rgba(8,12,30,0.99),rgba(5,8,20,0.99))",border:"1px solid rgba(192,132,252,0.3)",borderRadius:22,padding:"28px 32px",maxWidth:560,width:"calc(100% - 40px)",maxHeight:"88vh",overflowY:"auto",animation:"modalPop 0.35s cubic-bezier(.34,1.56,.64,1)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <div style={{color:"#C084FC",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px"}}>✏️ Digitação de Proposta — Hub {tipo?.toUpperCase()}</div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.07)",border:"none",color:C.tm,borderRadius:8,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {[["nome","Nome completo"],["cpf","CPF"],["email","E-mail"],["telefone","Telefone DDD+número"],["dataNascimento","Data nascimento"],["cpfAtendente","CPF do atendente"]].map(([k,lbl])=>(
+              <div key={k}>
+                <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div>
+                <input value={form[k]||""} onChange={e=>F(k,e.target.value)} type={k==="dataNascimento"?"date":"text"} style={{...S.input,width:"100%",fontSize:12}} />
+              </div>
+            ))}
+            <div>
+              <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Sexo</div>
+              <select value={form.sexo} onChange={e=>F("sexo",e.target.value)} style={{...S.input,width:"100%",fontSize:12}}><option>Masculino</option><option>Feminino</option></select>
+            </div>
+            <div>
+              <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Bancarizador</div>
+              <select value={form.bancarizador} onChange={e=>F("bancarizador",e.target.value)} style={{...S.input,width:"100%",fontSize:12}}><option>BMP</option><option>J17</option><option>UY3</option></select>
+            </div>
+          </div>
+          <div style={{borderTop:`1px solid ${C.b1}`,paddingTop:14,marginBottom:14}}>
+            <div style={{color:C.atxt,fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:10}}>Dados da Simulação</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[["simulacaoId","ID Simulação"],["tabelaComercial","Tabela Comercial"],["plano","Plano (parcelas)"],["valorParcela","Valor parcela (R$)"],["valorVista","Valor à vista (R$)"],["valorBruto","Valor bruto (R$)"],["valorTac","Valor TAC (R$)"],["dataPrimeiraParcela","1ª Parcela"]].map(([k,lbl])=>(
+                <div key={k}>
+                  <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div>
+                  <input value={form[k]||""} onChange={e=>F(k,e.target.value)} type={k==="dataPrimeiraParcela"?"date":"text"} style={{...S.input,width:"100%",fontSize:12}} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{borderTop:`1px solid ${C.b1}`,paddingTop:14,marginBottom:16}}>
+            <div style={{color:C.atxt,fontSize:11,fontWeight:700,textTransform:"uppercase",marginBottom:10}}>Dados Bancários / Pix</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[["banco","Banco"],["agencia","Agência"],["conta","Conta"]].map(([k,lbl])=>(
+                <div key={k}><div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div><input value={form[k]||""} onChange={e=>F(k,e.target.value)} style={{...S.input,width:"100%",fontSize:12}} /></div>
+              ))}
+              <div>
+                <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Tipo Conta</div>
+                <select value={form.tipoConta} onChange={e=>F("tipoConta",e.target.value)} style={{...S.input,width:"100%",fontSize:12}}><option value="corrente">Corrente</option><option value="poupanca">Poupança</option></select>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Chave Pix (opcional)</div>
+                <input value={form.chavePix||""} onChange={e=>F("chavePix",e.target.value)} placeholder="CPF, e-mail, telefone, chave aleatória..." style={{...S.input,width:"100%",fontSize:12}} />
+              </div>
+            </div>
+          </div>
+          {digErr && <div style={{color:"#F87171",fontSize:12,marginBottom:10,padding:"9px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>⚠ {digErr}</div>}
+          {digOk  && <div style={{color:"#34D399",fontSize:12,marginBottom:10,padding:"9px 12px",background:"rgba(52,211,153,0.08)",borderRadius:8}}>{digOk}</div>}
+          <button onClick={()=>enviarProposta(form)} disabled={digBusy} style={{width:"100%",background:"linear-gradient(135deg,#C084FC,#818CF8)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer",opacity:digBusy?0.6:1}}>
+            {digBusy?"⏳ Enviando proposta...":"✅ Enviar Proposta Hub Crédito"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const cltStatusCode = cPreSim?.idStatus??cPreSim?.status;
+  const vinculos = cPreSim?.vinculos||[];
 
   return (
     <div>
@@ -18748,18 +18908,18 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
       </div>
 
       {/* Abas */}
-      <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18}}>
+      <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18,overflowX:"auto"}}>
         {tabBtn("lote","⚡ Lote")}
         {tabBtn("fgts","📋 FGTS Individual")}
         {tabBtn("clt","💼 CLT Individual")}
+        {tabBtn("acompanhamento","📡 Propostas","#34D399")}
       </div>
 
       {/* ════ ABA LOTE ════ */}
       {aba==="lote" && (
         <div>
-          {/* Painel de controle */}
+          {/* Controles */}
           <div style={{background:C.card,border:`1px solid ${C.b1}`,borderRadius:16,padding:"18px 20px",marginBottom:16}}>
-            {/* Título + contadores + botões */}
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
               <div>
                 <div style={{color:C.ts,fontSize:14,fontWeight:700}}>⚡ Simulação em Lote — Hub Crédito</div>
@@ -18771,7 +18931,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
                 </div>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {!loteRunning && <button onClick={simularLote} disabled={loteItems.length===0||!valid} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:loteItems.length===0?0.5:1}}>▶ Simular Todos</button>}
+                {!loteRunning && <button onClick={simularLote} disabled={!loteItems.length||!valid} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!loteItems.length?0.5:1}}>▶ Simular Todos</button>}
                 {loteRunning  && <button onClick={()=>{lotePauseRef.current=!lotePauseRef.current;setLotePaused(p=>!p);}} style={{background:lotePaused?"#091E12":"#2B2310",color:lotePaused?"#34D399":"#FBBF24",border:`1px solid ${lotePaused?"#34D39933":"#FBBF2433"}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>{lotePaused?"▶ Retomar":"⏸ Pausar"}</button>}
                 {loteRunning  && <button onClick={()=>{loteAbortRef.current=true;setLoteRunning(false);}} style={{background:"#2D1515",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>⏹ Parar</button>}
                 <button onClick={()=>setLoteShowCpf(p=>!p)} style={{background:C.abg,color:"#fff",border:"none",borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer",fontWeight:600}}>➕ CPFs</button>
@@ -18780,7 +18940,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
               </div>
             </div>
 
-            {/* Tipo: FGTS | CLT */}
+            {/* Tipo FGTS/CLT */}
             <div style={{display:"flex",gap:6,marginBottom:12}}>
               {[["fgts","📋 FGTS","#C084FC"],["clt","💼 CLT","#60A5FA"]].map(([id,lbl,cor])=>(
                 <button key={id} onClick={()=>setLoteTipo(id)} style={{background:loteTipo===id?`${cor}18`:"rgba(255,255,255,0.04)",border:`2px solid ${loteTipo===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"6px 18px",cursor:"pointer",color:loteTipo===id?cor:C.td,fontSize:12.5,fontWeight:loteTipo===id?700:400,transition:"all 0.15s"}}>{lbl}</button>
@@ -18789,34 +18949,29 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
             {/* Config FGTS */}
             {loteTipo==="fgts" && (
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                {/* Bancarizador */}
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
                 {["BMP","J17"].map(b=>(
-                  <button key={b} onClick={()=>setLoteBanc(b)} style={{background:loteBanc===b?"rgba(192,132,252,0.15)":"rgba(255,255,255,0.04)",border:`1.5px solid ${loteBanc===b?"#C084FC":"rgba(255,255,255,0.08)"}`,borderRadius:8,padding:"5px 14px",cursor:"pointer",color:loteBanc===b?"#C084FC":C.td,fontSize:12,fontWeight:loteBanc===b?700:400,transition:"all 0.15s"}}>{b}</button>
+                  <button key={b} onClick={()=>setLoteBanc(b)} style={{background:loteBanc===b?"rgba(192,132,252,0.15)":"rgba(255,255,255,0.04)",border:`1.5px solid ${loteBanc===b?"#C084FC":"rgba(255,255,255,0.08)"}`,borderRadius:8,padding:"5px 14px",cursor:"pointer",color:loteBanc===b?"#C084FC":C.td,fontSize:12,fontWeight:loteBanc===b?700:400}}>{b}</button>
                 ))}
-                <div style={{width:1,background:C.b1,marginInline:4}} />
-                {/* Anos */}
-                <select value={loteAnos} onChange={e=>setLoteAnos(e.target.value)} style={{...S.input,fontSize:12,padding:"5px 10px",minWidth:100}}>
-                  <option value="todos">Todos os anos</option>
+                <select value={loteAnos} onChange={e=>setLoteAnos(e.target.value)} style={{...S.input,fontSize:12,padding:"5px 10px",minWidth:110}}>
+                  <option value="todos">Todos os prazos</option>
                   {ANOS_FGTS.map(a=><option key={a} value={a}>{a} ano{a!=="1"?"s":""}</option>)}
                 </select>
-                {/* Margem customizada */}
-                <input value={loteMargemFgts} onChange={e=>setLoteMargemFgts(e.target.value.replace(/[^\d.]/g,""))}
-                  placeholder="Valor desejado (R$)" style={{...S.input,fontSize:12,padding:"5px 10px",width:160}} />
+                <input value={loteMargemFgts} onChange={e=>setLoteMargemFgts(e.target.value.replace(/[^\d.]/g,""))} placeholder="Valor desejado (R$)" style={{...S.input,fontSize:12,padding:"5px 10px",width:160}} />
               </div>
             )}
 
             {/* Config CLT */}
             {loteTipo==="clt" && (
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                <input value={loteCltParcelas} onChange={e=>setLoteCltParcelas(e.target.value.replace(/\D/g,""))} placeholder="Nº parcelas" style={{...S.input,fontSize:12,padding:"5px 10px",width:100}} />
-                <input value={loteMargemFgts} onChange={e=>setLoteMargemFgts(e.target.value.replace(/[^\d.]/g,""))} placeholder="Valor solicitado (R$)" style={{...S.input,fontSize:12,padding:"5px 10px",width:160}} />
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+                <input value={loteCltParcelas} onChange={e=>setLoteCltParcelas(e.target.value.replace(/\D/g,""))} placeholder="Máx. parcelas" style={{...S.input,fontSize:12,padding:"5px 10px",width:110}} />
+                <input value={loteMargemFgts} onChange={e=>setLoteMargemFgts(e.target.value.replace(/[^\d.]/g,""))} placeholder="Valor solicitado (R$)" style={{...S.input,fontSize:12,padding:"5px 10px",width:170}} />
               </div>
             )}
 
             {/* Progresso */}
             {(loteRunning||loteProgress>0) && (
-              <div style={{marginBottom:8}}>
+              <div style={{marginTop:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                   <span style={{color:C.tm,fontSize:11}}>{loteRunning?(lotePaused?"Pausado":"Simulando..."):"Concluído"}</span>
                   <span style={{color:"#C084FC",fontSize:11,fontWeight:700}}>{loteProgress}%</span>
@@ -18830,8 +18985,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
             {/* Caixa CPFs */}
             {loteShowCpf && (
               <div style={{marginTop:12}}>
-                <textarea ref={cpfBoxRef} defaultValue={loteCpfBox} rows={5} placeholder="Cole os CPFs aqui (um por linha, separados por vírgula ou ponto e vírgula)"
-                  style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
+                <textarea ref={cpfBoxRef} defaultValue={loteCpfBox} rows={5} placeholder="Cole CPFs aqui (um por linha, vírgula ou ponto e vírgula)" style={{...S.input,width:"100%",resize:"vertical",fontSize:12,marginBottom:8}} />
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={adicionarCPFs} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Adicionar</button>
                   <button onClick={()=>setLoteShowCpf(false)} style={{background:"transparent",border:`1px solid ${C.b2}`,color:C.tm,borderRadius:9,padding:"8px 14px",fontSize:12,cursor:"pointer"}}>Cancelar</button>
@@ -18840,56 +18994,124 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
             )}
           </div>
 
-          {/* Filtros + busca */}
+          {/* Filtros */}
           {loteItems.length>0 && (
-            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-              <input value={loteSearch} onChange={e=>setLoteSearch(e.target.value)} placeholder="🔍 Buscar CPF ou nome..." style={{...S.input,flex:1,minWidth:180,fontSize:12,padding:"7px 10px"}} />
+            <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+              <input value={loteSearch} onChange={e=>setLoteSearch(e.target.value)} placeholder="🔍 CPF ou nome..." style={{...S.input,flex:1,minWidth:160,fontSize:12,padding:"7px 10px"}} />
               <select value={loteFilterSt} onChange={e=>setLoteFilterSt(e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px"}}>
-                {["Todos","ok","pendente","simulando","erro","sem_saldo","sem_adesao","cpf_invalido"].map(s=><option key={s} value={s}>{ST_LABEL[s]||s}</option>)}
+                {["Todos","ok","pendente","simulando","erro","sem_saldo","sem_adesao","cpf_invalido","aniversariante","nao_autorizado","empresa_irreg","timeout"].map(s=><option key={s} value={s}>{ST_LABEL[s]||s}</option>)}
               </select>
             </div>
           )}
 
-          {/* Tabela resultados */}
+          {/* Tabela */}
           {loteItems.length>0 && (
-            <div style={{...S.card,padding:"0",overflow:"hidden"}}>
+            <div style={{...S.card,overflow:"hidden"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                 <thead><tr style={{background:C.deep}}>
-                  {["CPF","Nome","Status","Melhor Oferta","Prazo","Ação"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}
+                  {["#","CPF","Status","Melhor Oferta","Prazo","Tabela","Data","Ação"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {pageItems.map((it,ri)=>(
-                    <tr key={it.id} style={{borderBottom:`1px solid ${C.b1}22`,transition:"background 0.12s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <td style={{padding:"9px 12px",color:C.tp,fontFamily:"monospace"}}>{fmtCPF(it.cpf)}</td>
-                      <td style={{padding:"9px 12px",color:C.ts,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.nome||"—"}</td>
-                      <td style={{padding:"9px 12px"}}>
-                        <span style={{background:`${ST_COL[it.status]||"#888"}18`,color:ST_COL[it.status]||"#888",border:`1px solid ${ST_COL[it.status]||"#888"}33`,borderRadius:99,padding:"2px 9px",fontSize:10.5,fontWeight:700}}>
-                          {ST_LABEL[it.status]||it.status}
-                        </span>
-                      </td>
-                      <td style={{padding:"9px 12px",color:"#C084FC",fontWeight:700}}>{it.margem!=null?fmtR(it.margem):"—"}</td>
-                      <td style={{padding:"9px 12px",color:C.ts}}>{it.sim?.melhorAnos||"—"}</td>
-                      <td style={{padding:"9px 12px"}}>
-                        {["pendente","erro","sem_saldo"].includes(it.status) && (
-                          <button onClick={()=>{
-                            const lista=[...loteItems]; const idx=lista.findIndex(x=>x.id===it.id);
-                            if (idx<0) return; lista[idx]={...lista[idx],status:"simulando"}; setLoteItems([...lista]);
-                            (loteTipo==="fgts"?simUmFgts(lista[idx]):simUmClt(lista[idx])).then(u=>{ const l=[...loteItems]; l[idx]=u; setLoteItems([...l]); saveLote(l,loteProgress,false); });
-                          }} style={{background:"rgba(192,132,252,0.12)",color:"#C084FC",border:"1px solid rgba(192,132,252,0.3)",borderRadius:7,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>🔄</button>
+                  {pageItems.map((it,idx)=>{
+                    const ri = loteItems.findIndex(x=>x.id===it.id);
+                    const isSim = it.status==="simulando";
+                    const stCol = ST_COL[it.status]||"#94A3B8";
+                    const stBg  = ST_BG[it.status]||"rgba(148,163,184,0.08)";
+                    const isDet = loteDetalhe?.id===it.id;
+                    const sims  = it.sim?.allSims||[];
+                    return (
+                      <React.Fragment key={it.id}>
+                        <tr onClick={()=>setLoteDetalhe(isDet?null:it)}
+                          style={{background:isDet?`rgba(192,132,252,0.08)`:idx%2===0?C.card:C.deep,borderBottom:isDet?"none":`1px solid ${C.b1}`,cursor:"pointer",transition:"background 0.1s"}}
+                          onMouseEnter={e=>!isDet&&(e.currentTarget.style.background="rgba(192,132,252,0.06)")}
+                          onMouseLeave={e=>e.currentTarget.style.background=isDet?"rgba(192,132,252,0.08)":idx%2===0?C.card:C.deep}>
+                          <td style={{color:C.td,padding:"8px 10px",fontSize:11}}>{lotePage*PAGE_SIZE+idx+1}</td>
+                          <td style={{color:C.tp,fontFamily:"monospace",padding:"8px 10px",fontSize:11}}>{fmtCPF(it.cpf)}</td>
+                          <td style={{padding:"8px 10px"}}>
+                            <span style={{background:stBg,color:stCol,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>{ST_LABEL[it.status]||it.status}</span>
+                            {it.diag?.dica && <div style={{color:stCol,fontSize:9.5,marginTop:2,opacity:0.8}}>{it.diag.dica}</div>}
+                          </td>
+                          <td style={{padding:"8px 10px",color:"#C084FC",fontWeight:700}}>{it.margem!=null&&it.margem>0?fmtR(it.margem):"—"}</td>
+                          <td style={{padding:"8px 10px",color:C.ts,fontSize:11}}>{it.sim?.melhorAnos||"—"}</td>
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:10,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.sim?.melhor?.nomeTabela||"—"}</td>
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:10}}>{it.ts||"—"}</td>
+                          <td style={{padding:"8px 10px"}} onClick={e=>e.stopPropagation()}>
+                            <button onClick={()=>{
+                              const lista=[...loteItems]; lista[ri]={...lista[ri],status:"simulando"}; setLoteItems([...lista]);
+                              (loteTipo==="fgts"?simUmFgts(lista[ri]):simUmClt(lista[ri])).then(u=>{const l=[...loteItems];l[ri]=u;setLoteItems([...l]);saveLote(l,loteProgress,false);});
+                            }} disabled={loteRunning||isSim} style={{background:"transparent",border:`1px solid ${C.b2}`,borderRadius:7,color:C.tm,cursor:"pointer",fontSize:11,padding:"3px 9px"}}>
+                              {isSim?"⏳":it.status==="ok"?"🔄":"▶"}
+                            </button>
+                          </td>
+                        </tr>
+                        {/* Expand row */}
+                        {isDet && (
+                          <tr>
+                            <td colSpan={8} style={{padding:0,background:"linear-gradient(135deg,rgba(10,16,40,0.98),rgba(15,20,50,0.98))",borderBottom:`1px solid rgba(192,132,252,0.3)`}}>
+                              <div style={{padding:"16px 20px"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                                  <span style={{color:"#C084FC",fontSize:13,fontWeight:700}}>📊 {fmtCPF(it.cpf)} — {it.nome||""}</span>
+                                  {it.status==="ok" && (
+                                    <button onClick={e=>{e.stopPropagation();setLoteDigModal({cpf:it.cpf,nome:it.nome,simulacaoId:it.sim?.melhor?.simulacaoId||"",tabelaComercial:it.sim?.melhor?.tabelaComercial||"",plano:it.sim?.melhor?.quantidadeParcelas||"",valorParcela:it.sim?.melhor?.valorCliente/(it.sim?.melhor?.quantidadeParcelas||1)||"",valorVista:it.sim?.melhor?.valorCliente||"",valorBruto:it.sim?.melhor?.valorbruto||"",valorTac:it.sim?.melhor?.valorTac||"0",bancarizador:loteBanc,tipoOperacao:loteTipo});}}
+                                      style={{background:"linear-gradient(135deg,#C084FC,#818CF8)",color:"#fff",border:"none",borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✏️ Digitar Proposta</button>
+                                  )}
+                                  {loteTipo==="clt" && it.sim?.psId && (
+                                    <a href="https://termo.hubcredito.com.br/" target="_blank" rel="noopener noreferrer" style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.3)",color:"#FCD34D",borderRadius:8,padding:"5px 14px",fontSize:11,fontWeight:700,textDecoration:"none"}}>✍️ Termo</a>
+                                  )}
+                                  <button onClick={e=>{e.stopPropagation();setLoteDetalhe(null);}} style={{background:"rgba(255,255,255,0.07)",border:"none",color:C.tm,borderRadius:6,padding:"4px 8px",fontSize:11,cursor:"pointer",marginLeft:"auto"}}>✕</button>
+                                </div>
+                                {isSim ? (
+                                  <div style={{color:"rgba(255,255,255,0.5)",fontSize:12,textAlign:"center",padding:"16px 0"}}>⏳ Simulando...</div>
+                                ) : sims.length > 0 ? (
+                                  <div>
+                                    {/* Melhor oferta */}
+                                    <div style={{color:C.td,fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Melhor Oferta</div>
+                                    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
+                                      {[...sims].sort((a,b)=>(parseFloat(b.sim?.valorCliente||b.val||0))-(parseFloat(a.sim?.valorCliente||a.val||0))).slice(0,1).map((s,si)=>(
+                                        <div key={si} style={{background:"rgba(52,211,153,0.15)",border:"2px solid rgba(52,211,153,0.5)",borderRadius:14,padding:"14px 18px",minWidth:180,cursor:"pointer",position:"relative",textAlign:"center"}}
+                                          onClick={e=>{e.stopPropagation();setLoteDigModal({cpf:it.cpf,nome:it.nome,simulacaoId:s.sim?.simulacaoId||"",tabelaComercial:s.sim?.tabelaComercial||"",plano:s.sim?.quantidadeParcelas||s.prazo||"",valorParcela:parseFloat(s.sim?.valorCliente||0)/(s.sim?.quantidadeParcelas||1)||"",valorVista:s.sim?.valorCliente||s.val||"",valorBruto:s.sim?.valorbruto||"",valorTac:s.sim?.valorTac||"0",bancarizador:loteBanc,tipoOperacao:loteTipo});}}>
+                                          <div style={{position:"absolute",top:8,right:8,background:"rgba(52,211,153,0.2)",color:"#34D399",fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:99}}>★ Melhor</div>
+                                          <div style={{color:"#34D399",fontSize:20,fontWeight:800,marginBottom:4}}>{fmtR(parseFloat(s.sim?.valorCliente||s.val||0))}</div>
+                                          <div style={{color:"rgba(255,255,255,0.6)",fontSize:11}}>{s.sim?.nomeTabela||s.prazo+"x"||"Hub"}</div>
+                                          <div style={{color:"rgba(255,255,255,0.4)",fontSize:10,marginTop:2}}>{s.sim?.quantidadeParcelas||s.prazo}x · {fmtR(parseFloat(s.sim?.valorCliente||0)/Math.max(s.sim?.quantidadeParcelas||1,1))}/mês</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {/* Demais ofertas */}
+                                    {sims.length>1 && (
+                                      <>
+                                        <div style={{color:C.td,fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Demais Ofertas</div>
+                                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                                          {[...sims].sort((a,b)=>(parseFloat(b.sim?.valorCliente||b.val||0))-(parseFloat(a.sim?.valorCliente||a.val||0))).slice(1).map((s,si)=>(
+                                            <div key={si} style={{background:"rgba(79,142,247,0.10)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:12,padding:"12px 14px",minWidth:140,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}
+                                              onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                                              onMouseLeave={e=>e.currentTarget.style.transform="none"}
+                                              onClick={e=>{e.stopPropagation();setLoteDigModal({cpf:it.cpf,nome:it.nome,simulacaoId:s.sim?.simulacaoId||"",tabelaComercial:s.sim?.tabelaComercial||"",plano:s.sim?.quantidadeParcelas||s.prazo||"",valorParcela:parseFloat(s.sim?.valorCliente||0)/(s.sim?.quantidadeParcelas||1)||"",valorVista:s.sim?.valorCliente||s.val||"",valorBruto:s.sim?.valorbruto||"",valorTac:s.sim?.valorTac||"0",bancarizador:loteBanc,tipoOperacao:loteTipo});}}>
+                                              <div style={{color:"#60A5FA",fontSize:16,fontWeight:700,marginBottom:2}}>{fmtR(parseFloat(s.sim?.valorCliente||s.val||0))}</div>
+                                              <div style={{color:"rgba(255,255,255,0.5)",fontSize:10}}>{s.sim?.nomeTabela||"Hub"} · {s.sim?.quantidadeParcelas||s.prazo}x</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div style={{color:C.td,fontSize:12,textAlign:"center",padding:"12px 0"}}>{it.diag?.dica||"Sem simulações disponíveis"}</div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
-              {/* Paginação */}
               {totalPages>1 && (
                 <div style={{display:"flex",justifyContent:"center",gap:6,padding:"10px"}}>
-                  <button disabled={lotePage===0} onClick={()=>setLotePage(p=>p-1)} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",opacity:lotePage===0?0.4:1}}>‹ Ant</button>
+                  <button disabled={lotePage===0} onClick={()=>setLotePage(p=>p-1)} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",opacity:lotePage===0?0.4:1}}>‹</button>
                   <span style={{color:C.td,fontSize:12,lineHeight:"28px"}}>{lotePage+1}/{totalPages}</span>
-                  <button disabled={lotePage>=totalPages-1} onClick={()=>setLotePage(p=>p+1)} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",opacity:lotePage>=totalPages-1?0.4:1}}>Próx ›</button>
+                  <button disabled={lotePage>=totalPages-1} onClick={()=>setLotePage(p=>p+1)} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",opacity:lotePage>=totalPages-1?0.4:1}}>›</button>
                 </div>
               )}
             </div>
@@ -18897,14 +19119,9 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
           {/* Logs */}
           {loteLogs.length>0 && (
-            <div style={{...S.card,padding:"14px 16px",marginTop:12,maxHeight:200,overflowY:"auto"}}>
-              <div style={{color:C.td,fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Log de execução</div>
-              {loteLogs.map((l,i)=>(
-                <div key={i} style={{display:"flex",gap:8,marginBottom:3}}>
-                  <span style={{color:C.td,fontSize:10,flexShrink:0}}>{l.ts}</span>
-                  <span style={{color:l.ok?"#34D399":"#F87171",fontSize:11}}>{l.msg}</span>
-                </div>
-              ))}
+            <div style={{...S.card,padding:"12px 16px",marginTop:12,maxHeight:180,overflowY:"auto"}}>
+              <div style={{color:C.td,fontSize:10,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Log</div>
+              {loteLogs.map((l,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:2}}><span style={{color:C.td,fontSize:10,flexShrink:0}}>{l.ts}</span><span style={{color:l.ok?"#34D399":"#F87171",fontSize:11}}>{l.msg}</span></div>)}
             </div>
           )}
         </div>
@@ -18912,57 +19129,58 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
       {/* ════ FGTS INDIVIDUAL ════ */}
       {aba==="fgts" && (
-        <div style={{maxWidth:640}}>
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <div style={{maxWidth:680}}>
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
             {["BMP","J17"].map(b=>(
-              <button key={b} onClick={()=>{setFBanc(b);setFSims([]);setFSel(null);setFErr("");}}
-                style={{background:fBanc===b?"rgba(192,132,252,0.15)":"rgba(255,255,255,0.04)",border:`2px solid ${fBanc===b?"#C084FC":"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fBanc===b?"#C084FC":C.td,fontSize:13,fontWeight:fBanc===b?700:400,transition:"all 0.15s"}}>{b}</button>
+              <button key={b} onClick={()=>{setFBanc(b);setFSims([]);setFErr("");}} style={{background:fBanc===b?"rgba(192,132,252,0.15)":"rgba(255,255,255,0.04)",border:`2px solid ${fBanc===b?"#C084FC":"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"7px 18px",cursor:"pointer",color:fBanc===b?"#C084FC":C.td,fontSize:13,fontWeight:fBanc===b?700:400}}>{b}</button>
             ))}
           </div>
-          <div style={{display:"flex",gap:10,marginBottom:16}}>
-            <input value={fCpf} onChange={e=>setFCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&simularFGTS()}
-              placeholder="CPF do cliente" maxLength={14} style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            <input value={fCpf} onChange={e=>setFCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&simularFGTS()} placeholder="CPF do cliente" maxLength={14} style={{...S.input,flex:1,fontSize:15,padding:"11px 14px"}} />
             <button onClick={simularFGTS} disabled={fBusy} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:fBusy?0.7:1,whiteSpace:"nowrap"}}>
               {fBusy?"⏳ Simulando...":"⚡ Simular FGTS"}
             </button>
           </div>
-          {fErr && <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:10,padding:"11px 14px",color:"#F87171",fontSize:13,marginBottom:14}}>⚠ {fErr}</div>}
-          {fSims.length>1 && (
-            <div style={{...S.card,padding:"14px 16px",marginBottom:14}}>
-              <div style={{color:C.td,fontSize:11,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.5px"}}>Selecionar tabela</div>
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {fSims.map((s,i)=>(
-                  <button key={i} onClick={()=>setFSel(s)} style={{background:fSel===s?"rgba(192,132,252,0.12)":"rgba(255,255,255,0.04)",border:`1px solid ${fSel===s?"#C084FC55":"rgba(255,255,255,0.08)"}`,borderRadius:9,padding:"9px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all 0.15s"}}>
-                    <span style={{color:fSel===s?"#C084FC":C.ts,fontSize:13,fontWeight:fSel===s?700:400}}>{s.nomeTabela||s.financeira||`Tabela ${i+1}`}</span>
-                    <span style={{color:"#34D399",fontSize:13,fontWeight:700}}>{fmtR(s.valorCliente)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {fSel && (
-            <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(192,132,252,0.25)"}}>
-              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📊 Simulação FGTS — {fBanc}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-                {[["Tabela",fSel.nomeTabela||"—"],["Valor Bruto",fmtR(fSel.valorbruto)],["Valor Cliente",fmtR(fSel.valorCliente)],["Parcelas",String(fSel.quantidadeParcelas||"—")],["Valor TAC",fmtR(fSel.valorTac)],["Bloqueado",fmtR(fSel.valorBloqueado)]].map(([l,v])=>(
-                  <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
-                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase"}}>{l}</div>
-                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div>
+          {fErr && <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid #EF444433",borderRadius:10,padding:"10px 14px",color:"#F87171",fontSize:13,marginBottom:14}}>⚠ {fErr}</div>}
+          {/* Cards de simulação FGTS */}
+          {fSims.length>0 && (
+            <div>
+              <div style={{color:C.tp,fontSize:13,fontWeight:700,marginBottom:10}}>📊 Simulações FGTS — {fBanc}</div>
+              {/* Melhor */}
+              {(() => {
+                const best = [...fSims].sort((a,b)=>parseFloat(b.valorCliente||0)-parseFloat(a.valorCliente||0))[0];
+                return (
+                  <div style={{background:"rgba(52,211,153,0.12)",border:"2px solid rgba(52,211,153,0.4)",borderRadius:16,padding:"18px 20px",marginBottom:14,position:"relative"}}>
+                    <div style={{position:"absolute",top:10,right:12,background:"rgba(52,211,153,0.2)",color:"#34D399",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99}}>★ Melhor Oferta</div>
+                    <div style={{color:"#34D399",fontSize:26,fontWeight:800,marginBottom:4}}>{fmtR(parseFloat(best.valorCliente||0))}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}}>
+                      {[["Tabela",best.nomeTabela||"Hub"],["Parcelas",String(best.quantidadeParcelas||"—")],["Valor Bruto",fmtR(best.valorbruto)],["TAC",fmtR(best.valorTac)],["Bloqueado",fmtR(best.valorBloqueado)],["Financeira",best.financeira||"Hub Crédito"]].map(([l,v])=>(
+                        <div key={l} style={{background:"rgba(0,0,0,0.2)",borderRadius:8,padding:"7px 10px"}}>
+                          <div style={{color:"rgba(255,255,255,0.4)",fontSize:9.5,textTransform:"uppercase",marginBottom:2}}>{l}</div>
+                          <div style={{color:"#fff",fontSize:12,fontWeight:600}}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={()=>setFDigModal({cpf:fCpf,simulacaoId:best.simulacaoId||"",tabelaComercial:best.tabelaComercial||"",plano:best.quantidadeParcelas||"",valorParcela:parseFloat(best.valorCliente||0)/Math.max(best.quantidadeParcelas||1,1),valorVista:best.valorCliente||"",valorBruto:best.valorbruto||"",valorTac:best.valorTac||"0",bancarizador:fBanc,tipoOperacao:"fgts"})}
+                      style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      ✏️ Digitar Proposta
+                    </button>
                   </div>
-                ))}
-              </div>
-              {(fSel.parcelas||[]).length>0 && (
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                  <thead><tr>{["Vencimento","Parcela","Amortização","Juros"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 8px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}</tr></thead>
-                  <tbody>{fSel.parcelas.slice(0,10).map((p,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
-                      <td style={{padding:"5px 8px",color:C.tp}}>{p.dataVencimento?new Date(p.dataVencimento).toLocaleDateString("pt-BR"):"—"}</td>
-                      <td style={{padding:"5px 8px",color:"#C084FC",fontWeight:600}}>{fmtR(p.valorParcela||p.ValorParcela)}</td>
-                      <td style={{padding:"5px 8px",color:C.ts}}>{fmtR(p.amortizacao||p.Amortizacao)}</td>
-                      <td style={{padding:"5px 8px",color:C.ts}}>{fmtR(p.juros||p.Juros)}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
+                );
+              })()}
+              {/* Demais */}
+              {fSims.length>1 && (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
+                  {[...fSims].sort((a,b)=>parseFloat(b.valorCliente||0)-parseFloat(a.valorCliente||0)).slice(1).map((s,i)=>(
+                    <div key={i} style={{background:"rgba(79,142,247,0.1)",border:"1px solid rgba(79,142,247,0.25)",borderRadius:12,padding:"14px 16px",cursor:"pointer",transition:"all 0.15s"}}
+                      onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                      onMouseLeave={e=>e.currentTarget.style.transform="none"}>
+                      <div style={{color:"#60A5FA",fontSize:18,fontWeight:700,marginBottom:4}}>{fmtR(parseFloat(s.valorCliente||0))}</div>
+                      <div style={{color:C.ts,fontSize:11,marginBottom:6}}>{s.nomeTabela||"Hub"} · {s.quantidadeParcelas}x</div>
+                      <button onClick={()=>setFDigModal({cpf:fCpf,simulacaoId:s.simulacaoId||"",tabelaComercial:s.tabelaComercial||"",plano:s.quantidadeParcelas||"",valorParcela:parseFloat(s.valorCliente||0)/Math.max(s.quantidadeParcelas||1,1),valorVista:s.valorCliente||"",valorBruto:s.valorbruto||"",valorTac:s.valorTac||"0",bancarizador:fBanc,tipoOperacao:"fgts"})} style={{background:"transparent",border:"1px solid rgba(79,142,247,0.4)",color:"#60A5FA",borderRadius:7,padding:"4px 12px",fontSize:11,cursor:"pointer"}}>✏️ Proposta</button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
@@ -18971,7 +19189,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
       {/* ════ CLT INDIVIDUAL ════ */}
       {aba==="clt" && (
-        <div style={{maxWidth:640}}>
+        <div style={{maxWidth:680}}>
           <div style={{...S.card,padding:"18px 22px",marginBottom:16,border:"1px solid rgba(96,165,250,0.2)"}}>
             <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Passo 1 — Dados do Cliente</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
@@ -18980,29 +19198,26 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
               <input value={cEmail} onChange={e=>setCEmail(e.target.value)} placeholder="E-mail *" style={{...S.input,fontSize:12}} />
               <input value={cTel} onChange={e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11))} placeholder="DDD+Telefone *" style={{...S.input,fontSize:12}} />
               <input value={cNasc} onChange={e=>setCNasc(e.target.value)} type="date" style={{...S.input,fontSize:12}} />
-              <select value={cSexo} onChange={e=>setCSexo(e.target.value)} style={{...S.input,fontSize:12}}><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option></select>
+              <select value={cSexo} onChange={e=>setCSexo(e.target.value)} style={{...S.input,fontSize:12}}><option>Masculino</option><option>Feminino</option></select>
               <input value={cParcelas} onChange={e=>setCParcelas(e.target.value.replace(/\D/g,""))} placeholder="Nº parcelas" style={{...S.input,fontSize:12}} />
-              <input value={cValor} onChange={e=>setCValor(e.target.value.replace(/[^\d.]/g,""))} placeholder="Valor solicitado (R$)" style={{...S.input,fontSize:12}} />
+              <input value={cValor} onChange={e=>setCValor(e.target.value.replace(/[^\d.]/g,""))} placeholder="Valor (R$)" style={{...S.input,fontSize:12}} />
             </div>
             {cErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cErr}</div>}
-            {cPollMsg && <div style={{color:cPollMsg.startsWith("✅")?"#34D399":cPollMsg.startsWith("⏳")?"#60A5FA":"#FCD34D",fontSize:12,marginBottom:8}}>{cPollMsg}</div>}
-            <button onClick={criarPreSim} disabled={cBusy} style={{background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cBusy?0.7:1}}>
-              {cBusy?"⏳ Criando...":"🚀 Criar Pré-Simulação"}
-            </button>
+            {cPollMsg && <div style={{color:cPollMsg.startsWith("✅")?"#34D399":"#60A5FA",fontSize:12,marginBottom:8}}>{cPollMsg}</div>}
+            <button onClick={criarPreSim} disabled={cBusy} style={{background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cBusy?0.7:1}}>{cBusy?"⏳ Criando...":"🚀 Criar Pré-Simulação"}</button>
           </div>
           {cPreSim && (
             <div style={{...S.card,padding:"18px 22px",marginBottom:14,border:"1px solid rgba(96,165,250,0.2)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-                <div style={{color:C.tp,fontSize:13,fontWeight:700}}>Status da Pré-Simulação</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <div style={{color:C.tp,fontSize:13,fontWeight:700}}>Status</div>
                 <span style={{background:"rgba(96,165,250,0.12)",color:"#60A5FA",border:"1px solid rgba(96,165,250,0.3)",borderRadius:99,padding:"2px 12px",fontSize:11,fontWeight:700}}>{CLT_STATUS_MAP[cltStatusCode]||`Status ${cltStatusCode}`}</span>
+                <a href="https://termo.hubcredito.com.br/" target="_blank" rel="noopener noreferrer" style={{marginLeft:"auto",background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.3)",color:"#FCD34D",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,textDecoration:"none"}}>✍️ Link do Termo</a>
               </div>
-              {cPreSim.mensagemErro && <div style={{color:"#F87171",fontSize:12,marginBottom:10}}>⚠ {cPreSim.mensagemErro}</div>}
-              {cltStatusCode===11 && <a href="https://termo.hubcredito.com.br/" target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:6,background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:10,padding:"10px 16px",textDecoration:"none",marginBottom:12}}><span style={{fontSize:16}}>✍️</span><span style={{color:"#FCD34D",fontSize:13,fontWeight:700}}>Abrir página de assinatura do termo</span></a>}
-              {(cltStatusCode===3||cltStatusCode===6)&&vinculos.length>0 && (
-                <div style={{marginBottom:14}}>
-                  <div style={{color:C.td,fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Selecionar vínculo:</div>
+              {vinculos.length>0 && (
+                <div style={{marginBottom:12}}>
+                  <div style={{color:C.td,fontSize:11,marginBottom:7}}>Selecionar vínculo:</div>
                   {vinculos.map((v,i)=>(
-                    <button key={i} onClick={()=>setCVinculo(v)} style={{display:"block",width:"100%",textAlign:"left",background:cVinculo===v?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.04)",border:`1px solid ${cVinculo===v?"#60A5FA55":"rgba(255,255,255,0.08)"}`,borderRadius:9,padding:"9px 14px",cursor:"pointer",marginBottom:6,transition:"all 0.15s"}}>
+                    <button key={i} onClick={()=>setCVinculo(v)} style={{display:"block",width:"100%",textAlign:"left",background:cVinculo===v?"rgba(96,165,250,0.12)":"rgba(255,255,255,0.04)",border:`1px solid ${cVinculo===v?"#60A5FA55":"rgba(255,255,255,0.08)"}`,borderRadius:9,padding:"8px 14px",cursor:"pointer",marginBottom:5}}>
                       <div style={{color:cVinculo===v?"#60A5FA":C.ts,fontSize:13,fontWeight:cVinculo===v?700:400}}>{v.nomeEmpregador||v.numeroInscricao||`Vínculo ${i+1}`}</div>
                       <div style={{color:C.td,fontSize:10}}>Matrícula: {v.matricula||"—"} · {v.elegivel?"✅ Elegível":"❌ Não elegível"}</div>
                     </button>
@@ -19012,23 +19227,148 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
               {(cltStatusCode===6||(cltStatusCode===3&&cVinculo)) && (
                 <>
                   {cSErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cSErr}</div>}
-                  <button onClick={simularCLT} disabled={cSBusy} style={{background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cSBusy?0.7:1}}>{cSBusy?"⏳ Simulando...":"⚡ Criar Simulação CLT"}</button>
+                  <button onClick={simularCLT} disabled={cSBusy} style={{background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cSBusy?0.7:1}}>{cSBusy?"⏳ Simulando...":"⚡ Simular Todos os Prazos"}</button>
                 </>
               )}
             </div>
           )}
+          {/* Cards CLT prazos */}
           {cSim && (
-            <div style={{...S.card,padding:"18px 22px",border:"1px solid rgba(96,165,250,0.25)"}}>
-              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📋 Simulação CLT</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-                {[["Tabela",cSim.nomeTabela||"—"],["Valor Liberado",fmtR(cSim.valorDesembolsoTrabalhador||cSim.valorCliente)],["Valor Parcela",fmtR(cSim.valorParcela)],["Qtd Parcelas",String(cSim.quantidadeParcelas||"—")]].map(([l,v])=>(
-                  <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}><div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase"}}>{l}</div><div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v}</div></div>
+            <div>
+              <div style={{color:C.tp,fontSize:13,fontWeight:700,marginBottom:12}}>📋 Simulações CLT — Todos os Prazos</div>
+              {/* Melhor */}
+              {(() => {
+                const best=cSim.melhor; const bval=parseFloat(best?.valorDesembolsoTrabalhador||best?.valorCliente||0);
+                return (
+                  <div style={{background:"rgba(52,211,153,0.12)",border:"2px solid rgba(52,211,153,0.4)",borderRadius:16,padding:"18px 20px",marginBottom:12,position:"relative"}}>
+                    <div style={{position:"absolute",top:10,right:12,background:"rgba(52,211,153,0.2)",color:"#34D399",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:99}}>★ Melhor</div>
+                    <div style={{color:"#34D399",fontSize:24,fontWeight:800,marginBottom:4}}>{fmtR(bval)}</div>
+                    <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,marginBottom:10}}>{best?.nomeTabela||"Hub"} · {best?.quantidadeParcelas}x · {fmtR(parseFloat(best?.valorParcela||0))}/mês</div>
+                    <button onClick={()=>setCDigModal({cpf:cCpf,nome:cNome,email:cEmail,telefone:cTel,dataNascimento:cNasc,sexo:cSexo,simulacaoId:best?.simulacaoId||"",tabelaComercial:best?.tabelaComercial||"",plano:best?.quantidadeParcelas||"",valorParcela:best?.valorParcela||"",valorVista:bval,valorBruto:bval,valorTac:"0",bancarizador:"UY3",tipoOperacao:"clt"})}
+                      style={{background:"linear-gradient(135deg,#34D399,#059669)",color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Digitar Proposta</button>
+                  </div>
+                );
+              })()}
+              {/* Todos os prazos */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10}}>
+                {(cSim.allSims||[]).filter(s=>s.ok).sort((a,b)=>a.prazo-b.prazo).map((s,i)=>(
+                  <div key={i} style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:12,padding:"12px 14px",cursor:"pointer",transition:"all 0.15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+                    onMouseLeave={e=>e.currentTarget.style.transform="none"}>
+                    <div style={{color:"#60A5FA",fontSize:16,fontWeight:700}}>{fmtR(parseFloat(s.sim?.valorDesembolsoTrabalhador||s.sim?.valorCliente||0))}</div>
+                    <div style={{color:C.ts,fontSize:11,marginBottom:2}}>{s.prazo}x · {fmtR(parseFloat(s.sim?.valorParcela||0))}/mês</div>
+                    <div style={{color:C.td,fontSize:10,marginBottom:8}}>{s.sim?.nomeTabela||"Hub Crédito"}</div>
+                    <button onClick={()=>setCDigModal({cpf:cCpf,nome:cNome,email:cEmail,telefone:cTel,dataNascimento:cNasc,sexo:cSexo,simulacaoId:s.sim?.simulacaoId||"",tabelaComercial:s.sim?.tabelaComercial||"",plano:s.prazo||"",valorParcela:s.sim?.valorParcela||"",valorVista:s.sim?.valorDesembolsoTrabalhador||s.sim?.valorCliente||"",valorBruto:s.sim?.valorDesembolsoTrabalhador||"",valorTac:"0",bancarizador:"UY3",tipoOperacao:"clt"})} style={{background:"transparent",border:"1px solid rgba(96,165,250,0.4)",color:"#60A5FA",borderRadius:7,padding:"3px 10px",fontSize:10,cursor:"pointer"}}>✏️ Proposta</button>
+                  </div>
                 ))}
               </div>
             </div>
           )}
         </div>
       )}
+
+      {/* ════ ACOMPANHAMENTO ════ */}
+      {aba==="acompanhamento" && (
+        <div>
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+            <input value={acompSearch} onChange={e=>setAcompSearch(e.target.value)} placeholder="🔍 CPF ou nome..." style={{...S.input,flex:1,minWidth:160,fontSize:12,padding:"7px 10px"}} />
+            <select value={acompTipo} onChange={e=>setAcompTipo(e.target.value)} style={{...S.input,fontSize:12,padding:"7px 10px"}}>
+              {["Todos","FGTS","CLT"].map(t=><option key={t}>{t}</option>)}
+            </select>
+            <input value={acompDateFrom} onChange={e=>setAcompDateFrom(e.target.value)} type="date" style={{...S.input,fontSize:12,padding:"7px 10px"}} />
+            <input value={acompDateTo} onChange={e=>setAcompDateTo(e.target.value)} type="date" style={{...S.input,fontSize:12,padding:"7px 10px"}} />
+            <button onClick={buscarPropostas} disabled={acompLoading} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",opacity:acompLoading?0.7:1}}>
+              {acompLoading?"⏳ Buscando...":"🔄 Atualizar"}
+            </button>
+          </div>
+          {acompErr && <div style={{color:"#F87171",fontSize:12,marginBottom:10,padding:"9px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>⚠ {acompErr}</div>}
+          {acompData.length===0 && !acompLoading && (
+            <div style={{...S.card,padding:"32px",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:8}}>📡</div>
+              <div style={{color:C.td,fontSize:13}}>Nenhuma proposta encontrada no período selecionado</div>
+            </div>
+          )}
+          {acompData.length>0 && (
+            <div style={{...S.card,overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead><tr style={{background:C.deep}}>
+                  {["ID","Cliente","CPF","Tipo","Status","Valor","Data","Detalhes"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"9px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {acompData.filter(p=>{
+                    if (acompSearch) { const q=acompSearch.toLowerCase(); return (p.nomeCliente||"").toLowerCase().includes(q)||(p.cpfCliente||p.documentoCliente||"").includes(acompSearch); }
+                    return true;
+                  }).map((p,i)=>{
+                    const sid = p.situacao??p.status??p.situacaoId;
+                    const cor = PROP_STATUS_COR[sid]||"#94A3B8";
+                    const isDet = acompDetalhe?.id===p.id||acompDetalhe?.propostaId===p.propostaId;
+                    return (
+                      <React.Fragment key={p.id||p.propostaId||i}>
+                        <tr onClick={()=>setAcompDetalhe(isDet?null:p)}
+                          style={{background:isDet?`rgba(192,132,252,0.08)`:i%2===0?C.card:C.deep,borderBottom:isDet?"none":`1px solid ${C.b1}`,cursor:"pointer",transition:"background 0.1s"}}
+                          onMouseEnter={e=>!isDet&&(e.currentTarget.style.background="rgba(192,132,252,0.05)")}
+                          onMouseLeave={e=>e.currentTarget.style.background=isDet?"rgba(192,132,252,0.08)":i%2===0?C.card:C.deep}>
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:10,fontFamily:"monospace"}}>{p.propostaId||p.id||"—"}</td>
+                          <td style={{padding:"8px 10px",color:C.tp,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nomeCliente||p.nome||"—"}</td>
+                          <td style={{padding:"8px 10px",color:C.tm,fontFamily:"monospace",fontSize:10}}>{(p.cpfCliente||p.documentoCliente||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")}</td>
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:11}}>{p.tipoOperacao===2||p.tipoOperacaoId===2?"FGTS":p.tipoOperacao===27||p.tipoOperacaoId===27?"CLT":"—"}</td>
+                          <td style={{padding:"8px 10px"}}>
+                            <span style={{background:`${cor}18`,color:cor,border:`1px solid ${cor}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,whiteSpace:"nowrap"}}>
+                              {PROP_STATUS_LABEL[sid]||`Status ${sid}`}
+                            </span>
+                          </td>
+                          <td style={{padding:"8px 10px",color:"#34D399",fontWeight:700,fontSize:12}}>{fmtR(p.valorCliente||p.valorVista||p.valor||0)}</td>
+                          <td style={{padding:"8px 10px",color:C.td,fontSize:10}}>{p.dataCriacao||p.dataEnvio?"":""}{p.dataCriacao?new Date(p.dataCriacao).toLocaleDateString("pt-BR"):""}</td>
+                          <td style={{padding:"8px 10px"}}>
+                            <button onClick={e=>{e.stopPropagation();setAcompDetalhe(isDet?null:p);}} style={{background:"transparent",border:`1px solid ${C.b2}`,borderRadius:7,color:C.tm,cursor:"pointer",fontSize:11,padding:"3px 9px"}}>
+                              {isDet?"▲":"▼"}
+                            </button>
+                          </td>
+                        </tr>
+                        {isDet && (
+                          <tr>
+                            <td colSpan={8} style={{padding:0,background:"linear-gradient(135deg,rgba(10,16,40,0.98),rgba(15,20,50,0.98))",borderBottom:`1px solid rgba(192,132,252,0.3)`}}>
+                              <div style={{padding:"16px 20px"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+                                  <span style={{color:"#C084FC",fontSize:13,fontWeight:700}}>Proposta #{p.propostaId||p.id}</span>
+                                  <span style={{background:`${PROP_STATUS_COR[sid]||"#94A3B8"}18`,color:PROP_STATUS_COR[sid]||"#94A3B8",border:`1px solid ${PROP_STATUS_COR[sid]||"#94A3B8"}33`,borderRadius:99,padding:"3px 12px",fontSize:11,fontWeight:700}}>{PROP_STATUS_LABEL[sid]||`Status ${sid}`}</span>
+                                  <button onClick={e=>{e.stopPropagation();setAcompDetalhe(null);}} style={{marginLeft:"auto",background:"rgba(255,255,255,0.07)",border:"none",color:C.tm,borderRadius:6,padding:"4px 8px",fontSize:11,cursor:"pointer"}}>✕</button>
+                                </div>
+                                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8}}>
+                                  {[
+                                    ["Cliente",p.nomeCliente||p.nome||"—"],
+                                    ["CPF",(p.cpfCliente||p.documentoCliente||"").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4")],
+                                    ["Tipo",p.tipoOperacao===2||p.tipoOperacaoId===2?"FGTS":"CLT"],
+                                    ["Bancarizador",p.bancarizador||"—"],
+                                    ["Valor Cliente",fmtR(p.valorCliente||p.valorVista||0)],
+                                    ["Parcelas",String(p.plano||p.quantidadeParcelas||"—")],
+                                    ["Data Criação",p.dataCriacao?new Date(p.dataCriacao).toLocaleDateString("pt-BR"):"—"],
+                                    ["Tabela",String(p.tabelaComercial||"—")],
+                                  ].map(([l,v])=>(
+                                    <div key={l} style={{background:"rgba(255,255,255,0.04)",borderRadius:8,padding:"7px 10px"}}>
+                                      <div style={{color:"rgba(255,255,255,0.35)",fontSize:9.5,textTransform:"uppercase",marginBottom:2}}>{l}</div>
+                                      <div style={{color:"#fff",fontSize:12,fontWeight:600}}>{v}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal digitação lote */}
+      {loteDigModal && <DigForm initData={loteDigModal} tipo={loteDigModal.tipoOperacao} onClose={()=>setLoteDigModal(null)} />}
+      {fDigModal    && <DigForm initData={fDigModal}    tipo="fgts"                       onClose={()=>setFDigModal(null)} />}
+      {cDigModal    && <DigForm initData={cDigModal}    tipo="clt"                        onClose={()=>setCDigModal(null)} />}
     </div>
   );
 }
