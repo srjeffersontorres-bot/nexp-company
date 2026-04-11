@@ -16019,6 +16019,19 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(null);
+  const [wppPopup, setWppPopup] = useState(null); // { txt, clienteNome }
+
+  // ── Helper: monta texto WhatsApp da simulação ─────────────────
+  const buildWppTxt = (resultados) => {
+    let txt = `Oba! 🎉 Sua simulação do *Crédito do Trabalhador* chegou, confira:\n\n`;
+    resultados.forEach((r, i) => {
+      const v = parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
+      const p = parseFloat(r.sim?.installment_value||0);
+      txt += `*Oferta ${i+1}* →\nValor liberado: *${fmtBRL(v)}*\nValor da parcela: *${fmtBRL(p)}*\nPrazo: *${r.np}x*\n\n`;
+    });
+    txt += `📌 *Informações adicionais:*\n*1º pagamento da parcela em até 60 dias.*\n*Pagamento via Pix ou dados bancários apenas em sua conta, de forma rápida e segura.*\n*Proposta já pré-aprovada* ✅\n\nQual seria a melhor oferta para você hoje? 😊\nOu gostaria de simular com outro valor de margem?\nSó me falar aqui para o próximo passo! 😄`;
+    return txt;
+  };
 
   // ── apiFetch CLT ──────────────────────────────────────────────
   const apiFetch = async (path, method="GET", body=null) => {
@@ -16284,7 +16297,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     });
     const merge = (prev, novos) => {
       const ids = new Set(prev.map(x=>x.id));
-      return [...novos.filter(x=>!ids.has(x.id)), ...prev]; // novos primeiro
+      const merged = [...novos.filter(x=>!ids.has(x.id)), ...prev];
+      merged.sort((a,b)=>new Date(b.createdAt||b.created_at||0).getTime()-new Date(a.createdAt||a.created_at||0).getTime());
+      return merged; // sempre mais recente primeiro
     };
     const saveCache = (lista) => {
       try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,500))); } catch {}
@@ -17089,33 +17104,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                     <button onClick={e=>{e.stopPropagation();
                                       const cur2=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:Object.keys(simConfigs)[0];
                                       const {resultados:res2}=simConfigs[cur2];
-                                      const margem=t.availableMarginValue?fmtBRL(t.availableMarginValue):"—";
-                                      let txt=`Oba! 🎉 Sua simulação do Crédito do Trabalhador chegou, confira:
-Margem disponível: *${margem}*
-
-`;
-                                      res2.forEach((r,i)=>{
-                                        const v=parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
-                                        const p=parseFloat(r.sim?.installment_value||0);
-                                        txt+=`*Oferta ${i+1}* →
-Valor liberado: *${fmtBRL(v)}*
-Valor da parcela: *${fmtBRL(p)}*
-Prazo: *${r.np}x*
-
-`;
-                                      });
-                                      txt+=`Informações adicionais:
-*1° pagamento da parcela em até 60 dias.*
-*Pagamento via Pix ou dados bancários apenas em sua conta, de forma rápida e segura.*
-*Proposta já pré-aprovada* ✅
-
-Qual seria a melhor oferta para você hoje? 😊
-Ou gostaria de simular com outro valor de margem?
-Só me falar aqui para o próximo passo!`;
-                                      navigator.clipboard?.writeText(txt).then(()=>setCopied("sim_"+t.id)).catch(()=>{});
-                                      setTimeout(()=>setCopied(null),2500);
+                                      setWppPopup({txt:buildWppTxt(res2),clienteNome:t.name||t.nome||"Cliente"});
                                     }} style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                                      {copied==="sim_"+t.id?"✅ Copiado!":"📋 Copiar Simulação"}
+                                      📤 Copiar p/ WhatsApp
                                     </button>
                                   </div>
                                 </div>
@@ -17196,7 +17187,24 @@ Só me falar aqui para o próximo passo!`;
                     </div>
                     <span style={{background:col+"22",color:col,fontSize:10,padding:"3px 10px",borderRadius:20,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{STATUS_OP_LABEL[st]||st}</span>
                     {st==="canceled" && (
-                      <button onClick={e=>{e.stopPropagation(); setSimNovamenteOp(op);}}
+                      <button onClick={e=>{e.stopPropagation(); setSimNovamenteOp(op); setSimNovamenteData({loading:true,resultados:[]});
+                        (async()=>{
+                          try{
+                            const cfgs=await apiFetch("/private-consignment/simulation/configs").then(d=>d?.configs||[]).catch(()=>[]);
+                            const cfg=cfgs[0]; if(!cfg){setSimNovamenteData({loading:false,resultados:[],err:"Sem configurações"});return;}
+                            const prazos=[6,8,10,12,18,24,36,48];
+                            const margin=parseFloat(op.disbursedIssueAmount||op.availableMarginValue||op.issueAmount||500);
+                            const resultados=[];
+                            await Promise.allSettled([...prazos.map(async np=>{
+                              try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,""),numberOfInstallments:np,requestedAmount:margin,provider:"QI"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"QI Sociedade"});}catch{}
+                            }),...prazos.map(async np=>{
+                              try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:(op.documentNumber||op.individualDocumentNumber||"").replace(/\D/g,""),numberOfInstallments:np,requestedAmount:margin,provider:"celcoin"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"Celcoin"});}catch{}
+                            })]);
+                            resultados.sort((a,b)=>parseFloat(b.sim?.disbursement_amount||0)-parseFloat(a.sim?.disbursement_amount||0));
+                            setSimNovamenteData({loading:false,resultados,margin,cfg});
+                          }catch(e){setSimNovamenteData({loading:false,resultados:[],err:e.message});}
+                        })();
+                      }}
                         style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                         ⚡ Simular novamente
                       </button>
@@ -17398,12 +17406,18 @@ Só me falar aqui para o próximo passo!`;
                     const prazos=[6,8,10,12,18,24,36,48];
                     const margin=parseFloat(simNovamenteOp.disbursedIssueAmount||simNovamenteOp.availableMarginValue||simNovamenteOp.issueAmount||500);
                     const resultados=[];
-                    await Promise.allSettled(prazos.map(async np=>{
+                    // Simular nos dois bancos: QI Sociedade e Celcoin
+                    await Promise.allSettled([...prazos.map(async np=>{
                       try{
                         const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"QI"});
-                        if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0) resultados.push({np,sim});
+                        if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0) resultados.push({np,sim,banco:"QI Sociedade"});
                       }catch{}
-                    }));
+                    }),...prazos.map(async np=>{
+                      try{
+                        const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"celcoin"});
+                        if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0) resultados.push({np,sim,banco:"Celcoin"});
+                      }catch{}
+                    })]);
                     resultados.sort((a,b)=>parseFloat(b.sim?.disbursement_amount||0)-parseFloat(a.sim?.disbursement_amount||0));
                     setSimNovamenteData({loading:false,resultados,margin,cfg});
                   }catch(e){setSimNovamenteData({loading:false,resultados:[],err:e.message});}
@@ -17441,6 +17455,14 @@ Só me falar aqui para o próximo passo!`;
                   })}
                   {!simNovamenteData.resultados.length&&<div style={{color:C.td,fontSize:12,textAlign:"center",padding:"16px 0",gridColumn:"1/-1"}}>Sem simulações disponíveis para este cliente.</div>}
                 </div>
+                {simNovamenteData.resultados.length>0&&(
+                  <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"flex-end"}}>
+                    <button onClick={()=>setWppPopup({txt:buildWppTxt(simNovamenteData.resultados),clienteNome:simNovamenteOp?.name||"Cliente"})}
+                      style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      📤 Copiar p/ WhatsApp
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -17517,8 +17539,8 @@ Só me falar aqui para o próximo passo!`;
             {/* Banco e config */}
             <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
               <span style={{color:C.td,fontSize:12}}>Banco:</span>
-              {["QI","cartos","bms"].map(b=>(
-                <button key={b} onClick={()=>setMargemLoteBanc(b)} style={{background:margemLoteBanc===b?C.abg:C.deep,color:margemLoteBanc===b?C.atxt:C.tm,border:`1px solid ${margemLoteBanc===b?C.atxt+"44":C.b2}`,borderRadius:8,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:margemLoteBanc===b?700:400,textTransform:"uppercase"}}>{b}</button>
+              {[["QI","QI Sociedade"],["celcoin","Celcoin"]].map(([val,label])=>(
+                <button key={val} onClick={()=>setMargemLoteBanc(val)} style={{background:margemLoteBanc===val?C.abg:C.deep,color:margemLoteBanc===val?C.atxt:C.tm,border:`1px solid ${margemLoteBanc===val?C.atxt+"44":C.b2}`,borderRadius:8,padding:"5px 14px",fontSize:12,cursor:"pointer",fontWeight:margemLoteBanc===val?700:400}}>{label}</button>
               ))}
             </div>
 
@@ -17594,7 +17616,9 @@ Só me falar aqui para o próximo passo!`;
                           )}
                         </td>
                         <td style={{padding:"9px 10px"}}>
+                          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
                           {it.status==="ok" && (
+                            <>
                             <button onClick={async()=>{
                               const cpf=it.cpf;
                               const end=new Date().toISOString();
@@ -17606,6 +17630,28 @@ Só me falar aqui para o próximo passo!`;
                             }} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                               ⚡ Simular
                             </button>
+                            <button onClick={async()=>{
+                              // Simular nos dois bancos e mostrar popup
+                              try {
+                                const cpf=it.cpf;
+                                const cfgs=await apiFetch("/private-consignment/simulation/configs").then(d=>d?.configs||[]).catch(()=>[]);
+                                const cfg=cfgs[0]; if(!cfg){setErr("Sem configurações de simulação");return;}
+                                const prazos=[6,8,10,12,18,24,36,48];
+                                const margin=it.margem||500;
+                                const resultados=[];
+                                await Promise.allSettled([...prazos.map(async np=>{
+                                  try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"QI"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"QI Sociedade"});}catch{}
+                                }),...prazos.map(async np=>{
+                                  try{const sim=await apiFetch("/private-consignment/simulation","POST",{configId:cfg.id,documentNumber:cpf,numberOfInstallments:np,requestedAmount:margin,provider:"celcoin"});if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)resultados.push({np,sim,banco:"Celcoin"});}catch{}
+                                })]);
+                                resultados.sort((a,b)=>parseFloat(b.sim?.disbursement_amount||0)-parseFloat(a.sim?.disbursement_amount||0));
+                                if(resultados.length>0) setWppPopup({txt:buildWppTxt(resultados),clienteNome:it.nome||"Cliente"});
+                                else setErr("Nenhuma simulação retornada para este CPF.");
+                              }catch(e){setErr(e.message);}
+                            }} style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                              📤 Copiar
+                            </button>
+                            </>
                           )}
                           {["pendente","erro","sem_margem"].includes(it.status) && (
                             <button onClick={async()=>{
@@ -17622,6 +17668,7 @@ Só me falar aqui para o próximo passo!`;
                               }catch(e){setMargemLoteItems(p=>p.map(x=>x.id===it.id?{...x,status:"erro",erro:e.message}:x));}
                             }} style={{background:"rgba(255,255,255,0.06)",color:C.tm,border:`1px solid ${C.b2}`,borderRadius:8,padding:"5px 10px",fontSize:11,cursor:"pointer"}}>🔄</button>
                           )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -17871,6 +17918,32 @@ Só me falar aqui para o próximo passo!`;
                 executarSimulacoes(avisoModal,true);
               }} style={{flex:1,background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>⚡ Simular Novamente</button>
               <button onClick={()=>setAvisoModal(null)} style={{flex:1,background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ══ POPUP COPIAR WHATSAPP ══ */}
+      {wppPopup&&(
+        <div onClick={()=>setWppPopup(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,rgba(10,18,40,0.99),rgba(5,12,30,0.99))",border:"1px solid rgba(52,211,153,0.3)",borderRadius:22,width:"100%",maxWidth:520,maxHeight:"88vh",overflowY:"auto",boxShadow:"0 32px 90px rgba(0,0,0,0.9)"}}>
+            {/* Header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 22px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)",position:"sticky",top:0,background:"rgba(10,18,40,0.99)",borderRadius:"22px 22px 0 0",zIndex:1}}>
+              <div>
+                <div style={{color:"#34D399",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:3}}>📤 Copiar para WhatsApp</div>
+                <div style={{color:"rgba(255,255,255,0.8)",fontSize:14,fontWeight:800}}>{wppPopup.clienteNome}</div>
+              </div>
+              <button onClick={()=>setWppPopup(null)} style={{background:"rgba(255,255,255,0.07)",border:"none",color:"rgba(255,255,255,0.5)",borderRadius:50,width:30,height:30,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+            {/* Preview */}
+            <div style={{padding:"16px 22px"}}>
+              <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px 16px",fontSize:12,color:"rgba(255,255,255,0.85)",lineHeight:1.7,whiteSpace:"pre-wrap",fontFamily:"monospace",marginBottom:16,maxHeight:360,overflowY:"auto"}}>
+                {wppPopup.txt}
+              </div>
+              <button onClick={()=>{
+                navigator.clipboard?.writeText(wppPopup.txt).then(()=>{setCopied("wpp");setTimeout(()=>setCopied(null),2500);}).catch(()=>{});
+              }} style={{width:"100%",background:copied==="wpp"?"linear-gradient(135deg,#059669,#34D399)":"linear-gradient(135deg,#34D399,#059669)",color:"#000",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer",transition:"all 0.2s",boxShadow:"0 6px 24px rgba(52,211,153,0.35)"}}>
+                {copied==="wpp"?"✅ Texto copiado com sucesso!":"📋 Copiar texto"}
+              </button>
             </div>
           </div>
         </div>
