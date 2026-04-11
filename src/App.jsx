@@ -17507,8 +17507,7 @@ Só me falar aqui para o próximo passo!`;
                 <button onClick={()=>{
                   const rows=[["CPF","Nome","Status","Margem Disponível","Erro"]];
                   margemLoteItems.forEach(it=>rows.push([it.cpf,it.nome||"—",it.status,it.margem!=null?it.margem:"",it.erro||""]));
-                  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("
-");
+                  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
                   const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);a.download="margem_lote_clt.csv";a.click();
                 }} style={{background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"9px 14px",fontSize:13,cursor:"pointer"}}>📥 CSV</button>
               </div>
