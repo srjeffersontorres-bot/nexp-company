@@ -16792,12 +16792,90 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     return d;
   };
 
+  // ── Verifica termo válido existente (validade 45 dias) ──────────
+  // Antes de criar um novo termo, verifica se já existe SUCCESS dentro de 45 dias
+  const buscarTermoValido = async (cpfLimpo, providers=["QI","celcoin"]) => {
+    const end   = new Date().toISOString();
+    const start = new Date(Date.now() - 45*86400000).toISOString(); // 45 dias
+    for (const prov of providers) {
+      try {
+        const r = await apiFetch(
+          `/private-consignment/consult?search=${cpfLimpo}&page=1&limit=20&provider=${prov}&startDate=${start}&endDate=${end}`,
+          "GET", null, 2, { skipRateLimit:true }
+        );
+        const itens = (r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+        // Busca SUCCESS ou termo ativo (CONSENT_APPROVED, WAITING_CONSULT, WAITING_CREDIT_ANALYSIS)
+        const assinado = itens.find(x => x.status === "SUCCESS");
+        if (assinado) return { tipo:"assinado", termo:assinado, margem:parseFloat(assinado.availableMarginValue||0)||null, provider:prov };
+        const ativo = itens.find(x => ["CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(x.status));
+        if (ativo)  return { tipo:"processando", termo:ativo, margem:null, provider:prov };
+        const aguardando = itens.find(x => x.status === "WAITING_CONSENT");
+        if (aguardando) return { tipo:"aguardando", termo:aguardando, margem:null, provider:prov,
+          link: aguardando.consent_url||aguardando.link||`https://app.v8sistema.com/termos-de-autorizacao/${aguardando.id}` };
+      } catch {}
+    }
+    return null; // nenhum termo válido encontrado
+  };
+
   const gerarTermo = async () => {
     setErr(""); setTermoLoading(true);
     try {
+      const cpfLimpo = termoForm.cpf.replace(/\D/g,"");
+      // ── Pré-verificação: cliente já tem termo válido (45 dias)? ──
+      const existente = await buscarTermoValido(cpfLimpo);
+      if (existente?.tipo === "assinado") {
+        // Já assinou — mostra margem diretamente sem criar novo termo
+        const t = existente.termo;
+        const novoTermo = {
+          id: t.id, nome: termoForm.nome||t.name||t.signerName||"",
+          cpf: termoForm.cpf, status: "SUCCESS",
+          availableMarginValue: existente.margem,
+          link: t.consent_url||t.link||`https://app.v8sistema.com/termos-de-autorizacao/${t.id}`,
+          criadoEm: new Date().toLocaleString("pt-BR"), createdAt: t.createdAt||new Date().toISOString(),
+          _reaproveitado: true,
+        };
+        setTermos(p=>[novoTermo,...p.filter(x=>x.id!==t.id)]);
+        setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
+        setTermoAutoPreenchido(false);
+        setTermoLoading(false);
+        return;
+      }
+      if (existente?.tipo === "aguardando") {
+        // Já criou termo mas cliente não assinou ainda — reutiliza o link existente
+        const t = existente.termo;
+        const termoExist = {
+          id: t.id, nome: termoForm.nome||t.name||"", cpf: termoForm.cpf,
+          status: "WAITING_CONSENT", availableMarginValue: null,
+          link: existente.link,
+          criadoEm: new Date().toLocaleString("pt-BR"), createdAt: t.createdAt||new Date().toISOString(),
+          _reaproveitado: true,
+        };
+        setTermos(p=>[termoExist,...p.filter(x=>x.id!==t.id)]);
+        setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
+        setTermoAutoPreenchido(false);
+        setTermoLoading(false);
+        return;
+      }
+      if (existente?.tipo === "processando") {
+        // Termo aceito, aguardando processamento — reutiliza e inicia polling
+        const t = existente.termo;
+        const termoExist = {
+          id: t.id, nome: termoForm.nome||t.name||"", cpf: termoForm.cpf,
+          status: t.status, availableMarginValue: null,
+          link: t.consent_url||t.link||`https://app.v8sistema.com/termos-de-autorizacao/${t.id}`,
+          criadoEm: new Date().toLocaleString("pt-BR"), createdAt: t.createdAt||new Date().toISOString(),
+        };
+        setTermos(p=>[termoExist,...p.filter(x=>x.id!==t.id)]);
+        setTermoForm({cpf:"",nome:"",email:"",telefone:"",dataNasc:"",genero:"male"});
+        setTermoAutoPreenchido(false);
+        setTermoLoading(false);
+        return;
+      }
+
+      // Nenhum termo válido — cria novo
       const tel = (termoForm.telefone||"").replace(/\D/g,"");
       const body = {
-        borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""), // CPF sem formatação
+        borrowerDocumentNumber: cpfLimpo, // CPF sem formatação
         gender: termoForm.genero,
         birthDate: toISODate(termoForm.dataNasc),
         signerName: termoForm.nome,
@@ -17428,9 +17506,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
                     setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,status:"GERANDO"}:x));
                     try{
-                      const tel=item.telefone.replace(/\D/g,"");
-                      // CPF: V8 exige exatamente os dígitos sem zeros à esquerda desnecessários
                       const cpfClean = item.cpf.replace(/\D/g,"");
+                      // ── Pré-check: já tem termo válido nos últimos 45 dias? ──
+                      const termoValido = await buscarTermoValido(cpfClean);
+                      if (termoValido?.tipo === "assinado") {
+                        // Já assinou — retorna margem sem criar novo termo
+                        const t = termoValido.termo;
+                        const link = t.consent_url||t.link||`https://app.v8sistema.com/termos-de-autorizacao/${t.id}`;
+                        setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,id:t.id,status:"AGUARDANDO",link,_margem:termoValido.margem,_reaproveitado:true}:x));
+                        await new Promise(r=>setTimeout(r,400));
+                        continue;
+                      }
+                      if (termoValido?.tipo === "aguardando" || termoValido?.tipo === "processando") {
+                        // Termo existe mas não assinou — reutiliza link
+                        const t = termoValido.termo;
+                        const link = termoValido.link||t.consent_url||t.link||`https://app.v8sistema.com/termos-de-autorizacao/${t.id}`;
+                        setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,id:t.id,status:"AGUARDANDO",link,_reaproveitado:true}:x));
+                        await new Promise(r=>setTimeout(r,400));
+                        continue;
+                      }
+                      // Nenhum termo válido — cria novo
+                      const tel=item.telefone.replace(/\D/g,"");
                       const body={
                         borrowerDocumentNumber: cpfClean,
                         gender:   item.genero||"male",
