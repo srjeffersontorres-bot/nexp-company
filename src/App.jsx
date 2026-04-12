@@ -16623,7 +16623,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // eslint-disable-next-line no-unused-vars
   const [termoStep, setTermoStep] = useState("form");
   const [termosSearch, setTermosSearch] = useState("");
-  const [termosPeriodo, setTermosPeriodo] = useState("7"); // dias: "3","7","30","90","365","todos"
+  const [termosDataInicio, setTermosDataInicio] = useState(""); // data inicio do filtro (YYYY-MM-DD)
   const [termosFiltroStatus, setTermosFiltroStatus] = useState("Todos");
 
   const [termoBuscando, setTermoBuscando] = useState(false);
@@ -16998,27 +16998,29 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     };
     try {
       const end = new Date().toISOString();
-      const diasPeriodo = termosPeriodo==="todos" ? 730 : parseInt(termosPeriodo)||7;
-      const startPeriodo = new Date(Date.now()-diasPeriodo*86400000).toISOString();
+      // Data início: campo livre ou padrão 7 dias atrás
+      const startPeriodo = termosDataInicio
+        ? new Date(termosDataInicio).toISOString()
+        : new Date(Date.now()-7*86400000).toISOString();
 
       // ── Fase 1: Página 1 — UI libera imediatamente ──────────────
+      // Quando filtra por data, RESETA a lista (não mescla com período anterior)
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
         "GET", null, 2, { skipRateLimit:true }
       );
       const pg1Items = (r1?.data||[]).map(mapLink);
       const totalPages = r1?.pages?.totalPages || r1?.totalPages || 1;
-      setTermos(prev => { const m=merge(prev, pg1Items); saveCache(m); return m; });
+      // Reset total quando muda filtro — evita mistura de períodos
+      setTermos(() => { const m=pg1Items; saveCache(m); return m; });
       setTermosPage(pg);
-      setLoading(false); // UI liberada com pág 1
+      setLoading(false);
 
-      // ── Fase 2: Demais páginas em background (sem bloquear UI) ───
-      // Carrega todas as páginas restantes sequencialmente com delay
-      // O usuário já pode usar a lista — ela vai crescendo automaticamente
+      // ── Fase 2: Demais páginas em background ────────────────────
       if (totalPages > 1) {
         (async () => {
           for (let p = 2; p <= totalPages; p++) {
-            await new Promise(r => setTimeout(r, 700)); // 700ms entre páginas p/ não dar rate limit
+            await new Promise(r => setTimeout(r, 600));
             try {
               const rp = await apiFetch(
                 `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
@@ -17026,9 +17028,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               );
               const items = (rp?.data||[]).map(mapLink);
               if (items.length) {
-                setTermos(prev => { const m=merge(prev, items); saveCache(m); return m; });
+                // Adiciona páginas subsequentes mantendo ordem (mais recente primeiro)
+                setTermos(prev => {
+                  const ids = new Set(prev.map(x=>x.id));
+                  const novos = items.filter(x=>!ids.has(x.id));
+                  return [...prev, ...novos];
+                });
               }
-            } catch {} // erro em pág individual não interrompe o restante
+            } catch {}
           }
           localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
         })();
@@ -17620,18 +17627,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       </span>}
                       {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
                     </div>
-                    {/* Seletor de período */}
-                    <select
-                      value={termosPeriodo}
-                      onChange={e=>{setTermosPeriodo(e.target.value);setTimeout(()=>buscarTermos(1,true),50);}}
-                      style={{...S.input,fontSize:11,padding:"4px 8px",minWidth:130,cursor:"pointer"}}>
-                      <option value="3">Últimos 3 dias</option>
-                      <option value="7">Últimos 7 dias</option>
-                      <option value="30">Últimos 30 dias</option>
-                      <option value="90">Últimos 3 meses</option>
-                      <option value="365">Último ano</option>
-                      <option value="todos">Todos os períodos</option>
-                    </select>
+                    {/* Filtro por data inicial */}
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:C.td,fontSize:11,whiteSpace:"nowrap"}}>De:</span>
+                      <input
+                        type="date"
+                        value={termosDataInicio}
+                        onChange={e=>setTermosDataInicio(e.target.value)}
+                        style={{...S.input,fontSize:11,padding:"4px 8px",cursor:"pointer",width:130}}
+                      />
+                      <button onClick={()=>buscarTermos(1,true)} disabled={loading}
+                        style={{background:C.atxt+"22",color:C.atxt,border:`1px solid ${C.atxt}44`,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        🔍 Filtrar
+                      </button>
+                      {termosDataInicio&&<button onClick={()=>{setTermosDataInicio("");setTimeout(()=>buscarTermos(1,true),50);}}
+                        style={{background:"transparent",color:C.td,border:"none",fontSize:11,cursor:"pointer"}}>✕</button>}
+                    </div>
                   </div>
                   <input
                     value={termosSearch||""}
