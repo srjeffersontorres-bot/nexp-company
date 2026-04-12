@@ -16998,39 +16998,41 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     };
     try {
       const end = new Date().toISOString();
+      const diasPeriodo = termosPeriodo==="todos" ? 730 : parseInt(termosPeriodo)||7;
+      const startPeriodo = new Date(Date.now()-diasPeriodo*86400000).toISOString();
 
-      // ── Fase 1: busca pelo período selecionado ──
-      const diasPeriodo = termosPeriodo==="todos" ? 365 : parseInt(termosPeriodo)||7;
-      const start7 = new Date(Date.now()-diasPeriodo*86400000).toISOString();
-      const limitePg = termosPeriodo==="todos" ? 100 : 50;
-      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=${limitePg}&provider=QI&startDate=${start7}&endDate=${end}`, "GET", null, 2, { skipRateLimit:true });
-      const recentes = (r7?.data||[]).map(mapLink);
-      setTermos(prev => { const merged = merge(prev, recentes); saveCache(merged); return merged; });
+      // ── Fase 1: Página 1 — UI libera imediatamente ──────────────
+      const r1 = await apiFetch(
+        `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
+        "GET", null, 2, { skipRateLimit:true }
+      );
+      const pg1Items = (r1?.data||[]).map(mapLink);
+      const totalPages = r1?.pages?.totalPages || r1?.totalPages || 1;
+      setTermos(prev => { const m=merge(prev, pg1Items); saveCache(m); return m; });
       setTermosPage(pg);
-      setLoading(false);
+      setLoading(false); // UI liberada com pág 1
 
-      // ── Fase 2: histórico antigo (apenas na carga inicial automática) ──
-      const cacheStr = localStorage.getItem("nexp_clt_termos_lastfull");
-      const lastFull = cacheStr ? parseInt(cacheStr) : 0;
-      const FULL_INTERVAL = 15 * 60 * 1000; // 15 min entre full refresh
-      // forceRefresh manual = só busca os recentes (já feito na fase 1), não dispara histórico
-      if (!forceRefresh && (!jaTemCache || (Date.now() - lastFull > FULL_INTERVAL))) {
-        const start8 = new Date(Date.now()-365*86400000).toISOString();
-        const url365 = (p) => `/private-consignment/consult?page=${p}&limit=30&provider=QI&startDate=${start8}&endDate=${start7}`;
-        const rMeta = await apiFetch(url365(1), "GET", null, 2, { skipRateLimit:true }).catch(()=>null);
-        if(rMeta) {
-          const extra0 = (rMeta?.data||[]).map(mapLink);
-          if(extra0.length) setTermos(prev => { const m = merge(prev, extra0); saveCache(m); return m; });
-          const totalPgs = Math.min(rMeta?.pages?.totalPages||1, 5); // máx 5 páginas p/ evitar rate limit
-          // Sequencial com delay — evita "Limite de requisições"
-          for (let p=2; p<=totalPgs; p++) {
-            await new Promise(r=>setTimeout(r,600)); // 600ms entre páginas
-            await apiFetch(url365(p), "GET", null, 2, { skipRateLimit:true }).then(r=>{
-              const ex=(r?.data||[]).map(mapLink);
-              if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
-            }).catch(()=>{});
+      // ── Fase 2: Demais páginas em background (sem bloquear UI) ───
+      // Carrega todas as páginas restantes sequencialmente com delay
+      // O usuário já pode usar a lista — ela vai crescendo automaticamente
+      if (totalPages > 1) {
+        (async () => {
+          for (let p = 2; p <= totalPages; p++) {
+            await new Promise(r => setTimeout(r, 700)); // 700ms entre páginas p/ não dar rate limit
+            try {
+              const rp = await apiFetch(
+                `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
+                "GET", null, 2, { skipRateLimit:true }
+              );
+              const items = (rp?.data||[]).map(mapLink);
+              if (items.length) {
+                setTermos(prev => { const m=merge(prev, items); saveCache(m); return m; });
+              }
+            } catch {} // erro em pág individual não interrompe o restante
           }
-        }
+          localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
+        })();
+      } else {
         localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
       }
     } catch(e) {
