@@ -12763,6 +12763,47 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
+  // ── Auto-login com credenciais salvas no Firestore ────────────
+  // Se não tem sessão válida, busca credencial V8 ativa e loga automaticamente
+  useEffect(() => {
+    if (isTokenValid) return; // já logado
+    const uid = currentUser?.uid || currentUser?.id;
+    if (!uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "credenciais_bancos"),
+            where("uid","==",uid),
+            where("bancoId","==","v8"),
+            where("status","==","ativo")
+          )
+        );
+        if (cancelled || snap.empty) return;
+        const cred = snap.docs[0].data();
+        if (!cred.usuario || !cred.senha) return;
+        // Tenta autenticar automaticamente
+        const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"auth", payload:{ username:cred.usuario, password:cred.senha } }) });
+        const data = await res.json();
+        if (!res.ok || !data.access_token) {
+          setAuthErr("Credencial V8 inválida. Atualize em 🔐 Credenciais.");
+          return;
+        }
+        const exp = Date.now() + ((data.expires_in || 86400) - 60) * 1000;
+        localStorage.setItem("nexp_v8_session", JSON.stringify({ token: data.access_token, exp }));
+        localStorage.setItem("nexp_v8_user", cred.usuario);
+        setToken(data.access_token);
+        setTokenExp(exp);
+        setSavedUser(cred.usuario);
+        setAba(localStorage.getItem("nexp_v8_aba") || "individual");
+      } catch(e) {
+        setAuthErr("Erro ao conectar V8: " + e.message);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser]); // eslint-disable-line
+
   // Auto-resume lote after F5: if wasRunning was saved, trigger simularLote
   // lSaved / loteWasRunning / loteAutoResume — declared here so the useEffect below can use them
   const lSaved = (() => { try { return JSON.parse(localStorage.getItem("nexp_v8_lote_state")||"null"); } catch { return null; } })();
@@ -15973,19 +16014,31 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 
       {!isTokenValid && (
         <div style={{ background:C.card, border:`1px solid rgba(59,110,245,0.3)`, borderRadius:14, padding:"28px 32px", textAlign:"center", maxWidth:480 }}>
-          <div style={{ fontSize:40, marginBottom:14 }}>🔐</div>
-          <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Acesso não autenticado</div>
-          <div style={{ color:C.td, fontSize:13, lineHeight:1.7, marginBottom:20 }}>
-            Para usar a V8 Digital, faça login na aba<br/>
-            <strong style={{ color:C.atxt }}>🔐 Credenciais</strong> do menu lateral.
-          </div>
-          <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:10, padding:"12px 16px", fontSize:12, color:C.tm, textAlign:"left", marginBottom:20 }}>
-            <div style={{ fontWeight:700, color:C.tp, marginBottom:6 }}>Como fazer:</div>
-            <div style={{ marginBottom:4 }}>1. Clique em <b style={{ color:C.atxt }}>🔐 Credenciais</b> no menu</div>
-            <div style={{ marginBottom:4 }}>2. Selecione <b>V8 Digital</b> e clique em <b>Adicionar</b></div>
-            <div>3. Insira seu e-mail e senha da plataforma V8</div>
-          </div>
-          {authErr && <div style={{ color:"#F87171", fontSize:12, padding:"9px 13px", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8 }}>⚠ {authErr}</div>}
+          {!authErr ? (
+            <>
+              <div style={{ fontSize:40, marginBottom:14, animation:"pulse 1.5s infinite" }}>⚡</div>
+              <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Conectando à V8 Digital...</div>
+              <div style={{ color:C.td, fontSize:13, lineHeight:1.7 }}>
+                Buscando credenciais salvas e autenticando automaticamente.
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize:40, marginBottom:14 }}>🔐</div>
+              <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Credencial V8 necessária</div>
+              <div style={{ color:C.td, fontSize:13, lineHeight:1.7, marginBottom:16 }}>
+                Cadastre sua credencial V8 Digital na aba<br/>
+                <strong style={{ color:C.atxt }}>🔐 Credenciais</strong> do menu lateral.
+              </div>
+              <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:10, padding:"12px 16px", fontSize:12, color:C.tm, textAlign:"left", marginBottom:16 }}>
+                <div style={{ fontWeight:700, color:C.tp, marginBottom:6 }}>Como fazer:</div>
+                <div style={{ marginBottom:4 }}>1. Clique em <b style={{ color:C.atxt }}>🔐 Credenciais</b> no menu</div>
+                <div style={{ marginBottom:4 }}>2. Selecione <b>V8 Digital</b> e clique em <b>Adicionar</b></div>
+                <div>3. Insira seu e-mail e senha da plataforma V8</div>
+              </div>
+              <div style={{ color:"#F87171", fontSize:12, padding:"9px 13px", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8 }}>⚠ {authErr}</div>
+            </>
+          )}
         </div>
       )}
 
