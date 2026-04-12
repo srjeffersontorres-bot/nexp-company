@@ -12764,41 +12764,43 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const isTokenValid = token && tokenExp && Date.now() < tokenExp;
 
   // ── Auto-login com credenciais salvas no Firestore ────────────
-  // Se não tem sessão válida, busca credencial V8 ativa e loga automaticamente
   useEffect(() => {
-    if (isTokenValid) return; // já logado
+    if (isTokenValid) return;
     const uid = currentUser?.uid || currentUser?.id;
     if (!uid) return;
     let cancelled = false;
     (async () => {
       try {
-        const snap = await getDocs(
-          query(collection(db, "credenciais_bancos"),
-            where("uid","==",uid),
-            where("bancoId","==","v8"),
-            where("status","==","ativo")
-          )
-        );
-        if (cancelled || snap.empty) return;
-        const cred = snap.docs[0].data();
-        if (!cred.usuario || !cred.senha) return;
-        // Tenta autenticar automaticamente
-        const res = await fetch(PROXY, { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ action:"auth", payload:{ username:cred.usuario, password:cred.senha } }) });
+        // Busca credencial V8 — bancoId="v8_digital"
+        const ref  = collection(db, "credenciais_bancos");
+        const snap = await getDocs(ref);
+        if (cancelled) return;
+        const cred = snap.docs.map(d=>d.data())
+          .find(c => c.uid===uid && c.bancoId==="v8_digital" && c.status==="ativo");
+        if (!cred?.usuario || !cred?.senha) {
+          setAuthErr("Cadastre sua credencial V8 Digital em 🔐 Credenciais.");
+          return;
+        }
+        const res = await fetch(PROXY, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ action:"auth", payload:{ username:cred.usuario, password:cred.senha } })
+        });
         const data = await res.json();
+        if (cancelled) return;
         if (!res.ok || !data.access_token) {
-          setAuthErr("Credencial V8 inválida. Atualize em 🔐 Credenciais.");
+          setAuthErr("Credencial V8 inválida. Verifique em 🔐 Credenciais.");
           return;
         }
         const exp = Date.now() + ((data.expires_in || 86400) - 60) * 1000;
         localStorage.setItem("nexp_v8_session", JSON.stringify({ token: data.access_token, exp }));
         localStorage.setItem("nexp_v8_user", cred.usuario);
+        if (cancelled) return;
         setToken(data.access_token);
         setTokenExp(exp);
         setSavedUser(cred.usuario);
         setAba(localStorage.getItem("nexp_v8_aba") || "individual");
       } catch(e) {
-        setAuthErr("Erro ao conectar V8: " + e.message);
+        if (!cancelled) setAuthErr("Erro V8: " + e.message);
       }
     })();
     return () => { cancelled = true; };
