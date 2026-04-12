@@ -16623,6 +16623,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // eslint-disable-next-line no-unused-vars
   const [termoStep, setTermoStep] = useState("form");
   const [termosSearch, setTermosSearch] = useState("");
+  const [termosPeriodo, setTermosPeriodo] = useState("7"); // dias: "3","7","30","90","365","todos"
   const [termosFiltroStatus, setTermosFiltroStatus] = useState("Todos");
 
   const [termoBuscando, setTermoBuscando] = useState(false);
@@ -16998,13 +16999,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     try {
       const end = new Date().toISOString();
 
-      // ── Fase 1: últimos 7 dias — resposta rápida, atualiza novos ──
-      const start7 = new Date(Date.now()-7*86400000).toISOString();
-      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start7}&endDate=${end}`, "GET", null, 2, { skipRateLimit:true });
+      // ── Fase 1: busca pelo período selecionado ──
+      const diasPeriodo = termosPeriodo==="todos" ? 365 : parseInt(termosPeriodo)||7;
+      const start7 = new Date(Date.now()-diasPeriodo*86400000).toISOString();
+      const limitePg = termosPeriodo==="todos" ? 100 : 50;
+      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=${limitePg}&provider=QI&startDate=${start7}&endDate=${end}`, "GET", null, 2, { skipRateLimit:true });
       const recentes = (r7?.data||[]).map(mapLink);
       setTermos(prev => { const merged = merge(prev, recentes); saveCache(merged); return merged; });
       setTermosPage(pg);
-      setLoading(false); // UI liberada — mostra cache + novos imediatamente
+      setLoading(false);
 
       // ── Fase 2: histórico antigo (apenas na carga inicial automática) ──
       const cacheStr = localStorage.getItem("nexp_clt_termos_lastfull");
@@ -17607,17 +17610,30 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
-                    📄 Consultas CLT
-                    {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
-                      · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
-                    </span>}
-                    {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
+                      📄 Consultas CLT
+                      {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
+                        · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
+                      </span>}
+                      {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
+                    </div>
+                    {/* Seletor de período */}
+                    <select
+                      value={termosPeriodo}
+                      onChange={e=>{setTermosPeriodo(e.target.value);setTimeout(()=>buscarTermos(1,true),50);}}
+                      style={{...S.input,fontSize:11,padding:"4px 8px",minWidth:130,cursor:"pointer"}}>
+                      <option value="3">Últimos 3 dias</option>
+                      <option value="7">Últimos 7 dias</option>
+                      <option value="30">Últimos 30 dias</option>
+                      <option value="90">Últimos 3 meses</option>
+                      <option value="365">Último ano</option>
+                      <option value="todos">Todos os períodos</option>
+                    </select>
                   </div>
                   <input
                     value={termosSearch||""}
-                    onBlur={e=>setTermosSearch(e.target.value)}
-                    onKeyDown={e=>{ if(e.key==="Enter") setTermosSearch(e.target.value); }}
+                    onChange={e=>setTermosSearch(e.target.value)}
                     placeholder="🔍 Pesquisar consultas..."
                     style={{...S.input,fontSize:12,padding:"5px 10px",width:200,minWidth:140}}
                   />
