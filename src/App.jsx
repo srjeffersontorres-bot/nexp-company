@@ -16793,28 +16793,54 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   };
 
   // ── Verifica termo válido existente (validade 45 dias) ──────────
-  // Antes de criar um novo termo, verifica se já existe SUCCESS dentro de 45 dias
-  const buscarTermoValido = async (cpfLimpo, providers=["QI","celcoin"]) => {
+  // Verifica primeiro no estado local (já carregado), depois na API se necessário
+  const buscarTermoValido = async (cpfLimpo) => {
+    const LIMITE_MS = 45 * 86400000;
+    const agora     = Date.now();
+
+    // 1. Checa os termos já carregados em memória (mais rápido, sem chamada de API)
+    const cpfDigits = cpfLimpo.replace(/\D/g,"");
+    const localMatch = termos.filter(t => {
+      const tcpf = (t.documentNumber||t.cpf||"").replace(/\D/g,"");
+      if (tcpf !== cpfDigits) return false;
+      const age = agora - new Date(t.createdAt||t.created_at||0).getTime();
+      return age < LIMITE_MS;
+    }).sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
+
+    const localSucesso   = localMatch.find(t => t.status === "SUCCESS");
+    const localAtivo     = localMatch.find(t => ["CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(t.status));
+    const localAguardando= localMatch.find(t => t.status === "WAITING_CONSENT");
+
+    if (localSucesso) return {
+      tipo:"assinado", termo:localSucesso,
+      margem: parseFloat(localSucesso.availableMarginValue||0)||null,
+    };
+    if (localAtivo)   return { tipo:"processando", termo:localAtivo, margem:null };
+    if (localAguardando) return {
+      tipo:"aguardando", termo:localAguardando, margem:null,
+      link: localAguardando.link||localAguardando.consent_url||`https://app.v8sistema.com/termos-de-autorizacao/${localAguardando.id}`,
+    };
+
+    // 2. Não encontrou localmente → consulta API com 45 dias de histórico
     const end   = new Date().toISOString();
-    const start = new Date(Date.now() - 45*86400000).toISOString(); // 45 dias
-    for (const prov of providers) {
+    const start = new Date(agora - LIMITE_MS).toISOString();
+    for (const prov of ["QI","celcoin"]) {
       try {
         const r = await apiFetch(
-          `/private-consignment/consult?search=${cpfLimpo}&page=1&limit=20&provider=${prov}&startDate=${start}&endDate=${end}`,
+          `/private-consignment/consult?search=${cpfDigits}&page=1&limit=20&provider=${prov}&startDate=${start}&endDate=${end}`,
           "GET", null, 2, { skipRateLimit:true }
         );
         const itens = (r?.data||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-        // Busca SUCCESS ou termo ativo (CONSENT_APPROVED, WAITING_CONSULT, WAITING_CREDIT_ANALYSIS)
-        const assinado = itens.find(x => x.status === "SUCCESS");
-        if (assinado) return { tipo:"assinado", termo:assinado, margem:parseFloat(assinado.availableMarginValue||0)||null, provider:prov };
-        const ativo = itens.find(x => ["CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(x.status));
-        if (ativo)  return { tipo:"processando", termo:ativo, margem:null, provider:prov };
+        const assinado   = itens.find(x => x.status === "SUCCESS");
+        const ativo      = itens.find(x => ["CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"].includes(x.status));
         const aguardando = itens.find(x => x.status === "WAITING_CONSENT");
-        if (aguardando) return { tipo:"aguardando", termo:aguardando, margem:null, provider:prov,
+        if (assinado)   return { tipo:"assinado",    termo:assinado,   margem:parseFloat(assinado.availableMarginValue||0)||null };
+        if (ativo)      return { tipo:"processando", termo:ativo,      margem:null };
+        if (aguardando) return { tipo:"aguardando",  termo:aguardando, margem:null,
           link: aguardando.consent_url||aguardando.link||`https://app.v8sistema.com/termos-de-autorizacao/${aguardando.id}` };
       } catch {}
     }
-    return null; // nenhum termo válido encontrado
+    return null;
   };
 
   const gerarTermo = async () => {
