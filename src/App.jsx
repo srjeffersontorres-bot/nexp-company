@@ -12879,6 +12879,14 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
         }
         return data;
       } catch(e) {
+        const msg = (e.message||"").toLowerCase();
+        const isRateLimit = msg.includes("limite de requis") || msg.includes("rate limit")
+          || msg.includes("429") || msg.includes("too many") || msg.includes("tente novamente");
+        if (isRateLimit && attempt < retries) {
+          // Rate limit da V8 — aguarda e retenta automaticamente
+          await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+          continue;
+        }
         if (attempt === retries) throw e;
         await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
       }
@@ -16840,7 +16848,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     if (!jaTemCache || forceRefresh) setLoading(true);
     setErr("");
     if(!configs.length) {
-      apiFetch("/private-consignment/simulation/configs").then(d=>{
+      apiFetch("/private-consignment/simulation/configs", "GET", null, 2, { skipRateLimit:true }).then(d=>{
         const list=d?.configs||[];
         if(list.length){setConfigs(list);if(!configSel)setConfigSel(list[0]);}
       }).catch(()=>{});
@@ -16888,7 +16896,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       // ── Fase 1: últimos 7 dias — resposta rápida, atualiza novos ──
       const start7 = new Date(Date.now()-7*86400000).toISOString();
-      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start7}&endDate=${end}`);
+      const r7 = await apiFetch(`/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start7}&endDate=${end}`, "GET", null, 2, { skipRateLimit:true });
       const recentes = (r7?.data||[]).map(mapLink);
       setTermos(prev => { const merged = merge(prev, recentes); saveCache(merged); return merged; });
       setTermosPage(pg);
@@ -16902,7 +16910,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       if (!forceRefresh && (!jaTemCache || (Date.now() - lastFull > FULL_INTERVAL))) {
         const start8 = new Date(Date.now()-365*86400000).toISOString();
         const url365 = (p) => `/private-consignment/consult?page=${p}&limit=30&provider=QI&startDate=${start8}&endDate=${start7}`;
-        const rMeta = await apiFetch(url365(1)).catch(()=>null);
+        const rMeta = await apiFetch(url365(1), "GET", null, 2, { skipRateLimit:true }).catch(()=>null);
         if(rMeta) {
           const extra0 = (rMeta?.data||[]).map(mapLink);
           if(extra0.length) setTermos(prev => { const m = merge(prev, extra0); saveCache(m); return m; });
@@ -16910,7 +16918,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           // Sequencial com delay — evita "Limite de requisições"
           for (let p=2; p<=totalPgs; p++) {
             await new Promise(r=>setTimeout(r,600)); // 600ms entre páginas
-            await apiFetch(url365(p)).then(r=>{
+            await apiFetch(url365(p), "GET", null, 2, { skipRateLimit:true }).then(r=>{
               const ex=(r?.data||[]).map(mapLink);
               if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
             }).catch(()=>{});
@@ -16918,7 +16926,17 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         }
         localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
       }
-    } catch(e) { setErr(e.message); setLoading(false); }
+    } catch(e) {
+      const msg = (e.message||"").toLowerCase();
+      const isRateLimit = msg.includes("limite") || msg.includes("429") || msg.includes("too many");
+      if (isRateLimit) {
+        // Retenta buscarTermos automaticamente após 4s
+        setTimeout(() => buscarTermos(pg, forceRefresh), 4000);
+      } else {
+        setErr(e.message);
+      }
+      setLoading(false);
+    }
   };
 
   // Status badge colors
@@ -17102,7 +17120,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // Pre-load configs immediately on mount
   useEffect(()=>{
     if(!isTokenValid||configs.length) return;
-    apiFetch("/private-consignment/simulation/configs").then(d=>{
+    apiFetch("/private-consignment/simulation/configs", "GET", null, 2, { skipRateLimit:true }).then(d=>{
       const list=d?.configs||[];
       if(list.length){setConfigs(list);if(!configSel)setConfigSel(list[0]);}
     }).catch(()=>{});
