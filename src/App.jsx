@@ -15987,19 +15987,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
 
   return (
     <div style={{ padding:"4px 0" }}>
-      {isTokenValid && (
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"8px 14px", background:"rgba(52,211,153,0.08)", border:"1px solid rgba(52,211,153,0.2)", borderRadius:9 }}>
-          <span style={{ color:"#34D399" }}>🟢</span>
-          <span style={{ color:"#34D399", fontSize:12, fontWeight:600 }}>V8 Digital — {savedUser}</span>
-          <span style={{ color:C.td, fontSize:10.5, marginLeft:4 }}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
-          <button onClick={clearSession} style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#F87171", cursor:"pointer", fontSize:11 }}>Desconectar</button>
-          {rateStatus && (
-            <span style={{ background:"rgba(52,211,153,0.1)", color:"#34D399", fontSize:10.5, fontWeight:700, padding:"3px 10px", borderRadius:20, whiteSpace:"nowrap", border:"1px solid #34D39933" }}>
-              📊 {rateStatus.count} consultas hoje
-            </span>
-          )}
-        </div>
-      )}
+
 
       {isTokenValid && (
         <div style={{ display:"flex", gap:2, borderBottom:`1px solid ${C.b1}`, marginBottom:20 }}>
