@@ -17037,7 +17037,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       }
     }, 6000);
     return () => clearInterval(iv);
-  },[isTokenValid]); // eslint-disable-line — termos acessado via closure
+  },[isTokenValid]); // eslint-disable-line
   // Pre-load configs immediately on mount
   useEffect(()=>{
     if(!isTokenValid||configs.length) return;
