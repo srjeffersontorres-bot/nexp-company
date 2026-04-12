@@ -16053,7 +16053,7 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, 
     const val = cpfRef.current?.value || "";
     const linhasRaw = val.replace(/\r/g,"").split(String.fromCharCode(10)).flatMap(l=>l.split(",")).flatMap(l=>l.split(";"));
     const novos = linhasRaw.map(l=>l.trim()).filter(Boolean).map(raw=>{
-      const c = padCPF(raw);
+      const c = raw.replace(/\D/g,""); // sem padding — V8 usa CPF exatamente como enviado
       const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===c);
       return {
         id: "ml_"+Date.now()+Math.random(),
@@ -16202,8 +16202,11 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, 
     const tel = dados.telefone.replace(/\D/g,"");
     const birthDate = (dados.dataNascimento||"").split("T")[0]; // YYYY-MM-DD
     try {
+      const cpfClean = item.cpf.replace(/\D/g,"");
+      if (!birthDate) throw new Error("Data de nascimento obrigatória. Preencha o campo.");
+      if (!dados.email||!dados.email.includes("@")) throw new Error("E-mail inválido.");
       const body = {
-        borrowerDocumentNumber: item.cpf,
+        borrowerDocumentNumber: cpfClean, // CPF exato — V8 usa esse valor na página de assinatura
         gender: dados.genero||"male",
         birthDate,
         signerName: dados.nome,
@@ -16741,7 +16744,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     try {
       const tel = (termoForm.telefone||"").replace(/\D/g,"");
       const body = {
-        borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""),
+        borrowerDocumentNumber: termoForm.cpf.replace(/\D/g,""), // CPF sem formatação
         gender: termoForm.genero,
         birthDate: toISODate(termoForm.dataNasc),
         signerName: termoForm.nome,
@@ -17032,9 +17035,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         } catch {}
         await new Promise(r=>setTimeout(r,500)); // pequeno delay entre CPFs
       }
-    }, 10000);
+    }, 6000);
     return () => clearInterval(iv);
-  },[isTokenValid, termos]); // eslint-disable-line
+  },[isTokenValid]); // eslint-disable-line — termos acessado via closure
   // Pre-load configs immediately on mount
   useEffect(()=>{
     if(!isTokenValid||configs.length) return;
@@ -17279,7 +17282,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   // Monta itens iniciais
                   const novos = linhas.map(linha=>{
                     const partes = linha.split(/[,;]+/).map(s=>s.trim());
-                    const cpf = partes[0].replace(/\D/g,"").padStart(11,"0").slice(0,11);
+                    const cpf = partes[0].replace(/\D/g,""); // CPF sem padding - V8 usa exatamente como enviado
                     const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpf);
                     return {
                       cpf, id:null, status:"PENDENTE",
@@ -17354,12 +17357,20 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     setLoteCLTItems(p=>p.map((x,j)=>j===i?{...item,status:"GERANDO"}:x));
                     try{
                       const tel=item.telefone.replace(/\D/g,"");
+                      // CPF: V8 exige exatamente os dígitos sem zeros à esquerda desnecessários
+                      const cpfClean = item.cpf.replace(/\D/g,"");
                       const body={
-                        borrowerDocumentNumber:item.cpf,gender:item.genero||"male",birthDate:toISODate(item.dataNasc),
-                        signerName:item.nome,signerEmail:item.email,
-                        signerPhone:{phoneNumber:tel.slice(-9),countryCode:"55",areaCode:tel.slice(0,2)},
-                        provider:"QI",
+                        borrowerDocumentNumber: cpfClean,
+                        gender:   item.genero||"male",
+                        birthDate: toISODate(item.dataNasc), // YYYY-MM-DD obrigatório
+                        signerName:  item.nome,
+                        signerEmail: item.email,
+                        signerPhone: { phoneNumber:tel.slice(-9), countryCode:"55", areaCode:tel.slice(0,2)||"11" },
+                        provider: "QI",
                       };
+                      // Validação final antes de enviar
+                      if(!body.birthDate) throw new Error("Data de nascimento não encontrada para este CPF. Adicione manualmente.");
+                      if(!body.signerEmail||!body.signerEmail.includes("@")) throw new Error("E-mail inválido ou não encontrado. Adicione manualmente.");
                       const res=await apiFetch("/private-consignment/consult","POST",body);
                       const id=res.id||res.consultId;
                       const link=res.consent_url||res.url||`https://app.v8sistema.com/termos-de-autorizacao/${id}`;
