@@ -12743,7 +12743,9 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const [token,    setToken]    = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.token||null; } catch { return null; } });
   const [tokenExp, setTokenExp] = useState(() => { try { return JSON.parse(localStorage.getItem("nexp_v8_session")||"null")?.exp||null; } catch { return null; } });
   const [savedUser, setSavedUser] = useState(() => localStorage.getItem("nexp_v8_user") || "");
+  // eslint-disable-next-line no-unused-vars
   const [credForm, setCredForm] = useState({ username: savedUser, password: "" });
+  // eslint-disable-next-line no-unused-vars
   const [authLoading, setAuthLoading] = useState(false);
   const [authErr, setAuthErr] = useState("");
   const [aba, setAbaRaw] = useState(() => {
@@ -12781,6 +12783,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const saveSession = (tk, exp) => { setToken(tk); setTokenExp(exp); localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp })); };
   const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); localStorage.removeItem("nexp_v8_aba"); setAba("config"); };
 
+  // eslint-disable-next-line no-unused-vars
   const autenticar = async () => {
     if (!credForm.username || !credForm.password) { setAuthErr("Preencha e-mail e senha."); return; }
     setAuthLoading(true); setAuthErr("");
@@ -12939,6 +12942,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   const [loteAnosSel,      setLoteAnosSel]       = useState({}); // { [item.id]: 1|2|3|4|5 }
   const [loteDetalhe,      setLoteDetalhe]       = useState(null);
   const [loteCardSim,      setLoteCardSim]       = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [loteSearch,       setLoteSearch]        = useState(""); // eslint-disable-line no-unused-vars
   const [loteApagarConfirm, setLoteApagarConfirm] = useState(false);
   const loteAbortRef = useRef(false);
@@ -15968,24 +15972,20 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
       )}
 
       {!isTokenValid && (
-        <div style={{ background:C.card, border:`1px solid ${C.b1}`, borderRadius:14, padding:"22px 24px" }}>
-          <div style={{ color:C.tp, fontSize:14, fontWeight:700, marginBottom:4 }}>🔑 Acesso V8 Digital</div>
-          <div style={{ color:C.tm, fontSize:12, marginBottom:18 }}>Use seu <b style={{ color:C.atxt }}>e-mail e senha</b> da plataforma V8. Sessão salva no navegador.</div>
-          <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:9, padding:"10px 14px", marginBottom:16, fontSize:11 }}>
-            <div style={{ color:C.td }}>Auth: <span style={{ color:C.tm }}>https://auth.v8sistema.com/oauth/token</span></div>
-            <div style={{ color:C.td }}>BFF: <span style={{ color:C.tm }}>https://bff.v8sistema.com</span></div>
-            <div style={{ color:C.td }}>Client ID: <span style={{ color:C.tm }}>DHWogdaYmEI8n5bwwxPDzulMlSK7dwIn</span></div>
+        <div style={{ background:C.card, border:`1px solid rgba(59,110,245,0.3)`, borderRadius:14, padding:"28px 32px", textAlign:"center", maxWidth:480 }}>
+          <div style={{ fontSize:40, marginBottom:14 }}>🔐</div>
+          <div style={{ color:C.tp, fontSize:15, fontWeight:700, marginBottom:8 }}>Acesso não autenticado</div>
+          <div style={{ color:C.td, fontSize:13, lineHeight:1.7, marginBottom:20 }}>
+            Para usar a V8 Digital, faça login na aba<br/>
+            <strong style={{ color:C.atxt }}>🔐 Credenciais</strong> do menu lateral.
           </div>
-          {authErr && <div style={{ color:"#F87171", background:"rgba(239,68,68,0.1)", border:"1px solid #EF444433", borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:12.5 }}>⚠ {authErr}</div>}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
-            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>E-mail *</label><input value={credForm.username} onChange={e=>setCredForm(p=>({...p,username:e.target.value}))} placeholder="seu@email.com" style={{ ...S.input }} /></div>
-            <div><label style={{ color:C.tm, fontSize:11, display:"block", marginBottom:4 }}>Senha *</label><input value={credForm.password} onChange={e=>setCredForm(p=>({...p,password:e.target.value}))} type="password" placeholder="••••••••" style={{ ...S.input }} onKeyDown={e=>e.key==="Enter"&&autenticar()} /></div>
+          <div style={{ background:C.deep, border:`1px solid ${C.b1}`, borderRadius:10, padding:"12px 16px", fontSize:12, color:C.tm, textAlign:"left", marginBottom:20 }}>
+            <div style={{ fontWeight:700, color:C.tp, marginBottom:6 }}>Como fazer:</div>
+            <div style={{ marginBottom:4 }}>1. Clique em <b style={{ color:C.atxt }}>🔐 Credenciais</b> no menu</div>
+            <div style={{ marginBottom:4 }}>2. Selecione <b>V8 Digital</b> e clique em <b>Adicionar</b></div>
+            <div>3. Insira seu e-mail e senha da plataforma V8</div>
           </div>
-          <button onClick={autenticar} disabled={authLoading}
-            style={{ background:`linear-gradient(135deg,${C.lg1},${C.lg2})`, color:"#fff", border:"none", borderRadius:9, padding:"11px 28px", fontSize:14, fontWeight:700, cursor:"pointer", opacity:authLoading?0.7:1 }}>
-            {authLoading?"⏳ Autenticando...":"🔐 Entrar na V8 Digital →"}
-          </button>
-          <div style={{ color:C.td, fontSize:10.5, marginTop:12 }}>Sessão salva. Não precisará fazer login ao recarregar.</div>
+          {authErr && <div style={{ color:"#F87171", fontSize:12, padding:"9px 13px", background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:8 }}>⚠ {authErr}</div>}
         </div>
       )}
 
@@ -16849,11 +16849,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       setTermosPage(pg);
       setLoading(false); // UI liberada — mostra cache + novos imediatamente
 
-      // ── Fase 2: histórico antigo (só se necessário) ──
+      // ── Fase 2: histórico antigo (apenas na carga inicial automática) ──
       const cacheStr = localStorage.getItem("nexp_clt_termos_lastfull");
       const lastFull = cacheStr ? parseInt(cacheStr) : 0;
       const FULL_INTERVAL = 15 * 60 * 1000; // 15 min entre full refresh
-      if (forceRefresh || !jaTemCache || (Date.now() - lastFull > FULL_INTERVAL)) {
+      // forceRefresh manual = só busca os recentes (já feito na fase 1), não dispara histórico
+      if (!forceRefresh && (!jaTemCache || (Date.now() - lastFull > FULL_INTERVAL))) {
         const start8 = new Date(Date.now()-365*86400000).toISOString();
         const url365 = (p) => `/private-consignment/consult?page=${p}&limit=30&provider=QI&startDate=${start8}&endDate=${start7}`;
         const rMeta = await apiFetch(url365(1)).catch(()=>null);
@@ -17170,13 +17171,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   return (
     <div style={{padding:"4px 0"}}>
-      {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,padding:"8px 14px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:9}}>
-        <span style={{color:"#34D399"}}>🟢</span>
-        <span style={{color:"#34D399",fontSize:12,fontWeight:600}}>V8 Digital — Crédito do Trabalhador CLT</span>
-        <span style={{color:C.td,fontSize:10.5,marginLeft:4}}>· Expira {new Date(tokenExp).toLocaleTimeString("pt-BR")}</span>
-      </div>
-
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
         {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
@@ -18690,22 +18684,7 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                   </div>
                 )}
 
-                {/* Confirm delete */}
-                {confirmDel===cred.id && (
-                  <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid #EF444433", borderRadius:10, padding:"12px 14px", marginBottom:14 }}>
-                    <div style={{ color:"#F87171", fontSize:12, fontWeight:700, marginBottom:8 }}>⚠ Excluir esta credencial?</div>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <button onClick={()=>excluir(cred.id)}
-                        style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:8, padding:"7px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                        Excluir
-                      </button>
-                      <button onClick={()=>setConfirmDel(null)}
-                        style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:8, padding:"7px 14px", fontSize:12, cursor:"pointer" }}>
-                        Cancelar
-                      </button>
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Botões de ação */}
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -18717,10 +18696,27 @@ function CredenciaisTab({ currentUser, standalone=false }) {
                     style={{ background:isSub?C.abg:"rgba(79,142,247,0.10)", color:C.atxt, border:`1px solid ${C.atxt}33`, borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
                     🔄 Substituir
                   </button>
-                  <button onClick={()=>setConfirmDel(confirmDel===cred.id?null:cred.id)}
-                    style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
-                    🗑 Excluir
-                  </button>
+                  <div style={{ position:"relative", display:"inline-block" }}>
+                    <button onClick={()=>setConfirmDel(confirmDel===cred.id?null:cred.id)}
+                      style={{ background:"rgba(239,68,68,0.08)", color:"#F87171", border:"1px solid #EF444422", borderRadius:8, padding:"6px 14px", fontSize:11.5, fontWeight:700, cursor:"pointer" }}>
+                      🗑 Excluir
+                    </button>
+                    {confirmDel===cred.id && (
+                      <div style={{ position:"absolute", bottom:"calc(100% + 6px)", right:0, background:"rgba(30,10,10,0.98)", border:"1px solid #EF444455", borderRadius:10, padding:"10px 12px", minWidth:180, zIndex:100, boxShadow:"0 8px 24px rgba(0,0,0,0.5)" }}>
+                        <div style={{ color:"#F87171", fontSize:11, fontWeight:700, marginBottom:8, whiteSpace:"nowrap" }}>⚠ Confirmar exclusão?</div>
+                        <div style={{ display:"flex", gap:6 }}>
+                          <button onClick={()=>excluir(cred.id)}
+                            style={{ flex:1, background:"#EF4444", color:"#fff", border:"none", borderRadius:7, padding:"5px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                            Excluir
+                          </button>
+                          <button onClick={()=>setConfirmDel(null)}
+                            style={{ background:C.deep, color:C.td, border:`1px solid ${C.b2}`, borderRadius:7, padding:"5px 10px", fontSize:11, cursor:"pointer" }}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
