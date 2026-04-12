@@ -16947,95 +16947,104 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
-  // Buffer ref para acumular todas as páginas sem re-render por página
-  const termosBufferRef = useRef([]);
   const termosLoadingRef = useRef(false);
 
-  const buscarTermos = async (pg=1, forceRefresh=false) => {
-    if (termosLoadingRef.current && !forceRefresh) return; // evita chamadas duplicadas
-    termosLoadingRef.current = true;
+  // Normaliza item da API para formato interno
+  const mapLink = (item) => {
+    const rawDate = item.createdAt||item.created_at||item.grantedAt||item.granted_at
+      ||item.consentedAt||item.consented_at||item.requestedAt||item.requested_at
+      ||item.consultedAt||item.consulted_at||item.updatedAt||item.updated_at
+      ||item.timestamp||item.date||item.criadoEm||"";
+    return {
+      ...item,
+      createdAt: rawDate || new Date().toISOString(),
+      link: item.consent_url||item.url||item.link||item.authorization_url
+        ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
+    };
+  };
 
-    const jaTemCache = termos.length > 0;
-    if (!jaTemCache || forceRefresh) setLoading(true);
+  // Salva no localStorage preservando dados antigos (merge por ID)
+  const persistirTermos = (novos) => {
+    try {
+      const cache = JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]");
+      const byId  = Object.fromEntries(cache.map(x=>[x.id,x]));
+      novos.forEach(n=>{
+        // Preserva status mais avançado
+        const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
+        const local=byId[n.id];
+        if(!local||STATUS_ORD.indexOf(n.status)>=STATUS_ORD.indexOf(local.status||"")) byId[n.id]={...local,...n};
+      });
+      const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+      localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000)));
+      return lista;
+    } catch { return novos; }
+  };
+
+  const buscarTermos = async (pg=1, forceRefresh=false) => {
+    if (termosLoadingRef.current && !forceRefresh) return;
+    termosLoadingRef.current = true;
     setErr("");
 
     if (!configs.length) {
-      apiFetch("/private-consignment/simulation/configs", "GET", null, 2, { skipRateLimit:true })
-        .then(d=>{ const l=d?.configs||[]; if(l.length){setConfigs(l);if(!configSel)setConfigSel(l[0]);} })
+      apiFetch("/private-consignment/simulation/configs","GET",null,2,{skipRateLimit:true})
+        .then(d=>{const l=d?.configs||[];if(l.length){setConfigs(l);if(!configSel)setConfigSel(l[0]);}})
         .catch(()=>{});
     }
 
-    const mapLink = item => {
-      const rawDate = item.createdAt||item.created_at||item.grantedAt||item.granted_at
-        ||item.consentedAt||item.consented_at||item.requestedAt||item.requested_at
-        ||item.consultedAt||item.consulted_at||item.updatedAt||item.updated_at
-        ||item.timestamp||item.date||item.criadoEm||"";
-      return {
-        ...item,
-        createdAt: rawDate || new Date().toISOString(),
-        link: item.consent_url||item.url||item.link||item.authorization_url
-          ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
-      };
-    };
-
-    const saveCache = (lista) => {
-      try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,3000))); } catch {}
-    };
-
     try {
-      const end   = new Date().toISOString();
+      const end = new Date().toISOString();
       const startPeriodo = termosDataInicio
         ? new Date(termosDataInicio).toISOString()
         : new Date(Date.now()-7*86400000).toISOString();
 
-      // ── Fase 1: Página 1 — mostra imediatamente ─────────────────
+      // ── Busca página 1 (rápida) ──────────────────────────────────
+      setLoading(true);
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
-        "GET", null, 2, { skipRateLimit:true }
+        "GET",null,2,{skipRateLimit:true}
       );
-      const pg1Items = (r1?.data||[]).map(mapLink);
-      const totalPages = r1?.pages?.totalPages || r1?.totalPages || 1;
+      const pg1 = (r1?.data||[]).map(mapLink);
+      const totalApiPages = r1?.pages?.totalPages||r1?.totalPages||1;
 
-      // Inicializa buffer com pág 1 — UI mostra imediatamente e NÃO muda mais até terminar
-      termosBufferRef.current = pg1Items;
-      setTermos([...pg1Items]); // cópia estável — não será alterada durante background load
+      // Persiste e mostra — inclui dados antigos do cache
+      const lista1 = persistirTermos(pg1);
+      setTermos([...lista1]);
       setTermosPage(pg);
       setLoading(false);
 
-      // ── Fase 2: Demais páginas em background ────────────────────
-      // Acumula no buffer (sem re-render) e aplica UMA VEZ no final
-      if (totalPages > 1) {
-        for (let p = 2; p <= totalPages; p++) {
-          await new Promise(r => setTimeout(r, 500));
-          try {
-            const rp = await apiFetch(
-              `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
-              "GET", null, 2, { skipRateLimit:true }
-            );
-            const items = (rp?.data||[]).map(mapLink);
-            if (items.length) {
-              const ids = new Set(termosBufferRef.current.map(x=>x.id));
-              const novos = items.filter(x=>!ids.has(x.id));
-              if (novos.length) termosBufferRef.current = [...termosBufferRef.current, ...novos];
-            }
-          } catch {}
-        }
-        // Aplica TUDO de uma vez ao final — sem jumps durante carregamento
-        const final = termosBufferRef.current;
-        saveCache(final);
-        setTermos([...final]);
+      // ── Background: demais páginas (sem travar UI) ───────────────
+      if (totalApiPages > 1) {
+        // Roda em background — UI não trava, lista não jumpa
+        (async () => {
+          const buffer = [...pg1];
+          for (let p=2; p<=totalApiPages; p++) {
+            await new Promise(r=>setTimeout(r,600));
+            try {
+              const rp = await apiFetch(
+                `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
+                "GET",null,2,{skipRateLimit:true}
+              );
+              const items=(rp?.data||[]).map(mapLink);
+              if(items.length) items.forEach(n=>{if(!buffer.find(x=>x.id===n.id))buffer.push(n);});
+            } catch {}
+          }
+          // Atualiza apenas se trouxe dados novos
+          const listaFinal = persistirTermos(buffer);
+          if (listaFinal.length > lista1.length) setTermos([...listaFinal]);
+          localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
+        })();
       } else {
-        saveCache(pg1Items);
+        localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
       }
-      localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
+
     } catch(e) {
-      const msg = (e.message||"").toLowerCase();
-      const isRateLimit = msg.includes("limite") || msg.includes("429") || msg.includes("too many");
-      if (isRateLimit) setTimeout(() => buscarTermos(pg, forceRefresh), 4000);
+      const msg=(e.message||"").toLowerCase();
+      if(msg.includes("limite")||msg.includes("429")||msg.includes("too many"))
+        setTimeout(()=>buscarTermos(pg,forceRefresh),4000);
       else setErr(e.message);
       setLoading(false);
     } finally {
-      termosLoadingRef.current = false;
+      termosLoadingRef.current=false;
     }
   };
 
