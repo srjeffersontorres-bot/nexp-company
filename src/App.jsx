@@ -16813,11 +16813,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
       };
     };
+    // Ordem de status — status "mais avançado" nunca regride
+    const STATUS_ORDER = ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
+    const statusLevel  = (s) => { const i=STATUS_ORDER.indexOf(s); return i<0?-1:i; };
     const merge = (prev, novos) => {
-      const ids = new Set(prev.map(x=>x.id));
-      const merged = [...novos.filter(x=>!ids.has(x.id)), ...prev];
-      merged.sort((a,b)=>new Date(b.createdAt||b.created_at||0).getTime()-new Date(a.createdAt||a.created_at||0).getTime());
-      return merged;
+      const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
+      // Para cada item novo da API, preserva status local se for mais avançado
+      const merged = novos.map(mapLink).map(n=>{
+        const local = byId[n.id];
+        if (!local) return n;
+        // Preserva status local se for >= ao da API (evita regressão por cache da API)
+        const keepLocal = statusLevel(local.status) >= statusLevel(n.status);
+        return keepLocal
+          ? { ...n, status:local.status, availableMarginValue:local.availableMarginValue??n.availableMarginValue, link:local.link||n.link }
+          : { ...n, link:local.link||n.link };
+      });
+      // Adiciona os que estão só no prev (não vieram na query atual)
+      const novosIds = new Set(novos.map(x=>x.id));
+      const soNoLocal = prev.filter(x=>!novosIds.has(x.id));
+      const todos = [...merged, ...soNoLocal];
+      todos.sort((a,b)=>new Date(b.createdAt||b.created_at||0).getTime()-new Date(a.createdAt||a.created_at||0).getTime());
+      return todos;
     };
     const saveCache = (lista) => {
       try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,2000))); } catch {}
@@ -16833,26 +16849,25 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       setTermosPage(pg);
       setLoading(false); // UI liberada — mostra cache + novos imediatamente
 
-      // ── Fase 2: histórico antigo (só se for refresh forçado ou primeira vez) ──
+      // ── Fase 2: histórico antigo (só se necessário) ──
       const cacheStr = localStorage.getItem("nexp_clt_termos_lastfull");
       const lastFull = cacheStr ? parseInt(cacheStr) : 0;
-      const FULL_INTERVAL = 10 * 60 * 1000; // só refaz full a cada 10 min
+      const FULL_INTERVAL = 15 * 60 * 1000; // 15 min entre full refresh
       if (forceRefresh || !jaTemCache || (Date.now() - lastFull > FULL_INTERVAL)) {
         const start8 = new Date(Date.now()-365*86400000).toISOString();
-        const url365 = (p) => `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${start8}&endDate=${start7}`;
+        const url365 = (p) => `/private-consignment/consult?page=${p}&limit=30&provider=QI&startDate=${start8}&endDate=${start7}`;
         const rMeta = await apiFetch(url365(1)).catch(()=>null);
         if(rMeta) {
           const extra0 = (rMeta?.data||[]).map(mapLink);
           if(extra0.length) setTermos(prev => { const m = merge(prev, extra0); saveCache(m); return m; });
-          const totalPgs = rMeta?.pages?.totalPages||1;
-          if(totalPgs > 1) {
-            const pages = Array.from({length:totalPgs-1},(_,i)=>i+2);
-            await Promise.allSettled(pages.map(p =>
-              apiFetch(url365(p)).then(r=>{
-                const ex=(r?.data||[]).map(mapLink);
-                if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
-              }).catch(()=>{})
-            ));
+          const totalPgs = Math.min(rMeta?.pages?.totalPages||1, 5); // máx 5 páginas p/ evitar rate limit
+          // Sequencial com delay — evita "Limite de requisições"
+          for (let p=2; p<=totalPgs; p++) {
+            await new Promise(r=>setTimeout(r,600)); // 600ms entre páginas
+            await apiFetch(url365(p)).then(r=>{
+              const ex=(r?.data||[]).map(mapLink);
+              if(ex.length) setTermos(prev=>{ const m=merge(prev,ex); saveCache(m); return m; });
+            }).catch(()=>{});
           }
         }
         localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
@@ -20270,8 +20285,10 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 }
 
 function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
-  const [bancoSel, setBancoSel] = useState(null); // null = tela de cards
-  const [abaSim,   setAbaSim]   = useState("fgts"); // fgts | credito
+  const [bancoSel, setBancoSelRaw] = useState(()=>localStorage.getItem("nexp_banco_sel")||null);
+  const setBancoSel = (v) => { setBancoSelRaw(v); if(v) localStorage.setItem("nexp_banco_sel",v); else localStorage.removeItem("nexp_banco_sel"); };
+  const [abaSim, setAbaSimRaw] = useState(()=>localStorage.getItem("nexp_aba_sim")||"fgts");
+  const setAbaSim = (v) => { setAbaSimRaw(v); localStorage.setItem("nexp_aba_sim",v); };
 
   const BANCOS = [
     { id:"v8",      nome:"V8 Digital",      icon:"⚡", cor:"#3B6EF5", bg:"rgba(59,110,245,0.12)",  ativo:true,  subs:["fgts","credito"] },
