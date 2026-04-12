@@ -16947,19 +16947,25 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setTermoLoading(false);
   };
 
+  // Buffer ref para acumular todas as páginas sem re-render por página
+  const termosBufferRef = useRef([]);
+  const termosLoadingRef = useRef(false);
+
   const buscarTermos = async (pg=1, forceRefresh=false) => {
-    // Se já tem cache e não é refresh forçado, libera UI imediatamente
+    if (termosLoadingRef.current && !forceRefresh) return; // evita chamadas duplicadas
+    termosLoadingRef.current = true;
+
     const jaTemCache = termos.length > 0;
     if (!jaTemCache || forceRefresh) setLoading(true);
     setErr("");
-    if(!configs.length) {
-      apiFetch("/private-consignment/simulation/configs", "GET", null, 2, { skipRateLimit:true }).then(d=>{
-        const list=d?.configs||[];
-        if(list.length){setConfigs(list);if(!configSel)setConfigSel(list[0]);}
-      }).catch(()=>{});
+
+    if (!configs.length) {
+      apiFetch("/private-consignment/simulation/configs", "GET", null, 2, { skipRateLimit:true })
+        .then(d=>{ const l=d?.configs||[]; if(l.length){setConfigs(l);if(!configSel)setConfigSel(l[0]);} })
+        .catch(()=>{});
     }
+
     const mapLink = item => {
-      // Normaliza data de criação a partir de qualquer campo que a API possa retornar
       const rawDate = item.createdAt||item.created_at||item.grantedAt||item.granted_at
         ||item.consentedAt||item.consented_at||item.requestedAt||item.requested_at
         ||item.consultedAt||item.consulted_at||item.updatedAt||item.updated_at
@@ -16971,66 +16977,65 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
       };
     };
-    // merge removido — lista reseta completamente ao mudar filtro
+
     const saveCache = (lista) => {
-      try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,2000))); } catch {}
+      try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,3000))); } catch {}
     };
+
     try {
-      const end = new Date().toISOString();
-      // Data início: campo livre ou padrão 7 dias atrás
+      const end   = new Date().toISOString();
       const startPeriodo = termosDataInicio
         ? new Date(termosDataInicio).toISOString()
         : new Date(Date.now()-7*86400000).toISOString();
 
-      // ── Fase 1: Página 1 — UI libera imediatamente ──────────────
-      // Quando filtra por data, RESETA a lista (não mescla com período anterior)
+      // ── Fase 1: Página 1 — mostra imediatamente ─────────────────
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
         "GET", null, 2, { skipRateLimit:true }
       );
       const pg1Items = (r1?.data||[]).map(mapLink);
       const totalPages = r1?.pages?.totalPages || r1?.totalPages || 1;
-      // Reset total quando muda filtro — evita mistura de períodos
-      setTermos(() => { const m=pg1Items; saveCache(m); return m; });
+
+      // Inicializa buffer com pág 1 — UI mostra imediatamente e NÃO muda mais até terminar
+      termosBufferRef.current = pg1Items;
+      setTermos([...pg1Items]); // cópia estável — não será alterada durante background load
       setTermosPage(pg);
       setLoading(false);
 
       // ── Fase 2: Demais páginas em background ────────────────────
+      // Acumula no buffer (sem re-render) e aplica UMA VEZ no final
       if (totalPages > 1) {
-        (async () => {
-          for (let p = 2; p <= totalPages; p++) {
-            await new Promise(r => setTimeout(r, 600));
-            try {
-              const rp = await apiFetch(
-                `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
-                "GET", null, 2, { skipRateLimit:true }
-              );
-              const items = (rp?.data||[]).map(mapLink);
-              if (items.length) {
-                // Adiciona páginas subsequentes mantendo ordem (mais recente primeiro)
-                setTermos(prev => {
-                  const ids = new Set(prev.map(x=>x.id));
-                  const novos = items.filter(x=>!ids.has(x.id));
-                  return [...prev, ...novos];
-                });
-              }
-            } catch {}
-          }
-          localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
-        })();
+        for (let p = 2; p <= totalPages; p++) {
+          await new Promise(r => setTimeout(r, 500));
+          try {
+            const rp = await apiFetch(
+              `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
+              "GET", null, 2, { skipRateLimit:true }
+            );
+            const items = (rp?.data||[]).map(mapLink);
+            if (items.length) {
+              const ids = new Set(termosBufferRef.current.map(x=>x.id));
+              const novos = items.filter(x=>!ids.has(x.id));
+              if (novos.length) termosBufferRef.current = [...termosBufferRef.current, ...novos];
+            }
+          } catch {}
+        }
+        // Aplica TUDO de uma vez ao final — sem jumps durante carregamento
+        const final = termosBufferRef.current;
+        saveCache(final);
+        setTermos([...final]);
       } else {
-        localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
+        saveCache(pg1Items);
       }
+      localStorage.setItem("nexp_clt_termos_lastfull", String(Date.now()));
     } catch(e) {
       const msg = (e.message||"").toLowerCase();
       const isRateLimit = msg.includes("limite") || msg.includes("429") || msg.includes("too many");
-      if (isRateLimit) {
-        // Retenta buscarTermos automaticamente após 4s
-        setTimeout(() => buscarTermos(pg, forceRefresh), 4000);
-      } else {
-        setErr(e.message);
-      }
+      if (isRateLimit) setTimeout(() => buscarTermos(pg, forceRefresh), 4000);
+      else setErr(e.message);
       setLoading(false);
+    } finally {
+      termosLoadingRef.current = false;
     }
   };
 
