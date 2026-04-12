@@ -16971,28 +16971,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
       };
     };
-    // Ordem de status — status "mais avançado" nunca regride
-    const STATUS_ORDER = ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
-    const statusLevel  = (s) => { const i=STATUS_ORDER.indexOf(s); return i<0?-1:i; };
-    const merge = (prev, novos) => {
-      const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
-      // Para cada item novo da API, preserva status local se for mais avançado
-      const merged = novos.map(mapLink).map(n=>{
-        const local = byId[n.id];
-        if (!local) return n;
-        // Preserva status local se for >= ao da API (evita regressão por cache da API)
-        const keepLocal = statusLevel(local.status) >= statusLevel(n.status);
-        return keepLocal
-          ? { ...n, status:local.status, availableMarginValue:local.availableMarginValue??n.availableMarginValue, link:local.link||n.link }
-          : { ...n, link:local.link||n.link };
-      });
-      // Adiciona os que estão só no prev (não vieram na query atual)
-      const novosIds = new Set(novos.map(x=>x.id));
-      const soNoLocal = prev.filter(x=>!novosIds.has(x.id));
-      const todos = [...merged, ...soNoLocal];
-      todos.sort((a,b)=>new Date(b.createdAt||b.created_at||0).getTime()-new Date(a.createdAt||a.created_at||0).getTime());
-      return todos;
-    };
+    // merge removido — lista reseta completamente ao mudar filtro
     const saveCache = (lista) => {
       try { localStorage.setItem("nexp_clt_termos_cache", JSON.stringify(lista.slice(0,2000))); } catch {}
     };
