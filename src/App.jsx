@@ -12754,6 +12754,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   });
   const setAba = (v) => { setAbaRaw(v); localStorage.setItem("nexp_v8_aba", v); };
   // ── Rate limit status (exibido na UI) ────────────────────────
+  // eslint-disable-next-line no-unused-vars
   const [rateStatus, setRateStatus] = useState(null);
   useEffect(() => {
     const uid = currentUser?.uid || currentUser?.id;
@@ -12824,6 +12825,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
   }, [aba]); // eslint-disable-line
 
   const saveSession = (tk, exp) => { setToken(tk); setTokenExp(exp); localStorage.setItem("nexp_v8_session", JSON.stringify({ token:tk, exp })); };
+  // eslint-disable-next-line no-unused-vars
   const clearSession = () => { setToken(null); setTokenExp(null); localStorage.removeItem("nexp_v8_session"); localStorage.removeItem("nexp_v8_aba"); setAba("config"); };
 
   // eslint-disable-next-line no-unused-vars
