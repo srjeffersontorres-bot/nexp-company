@@ -17502,7 +17502,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
                 <div style={{color:"#60A5FA",fontSize:12,fontWeight:700}}>⚡ Lote — Gerar Termos em Massa</div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  {/* Toggle Modo */}
                   <div style={{display:"flex",background:C.deep,borderRadius:8,padding:2,gap:2}}>
                     <button onClick={()=>setLoteCLTApenasMode(false)}
                       style={{background:!loteCLTApenasMode?"rgba(79,142,247,0.25)":"transparent",color:!loteCLTApenasMode?"#60A5FA":C.td,border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -17548,7 +17547,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               {loteCLTApenasMode?(
                 <div style={{marginBottom:10}}>
                   <div style={{color:"#34D399",fontSize:10,marginBottom:6,lineHeight:1.6,background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:7,padding:"6px 10px"}}>
-                    🔢 <b>Modo Apenas CPF</b> — Cole um CPF por linha. Os dados serão preenchidos automaticamente via cruzamento com a V8 Digital.
+                    🔢 <b>Modo Apenas CPF</b> — Cole um CPF por linha. Os demais dados serão preenchidos automaticamente via cruzamento com a V8 Digital.
                   </div>
                   <textarea
                     ref={el => { if(el) window._cltCpfTextarea = el; }}
