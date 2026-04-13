@@ -16540,8 +16540,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [wppPopup, setWppPopup] = useState(null); // { txt, clienteNome }
 
   // ── Helper: monta texto WhatsApp da simulação ─────────────────
-  const buildWppTxt = (resultados) => {
-    let txt = `Oba! 🎉 Sua simulação do *Crédito do Trabalhador* chegou, confira:\n\n`;
+  const buildWppTxt = (resultados, nomeCliente) => {
+    const partes = (nomeCliente||"").trim().split(/\s+/).filter(Boolean);
+    const primeiroSegundo = partes.slice(0,2).join(" ") || "Cliente";
+    let txt = `${primeiroSegundo}, chegou seu Crédito do Trabalhador, dê uma olhadinha na simulação que preparamos para você:\n\n`;
+    txt += `Oba! 🎉 Sua simulação do *Crédito do Trabalhador* chegou, confira:\n\n`;
     resultados.forEach((r, i) => {
       const v = parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
       const p = parseFloat(r.sim?.installment_value||0);
@@ -16998,7 +17001,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const end = new Date().toISOString();
       const startPeriodo = termosDataInicio
         ? new Date(termosDataInicio).toISOString()
-        : new Date(Date.now()-7*86400000).toISOString();
+        : "2020-01-01T00:00:00.000Z"; // sem limite — busca TODOS os registros do banco
 
       // ── Fase 1: Mostra cache COMPLETO imediatamente (todos os clientes) ──
       const cacheAtual = (() => {
@@ -17219,46 +17222,58 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     
     let lastCheck = Date.now() - 3600000; // eslint-disable-line no-unused-vars
 
+    const mergeTermos = (prev, novosApi) => {
+      const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
+      const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
+      let changed = false;
+      novosApi.forEach(n => {
+        const local = byId[n.id];
+        const link = n.consent_url||n.url||n.link||`https://app.v8sistema.com/termos-de-autorizacao/${n.id}`;
+        if (!local) {
+          byId[n.id] = {...n, link};
+          changed = true;
+        } else {
+          const idx_n=STATUS_ORD.indexOf(n.status), idx_l=STATUS_ORD.indexOf(local.status||"");
+          const margemMudou = n.availableMarginValue != null && n.availableMarginValue !== local.availableMarginValue;
+          if(idx_n >= idx_l || margemMudou) {
+            byId[n.id]={...local,...n, link:local.link||link};
+            changed=true;
+          }
+        }
+      });
+      if (!changed) return prev;
+      const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+      try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
+      return lista;
+    };
+
     const iv = setInterval(async()=>{
       const agora = new Date().toISOString();
-      lastCheck = Date.now(); // atualiza timestamp
-
+      lastCheck = Date.now();
       try {
-        // Busca últimas 7 dias — garante que qualquer mudança no banco aparece
-        const start7d = new Date(Date.now()-7*86400000).toISOString();
-        const r = await apiFetch(
-          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start7d}&endDate=${agora}`,
+        // Busca SEM filtro de data para garantir TODOS os registros do banco
+        const r1 = await apiFetch(
+          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=2020-01-01T00:00:00.000Z&endDate=${agora}`,
           "GET",null,2,{skipRateLimit:true}
         );
-        const novosApi = (r?.data||[]).map(mapLink);
-        if (!novosApi.length) return;
+        const totalPages = r1?.pages?.totalPages||r1?.totalPages||1;
+        let todos = (r1?.data||[]).map(mapLink);
 
-        setTermos(prev => {
-          const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
-          const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
-          let changed = false;
-          novosApi.forEach(n => {
-            const local = byId[n.id];
-            const link = n.consent_url||n.url||n.link||`https://app.v8sistema.com/termos-de-autorizacao/${n.id}`;
-            if (!local) {
-              byId[n.id] = {...n, link};
-              changed = true;
-            } else {
-              const idx_n=STATUS_ORD.indexOf(n.status), idx_l=STATUS_ORD.indexOf(local.status||"");
-              const margemMudou = n.availableMarginValue != null && n.availableMarginValue !== local.availableMarginValue;
-              if(idx_n >= idx_l || margemMudou) {
-                byId[n.id]={...local,...n, link:local.link||link};
-                changed=true;
-              }
-            }
+        // Busca todas as páginas extras em paralelo
+        if (totalPages > 1) {
+          const extras = await Promise.allSettled(
+            Array.from({length: totalPages-1},(_,i)=>
+              apiFetch(`/private-consignment/consult?page=${i+2}&limit=50&provider=QI&startDate=2020-01-01T00:00:00.000Z&endDate=${agora}`,"GET",null,2,{skipRateLimit:true})
+            )
+          );
+          extras.forEach(r=>{
+            if(r.status==="fulfilled") todos=[...todos,...(r.value?.data||[]).map(mapLink)];
           });
-          if (!changed) return prev;
-          const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-          try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
-          return lista;
-        });
+        }
+        if (!todos.length) return;
+        setTermos(prev => mergeTermos(prev, todos));
       } catch {} // nunca bloqueia
-    }, 5000); // a cada 5s — mais responsivo
+    }, 8000); // a cada 8s — busca tudo do banco
 
     return () => clearInterval(iv);
   },[isTokenValid]); // eslint-disable-line
@@ -17789,11 +17804,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"1px solid #EF444422",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:termos.length===0?"not-allowed":"pointer",opacity:termos.length===0?0.4:1}}>
                     🗑 Limpar
                   </button>
-                  <button onClick={()=>buscarTermos(termosPage, true)} disabled={loading}
-                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}
-                    title="Forçar atualização completa">
-                    {loading?"⏳":"🔄"}
-                  </button>
+
                 </div>
               </div>
               {/* Filtro por status */}
@@ -17959,7 +17970,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                       const res3=simConfigs[cur3]?.resultados||[];
                                       if(!res3.length) return null;
                                       return(
-                                        <button onClick={e=>{e.stopPropagation();setWppPopup({txt:buildWppTxt(res3),clienteNome:t.name||t.nome||"Cliente"});}}
+                                        <button onClick={e=>{e.stopPropagation();setWppPopup({txt:buildWppTxt(res3,t.name||t.nome),clienteNome:t.name||t.nome||"Cliente"});}}
                                           style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                                           📤 Copiar todas ofertas p/ WhatsApp
                                         </button>
@@ -18019,7 +18030,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                     <button onClick={e=>{e.stopPropagation();
                                       const cur2=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:Object.keys(simConfigs)[0];
                                       const {resultados:res2}=simConfigs[cur2];
-                                      setWppPopup({txt:buildWppTxt(res2),clienteNome:t.name||t.nome||"Cliente"});
+                                      setWppPopup({txt:buildWppTxt(res2,t.name||t.nome),clienteNome:t.name||t.nome||"Cliente"});
                                     }} style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                                       📤 Copiar p/ WhatsApp
                                     </button>
@@ -18413,7 +18424,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </div>
                 {simNovamenteData.resultados.length>0&&(
                   <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"flex-end"}}>
-                    <button onClick={()=>setWppPopup({txt:buildWppTxt(simNovamenteData.resultados),clienteNome:simNovamenteOp?.name||"Cliente"})}
+                    <button onClick={()=>setWppPopup({txt:buildWppTxt(simNovamenteData.resultados,simNovamenteOp?.name),clienteNome:simNovamenteOp?.name||"Cliente"})}
                       style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
                       📤 Copiar p/ WhatsApp
                     </button>
