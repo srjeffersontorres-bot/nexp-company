@@ -17787,7 +17787,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         if(!termosSearch) return true;
                         const s=termosSearch.toLowerCase();
                         return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-                      }).sort((a,b)=>new Date(b.createdAt||b.created_at||0)-new Date(a.createdAt||a.created_at||0));
+                      // Ordenação LIFO — mais recentes primeiro (decrescente por data)
+                      }).sort((a,b)=>{
+                        const da=new Date(a.createdAt||a.created_at||a.criadoEm||0).getTime();
+                        const db=new Date(b.createdAt||b.created_at||b.criadoEm||0).getTime();
+                        return db-da; // decrescente: maior timestamp primeiro
+                      });
                       const _totalPgs = Math.max(1,Math.ceil(filtrados.length/PAGE_SIZE_TERMOS));
                       const _curPage  = Math.min(termosPage,_totalPgs);
                       const pageItems = filtrados.slice((_curPage-1)*PAGE_SIZE_TERMOS,_curPage*PAGE_SIZE_TERMOS);
