@@ -17193,7 +17193,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // Polling em tempo real: atualiza pendentes + captura novos criados no banco
   useEffect(()=>{
     if(!isTokenValid) return;
-    const PENDENTES=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"];
+    
     let lastCheck = Date.now();
 
     const iv = setInterval(async()=>{
