@@ -16727,7 +16727,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const _autoGerarTermo = async (cpfLimpo, dados) => {
     setErr(""); setTermoLoading(true);
     try {
-      const tel=(dados.telefone||"").replace(/\D/g,"");
+      let tel=(dados.telefone||"").replace(/\D/g,"");
       // Fallbacks genéricos — nunca bloqueia por falta de dados
       if(!dados.dataNasc) dados = {...dados, dataNasc:"1990-01-01"};
       if(!dados.email)    dados = {...dados, email:`nexp.cliente${cpfLimpo}@gmail.com`};
@@ -17216,7 +17216,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   useEffect(()=>{
     if(!isTokenValid) return;
     
-    let lastCheck = Date.now() - 3600000; // primeira checagem pega última 1h para não perder nada
+    let lastCheck = Date.now() - 3600000; // eslint-disable-line no-unused-vars
 
     const iv = setInterval(async()=>{
       const agora = new Date().toISOString();
