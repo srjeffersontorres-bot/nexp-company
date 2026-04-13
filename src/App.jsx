@@ -16986,8 +16986,20 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         ? new Date(termosDataInicio).toISOString()
         : new Date(Date.now()-7*86400000).toISOString();
 
-      // ── Busca página 1 (rápida) ──────────────────────────────────
-      setLoading(true);
+      // ── Fase 1: Mostra cache COMPLETO imediatamente (todos os clientes) ──
+      const cacheAtual = (() => {
+        try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
+      })();
+      if (cacheAtual.length > 0 && !forceRefresh) {
+        // Mostra tudo do cache sem esperar API — mais recente primeiro
+        setTermos([...cacheAtual].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
+        setTermosPage(pg);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+
+      // ── Fase 2: Busca API para atualizar status e pegar novos ──────
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
         "GET",null,2,{skipRateLimit:true}
@@ -16995,15 +17007,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const pg1 = (r1?.data||[]).map(mapLink);
       const totalApiPages = r1?.pages?.totalPages||r1?.totalPages||1;
 
-      // Persiste e mostra — inclui dados antigos do cache
+      // Persiste merge + atualiza UI com lista completa ordenada
       const lista1 = persistirTermos(pg1);
-      setTermos([...lista1]);
-      setTermosPage(1); // sempre volta para pág 1 ao buscar novos dados
+      setTermos([...lista1].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
+      setTermosPage(pg);
       setLoading(false);
 
-      // ── Background: demais páginas (sem travar UI) ───────────────
+      // ── Fase 3: Páginas extras em background (sem travar UI) ───────
       if (totalApiPages > 1) {
-        // Roda em background — UI não trava, lista não jumpa
         (async () => {
           const buffer = [...pg1];
           for (let p=2; p<=totalApiPages; p++) {
@@ -17014,18 +17025,16 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 "GET",null,2,{skipRateLimit:true}
               );
               const items=(rp?.data||[]).map(mapLink);
-              if(items.length) items.forEach(n=>{if(!buffer.find(x=>x.id===n.id))buffer.push(n);});
+              items.forEach(n=>{if(!buffer.find(x=>x.id===n.id))buffer.push(n);});
             } catch {}
           }
-          // Atualiza apenas se trouxe dados novos
           const listaFinal = persistirTermos(buffer);
-          if (listaFinal.length > lista1.length) setTermos([...listaFinal]);
+          setTermos([...listaFinal].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
           localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
         })();
       } else {
         localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
       }
-
     } catch(e) {
       const msg=(e.message||"").toLowerCase();
       if(msg.includes("limite")||msg.includes("429")||msg.includes("too many"))
@@ -17448,19 +17457,54 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {/* Lote CLT */}
           {showLoteCLT&&(
             <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
-              <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,marginBottom:10}}>⚡ Lote — Gerar Termos em Massa</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{color:"#60A5FA",fontSize:12,fontWeight:700}}>⚡ Lote — Gerar Termos em Massa</div>
+                <label style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  📎 Importar planilha
+                  <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={async e=>{
+                    const file=e.target.files?.[0]; if(!file)return;
+                    const ext=file.name.split(".").pop().toLowerCase();
+                    try {
+                      let rows=[];
+                      if(ext==="csv"){
+                        const txt=await file.text();
+                        const sep=txt.includes(";")?";":",";
+                        rows=txt.split(String.fromCharCode(10)).map(l=>l.split(sep).map(c=>c.replace(/^"|"$/g,"").trim())).filter(r=>r[0]);
+                        if(rows[0]&&rows[0][0].toLowerCase().includes("cpf")) rows.shift();
+                      } else {
+                        const {read,utils}=await import("https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs");
+                        const ab=await file.arrayBuffer();
+                        const wb=read(ab,{type:"array"});
+                        const ws=wb.Sheets[wb.SheetNames[0]];
+                        const data=utils.sheet_to_json(ws,{header:1,defval:""});
+                        rows=data.filter((r,i)=>i>0||!String(r[0]).toLowerCase().includes("cpf"));
+                        if(rows[0]&&String(rows[0][0]).toLowerCase().includes("cpf")) rows.shift();
+                      }
+                      const linhasImport=rows.filter(r=>r[0]).map(r=>[r[0],r[1]||"",r[2]||"",r[3]||"",r[4]||""].join(",")).join(String.fromCharCode(10));
+                      if(window._cltCpfTextarea) window._cltCpfTextarea.value=(window._cltCpfTextarea.value?window._cltCpfTextarea.value+String.fromCharCode(10):"")+linhasImport;
+                      setLoteCLTCpfs(p=>(p?p+String.fromCharCode(10):"")+linhasImport);
+                    }catch(err){setErr("Erro ao ler planilha: "+err.message);}
+                    e.target.value="";
+                  }}/>
+                </label>
+              </div>
+              <div style={{color:C.td,fontSize:10,marginBottom:6,lineHeight:1.6}}>
+                Formatos aceitos (um por linha):<br/>
+                • Só CPF: <code style={{color:"#60A5FA"}}>12345678901</code><br/>
+                • Completo: <code style={{color:"#60A5FA"}}>CPF, Nome, Email, Nascimento, Telefone</code><br/>
+                • Planilha xlsx/csv: A=CPF B=Nome C=Email D=Nascimento E=Telefone
+              </div>
               <textarea
                 ref={el => { if(el) window._cltCpfTextarea = el; }}
                 defaultValue={loteCLTCpfs}
                 onBlur={e=>setLoteCLTCpfs(e.target.value)}
-                placeholder={"Cole os CPFs aqui, um por linha:\n84999999999,Nome,email@email.com,1990-01-01\nou apenas CPFs (buscará nos contatos):\n12345678901\n98765432100"}
-                style={{...S.input,height:90,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
+                placeholder={"12345678901\n12345678901, João Silva, joao@email.com, 1990-01-15, 84999999999\n98765432100, Maria Santos, , 1985-03-20, 11988887777"}
+                style={{...S.input,height:100,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={async()=>{
-                  // Read from DOM directly to avoid stale state
                   const rawVal = window._cltCpfTextarea ? window._cltCpfTextarea.value : loteCLTCpfs;
                   setLoteCLTCpfs(rawVal);
-                  const linhas = rawVal.split(/\n/).map(l=>l.trim()).filter(Boolean);
+                  const linhas = rawVal.split(String.fromCharCode(10)).map(l=>l.trim()).filter(Boolean);
                   if(!linhas.length){ setErr("Cole ao menos um CPF."); return; }
                   setLoteCLTRunning(true); loteCLTAbort.current=false;
                   const exTel = (obj) => {
@@ -17473,22 +17517,35 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   const exNome = (obj) => obj?.name||obj?.nome||obj?.signerName||obj?.borrowerName||obj?.clientName||"";
                   const exEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
                   const exGen = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
+                  const normDate = (s) => {
+                    if(!s) return ""; s=String(s).trim();
+                    if(/^\d{5}$/.test(s)){const d=new Date(Math.round((parseInt(s)-25569)*86400000));return d.toISOString().split("T")[0];}
+                    const m1=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(m1)return `${m1[3]}-${m1[2]}-${m1[1]}`;
+                    if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+                    const m3=s.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(m3)return `${m3[3]}-${m3[2]}-${m3[1]}`;
+                    return s;
+                  };
+                  const emailGenerico = (cpf) => `nexp.cliente${cpf}@gmail.com`;
 
-                  // Monta itens iniciais
                   const novos = linhas.map(linha=>{
-                    const partes = linha.split(/[,;]+/).map(s=>s.trim());
-                    const cpf = partes[0].replace(/\D/g,""); // CPF sem padding - V8 usa exatamente como enviado
-                    const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpf);
+                    const partes = linha.split(/[,;|]+/).map(s=>s.trim());
+                    const cpf = partes[0].replace(/\D/g,"");
+                    if(!cpf||cpf.length<8) return null;
+                    const contato = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"")===cpf);
+                    const nomeRaw  = partes[1]||exNome(contato)||"";
+                    const emailRaw = partes[2]||exEmail(contato)||"";
+                    const nascRaw  = normDate(partes[3]||exNasc(contato)||"");
+                    const telRaw   = (partes[4]||exTel(contato)||"").replace(/\D/g,"");
                     return {
                       cpf, id:null, status:"PENDENTE",
-                      nome: partes[1]||exNome(contato),
-                      email: partes[2]||exEmail(contato),
-                      dataNasc: partes[3]||exNasc(contato),
-                      telefone: exTel(contato),
+                      nome: nomeRaw,
+                      email: emailRaw || emailGenerico(cpf),
+                      dataNasc: nascRaw,
+                      telefone: telRaw,
                       genero: exGen(contato),
                       link:null, availableMarginValue:null,
                     };
-                  });
+                  }).filter(Boolean);
                   setLoteCLTItems(novos);
 
                   for(let i=0;i<novos.length;i++){
