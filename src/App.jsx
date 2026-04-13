@@ -17009,7 +17009,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       // Persiste e mostra — inclui dados antigos do cache
       const lista1 = persistirTermos(pg1);
       setTermos([...lista1]);
-      setTermosPage(pg);
+      setTermosPage(1); // sempre volta para pág 1 ao buscar novos dados
       setLoading(false);
 
       // ── Background: demais páginas (sem travar UI) ───────────────
@@ -17201,29 +17201,54 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
   useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(1); },[aba,isTokenValid]); // eslint-disable-line
 
-  // Polling automático: consulta cada termo pendente por CPF (evita RBAC sem filtro)
+  // Polling em tempo real: atualiza pendentes + captura novos criados no banco
   useEffect(()=>{
     if(!isTokenValid) return;
-    const PENDENTES = ["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"];
+    const PENDENTES=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS"];
+    let lastCheck = Date.now();
+
     const iv = setInterval(async()=>{
-      const comPendentes = termos.filter(t=>PENDENTES.includes(t.status));
-      if(!comPendentes.length) return;
-      const end   = new Date().toISOString();
-      const start = new Date(Date.now()-7*86400000).toISOString();
-      // Consulta cada CPF individualmente (search=cpf obrigatório pela V8)
-      for (const t of comPendentes) {
-        const cpf = (t.documentNumber||t.cpf||"").replace(/\D/g,"");
-        if(!cpf) continue;
-        try {
-          const r = await apiFetch(`/private-consignment/consult?search=${cpf}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
-          const found = (r?.data||[]).find(x=>x.id===t.id);
-          if(found&&found.status!==t.status) {
-            setTermos(prev=>prev.map(x=>x.id===t.id?{...x,...found,link:t.link||found.consent_url||found.link}:x));
-          }
-        } catch {}
-        await new Promise(r=>setTimeout(r,500)); // pequeno delay entre CPFs
-      }
-    }, 6000);
+      const agora = new Date().toISOString();
+      const desde = new Date(lastCheck - 120000).toISOString(); // 2 min atrás para não perder nada
+      lastCheck = Date.now();
+
+      try {
+        // Busca consultas criadas/atualizadas recentemente (últimas 2 min)
+        const r = await apiFetch(
+          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${desde}&endDate=${agora}`,
+          "GET",null,2,{skipRateLimit:true}
+        );
+        const novosApi = (r?.data||[]).map(mapLink);
+        if (!novosApi.length) return;
+
+        setTermos(prev => {
+          const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
+          let changed = false;
+          // Atualiza status de existentes e adiciona novos
+          novosApi.forEach(n => {
+            const local = byId[n.id];
+            if (!local) {
+              // Item novo criado no banco — adiciona ao topo
+              byId[n.id] = n;
+              changed = true;
+            } else if (local.status !== n.status) {
+              // Status mudou
+              const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
+              if(STATUS_ORD.indexOf(n.status)>=STATUS_ORD.indexOf(local.status||"")) {
+                byId[n.id]={...local,...n,link:local.link||n.link};
+                changed=true;
+              }
+            }
+          });
+          if (!changed) return prev;
+          const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+          // Persiste em cache
+          try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
+          return lista;
+        });
+      } catch {} // nunca bloqueia
+    }, 8000); // a cada 8s
+
     return () => clearInterval(iv);
   },[isTokenValid]); // eslint-disable-line
   // Pre-load configs immediately on mount
@@ -17926,14 +17951,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               {/* Paginação */}
               {(termosPages&&(termosPages.hasNext||termosPages.hasPrev)) && (
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
-                  <button onClick={()=>buscarTermos(termosPage-1)} disabled={!termosPages.hasPrev||loading}
+                  <button onClick={()=>setTermosPage(p=>Math.max(1,p-1))} disabled={!termosPages.hasPrev}
                     style={{background:termosPages.hasPrev?C.abg:C.deep,color:termosPages.hasPrev?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:termosPages.hasPrev?"pointer":"not-allowed"}}>
                     ← Anterior
                   </button>
                   <span style={{color:C.tm,fontSize:12}}>
                     Página {termosPage} de {termosPages.totalPages||1} · {termosPages.total||termos.length} consultas
                   </span>
-                  <button onClick={()=>buscarTermos(termosPage+1)} disabled={!termosPages.hasNext||loading}
+                  <button onClick={()=>setTermosPage(p=>Math.min(termosPages.totalPages||1,p+1))} disabled={!termosPages.hasNext}
                     style={{background:termosPages.hasNext?C.abg:C.deep,color:termosPages.hasNext?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:termosPages.hasNext?"pointer":"not-allowed"}}>
                     Próxima →
                   </button>
