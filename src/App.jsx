@@ -16595,6 +16595,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [loteCLTItems, setLoteCLTItems] = useState([]);
   const [loteCLTRunning, setLoteCLTRunning] = useState(false);
   const loteCLTAbort = useRef(false);
+  const [loteCLTApenasMode, setLoteCLTApenasMode] = useState(false); // modo só CPF
   const [termoLoading, setTermoLoading] = useState(false);
   // eslint-disable-next-line no-unused-vars
   const [termoStep, setTermoStep] = useState("form");
@@ -17380,7 +17381,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     <div style={{padding:"4px 0"}}>
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -17407,15 +17408,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               </button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
-              {/* CPF com busca */}
+              {/* CPF com auto-preenchimento */}
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
-                <div style={{display:"flex",gap:6}}>
+                <div style={{position:"relative"}}>
                   <input value={termoForm.cpf}
                     onChange={e=>{
                       const fmt=applyCPFMask(e.target.value);
                       const raw=fmt.replace(/\D/g,"");
-                      setTermoForm(p=>({...p,cpf:fmt}));
+                      setTermoForm(p=>({...p,cpf:fmt,nome:"",email:"",telefone:"",dataNasc:"",genero:"male"}));
                       setTermoAutoPreenchido(false);
                       if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
@@ -17424,7 +17425,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const pasted=(e.clipboardData||window.clipboardData).getData("text");
                       const fmt=applyCPFMask(pasted);
                       const raw=fmt.replace(/\D/g,"");
-                      setTermoForm(p=>({...p,cpf:fmt}));
+                      setTermoForm(p=>({...p,cpf:fmt,nome:"",email:"",telefone:"",dataNasc:"",genero:"male"}));
                       setTermoAutoPreenchido(false);
                       if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
@@ -17432,12 +17433,17 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const raw=(e.target.value||"").replace(/\D/g,"");
                       if(raw.length>=11) buscarContatoTermoCpf(raw);
                     }}
-                    placeholder="000.000.000-00" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
-                  <button onClick={()=>buscarContatoTermoCpf((termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0"))} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
-                    {termoBuscando?"⏳":"🔍"}
-                  </button>
+                    placeholder="000.000.000-00"
+                    style={{...S.input,width:"100%",borderColor:termoAutoPreenchido?"#34D39966":termoBuscando?"#FBBF2466":undefined,paddingRight:32}}/>
+                  {termoBuscando&&(
+                    <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>⏳</span>
+                  )}
+                  {termoAutoPreenchido&&!termoBuscando&&(
+                    <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>✅</span>
+                  )}
                 </div>
-                {termoAutoPreenchido&&<div style={{color:"#34D399",fontSize:10,marginTop:3}}>✓ Dados encontrados e preenchidos automaticamente</div>}
+                {termoBuscando&&<div style={{color:"#FBBF24",fontSize:10,marginTop:3}}>🔍 Buscando dados via cruzamento automático...</div>}
+                {termoAutoPreenchido&&!termoBuscando&&<div style={{color:"#34D399",fontSize:10,marginTop:3}}>✓ Dados preenchidos automaticamente via cruzamento</div>}
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label>
@@ -17493,49 +17499,79 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {/* Lote CLT */}
           {showLoteCLT&&(
             <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
                 <div style={{color:"#60A5FA",fontSize:12,fontWeight:700}}>⚡ Lote — Gerar Termos em Massa</div>
-                <label style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                  📎 Importar planilha
-                  <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={async e=>{
-                    const file=e.target.files?.[0]; if(!file)return;
-                    const ext=file.name.split(".").pop().toLowerCase();
-                    try {
-                      let rows=[];
-                      if(ext==="csv"){
-                        const txt=await file.text();
-                        const sep=txt.includes(";")?";":",";
-                        rows=txt.split(String.fromCharCode(10)).map(l=>l.split(sep).map(c=>c.replace(/^"|"$/g,"").trim())).filter(r=>r[0]);
-                        if(rows[0]&&rows[0][0].toLowerCase().includes("cpf")) rows.shift();
-                      } else {
-                        const {read,utils}=await import("https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs");
-                        const ab=await file.arrayBuffer();
-                        const wb=read(ab,{type:"array"});
-                        const ws=wb.Sheets[wb.SheetNames[0]];
-                        const data=utils.sheet_to_json(ws,{header:1,defval:""});
-                        rows=data.filter((r,i)=>i>0||!String(r[0]).toLowerCase().includes("cpf"));
-                        if(rows[0]&&String(rows[0][0]).toLowerCase().includes("cpf")) rows.shift();
-                      }
-                      const linhasImport=rows.filter(r=>r[0]).map(r=>[r[0],r[1]||"",r[2]||"",r[3]||"",r[4]||""].join(",")).join(String.fromCharCode(10));
-                      if(window._cltCpfTextarea) window._cltCpfTextarea.value=(window._cltCpfTextarea.value?window._cltCpfTextarea.value+String.fromCharCode(10):"")+linhasImport;
-                      setLoteCLTCpfs(p=>(p?p+String.fromCharCode(10):"")+linhasImport);
-                    }catch(err){setErr("Erro ao ler planilha: "+err.message);}
-                    e.target.value="";
-                  }}/>
-                </label>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  {/* Toggle Modo */}
+                  <div style={{display:"flex",background:C.deep,borderRadius:8,padding:2,gap:2}}>
+                    <button onClick={()=>setLoteCLTApenasMode(false)}
+                      style={{background:!loteCLTApenasMode?"rgba(79,142,247,0.25)":"transparent",color:!loteCLTApenasMode?"#60A5FA":C.td,border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+                      📋 Completo
+                    </button>
+                    <button onClick={()=>setLoteCLTApenasMode(true)}
+                      style={{background:loteCLTApenasMode?"rgba(52,211,153,0.25)":"transparent",color:loteCLTApenasMode?"#34D399":C.td,border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+                      🔢 Só CPF
+                    </button>
+                  </div>
+                  {!loteCLTApenasMode&&(
+                    <label style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                      📎 Importar planilha
+                      <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={async e=>{
+                        const file=e.target.files?.[0]; if(!file)return;
+                        const ext=file.name.split(".").pop().toLowerCase();
+                        try {
+                          let rows=[];
+                          if(ext==="csv"){
+                            const txt=await file.text();
+                            const sep=txt.includes(";")?";":",";
+                            rows=txt.split(String.fromCharCode(10)).map(l=>l.split(sep).map(c=>c.replace(/^"|"$/g,"").trim())).filter(r=>r[0]);
+                            if(rows[0]&&rows[0][0].toLowerCase().includes("cpf")) rows.shift();
+                          } else {
+                            const {read,utils}=await import("https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs");
+                            const ab=await file.arrayBuffer();
+                            const wb=read(ab,{type:"array"});
+                            const ws=wb.Sheets[wb.SheetNames[0]];
+                            const data=utils.sheet_to_json(ws,{header:1,defval:""});
+                            rows=data.filter((r,i)=>i>0||!String(r[0]).toLowerCase().includes("cpf"));
+                            if(rows[0]&&String(rows[0][0]).toLowerCase().includes("cpf")) rows.shift();
+                          }
+                          const linhasImport=rows.filter(r=>r[0]).map(r=>[r[0],r[1]||"",r[2]||"",r[3]||"",r[4]||""].join(",")).join(String.fromCharCode(10));
+                          if(window._cltCpfTextarea) window._cltCpfTextarea.value=(window._cltCpfTextarea.value?window._cltCpfTextarea.value+String.fromCharCode(10):"")+linhasImport;
+                          setLoteCLTCpfs(p=>(p?p+String.fromCharCode(10):"")+linhasImport);
+                        }catch(err){setErr("Erro ao ler planilha: "+err.message);}
+                        e.target.value="";
+                      }}/>
+                    </label>
+                  )}
+                </div>
               </div>
-              <div style={{color:C.td,fontSize:10,marginBottom:6,lineHeight:1.6}}>
-                Formatos aceitos (um por linha):<br/>
-                • Só CPF: <code style={{color:"#60A5FA"}}>12345678901</code><br/>
-                • Completo: <code style={{color:"#60A5FA"}}>CPF, Nome, Email, Nascimento, Telefone</code><br/>
-                • Planilha xlsx/csv: A=CPF B=Nome C=Email D=Nascimento E=Telefone
-              </div>
-              <textarea
-                ref={el => { if(el) window._cltCpfTextarea = el; }}
-                defaultValue={loteCLTCpfs}
-                onBlur={e=>setLoteCLTCpfs(e.target.value)}
-                placeholder={"12345678901\n12345678901, João Silva, joao@email.com, 1990-01-15, 84999999999\n98765432100, Maria Santos, , 1985-03-20, 11988887777"}
-                style={{...S.input,height:100,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
+              {loteCLTApenasMode?(
+                <div style={{marginBottom:10}}>
+                  <div style={{color:"#34D399",fontSize:10,marginBottom:6,lineHeight:1.6,background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:7,padding:"6px 10px"}}>
+                    🔢 <b>Modo Apenas CPF</b> — Cole um CPF por linha. Os dados serão preenchidos automaticamente via cruzamento com a V8 Digital.
+                  </div>
+                  <textarea
+                    ref={el => { if(el) window._cltCpfTextarea = el; }}
+                    defaultValue={loteCLTCpfs}
+                    onBlur={e=>setLoteCLTCpfs(e.target.value)}
+                    placeholder={"12345678901\n98765432100\n11122233344\n55566677788"}
+                    style={{...S.input,height:120,resize:"vertical",fontFamily:"monospace",fontSize:13,marginBottom:10,letterSpacing:"0.05em"}}/>
+                </div>
+              ):(
+                <div style={{marginBottom:10}}>
+                  <div style={{color:C.td,fontSize:10,marginBottom:6,lineHeight:1.6}}>
+                    Formatos aceitos (um por linha):<br/>
+                    • Completo: <code style={{color:"#60A5FA"}}>CPF, Nome, Email, Nascimento, Telefone</code><br/>
+                    • Planilha xlsx/csv: A=CPF B=Nome C=Email D=Nascimento E=Telefone
+                  </div>
+                  <textarea
+                    ref={el => { if(el) window._cltCpfTextarea = el; }}
+                    defaultValue={loteCLTCpfs}
+                    onBlur={e=>setLoteCLTCpfs(e.target.value)}
+                    placeholder={"12345678901, João Silva, joao@email.com, 1990-01-15, 84999999999\n98765432100, Maria Santos, , 1985-03-20, 11988887777"}
+                    style={{...S.input,height:100,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
+                </div>
+              )}
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={async()=>{
                   const rawVal = window._cltCpfTextarea ? window._cltCpfTextarea.value : loteCLTCpfs;
