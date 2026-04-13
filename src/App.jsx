@@ -16609,6 +16609,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     cpf:"", nome:"", email:"", telefone:"", dataNasc:"", genero:"male"
   });
   const [termos, setTermos] = useState(() => {
+    // Migração v2: limpa cache antigo que usava new Date() como fallback (timestamps falsos por refresh)
+    if (!localStorage.getItem("nexp_clt_cache_v2_migrated")) {
+      localStorage.removeItem("nexp_clt_termos_cache");
+      localStorage.setItem("nexp_clt_cache_v2_migrated", "1");
+      return [];
+    }
     try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
   }); // lista de termos — carrega cache instant
   const [termosPage, setTermosPage] = useState(1);
@@ -16940,13 +16946,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   // Normaliza item da API para formato interno
   const mapLink = (item) => {
+    // Busca data SOMENTE do banco — nunca usa new Date() como fallback
+    // para evitar que itens sem data ganhem timestamp do sistema (que muda a cada refresh)
     const rawDate = item.createdAt||item.created_at||item.grantedAt||item.granted_at
       ||item.consentedAt||item.consented_at||item.requestedAt||item.requested_at
       ||item.consultedAt||item.consulted_at||item.updatedAt||item.updated_at
-      ||item.timestamp||item.date||item.criadoEm||"";
+      ||item.timestamp||item.date||item.criadoEm||null;
     return {
       ...item,
-      createdAt: rawDate || new Date().toISOString(),
+      createdAt: rawDate, // null se o banco não retornar data — NÃO usa hora local
       link: item.consent_url||item.url||item.link||item.authorization_url
         ||`https://app.v8sistema.com/termos-de-autorizacao/${item.id}`,
     };
@@ -16963,7 +16971,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         const local=byId[n.id];
         if(!local||STATUS_ORD.indexOf(n.status)>=STATUS_ORD.indexOf(local.status||"")) byId[n.id]={...local,...n};
       });
-      const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+      // Preserva ordem de inserção do banco — sem sort local
+      const lista=Object.values(byId);
       localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000)));
       return lista;
     } catch { return novos; }
@@ -16992,7 +17001,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       })();
       if (cacheAtual.length > 0 && !forceRefresh) {
         // Mostra tudo do cache sem esperar API — mais recente primeiro
-        setTermos([...cacheAtual].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
+      setTermos([...cacheAtual]); // ordem do banco preservada
         setTermosPage(pg);
         setLoading(false);
       } else {
@@ -17009,7 +17018,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       // Persiste merge + atualiza UI com lista completa ordenada
       const lista1 = persistirTermos(pg1);
-      setTermos([...lista1].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
+      setTermos([...lista1]); // ordem do banco preservada
       setTermosPage(pg);
       setLoading(false);
 
@@ -17029,7 +17038,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             } catch {}
           }
           const listaFinal = persistirTermos(buffer);
-          setTermos([...listaFinal].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
+          setTermos([...listaFinal]); // ordem do banco preservada
           localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
         })();
       } else {
@@ -17239,7 +17248,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             }
           });
           if (!changed) return prev;
-          const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+          // Preserva ordem de inserção do banco — sem sort local
+      const lista=Object.values(byId);
           // Persiste em cache
           try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
           return lista;
@@ -17775,7 +17785,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
-                      {["","Cliente","CPF","Parceiro","Status","Margem Disp.","Link","Data","Probabilidade","Ação"].map(h=>(
+                      {["","Cliente","CPF","Parceiro","Status","Margem Disp.","Link","Probabilidade","Ação"].map(h=>(
                         <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
                       ))}
                     </tr>
@@ -17787,11 +17797,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         if(!termosSearch) return true;
                         const s=termosSearch.toLowerCase();
                         return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-                      // Ordenação LIFO — mais recentes primeiro (decrescente por data)
-                      }).sort((a,b)=>{
-                        const da=new Date(a.createdAt||a.created_at||a.criadoEm||0).getTime();
-                        const db=new Date(b.createdAt||b.created_at||b.criadoEm||0).getTime();
-                        return db-da; // decrescente: maior timestamp primeiro
+                      // Sem sort — mantém a ordem exata retornada pelo banco
                       });
                       const _totalPgs = Math.max(1,Math.ceil(filtrados.length/PAGE_SIZE_TERMOS));
                       const _curPage  = Math.min(termosPage,_totalPgs);
@@ -17841,21 +17847,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                               </button>
                             ):<span style={{color:C.td,fontSize:10}}>—</span>}
                           </td>
-                          {/* Data */}
-                          <td style={{padding:"8px 10px",color:C.td,fontSize:10,whiteSpace:"nowrap"}}>
-                            {(()=>{
-                              // Try every possible date field the API might return
-                              const raw = t.createdAt||t.created_at||t.criadoEm||t.updatedAt||t.updated_at||t.timestamp||t.date||t.consultedAt||t.consulted_at||t.requestedAt||"";
-                              if(!raw) return "—";
-                              if(/\d{4}-\d{2}-\d{2}/.test(String(raw))) {
-                                try {
-                                  const d = new Date(raw);
-                                  if(!isNaN(d)) return d.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"});
-                                } catch {}
-                              }
-                              return String(raw).slice(0,14);
-                            })()}
-                          </td>
+
                           <td style={{padding:"8px 10px"}}>
                             {t.status==="SUCCESS"&&t.availableMarginValue ? (
                               <span style={{color:"#34D399",fontSize:10,fontWeight:700}}>🟢 Alta</span>
