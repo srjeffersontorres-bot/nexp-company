@@ -16224,10 +16224,9 @@ function MargemLoteTab({ apiFetch, contacts, currentUser, isTokenValid, fmtBRL, 
   const iniciarFormalizacao = async (item, dados) => {
     setPagando(true); setFormErr("");
     const tel = dados.telefone.replace(/\D/g,"");
-    const birthDate = (dados.dataNascimento||"").split("T")[0]; // YYYY-MM-DD
+    const birthDate = ((dados.dataNascimento||"").split("T")[0]) || "1990-01-01"; // YYYY-MM-DD com fallback
     try {
       const cpfClean = item.cpf.replace(/\D/g,"");
-      if (!birthDate) birthDate = "1990-01-01"; // fallback genérico
       if (!dados.email||!dados.email.includes("@")) throw new Error("E-mail inválido.");
       const body = {
         borrowerDocumentNumber: cpfClean, // CPF exato — V8 usa esse valor na página de assinatura
