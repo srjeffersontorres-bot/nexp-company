@@ -16612,8 +16612,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
   }); // lista de termos — carrega cache instant
   const [termosPage, setTermosPage] = useState(1);
-  const [termosPages, setTermosPages] = useState(null);
-  const PAGE_SIZE_TERMOS = 30; // 30 clientes por página
+  // termosPages computado no render
+  const PAGE_SIZE_TERMOS = 50; // 50 clientes por página
   const [showLoteCLT, setShowLoteCLT] = useState(false);
   const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
   const [loteCLTItems, setLoteCLTItems] = useState([]);
@@ -16629,18 +16629,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [termoBuscando, setTermoBuscando] = useState(false);
   const [termoAutoPreenchido, setTermoAutoPreenchido] = useState(false);
 
-  // ── Atualizar paginação quando termos mudam (movido para APÓS todos os useState) ──
-  useEffect(() => {
-    const filtrados = termos.filter(t=>{
-      if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
-      if(!termosSearch) return true;
-      const s=termosSearch.toLowerCase();
-      return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-    });
-    const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS) || 1;
-    setTermosPages({total:filtrados.length,totalPages,hasNext:termosPage<totalPages,hasPrev:termosPage>1});
-    if(termosPage > totalPages) setTermosPage(1);
-  }, [termos, termosPage, termosFiltroStatus, termosSearch, PAGE_SIZE_TERMOS]); // eslint-disable-line
+  // termosPages é agora computado direto no render — sem useEffect assíncrono
 
   // Versão com cpf como parâmetro — evita race condition com setState
   const buscarContatoTermoCpf = async (cpfRaw) => {
@@ -17640,10 +17629,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
                       📄 Consultas CLT
-                      {termosPages&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
-                        · {termosPages.total||termos.length} total · pág {termosPage}/{termosPages.totalPages||1}
+                      {termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
+                        · {termos.length} registros{termos.length>=50?" (carregando mais...)":""}
                       </span>}
-                      {!termosPages&&termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>· {termos.length} registros</span>}
                     </div>
                     {/* Filtro por data inicial */}
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -17718,13 +17706,10 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         if(!termosSearch) return true;
                         const s=termosSearch.toLowerCase();
                         return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-                      }).sort((a,b)=>{
-                        const ta=new Date(a.createdAt||a.created_at||0).getTime();
-                        const tb=new Date(b.createdAt||b.created_at||0).getTime();
-                        return tb-ta; // mais recente primeiro
-                      });
-                      const totalPages = Math.ceil(filtrados.length / PAGE_SIZE_TERMOS); // eslint-disable-line no-unused-vars
-                      const pageItems = filtrados.slice((termosPage-1)*PAGE_SIZE_TERMOS, termosPage*PAGE_SIZE_TERMOS);
+                      }).sort((a,b)=>new Date(b.createdAt||b.created_at||0)-new Date(a.createdAt||a.created_at||0));
+                      const _totalPgs = Math.max(1,Math.ceil(filtrados.length/PAGE_SIZE_TERMOS));
+                      const _curPage  = Math.min(termosPage,_totalPgs);
+                      const pageItems = filtrados.slice((_curPage-1)*PAGE_SIZE_TERMOS,_curPage*PAGE_SIZE_TERMOS);
                       return pageItems.map(t=>{
                         const col=STATUS_COR[t.status]||C.td;
                         return (
@@ -17949,21 +17934,28 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </table>
               </div></div>
               {/* Paginação */}
-              {(termosPages&&(termosPages.hasNext||termosPages.hasPrev)) && (
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
-                  <button onClick={()=>setTermosPage(p=>Math.max(1,p-1))} disabled={!termosPages.hasPrev}
-                    style={{background:termosPages.hasPrev?C.abg:C.deep,color:termosPages.hasPrev?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:termosPages.hasPrev?"pointer":"not-allowed"}}>
-                    ← Anterior
-                  </button>
-                  <span style={{color:C.tm,fontSize:12}}>
-                    Página {termosPage} de {termosPages.totalPages||1} · {termosPages.total||termos.length} consultas
-                  </span>
-                  <button onClick={()=>setTermosPage(p=>Math.min(termosPages.totalPages||1,p+1))} disabled={!termosPages.hasNext}
-                    style={{background:termosPages.hasNext?C.abg:C.deep,color:termosPages.hasNext?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:termosPages.hasNext?"pointer":"not-allowed"}}>
-                    Próxima →
-                  </button>
-                </div>
-              )}
+              {(()=>{
+                const _filtPag=termos.filter(t=>{if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus)return false;if(!termosSearch)return true;const s=termosSearch.toLowerCase();return(t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""));});
+                const _total=_filtPag.length;
+                const _totalPgs=Math.max(1,Math.ceil(_total/PAGE_SIZE_TERMOS));
+                const _pg=Math.min(termosPage,_totalPgs);
+                const hasPrev=_pg>1;
+                const hasNext=_pg<_totalPgs;
+                if(_totalPgs<=1)return null;
+                return(
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderTop:`1px solid ${C.b1}`,background:C.deep}}>
+                    <button onClick={()=>setTermosPage(p=>Math.max(1,p-1))} disabled={!hasPrev}
+                      style={{background:hasPrev?C.abg:C.deep,color:hasPrev?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:hasPrev?"pointer":"not-allowed"}}>
+                      ← Anterior
+                    </button>
+                    <span style={{color:C.tm,fontSize:12}}>Página {_pg} de {_totalPgs} · {_total} consultas</span>
+                    <button onClick={()=>setTermosPage(p=>Math.min(_totalPgs,p+1))} disabled={!hasNext}
+                      style={{background:hasNext?C.abg:C.deep,color:hasNext?C.atxt:C.td,border:`1px solid ${C.b2}`,borderRadius:8,padding:"7px 18px",fontSize:12,fontWeight:600,cursor:hasNext?"pointer":"not-allowed"}}>
+                      Próxima →
+                    </button>
+                  </div>
+                );
+              })()}
               {termos.length===0&&!loading&&(
                 <div style={{textAlign:"center",color:C.td,fontSize:13,padding:"32px 0"}}>Nenhuma consulta encontrada.</div>
               )}
@@ -18538,7 +18530,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 style={{flex:1,background:C.deep,color:C.tm,border:`1px solid ${C.b2}`,borderRadius:10,padding:"11px",fontSize:13,cursor:"pointer"}}>
                 Cancelar
               </button>
-              <button onClick={()=>{setTermos([]);setTermosPages(null);setTermosPage(1);setLimparModal(false);}}
+              <button onClick={()=>{setTermos([]);setTermosPage(1);setLimparModal(false);}}
                 style={{flex:1,background:"rgba(239,68,68,0.15)",color:"#F87171",border:"1px solid #EF444433",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🗑 Limpar lista
               </button>
