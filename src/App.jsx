@@ -15690,7 +15690,7 @@ function V8DigitalTab({ currentUser, contacts, onLoteSimFim }) {
                 </thead>
                 <tbody>
                   {/* ── Fila de Formalização ── */}
-                  {(!status || status === "formalization") && [...fila].sort((a,b)=>b.criadoEm-a.criadoEm).map((item) => {
+                  {(!status || status === "formalization") && fila.map((item) => {
                     const stCol = item.status==="paid"?"#34D399":item.status==="canceled"?"#F87171":"#C084FC";
                     const stLabel = item.status==="paid"?"✅ Pago":item.status==="canceled"?"❌ Cancelado":"⏳ Formalização";
                     const isSel = detalhe?.id===item.id && detalhe?._filaItem;
@@ -17407,6 +17407,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       setTermoAutoPreenchido(false);
                       if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
+                    onPaste={e=>{
+                      e.preventDefault();
+                      const pasted=(e.clipboardData||window.clipboardData).getData("text");
+                      const fmt=applyCPFMask(pasted);
+                      const raw=fmt.replace(/\D/g,"");
+                      setTermoForm(p=>({...p,cpf:fmt}));
+                      setTermoAutoPreenchido(false);
+                      if(raw.length===11) buscarContatoTermoCpf(raw);
+                    }}
                     onBlur={e=>{
                       const raw=(e.target.value||"").replace(/\D/g,"");
                       if(raw.length>0) buscarContatoTermoCpf(raw.padStart(11,"0"));
@@ -17436,7 +17445,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Data de Nascimento *</label>
-                <input value={termoForm.dataNasc} onChange={e=>setTermoForm(p=>({...p,dataNasc:e.target.value}))} type="date" style={{...S.input}}/>
+                <input value={termoForm.dataNasc}
+                  onChange={e=>setTermoForm(p=>({...p,dataNasc:e.target.value}))}
+                  onPaste={e=>{
+                    e.preventDefault();
+                    const txt=(e.clipboardData||window.clipboardData).getData("text").trim();
+                    // DD/MM/YYYY → YYYY-MM-DD
+                    const m1=txt.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                    if(m1){setTermoForm(p=>({...p,dataNasc:`${m1[3]}-${m1[2]}-${m1[1]}`}));return;}
+                    // DD-MM-YYYY → YYYY-MM-DD
+                    const m2=txt.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+                    if(m2){setTermoForm(p=>({...p,dataNasc:`${m2[3]}-${m2[2]}-${m2[1]}`}));return;}
+                    // YYYY-MM-DD direto
+                    if(/^\d{4}-\d{2}-\d{2}$/.test(txt)){setTermoForm(p=>({...p,dataNasc:txt}));return;}
+                    setTermoForm(p=>({...p,dataNasc:txt}));
+                  }}
+                  type="date" style={{...S.input}}/>
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Gênero</label>
