@@ -17370,7 +17370,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     <div style={{padding:"4px 0"}}>
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -18387,6 +18387,21 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
       {/* ════ ABA MARGEM EM LOTE — Fluxo 2 etapas ════ */}
 
+
+      {/* ══════════════════════════════════════════════════════════
+          ABA: MARGEM EM LOTE
+      ══════════════════════════════════════════════════════════ */}
+      {aba==="margem_lote" && (
+        <MargemLoteTab
+          apiFetch={apiFetch}
+          contacts={contacts}
+          currentUser={currentUser}
+          isTokenValid={isTokenValid}
+          fmtBRL={fmtBRL}
+          fmtCPF={fmtCPF}
+          C={C} S={S}
+        />
+      )}
 
       {/* ══════════════════════════════════════════════════════════
           ABA: DIGITAÇÃO
