@@ -12257,36 +12257,7 @@ function ModalDigitacaoRapida({ tabela, balance, cpf, provider, apiFetch, fmtBRL
         }
       } catch(e2) { console.warn("Aviso: dados do cliente não salvos:", e2.message); }
 
-      // Salvar cópia no Firestore
-      try {
-        const { addDoc, collection: fbCol } = await import("firebase/firestore");
-        const { db: fbDb } = await import("./firebase");
-        await addDoc(fbCol(fbDb,"propostas"), {
-          tipo: "FGTS",
-          origem: "V8 Digital",
-          v8ProposalId: res?.id || "",
-          v8ContractNumber: res?.contractNumber || "",
-          v8FormalizationLink: res?.formalizationLink || "",
-          v8Status: res?.status || "",
-          nome:      form.name,
-          cpf:       cpfClean,
-          email:     form.email,
-          phone:     form.phone,
-          provider,
-          tabela:    tabela?.label || "",
-          valorLiberado: parseFloat(tabela?.sim?.availableBalance||0),
-          balanceId: balId,
-          simulationId: simId,
-          pagamento: payType === "pix" ? { tipo:"PIX", chave:form.pix } : { tipo:"Transferência", banco:form.bankId, agencia:form.bankAccountBranch, conta:form.bankAccountNumber, digito:form.bankAccountDigit },
-          status:    "Proposta Digitada",
-          criadoPor: currentUser?.uid || currentUser?.id || "v8",
-          criadoPorNome: currentUser?.name || currentUser?.email || "V8 Digital",
-          createdAt: Date.now(),
-          docFiles:  [],
-        });
-      } catch(saveErr) {
-        console.warn("Aviso: proposta criada na V8 mas não salva no Firestore:", saveErr.message);
-      }
+      // Proposta salva via adicionarNaFila (Aguardando Formalização + link) — sem duplicata aqui
     } catch(e) { 
       // Mostra erro detalhado sem apagar campos
       const detail = `❌ ${e.message}\n\n📋 Telefone enviado: DDD=${phoneDDD} | Número=${phoneNum}`;
@@ -16639,13 +16610,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
   // Versão com cpf como parâmetro — evita race condition com setState
   const buscarContatoTermoCpf = async (cpfRaw) => {
-    const cpfLimpo = (cpfRaw||"").replace(/\D/g,"").padStart(11,"0");
-    if(cpfLimpo.replace(/0/g,"").length===0) return;
+    const cpfLimpo = (cpfRaw||"").replace(/\D/g,"");
+    if(!cpfLimpo || cpfLimpo.replace(/0/g,"").length===0) return;
     // Atualiza form com CPF formatado
-    const cpfFmt = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
+    const cpfFmt = cpfLimpo.padStart(11,"0").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,"$1.$2.$3-$4");
     setTermoForm(p=>({...p,cpf:cpfFmt}));
+    setTermoAutoPreenchido(false);
 
-    // Helper: extrai telefone de um objeto com múltiplos campos possíveis
+    // Helpers de extração
     const extractTel = (obj) => {
       if (!obj) return "";
       const raw = obj.phone||obj.telefone||obj.phone1||obj.phoneNumber||
@@ -16657,24 +16629,43 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     const extractNome = (obj) => obj?.name||obj?.nome||obj?.signerName||obj?.borrowerName||obj?.clientName||"";
     const extractEmail = (obj) => obj?.email||obj?.emailAddress||obj?.signerEmail||obj?.borrowerEmail||"";
     const extractGenero = (obj) => obj?.genero||obj?.gender||obj?.sexo||obj?.signerGender||"male";
+    // Normaliza CPF para comparação (remove não-dígitos, sem padStart forçado)
+    const normCpf = (v) => (v||"").replace(/\D/g,"");
 
-    // 1. Busca local nos contatos (Nexp)
-    const c = (contacts||[]).find(x=>(x.cpf||"").replace(/\D/g,"").padStart(11,"0")===cpfLimpo);
     let dadosAcc = { nome:"", email:"", telefone:"", dataNasc:"", genero:"male" };
-    if (c) {
+
+    // 1. Busca no histórico local de termos já gerados (dados mais ricos)
+    const termoLocal = (termos||[]).find(t => normCpf(t.cpf||t.documentNumber||t.borrowerDocumentNumber) === cpfLimpo);
+    if (termoLocal) {
       dadosAcc = {
-        nome:    extractNome(c),
-        email:   extractEmail(c),
-        telefone:extractTel(c),
-        dataNasc:extractNasc(c),
-        genero:  extractGenero(c),
+        nome:     extractNome(termoLocal)||dadosAcc.nome,
+        email:    extractEmail(termoLocal)||dadosAcc.email,
+        telefone: extractTel(termoLocal)||dadosAcc.telefone,
+        dataNasc: extractNasc(termoLocal)||dadosAcc.dataNasc,
+        genero:   extractGenero(termoLocal)||dadosAcc.genero,
       };
-      setTermoForm(p=>({...p, ...Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v))}));
-      setTermoAutoPreenchido(true);
     }
 
-    if(!isTokenValid) {
-      if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=10) {
+    // 2. Busca nos contatos Nexp (sobrescreve campos vazios)
+    const c = (contacts||[]).find(x => normCpf(x.cpf) === cpfLimpo);
+    if (c) {
+      if (!dadosAcc.nome)     dadosAcc.nome     = extractNome(c);
+      if (!dadosAcc.email)    dadosAcc.email    = extractEmail(c);
+      if (!dadosAcc.telefone) dadosAcc.telefone = extractTel(c);
+      if (!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(c);
+      if (dadosAcc.genero==="male") dadosAcc.genero = extractGenero(c)||"male";
+    }
+
+    // Aplica o que foi encontrado localmente
+    const localFilled = Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v));
+    if (Object.keys(localFilled).length > 0) {
+      setTermoForm(p=>({...p, ...localFilled}));
+      if (dadosAcc.nome) setTermoAutoPreenchido(true);
+    }
+
+    // Se sem token, tenta auto-gerar com dados locais
+    if (!isTokenValid) {
+      if (dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=10) {
         _autoGerarTermo(cpfLimpo, dadosAcc);
       }
       return;
@@ -16682,26 +16673,24 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
     setTermoBuscando(true);
     try {
-      // 2a. Cruzamento com /private-consignment/consult (histório de termos)
+      // 3a. Histórico de termos na API V8
       const end=new Date().toISOString();
       const start=new Date(Date.now()-365*86400000).toISOString();
       const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
       const item=(r?.data||[])[0];
       if(item) {
-        const merged = {
-          nome:     extractNome(item)||dadosAcc.nome,
-          email:    extractEmail(item)||dadosAcc.email,
-          telefone: extractTel(item)||dadosAcc.telefone,
-          dataNasc: extractNasc(item)||dadosAcc.dataNasc,
-          genero:   extractGenero(item)||dadosAcc.genero,
-        };
-        setTermoForm(p=>({...p,...Object.fromEntries(Object.entries(merged).filter(([,v])=>v))}));
-        setTermoAutoPreenchido(true);
-        dadosAcc = merged;
+        if (!dadosAcc.nome)     dadosAcc.nome     = extractNome(item)||dadosAcc.nome;
+        if (!dadosAcc.email)    dadosAcc.email    = extractEmail(item)||dadosAcc.email;
+        if (!dadosAcc.telefone) dadosAcc.telefone = extractTel(item)||dadosAcc.telefone;
+        if (!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(item)||dadosAcc.dataNasc;
+        if (dadosAcc.genero==="male") dadosAcc.genero = extractGenero(item)||"male";
+        const apiFilled = Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v));
+        setTermoForm(p=>({...p,...apiFilled}));
+        if (dadosAcc.nome) setTermoAutoPreenchido(true);
       }
     } catch(e) { /* silencioso */ }
 
-    // 2b. Cruzamento com /fgts/proposal (propostas FGTS — rich client data)
+    // 3b. Propostas FGTS (dados complementares)
     if (!dadosAcc.nome||!dadosAcc.email||!dadosAcc.dataNasc||!dadosAcc.telefone) {
       try {
         const rFgts = await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`);
@@ -16713,14 +16702,17 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           if (!dadosAcc.telefone) dadosAcc.telefone = extractTel(fgtsDetail)||dadosAcc.telefone;
           if (!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(fgtsDetail)||dadosAcc.dataNasc;
           if (dadosAcc.genero==="male") dadosAcc.genero = extractGenero(fgtsDetail)||"male";
-          setTermoForm(p=>({...p,...Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v))}));
-          setTermoAutoPreenchido(true);
+          const apiFilled2 = Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v));
+          setTermoForm(p=>({...p,...apiFilled2}));
+          if (dadosAcc.nome) setTermoAutoPreenchido(true);
         }
       } catch(e) { /* silencioso */ }
     }
 
     setTermoBuscando(false);
-    if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=10) {
+
+    // Auto-encaminha para fila se todos os dados foram encontrados
+    if (dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&(dadosAcc.telefone||"").length>=10) {
       _autoGerarTermo(cpfLimpo, dadosAcc);
     }
   };
@@ -17378,7 +17370,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     <div style={{padding:"4px 0"}}>
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -17428,7 +17420,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     }}
                     onBlur={e=>{
                       const raw=(e.target.value||"").replace(/\D/g,"");
-                      if(raw.length>0) buscarContatoTermoCpf(raw.padStart(11,"0"));
+                      if(raw.length>=11) buscarContatoTermoCpf(raw);
                     }}
                     placeholder="000.000.000-00" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
                   <button onClick={()=>buscarContatoTermoCpf((termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0"))} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
@@ -18394,18 +18386,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       )}
 
       {/* ════ ABA MARGEM EM LOTE — Fluxo 2 etapas ════ */}
-      {aba==="margem_lote" && (
-        <MargemLoteTab
-          apiFetch={apiFetch}
-          contacts={contacts}
-          currentUser={currentUser}
-          isTokenValid={isTokenValid}
-          token={token}
-          fmtBRL={fmtBRL}
-          fmtCPF={fmtCPF}
-          C={C} S={S}
-        />
-      )}
+
 
       {/* ══════════════════════════════════════════════════════════
           ABA: DIGITAÇÃO
