@@ -16540,11 +16540,8 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [wppPopup, setWppPopup] = useState(null); // { txt, clienteNome }
 
   // ── Helper: monta texto WhatsApp da simulação ─────────────────
-  const buildWppTxt = (resultados, nomeCliente) => {
-    const partes = (nomeCliente||"").trim().split(/\s+/).filter(Boolean);
-    const primeiroSegundo = partes.slice(0,2).join(" ") || "Cliente";
-    let txt = `${primeiroSegundo}, chegou seu Crédito do Trabalhador, dê uma olhadinha na simulação que preparamos para você:\n\n`;
-    txt += `Oba! 🎉 Sua simulação do *Crédito do Trabalhador* chegou, confira:\n\n`;
+  const buildWppTxt = (resultados) => {
+    let txt = `Oba! 🎉 Sua simulação do *Crédito do Trabalhador* chegou, confira:\n\n`;
     resultados.forEach((r, i) => {
       const v = parseFloat(r.sim?.disbursement_amount||r.sim?.disbursed_issue_amount||0);
       const p = parseFloat(r.sim?.installment_value||0);
@@ -16999,24 +16996,22 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
     try {
       const end = new Date().toISOString();
-      const startPeriodo = termosDataInicio
-        ? new Date(termosDataInicio).toISOString()
-        : "2020-01-01T00:00:00.000Z"; // sem limite — busca TODOS os registros do banco
+      // Sem limite de data — busca TODOS os registros do banco desde o início
+      const startPeriodo = "2020-01-01T00:00:00.000Z";
 
-      // ── Fase 1: Mostra cache COMPLETO imediatamente (todos os clientes) ──
+      // ── Fase 1: Mostra cache imediatamente enquanto busca API ──
       const cacheAtual = (() => {
         try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
       })();
       if (cacheAtual.length > 0 && !forceRefresh) {
-        // Mostra tudo do cache sem esperar API — mais recente primeiro
-      setTermos([...cacheAtual]); // ordem do banco preservada
+        setTermos([...cacheAtual]);
         setTermosPage(pg);
         setLoading(false);
       } else {
         setLoading(true);
       }
 
-      // ── Fase 2: Busca API para atualizar status e pegar novos ──────
+      // ── Fase 2: Busca página 1 e descobre total de páginas ──────
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
         "GET",null,2,{skipRateLimit:true}
@@ -17024,29 +17019,33 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const pg1 = (r1?.data||[]).map(mapLink);
       const totalApiPages = r1?.pages?.totalPages||r1?.totalPages||1;
 
-      // Persiste merge + atualiza UI com lista completa ordenada
+      // Atualiza UI com o que chegou da pág 1
       const lista1 = persistirTermos(pg1);
-      setTermos([...lista1]); // ordem do banco preservada
+      setTermos([...lista1]);
       setTermosPage(pg);
       setLoading(false);
 
-      // ── Fase 3: Páginas extras em background (sem travar UI) ───────
+      // ── Fase 3: Busca TODAS as páginas restantes em paralelo ──────
       if (totalApiPages > 1) {
         (async () => {
-          const buffer = [...pg1];
-          for (let p=2; p<=totalApiPages; p++) {
-            await new Promise(r=>setTimeout(r,600));
-            try {
-              const rp = await apiFetch(
-                `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
+          const extras = await Promise.allSettled(
+            Array.from({length: totalApiPages-1}, (_,i) =>
+              apiFetch(
+                `/private-consignment/consult?page=${i+2}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
                 "GET",null,2,{skipRateLimit:true}
-              );
-              const items=(rp?.data||[]).map(mapLink);
-              items.forEach(n=>{if(!buffer.find(x=>x.id===n.id))buffer.push(n);});
-            } catch {}
-          }
+              )
+            )
+          );
+          const buffer = [...pg1];
+          extras.forEach(r => {
+            if (r.status==="fulfilled") {
+              (r.value?.data||[]).map(mapLink).forEach(n=>{
+                if(!buffer.find(x=>x.id===n.id)) buffer.push(n);
+              });
+            }
+          });
           const listaFinal = persistirTermos(buffer);
-          setTermos([...listaFinal]); // ordem do banco preservada
+          setTermos([...listaFinal]);
           localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
         })();
       } else {
@@ -17205,11 +17204,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setOpsLoading(true);
     try {
       const end=new Date().toISOString();
-      const start=new Date(Date.now()-30*86400000).toISOString();
+      const start="2020-01-01T00:00:00.000Z"; // todos os registros
       const params=new URLSearchParams({startDate:start,endDate:end,limit:"50",page:"1",provider:"QI"});
       if(opsSearch) params.set("search",opsSearch);
       const r=await apiFetch(`/private-consignment/operation?${params}`);
-      setOps(Array.isArray(r)?r:(r?.data||[]));
+      const pg1 = Array.isArray(r)?r:(r?.data||[]);
+      const totalPages = r?.pages?.totalPages||r?.totalPages||1;
+      let todos = [...pg1];
+      // Busca páginas restantes em paralelo
+      if(totalPages>1){
+        const extras=await Promise.allSettled(
+          Array.from({length:totalPages-1},(_,i)=>{
+            const p2=new URLSearchParams({startDate:start,endDate:end,limit:"50",page:String(i+2),provider:"QI"});
+            if(opsSearch) p2.set("search",opsSearch);
+            return apiFetch(`/private-consignment/operation?${p2}`);
+          })
+        );
+        extras.forEach(r=>{
+          if(r.status==="fulfilled") todos=[...todos,...(Array.isArray(r.value)?r.value:(r.value?.data||[]))];
+        });
+      }
+      setOps(todos);
     } catch(e) { setErr(e.message); }
     setOpsLoading(false);
   };
@@ -17229,19 +17244,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       novosApi.forEach(n => {
         const local = byId[n.id];
         const link = n.consent_url||n.url||n.link||`https://app.v8sistema.com/termos-de-autorizacao/${n.id}`;
-        if (!local) {
-          byId[n.id] = {...n, link};
-          changed = true;
-        } else {
+        if (!local) { byId[n.id]={...n,link}; changed=true; }
+        else {
           const idx_n=STATUS_ORD.indexOf(n.status), idx_l=STATUS_ORD.indexOf(local.status||"");
-          const margemMudou = n.availableMarginValue != null && n.availableMarginValue !== local.availableMarginValue;
-          if(idx_n >= idx_l || margemMudou) {
-            byId[n.id]={...local,...n, link:local.link||link};
-            changed=true;
-          }
+          const margemMudou = n.availableMarginValue!=null && n.availableMarginValue!==local.availableMarginValue;
+          if(idx_n>=idx_l||margemMudou){ byId[n.id]={...local,...n,link:local.link||link}; changed=true; }
         }
       });
-      if (!changed) return prev;
+      if(!changed) return prev;
       const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
       try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
       return lista;
@@ -17251,29 +17261,33 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const agora = new Date().toISOString();
       lastCheck = Date.now();
       try {
-        // Busca SEM filtro de data para garantir TODOS os registros do banco
+        // Busca TODOS os registros do banco — sem filtro de data
+        const startAll = "2020-01-01T00:00:00.000Z";
         const r1 = await apiFetch(
-          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=2020-01-01T00:00:00.000Z&endDate=${agora}`,
+          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startAll}&endDate=${agora}`,
           "GET",null,2,{skipRateLimit:true}
         );
         const totalPages = r1?.pages?.totalPages||r1?.totalPages||1;
         let todos = (r1?.data||[]).map(mapLink);
 
-        // Busca todas as páginas extras em paralelo
+        // Busca todas as páginas restantes em paralelo
         if (totalPages > 1) {
           const extras = await Promise.allSettled(
-            Array.from({length: totalPages-1},(_,i)=>
-              apiFetch(`/private-consignment/consult?page=${i+2}&limit=50&provider=QI&startDate=2020-01-01T00:00:00.000Z&endDate=${agora}`,"GET",null,2,{skipRateLimit:true})
+            Array.from({length:totalPages-1},(_,i)=>
+              apiFetch(
+                `/private-consignment/consult?page=${i+2}&limit=50&provider=QI&startDate=${startAll}&endDate=${agora}`,
+                "GET",null,2,{skipRateLimit:true}
+              )
             )
           );
           extras.forEach(r=>{
             if(r.status==="fulfilled") todos=[...todos,...(r.value?.data||[]).map(mapLink)];
           });
         }
-        if (!todos.length) return;
+        if(!todos.length) return;
         setTermos(prev => mergeTermos(prev, todos));
       } catch {} // nunca bloqueia
-    }, 8000); // a cada 8s — busca tudo do banco
+    }, 10000); // a cada 10s — busca tudo do banco
 
     return () => clearInterval(iv);
   },[isTokenValid]); // eslint-disable-line
@@ -17765,27 +17779,16 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
-                      📄 Consultas CLT
-                      {termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
-                        · {termos.length} registros{termos.length>=50?" (carregando mais...)":""}
-                      </span>}
-                    </div>
-                    {/* Filtro por data inicial */}
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{color:C.td,fontSize:11,whiteSpace:"nowrap"}}>De:</span>
-                      <input
-                        type="date"
-                        value={termosDataInicio}
-                        onChange={e=>setTermosDataInicio(e.target.value)}
-                        style={{...S.input,fontSize:11,padding:"4px 8px",cursor:"pointer",width:130}}
-                      />
-                      <button onClick={()=>buscarTermos(1,true)} disabled={loading}
-                        style={{background:C.atxt+"22",color:C.atxt,border:`1px solid ${C.atxt}44`,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        🔍 Filtrar
-                      </button>
-                      {termosDataInicio&&<button onClick={()=>{setTermosDataInicio("");setTimeout(()=>buscarTermos(1,true),50);}}
-                        style={{background:"transparent",color:C.td,border:"none",fontSize:11,cursor:"pointer"}}>✕</button>}
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
+                        📄 Consultas CLT
+                      </div>
+                      {termos.length>0&&(
+                        <span style={{color:C.td,fontWeight:400,fontSize:11}}>
+                          · {termos.length} registros
+                          <span style={{color:"#34D399",fontSize:9,marginLeft:6,verticalAlign:"middle",animation:"pulse 2s infinite"}}>● AO VIVO</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                   <input
@@ -17970,7 +17973,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                       const res3=simConfigs[cur3]?.resultados||[];
                                       if(!res3.length) return null;
                                       return(
-                                        <button onClick={e=>{e.stopPropagation();setWppPopup({txt:buildWppTxt(res3,t.name||t.nome),clienteNome:t.name||t.nome||"Cliente"});}}
+                                        <button onClick={e=>{e.stopPropagation();setWppPopup({txt:buildWppTxt(res3),clienteNome:t.name||t.nome||"Cliente"});}}
                                           style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:6,padding:"5px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                                           📤 Copiar todas ofertas p/ WhatsApp
                                         </button>
@@ -18030,7 +18033,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                                     <button onClick={e=>{e.stopPropagation();
                                       const cur2=simConfigSel&&simConfigs[simConfigSel]?simConfigSel:Object.keys(simConfigs)[0];
                                       const {resultados:res2}=simConfigs[cur2];
-                                      setWppPopup({txt:buildWppTxt(res2,t.name||t.nome),clienteNome:t.name||t.nome||"Cliente"});
+                                      setWppPopup({txt:buildWppTxt(res2),clienteNome:t.name||t.nome||"Cliente"});
                                     }} style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                                       📤 Copiar p/ WhatsApp
                                     </button>
@@ -18217,6 +18220,31 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             </div>
 
             <div style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:18}}>
+
+              {/* ── Proposta / Tabela / Seguro ── */}
+              {(()=>{
+                // Detecta se tem seguro pelo slug/nome da tabela ou campo direto
+                const tabSlug = opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.configName||opsDetalhe.tableName||opsDetalhe.table_name||opsDetalhe.planName||"";
+                const temSeguro = /seguro|insurance|com.seg/i.test(tabSlug) || opsDetalhe.hasInsurance===true || opsDetalhe.insurance===true || opsDetalhe.withInsurance===true;
+                const semSeguro = /sem.seg|no.ins/i.test(tabSlug) || opsDetalhe.hasInsurance===false || opsDetalhe.insurance===false || opsDetalhe.withInsurance===false;
+                const seguroLabel = temSeguro ? "Com Seguro ✅" : semSeguro ? "Sem Seguro ❌" : "—";
+                const seguroCor = temSeguro ? "#34D399" : semSeguro ? "#F87171" : C.td;
+                if(!tabSlug && seguroLabel==="—") return null;
+                return (
+                  <div style={{background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",borderRadius:12,padding:"12px 16px",display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
+                    {tabSlug&&(
+                      <div>
+                        <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:3}}>📋 Tabela Selecionada</div>
+                        <div style={{color:"#C084FC",fontWeight:700,fontSize:13}}>{tabSlug}</div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:3}}>🛡 Seguro</div>
+                      <div style={{color:seguroCor,fontWeight:700,fontSize:13}}>{seguroLabel}</div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* ── Financeiro ── */}
               <div>
@@ -18424,7 +18452,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </div>
                 {simNovamenteData.resultados.length>0&&(
                   <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"flex-end"}}>
-                    <button onClick={()=>setWppPopup({txt:buildWppTxt(simNovamenteData.resultados,simNovamenteOp?.name),clienteNome:simNovamenteOp?.name||"Cliente"})}
+                    <button onClick={()=>setWppPopup({txt:buildWppTxt(simNovamenteData.resultados),clienteNome:simNovamenteOp?.name||"Cliente"})}
                       style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:10,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
                       📤 Copiar p/ WhatsApp
                     </button>
