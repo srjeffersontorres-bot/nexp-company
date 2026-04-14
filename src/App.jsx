@@ -17212,7 +17212,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           ...prazos.map(async np => {
             try {
               const sim = await apiFetch("/private-consignment/simulation","POST",{
-                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margem, provider:"QI"
+                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margemSimulacao, provider:"QI"
               });
               if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
                 resultados.push({np,sim,cfg});
@@ -17221,7 +17221,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           ...prazos.map(async np => {
             try {
               const sim = await apiFetch("/private-consignment/simulation","POST",{
-                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margem, provider:"celcoin"
+                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margemSimulacao, provider:"celcoin"
               });
               if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
                 resultados.push({np,sim,cfg});
@@ -17927,7 +17927,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         <tr
                           onClick={()=>{
                             if(["FAILED","REJECTED"].includes(t.status)){ setAvisoModal(t); return; }
-                            if(!(t.status==="SUCCESS"||t.availableMarginValue)) return;
+                            // Permite simular SUCCESS ou qualquer margem > 0; FAILED/REJECTED já tratado acima
                             if(inlineSimId===t.id){ setInlineSimId(null); return; }
                             setInlineSimId(t.id);
                             executarSimulacoes(t,true);
