@@ -16594,6 +16594,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   // termosPages computado no render
   const PAGE_SIZE_TERMOS = 50; // 50 clientes por página
   const [showLoteCLT, setShowLoteCLT] = useState(false);
+  const [showTermoPopup, setShowTermoPopup] = useState(false);
   const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
   const [loteCLTItems, setLoteCLTItems] = useState([]);
   const [loteCLTRunning, setLoteCLTRunning] = useState(false);
@@ -17493,7 +17494,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     <div style={{padding:"4px 0"}}>
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -17511,15 +17512,28 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       {aba==="termo" && (
         <div>
           {/* Formulário de geração */}
-          <div style={{...S.card,padding:"14px 16px",marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{color:C.ts,fontSize:12,fontWeight:700}}>📋 Gerar Termo de Consentimento</div>
-              <button onClick={()=>setShowLoteCLT(p=>!p)}
-                style={{background:"rgba(79,142,247,0.12)",color:"#60A5FA",border:"1px solid #3B6EF533",borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                ⚡ Lote
-              </button>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+          {/* Botão abrir popup + botão lote */}
+          <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+            <button onClick={()=>setShowTermoPopup(p=>!p)}
+              style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13.5,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7,boxShadow:`0 4px 16px ${C.lg1}44`}}>
+              + Gerar Consentimento
+            </button>
+            <button onClick={()=>setShowLoteCLT(p=>!p)}
+              style={{background:"rgba(79,142,247,0.15)",color:"#60A5FA",border:"1px solid #3B6EF555",borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+              ⚡ Lote
+            </button>
+          </div>
+
+          {/* Popup Gerar Termo */}
+          {showTermoPopup&&(
+            <div onClick={()=>setShowTermoPopup(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(10px)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,#0A1628,#060E1E)",border:`1px solid ${C.b1}`,borderRadius:22,padding:"24px 28px",maxWidth:520,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 64px rgba(0,0,0,0.6)"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                  <div style={{color:C.tp,fontSize:15.5,fontWeight:800}}>📋 Gerar Termo de Consentimento</div>
+                  <button onClick={()=>setShowTermoPopup(false)} style={{background:"transparent",border:"none",color:C.td,fontSize:18,cursor:"pointer",lineHeight:1}}>✕</button>
+                </div>
+          <div style={{padding:"0"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
               {/* CPF com busca */}
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
@@ -17595,13 +17609,16 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </select>
               </div>
             </div>
-            <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}>
-              <button onClick={gerarTermo}
-                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:9,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",opacity:(termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email)?0.5:1,transition:"opacity 0.2s"}}>
+            <div style={{display:"flex",justifyContent:"flex-start",marginTop:12}}>
+              <button onClick={()=>{gerarTermo();}}
+                style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"11px 24px",fontSize:13.5,fontWeight:700,cursor:"pointer",opacity:(termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email)?0.5:1,transition:"opacity 0.2s",boxShadow:`0 4px 14px ${C.lg1}44`}}>
                 {termoLoading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento"}
               </button>
             </div>
           </div>
+              </div>
+            </div>
+          )}
 
           {/* Lote CLT */}
           {showLoteCLT&&(
@@ -17827,15 +17844,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
-                      📄 Consultas CLT
-                      {termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
-                        · {termos.length} registros{termos.length>=50?" (carregando mais...)":""}
-                      </span>}
-                    </div>
-
-                  </div>
+                  <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Consultas CLT</div>
                   <input
                     value={termosSearch||""}
                     onChange={e=>setTermosSearch(e.target.value)}
@@ -17843,7 +17852,10 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     style={{...S.input,fontSize:12,padding:"5px 10px",width:200,minWidth:140}}
                   />
                 </div>
-                <div style={{display:"flex",gap:6}}>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  {termos.length>0&&<span style={{color:C.td,fontSize:11,marginRight:4}}>
+                    {termos.length} Registros encontrados
+                  </span>}
                   <button onClick={exportarTermos} disabled={loading}
                     style={{background:"rgba(52,211,153,0.1)",color:"#34D399",border:"1px solid #34D39933",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                     📥 Exportar
@@ -20765,7 +20777,7 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
     <div style={{ padding:"0 30px" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12, padding:"20px 0 16px", borderBottom:`1px solid ${C.b1}`, marginBottom:20 }}>
         <button onClick={()=>setBancoSel(null)}
-          style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${C.b2}`, borderRadius:8, padding:"6px 14px", fontSize:12, color:C.tm, cursor:"pointer" }}>
+          style={{ background:"rgba(59,110,245,0.15)", border:"1px solid rgba(59,110,245,0.4)", borderRadius:10, padding:"8px 18px", fontSize:13, fontWeight:700, color:"#60A5FA", cursor:"pointer", letterSpacing:"0.3px" }}>
           ← Bancos
         </button>
         <h1 style={{ color:C.tp, fontSize:17, fontWeight:700, margin:0 }}>🔐 Credenciais Bancárias</h1>
@@ -20781,11 +20793,17 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
       <div style={{ padding:"16px 30px 0", borderBottom:`1px solid ${C.b1}`, background:C.card }}>
         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
           <button onClick={()=>setBancoSel(null)}
-            style={{ background:"rgba(255,255,255,0.06)", border:`1px solid ${C.b2}`, borderRadius:8, padding:"5px 12px", fontSize:12, color:C.tm, cursor:"pointer" }}>
+            style={{ background:"rgba(59,110,245,0.15)", border:"1px solid rgba(59,110,245,0.4)", borderRadius:10, padding:"8px 20px", fontSize:13, fontWeight:700, color:"#60A5FA", cursor:"pointer", letterSpacing:"0.3px" }}>
             ← Bancos
           </button>
-          <span style={{ fontSize:22 }}>{banco?.icon}</span>
-          <h1 style={{ color:banco?.cor||C.tp, fontSize:18, fontWeight:800, margin:0 }}>{banco?.nome}</h1>
+          {/* Icon with animation for V8 */}
+          <span style={{ fontSize:22, display:"inline-block", animation:banco?.id==="v8"?"lightning 1.2s ease-in-out infinite":undefined }}>
+            {banco?.icon}
+          </span>
+          <style>{`@keyframes lightning{0%,100%{filter:drop-shadow(0 0 0px ${banco?.cor||"#fff"});transform:scale(1)}50%{filter:drop-shadow(0 0 8px ${banco?.cor||"#fff"});transform:scale(1.15)}}`}</style>
+          <h1 style={{ color:banco?.cor||C.tp, fontSize:18, fontWeight:800, margin:0, letterSpacing:banco?.id==="v8"?"1px":undefined }}>
+            {banco?.id==="v8"?"V8 DIGITAL":banco?.nome}
+          </h1>
         </div>
         {/* Sub-tabs por banco */}
         <div style={{ display:"flex", gap:0 }}>
