@@ -16707,6 +16707,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         if(!dadosAcc.telefone) dadosAcc.telefone = extractTel(item)||"";
         if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(item)||"";
         if(dadosAcc.genero==="male") dadosAcc.genero = extractGenero(item)||"male";
+        // Tenta buscar detalhe do item para obter birthDate (campo ausente na listagem)
+        if(!dadosAcc.dataNasc && item.id) {
+          try {
+            const det = await apiFetch(`/private-consignment/consult/${item.id}`,"GET",null,2,{skipRateLimit:true});
+            if(det) {
+              if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(det)||"";
+              if(!dadosAcc.nome)     dadosAcc.nome     = extractNome(det)||dadosAcc.nome;
+              if(!dadosAcc.email)    dadosAcc.email    = extractEmail(det)||dadosAcc.email;
+              if(!dadosAcc.telefone) dadosAcc.telefone = extractTel(det)||dadosAcc.telefone;
+            }
+          } catch {}
+        }
         // Para quando tiver tudo
         if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=10) break;
       }
@@ -17229,24 +17241,46 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       }));
 
       if(!Object.keys(melhores).length) {
-        // Tenta com qualquer valor de disbursed_amount antes de desistir
-        try {
-          const fallbackBody = {
-            consult_id: termo.id,
-            config_id: cfgsToRun[0]?.id,
-            number_of_installments: 12,
-            provider: "QI",
-            disbursed_amount: 1000,
-          };
-          const fallbackSim = await apiFetch("/private-consignment/simulation","POST",fallbackBody);
-          if(fallbackSim?.id) {
-            melhores[cfgsToRun[0].id] = { cfg:cfgsToRun[0], resultados:[{np:12,sim:fallbackSim,cfg:cfgsToRun[0]}] };
+        // Fallback 1: sem valor — deixa o banco calcular
+        for (const cfg of cfgsToRun) {
+          for (const np of PARCELAS_PADRAO) {
+            try {
+              const s = await apiFetch("/private-consignment/simulation","POST",{
+                consult_id: termo.id,
+                config_id: cfg.id,
+                number_of_installments: np,
+                provider: "QI",
+              });
+              if(s?.id||s?.totalValue||s?.installmentValue) {
+                if(!melhores[cfg.id]) melhores[cfg.id]={cfg,resultados:[]};
+                melhores[cfg.id].resultados.push({np,sim:s,cfg});
+              }
+            } catch {}
           }
-        } catch {}
+          if(Object.keys(melhores).length) break;
+        }
       }
 
       if(!Object.keys(melhores).length) {
-        throw new Error("Não foi possível simular: verifique se o termo está ativo no banco V8 e tente novamente.");
+        // Fallback 2: tenta com provider=celcoin
+        for (const cfg of cfgsToRun.slice(0,1)) {
+          try {
+            const s = await apiFetch("/private-consignment/simulation","POST",{
+              consult_id: termo.id,
+              config_id: cfg.id,
+              number_of_installments: 12,
+              provider: "celcoin",
+              ...(margem>0?{installment_face_value:margem}:{disbursed_amount:1000}),
+            });
+            if(s?.id||s?.totalValue||s?.installmentValue) {
+              melhores[cfg.id]={cfg,resultados:[{np:12,sim:s,cfg}]};
+            }
+          } catch {}
+        }
+      }
+
+      if(!Object.keys(melhores).length) {
+        throw new Error("Simulação indisponível: o termo pode estar aguardando processamento. Aguarde alguns instantes e tente novamente.");
       }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
@@ -17533,7 +17567,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                   <button onClick={()=>setShowTermoPopup(false)} style={{background:"transparent",border:"none",color:C.td,fontSize:18,cursor:"pointer",lineHeight:1}}>✕</button>
                 </div>
           <div style={{padding:"0"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
               {/* CPF com busca */}
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
@@ -17559,7 +17593,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const raw=(e.target.value||"").replace(/\D/g,"");
                       if(raw.length>=11) buscarContatoTermoCpf(raw);
                     }}
-                    placeholder="000.000.000-00" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
+                    placeholder="000.000.000-00" style={{...S.input,flex:1,fontSize:13,padding:"10px 14px",borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
                   <button onClick={()=>buscarContatoTermoCpf((termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0"))} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
                     {termoBuscando?"⏳":"🔍"}
                   </button>
@@ -17568,18 +17602,18 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label>
-                <input value={termoForm.nome} onChange={e=>setTermoForm(p=>({...p,nome:e.target.value}))} style={{...S.input}}/>
+                <input value={termoForm.nome} onChange={e=>setTermoForm(p=>({...p,nome:e.target.value}))} style={{...S.input,fontSize:13,padding:"10px 14px"}}/>
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>E-mail *</label>
-                <input value={termoForm.email} onChange={e=>setTermoForm(p=>({...p,email:e.target.value}))} placeholder="cliente@email.com" style={{...S.input}}/>
+                <input value={termoForm.email} onChange={e=>setTermoForm(p=>({...p,email:e.target.value}))} placeholder="cliente@email.com" style={{...S.input,fontSize:13,padding:"10px 14px"}}/>
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Telefone * (11 dígitos)</label>
                 <input value={termoForm.telefone}
                   onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,11); setTermoForm(p=>({...p,telefone:v}));}}
                   placeholder="84999999999" maxLength={11}
-                  style={{...S.input}}/>
+                  style={{...S.input,fontSize:13,padding:"10px 14px"}}/>
                 <div style={{color:C.td,fontSize:10,marginTop:3}}>{(termoForm.telefone||"").length}/11 dígitos</div>
               </div>
               <div>
@@ -17599,11 +17633,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     if(/^\d{4}-\d{2}-\d{2}$/.test(txt)){setTermoForm(p=>({...p,dataNasc:txt}));return;}
                     setTermoForm(p=>({...p,dataNasc:txt}));
                   }}
-                  type="date" style={{...S.input}}/>
+                  type="date" style={{...S.input,fontSize:13,padding:"10px 14px"}}/>
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Gênero</label>
-                <select value={termoForm.genero} onChange={e=>setTermoForm(p=>({...p,genero:e.target.value}))} style={{...S.input}}>
+                <select value={termoForm.genero} onChange={e=>setTermoForm(p=>({...p,genero:e.target.value}))} style={{...S.input,fontSize:13,padding:"10px 14px"}}>
                   <option value="male">Masculino</option>
                   <option value="female">Feminino</option>
                 </select>
