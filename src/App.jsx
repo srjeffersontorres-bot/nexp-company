@@ -17208,29 +17208,39 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       // margemSimulacao: usa margem real ou 500 como valor de teste
       const margemSimulacao = margem > 0 ? margem : 500;
 
-      // Igual ao padrão de operacoes que funciona — QI + Celcoin em paralelo
+      // Detecta provedor pelo termo — QI: só sem seguro | Celcoin: com e sem seguro
+      const termoProvider = (termo.provider||"").toLowerCase();
+      const isCelcoinProv = termoProvider.includes("celcoin");
+      const providers = isCelcoinProv ? ["celcoin"] : ["QI"];
+
       for (const cfg of cfgsToRun) {
         const resultados = [];
-        await Promise.allSettled([
-          ...prazos.map(async np => {
+        const simTasks = [];
+        for (const prov of providers) {
+          // Sem seguro (sempre)
+          prazos.forEach(np => simTasks.push((async () => {
             try {
               const sim = await apiFetch("/private-consignment/simulation","POST",{
-                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margemSimulacao, provider:"QI"
+                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np,
+                requestedAmount:margemSimulacao, provider:prov
               });
               if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
-                resultados.push({np,sim,cfg});
+                resultados.push({np,sim,cfg,prov,seguro:false});
             } catch {}
-          }),
-          ...prazos.map(async np => {
+          })()));
+          // Com seguro — só Celcoin
+          if(isCelcoinProv) prazos.forEach(np => simTasks.push((async () => {
             try {
               const sim = await apiFetch("/private-consignment/simulation","POST",{
-                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margemSimulacao, provider:"celcoin"
+                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np,
+                requestedAmount:margemSimulacao, provider:prov, withInsurance:true
               });
               if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
-                resultados.push({np,sim,cfg});
+                resultados.push({np,sim,cfg,prov,seguro:true});
             } catch {}
-          }),
-        ]);
+          })()));
+        }
+        await Promise.allSettled(simTasks);
         if(resultados.length) melhores[cfg.id]={cfg,resultados};
         if(Object.keys(melhores).length>=2) break;
       }
@@ -17904,7 +17914,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:C.deep}}>
-                      {["","Cliente","CPF","Parceiro","Status","Margem Disp.","Link","Probabilidade","Ação"].map(h=>(
+                      {["","Cliente","CPF","Parceiro","Status","Margem Disp.","Provedor","Link","Probabilidade","Ação"].map(h=>(
                         <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
                       ))}
                     </tr>
@@ -17959,6 +17969,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                           </td>
                           <td style={{padding:"8px 10px",color:t.availableMarginValue?"#34D399":C.td,fontWeight:t.availableMarginValue?700:400,fontSize:12}}>
                             {t.availableMarginValue?fmtBRL(t.availableMarginValue):"—"}
+                          </td>
+                          {/* Provedor */}
+                          <td style={{padding:"8px 10px"}}>
+                            {(() => {
+                              const prov = t.provider||t.banco||"";
+                              if(prov.toLowerCase().includes("celcoin")) return <span style={{color:"#A855F7",fontSize:10,fontWeight:700}}>Celcoin</span>;
+                              if(prov.toLowerCase().includes("qi")||prov.toLowerCase().includes("qitech")) return <span style={{color:"#3B6EF5",fontSize:10,fontWeight:700}}>QI Sociedade</span>;
+                              return <span style={{color:C.td,fontSize:10}}>—</span>;
+                            })()}
                           </td>
                           <td style={{padding:"8px 10px"}}>
                             {t.link ? (
@@ -19370,7 +19389,6 @@ function PrataDigitalTab({ currentUser }) {
   const [cTErr,   setCTErr]   = useState("");
   const [cNome,   setCNome]   = useState("");
   const [cEmail,  setCEmail]  = useState("");
-  const [cTel,    setCTel]    = useState("");
 
   const cPath = cFornec==="qitech" ? "private-payroll" : "private-payroll/celcoin";
 
