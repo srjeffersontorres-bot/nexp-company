@@ -16585,8 +16585,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       localStorage.setItem("nexp_clt_cache_v2_migrated", "1");
       return [];
     }
-    try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
-  }); // lista de termos — carrega cache instant
+    try {
+      const raw = JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]");
+      return raw.sort((a,b)=>new Date(b.createdAt||b.created_at||0)-new Date(a.createdAt||a.created_at||0));
+    } catch { return []; }
+  }); // lista de termos — carrega cache instant, ordenado DESC
   const [termosPage, setTermosPage] = useState(1);
   // termosPages computado no render
   const PAGE_SIZE_TERMOS = 50; // 50 clientes por página
@@ -16975,8 +16978,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         const local=byId[n.id];
         if(!local||STATUS_ORD.indexOf(n.status)>=STATUS_ORD.indexOf(local.status||"")) byId[n.id]={...local,...n};
       });
-      // Preserva ordem de inserção do banco — sem sort local
-      const lista=Object.values(byId);
+      // Ordena por data de criação DESC — igual ao banco (mais recente primeiro)
+      const lista=Object.values(byId).sort((a,b)=>{
+        const ta=new Date(a.createdAt||a.created_at||0).getTime();
+        const tb=new Date(b.createdAt||b.created_at||0).getTime();
+        return tb-ta;
+      });
       localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000)));
       return lista;
     } catch { return novos; }
@@ -17251,7 +17258,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             }
           });
           if (!changed) return prev;
-          const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+          const lista=Object.values(byId).sort((a,b)=>{
+              const ta=new Date(a.createdAt||a.created_at||0).getTime();
+              const tb=new Date(b.createdAt||b.created_at||0).getTime();
+              return tb-ta;
+            });
           try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
           return lista;
         });
@@ -17796,7 +17807,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         if(!termosSearch) return true;
                         const s=termosSearch.toLowerCase();
                         return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-                      // Sem sort — mantém a ordem exata retornada pelo banco
+                      }).sort((a,b)=>{
+                        // Ordem exata do banco: mais recente primeiro
+                        const ta=new Date(a.createdAt||a.created_at||0).getTime();
+                        const tb=new Date(b.createdAt||b.created_at||0).getTime();
+                        return tb-ta;
                       });
                       const _totalPgs = Math.max(1,Math.ceil(filtrados.length/PAGE_SIZE_TERMOS));
                       const _curPage  = Math.min(termosPage,_totalPgs);
