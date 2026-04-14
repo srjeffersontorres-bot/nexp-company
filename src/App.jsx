@@ -16683,41 +16683,88 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     }
 
     setTermoBuscando(true);
-    try {
-      // 3a. Histórico de termos na API V8
-      const end=new Date().toISOString();
-      const start=new Date(Date.now()-365*86400000).toISOString();
-      const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=QI&startDate=${start}&endDate=${end}`);
-      const item=(r?.data||[])[0];
-      if(item) {
-        if (!dadosAcc.nome)     dadosAcc.nome     = extractNome(item)||dadosAcc.nome;
-        if (!dadosAcc.email)    dadosAcc.email    = extractEmail(item)||dadosAcc.email;
-        if (!dadosAcc.telefone) dadosAcc.telefone = extractTel(item)||dadosAcc.telefone;
-        if (!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(item)||dadosAcc.dataNasc;
-        if (dadosAcc.genero==="male") dadosAcc.genero = extractGenero(item)||"male";
-        const apiFilled = Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v));
-        setTermoForm(p=>({...p,...apiFilled}));
-        if (dadosAcc.nome) setTermoAutoPreenchido(true);
-      }
-    } catch(e) { /* silencioso */ }
 
-    // 3b. Propostas FGTS (dados complementares)
-    if (!dadosAcc.nome||!dadosAcc.email||!dadosAcc.dataNasc||!dadosAcc.telefone) {
+    // Atualiza form com o que foi encontrado localmente já
+    const applyDados = () => {
+      const filled = Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v));
+      if(Object.keys(filled).length) {
+        setTermoForm(p=>({...p,...filled}));
+        if(dadosAcc.nome) setTermoAutoPreenchido(true);
+      }
+    };
+
+    // 3a. Histórico de termos CLT na API V8 (busca em todos os itens, não só [0])
+    try {
+      const end=new Date().toISOString();
+      const start=new Date(Date.now()-730*86400000).toISOString(); // 2 anos
+      const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=20&provider=QI&startDate=${start}&endDate=${end}`);
+      const itens=(r?.data||[]);
+      // Percorre todos os itens buscando campos preenchidos
+      for(const item of itens) {
+        if(!dadosAcc.nome)     dadosAcc.nome     = extractNome(item)||"";
+        if(!dadosAcc.email)    dadosAcc.email    = extractEmail(item)||"";
+        if(!dadosAcc.telefone) dadosAcc.telefone = extractTel(item)||"";
+        if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(item)||"";
+        if(dadosAcc.genero==="male") dadosAcc.genero = extractGenero(item)||"male";
+        // Para quando tiver tudo
+        if(dadosAcc.nome&&dadosAcc.email&&dadosAcc.dataNasc&&dadosAcc.telefone.length>=10) break;
+      }
+      applyDados();
+    } catch { /* silencioso */ }
+
+    // 3b. FGTS balance (dados mais ricos — inclui birthDate do cliente)
+    if(!dadosAcc.dataNasc) {
       try {
-        const rFgts = await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`);
-        const fgtsItem = (rFgts?.data||rFgts||[])[0];
-        if (fgtsItem) {
-          const fgtsDetail = fgtsItem.id ? await apiFetch(`/fgts/proposal/${fgtsItem.id}`) : fgtsItem;
-          if (!dadosAcc.nome)     dadosAcc.nome     = extractNome(fgtsDetail)||dadosAcc.nome;
-          if (!dadosAcc.email)    dadosAcc.email    = extractEmail(fgtsDetail)||dadosAcc.email;
-          if (!dadosAcc.telefone) dadosAcc.telefone = extractTel(fgtsDetail)||dadosAcc.telefone;
-          if (!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(fgtsDetail)||dadosAcc.dataNasc;
-          if (dadosAcc.genero==="male") dadosAcc.genero = extractGenero(fgtsDetail)||"male";
-          const apiFilled2 = Object.fromEntries(Object.entries(dadosAcc).filter(([,v])=>v));
-          setTermoForm(p=>({...p,...apiFilled2}));
-          if (dadosAcc.nome) setTermoAutoPreenchido(true);
+        const rBal=await apiFetch(`/fgts/balance?search=${cpfLimpo}&page=1&limit=5`);
+        const balItems=(rBal?.data||rBal||[]);
+        for(const b of Array.isArray(balItems)?balItems:[balItems]) {
+          if(!b||!b.id) continue;
+          if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(b)||"";
+          if(!dadosAcc.nome)     dadosAcc.nome     = extractNome(b)||"";
+          if(!dadosAcc.email)    dadosAcc.email    = extractEmail(b)||"";
+          if(!dadosAcc.telefone) dadosAcc.telefone = extractTel(b)||"";
+          if(dadosAcc.dataNasc) break;
         }
-      } catch(e) { /* silencioso */ }
+        applyDados();
+      } catch { /* silencioso */ }
+    }
+
+    // 3c. Propostas FGTS com detalhe completo
+    if(!dadosAcc.dataNasc||!dadosAcc.nome||!dadosAcc.telefone) {
+      try {
+        const rFgts=await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`);
+        const fgtsItems=(rFgts?.data||rFgts||[]);
+        for(const fi of Array.isArray(fgtsItems)?fgtsItems:[]) {
+          if(!fi?.id) continue;
+          const det=await apiFetch(`/fgts/proposal/${fi.id}`);
+          if(!dadosAcc.nome)     dadosAcc.nome     = extractNome(det)||dadosAcc.nome;
+          if(!dadosAcc.email)    dadosAcc.email    = extractEmail(det)||dadosAcc.email;
+          if(!dadosAcc.telefone) dadosAcc.telefone = extractTel(det)||dadosAcc.telefone;
+          if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(det)||dadosAcc.dataNasc;
+          // Tenta campo específico de FGTS
+          if(!dadosAcc.dataNasc && det.birthDate) dadosAcc.dataNasc=String(det.birthDate).split("T")[0];
+          if(!dadosAcc.dataNasc && det.borrower?.birthDate) dadosAcc.dataNasc=String(det.borrower.birthDate).split("T")[0];
+          if(dadosAcc.genero==="male"&&det.gender) dadosAcc.genero=det.gender;
+          if(dadosAcc.nome&&dadosAcc.dataNasc) break; // suficiente
+        }
+        applyDados();
+      } catch { /* silencioso */ }
+    }
+
+    // 3d. Também busca no provider celcoin
+    if(!dadosAcc.dataNasc) {
+      try {
+        const end=new Date().toISOString();
+        const start=new Date(Date.now()-730*86400000).toISOString();
+        const rc=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`);
+        const celItens=(rc?.data||[]);
+        for(const item of celItens) {
+          if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(item)||"";
+          if(!dadosAcc.nome)     dadosAcc.nome     = extractNome(item)||dadosAcc.nome;
+          if(dadosAcc.dataNasc) break;
+        }
+        applyDados();
+      } catch { /* silencioso */ }
     }
 
     setTermoBuscando(false);
