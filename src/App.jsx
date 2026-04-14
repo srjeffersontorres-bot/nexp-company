@@ -19353,6 +19353,14 @@ function PrataDigitalTab({ currentUser }) {
   const [cBusy,   setCBusy]   = useState(false);
   const [cErr,    setCErr]    = useState("");
   const [cSaldo,  setCSaldo]  = useState(null);
+  const [cCltAba, setCCltAba] = useState("simulacao"); // simulacao | operacoes
+  const [cltFila, setCltFila] = useState([]); // fila ao vivo
+  const [cltSearch, setCltSearch] = useState("");
+  const [cltPopup, setCltPopup]   = useState(false);  // popup gerar consentimento
+  const [cltStep,  setCltStep]    = useState(1);  // 1=form, 2=assinar
+  const [cltFornecSel, setCltFornecSel] = useState("QI"); // QI | celcoin
+  const [cltFilaLoading, setCltFilaLoading] = useState(false);
+  const [cTel,   setCTel]   = useState(""); const [cNasc,  setCNasc]  = useState(""); const [cSexo,  setCSexo]  = useState("Masculino");
   const [cSim,    setCSim]    = useState(null);
   const [cSBusy,  setCSBusy]  = useState(false);
   // eslint-disable-next-line no-unused-vars
@@ -19922,14 +19930,6 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
   // CLT individual
   const [cCpf,   setCCpf]   = useState(""); const [cNome,  setCNome]  = useState(""); const [cEmail, setCEmail] = useState("");
-  const [cCltAba, setCCltAba] = useState("simulacao"); // simulacao | operacoes
-  const [cltFila, setCltFila] = useState([]); // fila ao vivo
-  const [cltSearch, setCltSearch] = useState("");
-  const [cltPopup, setCltPopup]   = useState(false);  // popup gerar consentimento
-  const [cltStep,  setCltStep]    = useState(1);  // 1=form, 2=assinar
-  const [cltFornecSel, setCltFornecSel] = useState("QI"); // QI | celcoin
-  const [cltFilaLoading, setCltFilaLoading] = useState(false);
-  const [cTel,   setCTel]   = useState(""); const [cNasc,  setCNasc]  = useState(""); const [cSexo,  setCSexo]  = useState("Masculino");
   const [cParcelas,setCParcelas]=useState("12"); const [cValor, setCValor] = useState("5000");
   const [cBusy,  setCBusy]  = useState(false); const [cErr,   setCErr]   = useState(""); const [cPreSim,setCPreSim]=useState(null);
   const [cPollMsg,setCPollMsg]=useState(""); const [cSim,  setCSim]   = useState(null); const [cSBusy, setCSBusy] = useState(false);
