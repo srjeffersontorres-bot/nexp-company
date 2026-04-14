@@ -16595,6 +16595,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const PAGE_SIZE_TERMOS = 50; // 50 clientes por página
   const [showLoteCLT, setShowLoteCLT] = useState(false);
   const [showTermoPopup, setShowTermoPopup] = useState(false);
+  const [termoPopupErr, setTermoPopupErr] = useState("");
   const [loteCLTCpfs, setLoteCLTCpfs] = useState("");
   const [loteCLTItems, setLoteCLTItems] = useState([]);
   const [loteCLTRunning, setLoteCLTRunning] = useState(false);
@@ -16836,7 +16837,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           } else if(tentativas>20) clearInterval(poll);
         }catch{ if(tentativas>20) clearInterval(poll); }
       },4000);
-    } catch(e){ setErr("❌ "+e.message); }
+    } catch(e) {
+      const msg = "❌ "+e.message;
+      setErr(msg);
+      setTermoPopupErr(msg); // mostra erro dentro do popup
+    }
     setTermoLoading(false);
   };
 
@@ -17179,121 +17184,81 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setSimError("");
     setErr("");
     try {
-      // Carrega todas as tabelas de taxa (com cache — evita chamada extra)
+      // Carrega configs (com cache)
       let cfgList = configs.length ? configs : [];
       if(!cfgList.length) {
         const cfgRes = await apiFetch("/private-consignment/simulation/configs");
         cfgList = cfgRes?.configs || [];
-        if(cfgList.length) { setConfigs(cfgList); }
+        if(cfgList.length) setConfigs(cfgList);
       }
-      if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível na API.");
+      if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível.");
 
       const cfgsToRun = cfgIdOnly ? cfgList.filter(c=>c.id===cfgIdOnly) : cfgList;
+      const cpf = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||termo.individualDocumentNumber||"").replace(/\D/g,"");
+      // Margem: pega de múltiplos campos possíveis — fallback 500
+      const margem = parseFloat(
+        parcelaOverride
+        || termo.availableMarginValue||termo.disbursedIssueAmount
+        || termo.issueAmount||termo.disbursement_amount||0
+      ) || 500;
 
-      // Tenta buscar margem atualizada se o termo não tiver
-      // Extrai margem de múltiplos campos possíveis do V8
-      let margem = parcelaOverride
-        ? parseFloat(parcelaOverride)
-        : parseFloat(termo.availableMarginValue||termo.disbursedIssueAmount||termo.issueAmount||termo.disbursement_amount||0)||0;
-
-      if (!margem && !parcelaOverride) {
-        try {
-          const end=new Date().toISOString();
-          const start=new Date(Date.now()-45*86400000).toISOString();
-          const cpfBusca = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
-          if (cpfBusca) {
-            const fresh = await apiFetch(`/private-consignment/consult?search=${cpfBusca}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`,"GET",null,2,{skipRateLimit:true});
-            const freshItem = (fresh?.data||[]).find(x=>x.id===termo.id)||(fresh?.data||[])[0];
-            if (freshItem) margem = parseFloat(freshItem.availableMarginValue||freshItem.disbursedIssueAmount||0)||0;
-          }
-        } catch {}
-      }
-
+      const prazos = PARCELAS_PADRAO;
       const melhores = {};
-      // Tenta com a margem encontrada, ou com valores padrão crescentes
-      const VALORES_FALLBACK = margem > 0 ? [margem] : [200, 500, 1000, 2000, 5000];
 
-      // ⚡ Simula todas as combinações cfg × parcela × valor
-      await Promise.all(cfgsToRun.map(async (cfg) => {
-        const tasks = [];
-        for (const valor of VALORES_FALLBACK) {
-          for (const np of PARCELAS_PADRAO) {
-            tasks.push((async () => {
-              try {
-                const cpfT = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
-                const body = {
-                  configId: cfg.id,
-                  documentNumber: cpfT,
-                  numberOfInstallments: np,
-                  requestedAmount: valor > 0 ? valor : 1000,
-                  provider: "QI",
-                };
-                const sim = await apiFetch("/private-consignment/simulation","POST",body);
-                if(sim && (sim.disbursement_amount||sim.disbursed_issue_amount||sim.id||sim.totalValue)) return { np, sim, cfg };
-              } catch(e) {
-                if(e.message?.includes("expirada")||e.message?.includes("401")) throw e;
-              }
-              return null;
-            })());
-          }
-        }
-        const results = await Promise.allSettled(tasks);
-        for(const r of results) {
-          if(r.status==="rejected" && (r.reason?.message?.includes("expirada")||r.reason?.message?.includes("401"))) throw r.reason;
-        }
-        const resultados = results.filter(r=>r.status==="fulfilled"&&r.value).map(r=>r.value);
-        if(resultados.length) melhores[cfg.id] = { cfg, resultados };
-      }));
-
-      if(!Object.keys(melhores).length) {
-        // Fallback 1: sem valor — deixa o banco calcular
-        for (const cfg of cfgsToRun) {
-          for (const np of PARCELAS_PADRAO) {
+      // Igual ao padrão de operacoes que funciona — QI + Celcoin em paralelo
+      for (const cfg of cfgsToRun) {
+        const resultados = [];
+        await Promise.allSettled([
+          ...prazos.map(async np => {
             try {
-              const cpfFb = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
-              const s = await apiFetch("/private-consignment/simulation","POST",{
-                configId: cfg.id,
-                documentNumber: cpfFb,
-                numberOfInstallments: np,
-                requestedAmount: margem > 0 ? margem : 1000,
-                provider: "QI",
+              const sim = await apiFetch("/private-consignment/simulation","POST",{
+                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margem, provider:"QI"
               });
-              if(s?.disbursement_amount||s?.disbursed_issue_amount||s?.id||s?.totalValue||s?.installmentValue) {
-                if(!melhores[cfg.id]) melhores[cfg.id]={cfg,resultados:[]};
-                melhores[cfg.id].resultados.push({np,sim:s,cfg});
-              }
+              if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
+                resultados.push({np,sim,cfg});
             } catch {}
-          }
-          if(Object.keys(melhores).length) break;
+          }),
+          ...prazos.map(async np => {
+            try {
+              const sim = await apiFetch("/private-consignment/simulation","POST",{
+                configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:margem, provider:"celcoin"
+              });
+              if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
+                resultados.push({np,sim,cfg});
+            } catch {}
+          }),
+        ]);
+        if(resultados.length) melhores[cfg.id]={cfg,resultados};
+        if(Object.keys(melhores).length>=2) break;
+      }
+
+      // Se não obteve resultado, tenta com valores crescentes
+      if(!Object.keys(melhores).length) {
+        const cfg = cfgsToRun[0];
+        if(cfg) {
+          const resultados = [];
+          await Promise.allSettled([200,500,1000,2000,5000].flatMap(amt =>
+            [12,24,36].map(async np => {
+              try {
+                const sim = await apiFetch("/private-consignment/simulation","POST",{
+                  configId:cfg.id, documentNumber:cpf, numberOfInstallments:np, requestedAmount:amt, provider:"QI"
+                });
+                if(sim&&(sim.disbursement_amount||sim.disbursed_issue_amount)>0)
+                  resultados.push({np,sim,cfg});
+              } catch {}
+            })
+          ));
+          if(resultados.length) melhores[cfg.id]={cfg,resultados};
         }
       }
 
-      if(!Object.keys(melhores).length) {
-        // Fallback 2: tenta com provider=celcoin
-        for (const cfg of cfgsToRun.slice(0,1)) {
-          try {
-            const cpfFb2 = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
-            const s = await apiFetch("/private-consignment/simulation","POST",{
-              configId: cfg.id,
-              documentNumber: cpfFb2,
-              numberOfInstallments: 12,
-              requestedAmount: margem > 0 ? margem : 1000,
-              provider: "celcoin",
-            });
-            if(s?.disbursement_amount||s?.disbursed_issue_amount||s?.id||s?.totalValue||s?.installmentValue) {
-              melhores[cfg.id]={cfg,resultados:[{np:12,sim:s,cfg}]};
-            }
-          } catch {}
-        }
-      }
+      if(!Object.keys(melhores).length)
+        throw new Error("Sem resultado. CPF: "+cpf+" | Verifique se o cliente tem margem ativa no banco.");
 
-      if(!Object.keys(melhores).length) {
-        throw new Error("Simulação indisponível: o termo pode estar aguardando processamento. Aguarde alguns instantes e tente novamente.");
-      }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
     } catch(e) {
-      console.error("[CLT SIM] ERRO FINAL:", e.message);
+      console.error("[CLT SIM]", e.message);
       setSimError(e.message);
       if(!inline) setSimModal(null);
     }
@@ -17586,6 +17551,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const raw=fmt.replace(/\D/g,"");
                       setTermoForm(p=>({...p,cpf:fmt}));
                       setTermoAutoPreenchido(false);
+                      setTermoPopupErr("");
                       if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
                     onPaste={e=>{
@@ -17651,8 +17617,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 </select>
               </div>
             </div>
+            {termoPopupErr&&<div style={{color:"#F87171",background:"rgba(239,68,68,0.08)",border:"1px solid #EF444422",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:12}}>⚠ {termoPopupErr} <button onClick={()=>setTermoPopupErr("")} style={{background:"none",border:"none",color:"#F87171",cursor:"pointer",float:"right"}}>✕</button></div>}
             <div style={{display:"flex",justifyContent:"flex-start",marginTop:12}}>
-              <button onClick={()=>{gerarTermo();}}
+              <button onClick={()=>{setTermoPopupErr("");gerarTermo();}}
                 style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"11px 24px",fontSize:13.5,fontWeight:700,cursor:"pointer",opacity:(termoLoading||!termoForm.cpf||!termoForm.nome||!termoForm.email)?0.5:1,transition:"opacity 0.2s",boxShadow:`0 4px 14px ${C.lg1}44`}}>
                 {termoLoading?"⏳ Gerando termo...":"📋 Gerar Termo de Consentimento"}
               </button>
