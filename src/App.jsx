@@ -19402,12 +19402,25 @@ function PrataDigitalTab({ currentUser }) {
 
   const assinarTermo = async () => {
     const cpf = cCpf.replace(/\D/g,"");
-    if (cpf.length!==11 || !cNome.trim() || !cEmail.trim()) { setCTErr("Preencha nome, e-mail e CPF."); return; }
+    const isCelcoin = cFornec==="celcoin" || cltFornecSel==="celcoin";
+    // Validação: Celcoin precisa só de CPF; QI precisa de tudo
+    if (cpf.length!==11) { setCTErr("CPF inválido."); return; }
+    if (!isCelcoin && (!cNome.trim()||!cEmail.trim())) { setCTErr("Preencha nome e e-mail."); return; }
     setCTBusy(true); setCTErr(""); setCTermo(null);
     try {
-      const tel = cTel.replace(/\D/g,"");
-      const termPath = cFornec==="qitech" ? "/v1/private-payroll/authorization_term" : "/v1/private-payroll/celcoin/authorization_term";
-      const body = {
+      const tel = (cTel||"").replace(/\D/g,"");
+      const termPath = isCelcoin
+        ? "/v1/private-payroll/celcoin/authorization_term"
+        : "/v1/private-payroll/authorization_term";
+
+      // Celcoin: só CPF + dados mínimos obrigatórios
+      const body = isCelcoin ? {
+        document: cpf,
+        ip_address: "192.168.0.1",
+        lat: "-15.7942", long: "-47.8825",
+        model: navigator.userAgent.slice(0,200),
+        account_id: partId, token: partTkn,
+      } : {
         name: cNome.trim(), document: cpf, email: cEmail.trim(),
         number: tel.slice(2)||tel, area_code: tel.slice(0,2)||"11",
         ip_address: "192.168.0.1",
@@ -19415,8 +19428,34 @@ function PrataDigitalTab({ currentUser }) {
         model: navigator.userAgent.slice(0,200),
         account_id: partId, token: partTkn,
       };
+
       const d = await prataAPI(termPath, "POST", body);
-      setCTermo(d.data||d);
+      const termoData = d.data||d;
+      setCTermo(termoData);
+
+      // Para Celcoin: o termo é aprovado automaticamente — consulta margem imediatamente
+      if (isCelcoin) {
+        setTimeout(async () => {
+          try {
+            const cPath = "celcoin";
+            const r = await prataAPI(`/v1/${cPath}/balance?document=${cpf}`);
+            const saldo = r?.data||r;
+            if (saldo) setCSaldo(saldo);
+            // Adiciona à fila com status CONSENT_APPROVED (Celcoin aprova na hora)
+            setCltFila(prev => {
+              const novos = prev.filter(x=>x.cpf!==cpf);
+              return [{
+                id: termoData?.id||termoData?.external_id||cpf,
+                nome: cNome||"Cliente",
+                cpf, status: "CONSENT_APPROVED",
+                available_margin: saldo?.available_margin||saldo?.margin||null,
+                created_at: new Date().toISOString(),
+                partner: "Nexp",
+              }, ...novos];
+            });
+          } catch {}
+        }, 1500);
+      }
     } catch(e) { setCTErr(e.message); }
     setCTBusy(false);
   };
