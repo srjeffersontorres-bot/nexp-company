@@ -16697,7 +16697,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     try {
       const end=new Date().toISOString();
       const start=new Date(Date.now()-730*86400000).toISOString(); // 2 anos
-      const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=20&provider=QI&startDate=${start}&endDate=${end}`);
+      const r=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=20&provider=QI&startDate=${start}&endDate=${end}`,"GET",null,2,{skipRateLimit:true});
       const itens=(r?.data||[]);
       // Percorre todos os itens buscando campos preenchidos
       for(const item of itens) {
@@ -16715,7 +16715,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     // 3b. FGTS balance (dados mais ricos — inclui birthDate do cliente)
     if(!dadosAcc.dataNasc) {
       try {
-        const rBal=await apiFetch(`/fgts/balance?search=${cpfLimpo}&page=1&limit=5`);
+        const rBal=await apiFetch(`/fgts/balance?search=${cpfLimpo}&page=1&limit=5`,"GET",null,2,{skipRateLimit:true});
         const balItems=(rBal?.data||rBal||[]);
         for(const b of Array.isArray(balItems)?balItems:[balItems]) {
           if(!b||!b.id) continue;
@@ -16732,11 +16732,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     // 3c. Propostas FGTS com detalhe completo
     if(!dadosAcc.dataNasc||!dadosAcc.nome||!dadosAcc.telefone) {
       try {
-        const rFgts=await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`);
+        const rFgts=await apiFetch(`/fgts/proposal?search=${cpfLimpo}&page=1&limit=5`,"GET",null,2,{skipRateLimit:true});
         const fgtsItems=(rFgts?.data||rFgts||[]);
         for(const fi of Array.isArray(fgtsItems)?fgtsItems:[]) {
           if(!fi?.id) continue;
-          const det=await apiFetch(`/fgts/proposal/${fi.id}`);
+          const det=await apiFetch(`/fgts/proposal/${fi.id}`,"GET",null,2,{skipRateLimit:true});
           if(!dadosAcc.nome)     dadosAcc.nome     = extractNome(det)||dadosAcc.nome;
           if(!dadosAcc.email)    dadosAcc.email    = extractEmail(det)||dadosAcc.email;
           if(!dadosAcc.telefone) dadosAcc.telefone = extractTel(det)||dadosAcc.telefone;
@@ -16756,7 +16756,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       try {
         const end=new Date().toISOString();
         const start=new Date(Date.now()-730*86400000).toISOString();
-        const rc=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`);
+        const rc=await apiFetch(`/private-consignment/consult?search=${cpfLimpo}&page=1&limit=10&provider=celcoin&startDate=${start}&endDate=${end}`,"GET",null,2,{skipRateLimit:true});
         const celItens=(rc?.data||[]);
         for(const item of celItens) {
           if(!dadosAcc.dataNasc) dadosAcc.dataNasc = extractNasc(item)||"";
@@ -17834,27 +17834,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                         · {termos.length} registros{termos.length>=50?" (carregando mais...)":""}
                       </span>}
                     </div>
-                    {/* Filtro por data inicial */}
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{color:C.td,fontSize:11,whiteSpace:"nowrap"}}>De:</span>
-                      <input
-                        type="date"
-                        value={termosDataInicio}
-                        onChange={e=>setTermosDataInicio(e.target.value)}
-                        style={{...S.input,fontSize:11,padding:"4px 8px",cursor:"pointer",width:130}}
-                      />
-                      <button onClick={()=>buscarTermos(1,true)} disabled={loading}
-                        style={{background:C.atxt+"22",color:C.atxt,border:`1px solid ${C.atxt}44`,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                        🔍 Filtrar
-                      </button>
-                      {termosDataInicio&&<button onClick={()=>{setTermosDataInicio("");setTimeout(()=>buscarTermos(1,true),50);}}
-                        style={{background:"transparent",color:C.td,border:"none",fontSize:11,cursor:"pointer"}}>✕</button>}
-                    </div>
+
                   </div>
                   <input
                     value={termosSearch||""}
                     onChange={e=>setTermosSearch(e.target.value)}
-                    placeholder="🔍 Pesquisar consultas..."
+                    placeholder="🔍 Nome ou CPF..."
                     style={{...S.input,fontSize:12,padding:"5px 10px",width:200,minWidth:140}}
                   />
                 </div>
@@ -17905,13 +17890,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const filtrados = termos.filter(t=>{
                         if(termosFiltroStatus!=="Todos"&&t.status!==termosFiltroStatus) return false;
                         if(!termosSearch) return true;
-                        const s=termosSearch.toLowerCase();
-                        return (t.name||t.nome||"").toLowerCase().includes(s)||(t.documentNumber||t.cpf||"").includes(termosSearch.replace(/\D/g,""))||(t.status||"").toLowerCase().includes(s);
-                      }).sort((a,b)=>{
-                        // Ordem exata do banco: mais recente primeiro
-                        const ta=new Date(a.createdAt||a.created_at||0).getTime();
-                        const tb=new Date(b.createdAt||b.created_at||0).getTime();
-                        return tb-ta;
+                        const s=termosSearch.toLowerCase().trim();
+                        const cpfNums=termosSearch.replace(/\D/g,"");
+                        const nomeMatch=(t.name||t.nome||t.signerName||t.borrowerName||"").toLowerCase().includes(s);
+                        const cpfMatch=cpfNums.length>=3&&(t.documentNumber||t.cpf||t.borrowerDocumentNumber||"").replace(/\D/g,"").includes(cpfNums);
+                        return nomeMatch||cpfMatch;
                       });
                       const _totalPgs = Math.max(1,Math.ceil(filtrados.length/PAGE_SIZE_TERMOS));
                       const _curPage  = Math.min(termosPage,_totalPgs);
