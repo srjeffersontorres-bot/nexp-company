@@ -17973,10 +17973,13 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                           {/* Provedor */}
                           <td style={{padding:"8px 10px"}}>
                             {(() => {
-                              const prov = t.provider||t.banco||"";
-                              if(prov.toLowerCase().includes("celcoin")) return <span style={{color:"#A855F7",fontSize:10,fontWeight:700}}>Celcoin</span>;
-                              if(prov.toLowerCase().includes("qi")||prov.toLowerCase().includes("qitech")) return <span style={{color:"#3B6EF5",fontSize:10,fontWeight:700}}>QI Sociedade</span>;
-                              return <span style={{color:C.td,fontSize:10}}>—</span>;
+                              const prov = (t.provider||t.banco||t.source||"").toUpperCase();
+                              if(prov.includes("CELCOIN")) return <span style={{color:"#A855F7",fontSize:10,fontWeight:700}}>Celcoin</span>;
+                              if(prov.includes("QI")||prov.includes("QITECH")||prov==="QI") return <span style={{color:"#3B6EF5",fontSize:10,fontWeight:700}}>QI Soc.</span>;
+                              // fallback: se tem celcoin no link ou id
+                              const src = JSON.stringify(t).toLowerCase();
+                              if(src.includes("celcoin")) return <span style={{color:"#A855F7",fontSize:10,fontWeight:700}}>Celcoin</span>;
+                              return <span style={{color:"#3B6EF5",fontSize:10,fontWeight:700}}>QI Soc.</span>;
                             })()}
                           </td>
                           <td style={{padding:"8px 10px"}}>
@@ -19791,10 +19794,16 @@ function PrataDigitalTab({ currentUser }) {
 
                     {/* Dados cliente */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-                      {[["Nome completo",cNome,e=>setCNome(e.target.value),"text"],["CPF",cCpf,e=>setCCpf(maskCPF(e.target.value)),"text"],["E-mail",cEmail,e=>setCEmail(e.target.value),"email"],["Telefone (DDD+número)",cTel,e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11)),"text"]].map(([lbl,val,onChange,type])=>(
+                      {/* CPF sempre obrigatório */}
+                      <div>
+                        <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>CPF *</div>
+                        <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} style={{...S.input,fontSize:13,padding:"10px 14px",width:"100%"}} />
+                      </div>
+                      {/* Celcoin: só CPF | QI: todos os dados */}
+                      {cltFornecSel!=="celcoin" && [["Nome completo",cNome,e=>setCNome(e.target.value)],["E-mail",cEmail,e=>setCEmail(e.target.value)],["Telefone (DDD+número)",cTel,e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11))]].map(([lbl,val,onChange])=>(
                         <div key={lbl}>
                           <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div>
-                          <input value={val} onChange={onChange} type={type} style={{...S.input,fontSize:13,padding:"10px 14px",width:"100%"}} />
+                          <input value={val} onChange={onChange} style={{...S.input,fontSize:13,padding:"10px 14px",width:"100%"}} />
                         </div>
                       ))}
                     </div>
@@ -19804,7 +19813,7 @@ function PrataDigitalTab({ currentUser }) {
                       <button onClick={async()=>{
                         await assinarTermo();
                         if(!cTErr) setCltStep(2);
-                      }} disabled={cTBusy||!cNome||!cCpf} style={{flex:2,background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:(cTBusy||!cNome||!cCpf)?0.6:1}}>
+                      }} disabled={cTBusy||!cCpf||(cltFornecSel!=="celcoin"&&!cNome)} style={{flex:2,background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:(cTBusy||!cNome||!cCpf)?0.6:1}}>
                         {cTBusy?"⏳ Processando...":"✍️ ASSINAR TERMO →"}
                       </button>
                     </div>
@@ -19827,10 +19836,21 @@ function PrataDigitalTab({ currentUser }) {
                       </div>
                     </div>
                     <button onClick={()=>{
+                      // Adiciona à fila localmente para aparecer imediatamente
+                      const novoItem = {
+                        id: cTermo?.id||cTermo?.external_id||Date.now().toString(),
+                        nome: cNome||"Cliente",
+                        cpf: cCpf.replace(/\D/g,""),
+                        status: "WAITING_CONSENT",
+                        created_at: new Date().toISOString(),
+                        link: cTermo?.url||cTermo?.link||null,
+                        partner: "Nexp",
+                      };
+                      setCltFila(prev=>[novoItem,...prev]);
                       setCltPopup(false); setCltStep(1);
-                      buscarFilaCLT();
+                      buscarFilaCLT(); // busca também da API em background
                     }} style={{width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
-                      📄 Ver na Fila de Consultas
+                      📄 Ver na Fila de Consultas →
                     </button>
                   </>
                 )}
