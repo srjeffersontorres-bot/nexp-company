@@ -19355,6 +19355,7 @@ function PrataDigitalTab({ currentUser }) {
   const [cSaldo,  setCSaldo]  = useState(null);
   const [cSim,    setCSim]    = useState(null);
   const [cSBusy,  setCSBusy]  = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [cSErr,   setCSErr]   = useState("");
   const [cTermo,  setCTermo]  = useState(null); // authorization_term result
   const [cTBusy,  setCTBusy]  = useState(false);
@@ -19384,6 +19385,32 @@ function PrataDigitalTab({ currentUser }) {
       setCTermo(d.data||d);
     } catch(e) { setCTErr(e.message); }
     setCTBusy(false);
+  };
+
+  const buscarFilaCLT = async () => {
+    if (!valid) return;
+    setCltFilaLoading(true);
+    try {
+      const fPath = cFornec==="QI" ? "qitech" : "celcoin";
+      const cPath = cFornec==="QI" ? "qi-sociedade" : "celcoin";
+      // Busca histórico dos últimos 30 dias
+      const end30 = new Date().toISOString().split("T")[0];
+      const start30 = new Date(Date.now()-30*86400000).toISOString().split("T")[0];
+      let items = [];
+      try {
+        const d = await prataAPI(`/v1/${cPath}/consult/history?start_date=${start30}&end_date=${end30}&page=1&per_page=100`);
+        items = d?.data || d?.items || d?.consults || [];
+      } catch {
+        try {
+          const d2 = await prataAPI(`/v1/${cPath}/consult?start=${start30}&end=${end30}`);
+          items = d2?.data || d2?.items || [];
+        } catch {}
+      }
+      if (items.length) {
+        setCltFila(items.sort((a,b)=>new Date(b.created_at||b.createdAt||0)-new Date(a.created_at||a.createdAt||0)));
+      }
+    } catch {}
+    setCltFilaLoading(false);
   };
 
   const buscarSaldoCLT = async () => {
@@ -19471,22 +19498,10 @@ function PrataDigitalTab({ currentUser }) {
 
   return (
     <div>
-      {/* Header sessão */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0 10px",borderBottom:`1px solid ${C.b1}`,flexWrap:"wrap",gap:8,marginBottom:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>🪙</span>
-          <div>
-            <div style={{color:C.tp,fontSize:14,fontWeight:700}}>Prata Digital</div>
-            <div style={{color:"#34D399",fontSize:11}}>● Sessão ativa · {cred.usuario}</div>
-          </div>
-        </div>
-        <button onClick={()=>{setTkn(null);setTknExp(null);doLogin(cred);}} style={{background:"rgba(79,142,247,0.10)",color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>🔄 Reconectar</button>
-      </div>
-
-      {/* Tabs FGTS | CLT */}
+      {/* Tabs FGTS | CLT — sem header repetido, já aparece no menu do banco */}
       <div style={{display:"flex",borderBottom:`1px solid ${C.b1}`,marginBottom:18}}>
         {tabBtn2(aba==="fgts","📋 FGTS",()=>setAba("fgts"),"#34D399")}
-        {tabBtn2(aba==="clt","💼 Crédito do Trabalhador (CLT)",()=>setAba("clt"),"#60A5FA")}
+        {tabBtn2(aba==="clt","💼 Crédito do Trabalhador",()=>setAba("clt"),"#60A5FA")}
       </div>
 
       {/* ════ ABA FGTS ════ */}
@@ -19564,84 +19579,234 @@ function PrataDigitalTab({ currentUser }) {
 
       {/* ════ ABA CLT ════ */}
       {aba==="clt" && (
-        <div style={{maxWidth:640}}>
-          {/* Fornecedor */}
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
-            {[["qitech","QI Tech","#3B6EF5"],["celcoin","Celcoin","#A855F7"]].map(([id,lbl,cor])=>
-              fornecBtn(id,lbl,cor,cFornec,setCFornec,()=>{setCSaldo(null);setCSim(null);setCTermo(null);setCErr("");setCSErr("");setCTErr("");})
-            )}
-          </div>
-
-          {/* Passo 1 — Assinar Termo IN138 */}
-          <div style={{...S.card,padding:"18px 22px",marginBottom:16,border:"1px solid rgba(96,165,250,0.2)"}}>
-            <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Passo 1 — Assinar Termo de Autorização (IN138)</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <input value={cNome} onChange={e=>setCNome(e.target.value)} placeholder="Nome completo do cliente" style={{...S.input,fontSize:12}} />
-              <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} placeholder="CPF" maxLength={14} style={{...S.input,fontSize:12}} />
-              <input value={cEmail} onChange={e=>setCEmail(e.target.value)} placeholder="E-mail" style={{...S.input,fontSize:12}} />
-              <input value={cTel} onChange={e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11))} placeholder="DDD + Telefone (ex: 84999999999)" style={{...S.input,fontSize:12}} />
-            </div>
-            {cTErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cTErr}</div>}
-            {cTermo && <div style={{color:"#34D399",fontSize:12,marginBottom:8}}>✅ Termo assinado! ID: {cTermo.id||cTermo.external_id||"OK"}</div>}
-            <button onClick={assinarTermo} disabled={cTBusy} style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:cTBusy?0.7:1}}>
-              {cTBusy?"⏳ Assinando...":"✍️ Assinar Termo"}
-            </button>
-          </div>
-
-          {/* Passo 2 — Consultar Saldo/Margem */}
-          <div style={{...S.card,padding:"18px 22px",marginBottom:16,border:"1px solid rgba(96,165,250,0.2)"}}>
-            <div style={{color:"#60A5FA",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Passo 2 — Consultar Saldo / Margem CLT</div>
-            <div style={{display:"flex",gap:10,marginBottom:10}}>
-              <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&buscarSaldoCLT()}
-                placeholder="CPF do cliente" maxLength={14} style={{...S.input,flex:1,fontSize:14,padding:"11px 14px"}} />
-              <button onClick={buscarSaldoCLT} disabled={cBusy} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:cBusy?0.7:1,whiteSpace:"nowrap"}}>
-                {cBusy?"⏳ Consultando...":"🔍 Consultar Margem"}
+        <div>
+          {/* Sub-abas Simulação / Operações */}
+          <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:16}}>
+            {[["simulacao","⚡ Simulação"],["operacoes","📡 Operações"]].map(([id,lbl])=>(
+              <button key={id} onClick={()=>setCCltAba(id)}
+                style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
+                  fontWeight:cCltAba===id?700:400,color:cCltAba===id?"#60A5FA":C.tm,
+                  borderBottom:cCltAba===id?"2px solid #60A5FA":"2px solid transparent",marginBottom:"-1px"}}>
+                {lbl}
               </button>
-            </div>
-            {cErr && <div style={{color:"#F87171",fontSize:12}}>⚠ {cErr}</div>}
+            ))}
           </div>
 
-          {cSaldo && (
-            <div style={{...S.card,padding:"18px 22px",marginBottom:14}}>
-              <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:14}}>📊 Margem CLT — {cFornec==="qitech"?"QI Tech":"Celcoin"}</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
-                {[
-                  ["Margem Disponível", fmtR(cSaldo.available_margin||cSaldo.margin)],
-                  ["Margem Bruta",      fmtR(cSaldo.gross_margin||cSaldo.total_margin)],
-                  ["Margem Usada",      fmtR(cSaldo.used_margin||cSaldo.committed_margin)],
-                ].map(([l,v])=>(
-                  <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}>
-                    <div style={{color:C.td,fontSize:10,marginBottom:3,textTransform:"uppercase"}}>{l}</div>
-                    <div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v||"—"}</div>
-                  </div>
-                ))}
+          {/* ── ABA SIMULAÇÃO ── */}
+          {cCltAba==="simulacao" && (
+            <div>
+              {/* Toolbar */}
+              <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+                <button onClick={()=>{setCltPopup(true);setCltStep(1);setCltFornecSel("QI");}}
+                  style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13.5,fontWeight:700,cursor:"pointer",boxShadow:`0 4px 16px ${C.lg1}44`}}>
+                  + Gerar Consentimento
+                </button>
+                <button style={{background:"rgba(79,142,247,0.15)",color:"#60A5FA",border:"1px solid #3B6EF555",borderRadius:10,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ⚡ Lote
+                </button>
               </div>
-              {cSErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cSErr}</div>}
-              <button onClick={criarSimCLT} disabled={cSBusy||!margemCLT}
-                style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:(cSBusy||!margemCLT)?0.7:1}}>
-                {cSBusy?"⏳ Simulando...":"⚡ Criar Simulação CLT"}
-              </button>
+
+              {/* Busca + registros + botões */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{color:C.ts,fontSize:13,fontWeight:700}}>📄 Consultas CLT</div>
+                  <input value={cltSearch} onChange={e=>setCltSearch(e.target.value)} placeholder="🔍 Nome ou CPF..."
+                    style={{...S.input,fontSize:12,padding:"5px 10px",width:200}} />
+                </div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  {cltFila.length>0&&<span style={{color:C.td,fontSize:11}}>{cltFila.length} Registros encontrados</span>}
+                  <button style={{background:"rgba(52,211,153,0.1)",color:"#34D399",border:"1px solid #34D39933",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📥 Exportar</button>
+                  <button onClick={()=>setCltFila([])} style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"1px solid #EF444422",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>🗑 Limpar</button>
+                  <button onClick={()=>buscarFilaCLT()} disabled={cltFilaLoading} style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>{cltFilaLoading?"⏳":"🔄"}</button>
+                </div>
+              </div>
+
+              {/* Filtros de status */}
+              {(() => {
+                const statusOpts=[
+                  ["Todos",null,"#94A3B8"],
+                  ["⏳ Aguardando Aceite","WAITING_CONSENT","#FBBF24"],
+                  ["✅ Aceito","CONSENT_APPROVED","#34D399"],
+                  ["🧮 Analisando","WAITING_CONSULT","#60A5FA"],
+                  ["✅ Aprovado","SUCCESS","#34D399"],
+                  ["❌ Falhou","FAILED","#F87171"],
+                  ["🚫 Rejeitado","REJECTED","#EF4444"],
+                ];
+                const [cltStatusFilter, setCltStatusFilter] = React.useState(null);
+                return (
+                  <div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                      {statusOpts.map(([lbl,val,cor])=>{
+                        const cnt = val ? cltFila.filter(x=>x.status===val).length : cltFila.length;
+                        const active = cltStatusFilter===val;
+                        return (
+                          <button key={lbl} onClick={()=>setCltStatusFilter(val)}
+                            style={{background:active?cor+"22":"transparent",color:active?cor:C.td,border:`1px solid ${active?cor+"55":C.b1}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:active?700:400,cursor:"pointer"}}>
+                            {lbl} ({cnt})
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Fila */}
+                    {cltFila.length > 0 ? (
+                      <div style={{...S.card,overflow:"hidden",padding:0}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                          <thead><tr style={{background:C.deep}}>
+                            {["Cliente","CPF","Parceiro","Status","Margem","Link","Probabilidade","Ação"].map(h=>(
+                              <th key={h} style={{color:C.td,fontSize:10,fontWeight:700,padding:"10px 12px",textAlign:"left",borderBottom:`1px solid ${C.b1}`,whiteSpace:"nowrap"}}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {cltFila
+                              .filter(t=>(!cltStatusFilter||t.status===cltStatusFilter)&&(!cltSearch||(t.nome||t.name||"").toLowerCase().includes(cltSearch.toLowerCase())||(t.cpf||"").includes(cltSearch.replace(/\D/g,""))))
+                              .map((t,i)=>{
+                                const COR_ST={WAITING_CONSENT:"#FBBF24",CONSENT_APPROVED:"#34D399",WAITING_CONSULT:"#60A5FA",SUCCESS:"#34D399",FAILED:"#F87171",REJECTED:"#EF4444"};
+                                const LBL_ST={WAITING_CONSENT:"⏳ Aguard. Aceite",CONSENT_APPROVED:"✅ Aceito",WAITING_CONSULT:"🧮 Analisando",SUCCESS:"✅ Aprovado",FAILED:"❌ Falhou",REJECTED:"🚫 Rejeitado"};
+                                const cor = COR_ST[t.status]||C.td;
+                                const margem = parseFloat(t.available_margin||t.margin||t.availableMargin||0);
+                                return (
+                                  <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}
+                                    onMouseEnter={e=>e.currentTarget.style.background=C.deep}
+                                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                    <td style={{padding:"8px 12px",color:C.ts,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.nome||t.name||"—"}</td>
+                                    <td style={{padding:"8px 12px",color:C.tp,fontFamily:"monospace",fontSize:11}}>{maskCPF((t.cpf||t.document||"").replace(/\D/g,""))}</td>
+                                    <td style={{padding:"8px 12px",color:C.td,fontSize:11}}>{t.partner||"—"}</td>
+                                    <td style={{padding:"8px 12px"}}>
+                                      <span style={{background:cor+"18",color:cor,border:`1px solid ${cor}33`,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600,whiteSpace:"nowrap"}}>{LBL_ST[t.status]||t.status||"—"}</span>
+                                    </td>
+                                    <td style={{padding:"8px 12px",color:margem>0?"#34D399":C.td,fontWeight:margem>0?700:400}}>{margem>0?fmtR(margem):"—"}</td>
+                                    <td style={{padding:"8px 12px"}}>{t.link?<a href={t.link} target="_blank" rel="noopener noreferrer" style={{color:"#60A5FA",fontSize:11}}>🔗 Link</a>:"—"}</td>
+                                    <td style={{padding:"8px 12px",color:C.td,fontSize:11}}>{margem>500?"🟢 Alta":margem>0?"🟡 Média":t.status==="SUCCESS"?"🟢 Alta":"—"}</td>
+                                    <td style={{padding:"8px 12px"}}>
+                                      <button onClick={()=>{setCCpf(maskCPF((t.cpf||t.document||"").replace(/\D/g,"")));setCCltAba("operacoes");}} style={{background:C.abg,color:C.atxt,border:"none",borderRadius:7,padding:"4px 10px",fontSize:10,cursor:"pointer"}}>Ver</button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div style={{textAlign:"center",padding:"32px 0",color:C.td}}>
+                        {cltFilaLoading?"⏳ Carregando fila..":"Nenhuma consulta. Clique em 🔄 para buscar o histórico."}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
-          {cSim && simCard("📋 Simulação CLT — "+(cFornec==="qitech"?"QI Tech":"Celcoin"), [
-            ["Valor Liberado", fmtR(cSim.disbursed_amount||cSim.net_amount||cSim.amount)],
-            ["Parcelas",       String(sPerCLT.length||cSim.installment_count||"—")],
-            ["Taxa Mensal",    cSim.monthly_rate ? cSim.monthly_rate+"%" : "—"],
-            ["CET Anual",      cSim.annual_cet   ? cSim.annual_cet+"%" : "—"],
-          ], sPerCLT.length > 0 ? [
-            <table key="t" style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead><tr>{["Parcela","Vencimento","Valor"].map(h=><th key={h} style={{color:C.tm,fontWeight:700,padding:"5px 10px",textAlign:"left",borderBottom:`1px solid ${C.b1}`}}>{h}</th>)}</tr></thead>
-              <tbody>{sPerCLT.map((p,i)=>{
-                const dt=new Date(p.due_date||p.dueDate);
-                return <tr key={i} style={{borderBottom:`1px solid ${C.b1}22`}}>
-                  <td style={{padding:"5px 10px",color:C.td,fontSize:11}}>{i+1}x</td>
-                  <td style={{padding:"5px 10px",color:C.tp}}>{isNaN(dt)?"—":dt.toLocaleDateString("pt-BR",{year:"numeric",month:"short"})}</td>
-                  <td style={{padding:"5px 10px",color:"#60A5FA",fontWeight:600}}>{fmtR(p.amount||p.installment_face_value)}</td>
-                </tr>;
-              })}</tbody>
-            </table>
-          ] : [])}
+          {/* ── ABA OPERAÇÕES ── */}
+          {cCltAba==="operacoes" && (
+            <div style={{maxWidth:640}}>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                {[["QI","QI Sociedade","#3B6EF5"],["celcoin","Celcoin","#A855F7"]].map(([id,lbl,cor])=>
+                  fornecBtn(id,lbl,cor,cFornec,setCFornec,()=>{setCSaldo(null);setCSim(null);setCTermo(null);setCErr("");setCSErr("");setCTErr("");})
+                )}
+              </div>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <input value={cCpf} onChange={e=>setCCpf(maskCPF(e.target.value))} onKeyDown={e=>e.key==="Enter"&&buscarSaldoCLT()} placeholder="CPF do cliente" maxLength={14} style={{...S.input,flex:1,fontSize:14,padding:"11px 14px"}} />
+                <button onClick={buscarSaldoCLT} disabled={cBusy} style={{background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:12,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",opacity:cBusy?0.7:1}}>{cBusy?"⏳":"🔍 Consultar"}</button>
+              </div>
+              {cErr && <div style={{color:"#F87171",fontSize:12,marginBottom:8}}>⚠ {cErr}</div>}
+              {cSaldo && (
+                <div style={{...S.card,padding:"18px 22px",marginBottom:14}}>
+                  <div style={{color:C.tp,fontSize:14,fontWeight:700,marginBottom:12}}>📊 Margem CLT</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+                    {[["Margem Disponível",fmtR(cSaldo.available_margin||cSaldo.margin)],["Margem Bruta",fmtR(cSaldo.gross_margin||cSaldo.total_margin)],["Margem Usada",fmtR(cSaldo.used_margin||cSaldo.committed_margin)]].map(([l,v])=>(
+                      <div key={l} style={{background:C.deep,borderRadius:9,padding:"9px 12px"}}><div style={{color:C.td,fontSize:10,marginBottom:3}}>{l}</div><div style={{color:C.tp,fontSize:13,fontWeight:700}}>{v||"—"}</div></div>
+                    ))}
+                  </div>
+                  <button onClick={criarSimCLT} disabled={cSBusy||!margemCLT} style={{background:`linear-gradient(135deg,#60A5FA,#3B82F6)`,color:"#fff",border:"none",borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:(cSBusy||!margemCLT)?0.7:1}}>
+                    {cSBusy?"⏳ Simulando...":"⚡ Simular"}
+                  </button>
+                </div>
+              )}
+              {cSim && simCard("📋 Simulação CLT",[
+                ["Valor Liberado",fmtR(cSim.disbursed_amount||cSim.net_amount||cSim.amount)],
+                ["Parcelas",String(sPerCLT.length||cSim.installment_count||"—")],
+                ["Taxa Mensal",cSim.monthly_rate?cSim.monthly_rate+"%":"—"],
+                ["CET Anual",cSim.annual_cet?cSim.annual_cet+"%":"—"],
+              ])}
+            </div>
+          )}
+
+          {/* ── POPUP: Gerar Consentimento ── */}
+          {cltPopup && (
+            <div onClick={()=>setCltPopup(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(10px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(145deg,#0A1628,#060E1E)",border:`1px solid ${C.b1}`,borderRadius:22,padding:"28px 32px",maxWidth:500,width:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+
+                {cltStep===1 && (
+                  <>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                      <div style={{color:C.tp,fontSize:15,fontWeight:800}}>+ Gerar Consentimento</div>
+                      <button onClick={()=>setCltPopup(false)} style={{background:"transparent",border:"none",color:C.td,fontSize:18,cursor:"pointer"}}>✕</button>
+                    </div>
+
+                    {/* Banco */}
+                    <div style={{marginBottom:14}}>
+                      <div style={{color:C.td,fontSize:11,marginBottom:6}}>Banco provedor:</div>
+                      <div style={{display:"flex",gap:8}}>
+                        {[["QI","QI Sociedade","#3B6EF5"],["celcoin","Celcoin","#A855F7"]].map(([id,lbl,cor])=>(
+                          <button key={id} onClick={()=>setCltFornecSel(id)}
+                            style={{background:cltFornecSel===id?cor+"22":C.deep,color:cltFornecSel===id?cor:C.td,border:`2px solid ${cltFornecSel===id?cor:"rgba(255,255,255,0.08)"}`,borderRadius:10,padding:"8px 18px",cursor:"pointer",fontWeight:cltFornecSel===id?700:400,fontSize:13}}>
+                            {lbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dados cliente */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                      {[["Nome completo",cNome,e=>setCNome(e.target.value),"text"],["CPF",cCpf,e=>setCCpf(maskCPF(e.target.value)),"text"],["E-mail",cEmail,e=>setCEmail(e.target.value),"email"],["Telefone (DDD+número)",cTel,e=>setCTel(e.target.value.replace(/\D/g,"").slice(0,11)),"text"]].map(([lbl,val,onChange,type])=>(
+                        <div key={lbl}>
+                          <div style={{color:C.td,fontSize:10,textTransform:"uppercase",marginBottom:4}}>{lbl}</div>
+                          <input value={val} onChange={onChange} type={type} style={{...S.input,fontSize:13,padding:"10px 14px",width:"100%"}} />
+                        </div>
+                      ))}
+                    </div>
+                    {cTErr && <div style={{color:"#F87171",fontSize:12,marginBottom:10}}>⚠ {cTErr}</div>}
+                    <div style={{display:"flex",gap:10}}>
+                      <button onClick={()=>setCltPopup(false)} style={{flex:1,background:"transparent",border:`1px solid ${C.b2}`,color:C.tm,borderRadius:10,padding:"11px",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+                      <button onClick={async()=>{
+                        await assinarTermo();
+                        if(!cTErr) setCltStep(2);
+                      }} disabled={cTBusy||!cNome||!cCpf} style={{flex:2,background:"linear-gradient(135deg,#60A5FA,#3B82F6)",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:(cTBusy||!cNome||!cCpf)?0.6:1}}>
+                        {cTBusy?"⏳ Processando...":"✍️ ASSINAR TERMO →"}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {cltStep===2 && (
+                  <>
+                    <div style={{textAlign:"center",marginBottom:20}}>
+                      <div style={{fontSize:48,marginBottom:12}}>✅</div>
+                      <div style={{color:"#34D399",fontSize:16,fontWeight:700,marginBottom:6}}>Passo 1 — Assinar Termo de Autorização (IN138)</div>
+                      <div style={{color:C.td,fontSize:13}}>Termo criado! ID: {cTermo?.id||cTermo?.external_id||"OK"}</div>
+                    </div>
+                    <div style={{background:C.deep,borderRadius:12,padding:"16px",marginBottom:16}}>
+                      <div style={{color:C.tm,fontSize:12,marginBottom:8}}>Dados enviados:</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        {[["Nome",cNome],["CPF",cCpf],["E-mail",cEmail],["Telefone",cTel]].map(([l,v])=>(
+                          <div key={l}><div style={{color:C.td,fontSize:10}}>{l}</div><div style={{color:C.tp,fontSize:12,fontWeight:600}}>{v||"—"}</div></div>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={()=>{
+                      setCltPopup(false); setCltStep(1);
+                      buscarFilaCLT();
+                    }} style={{width:"100%",background:`linear-gradient(135deg,${C.lg1},${C.lg2})`,color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                      📄 Ver na Fila de Consultas
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -19757,6 +19922,13 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
   // CLT individual
   const [cCpf,   setCCpf]   = useState(""); const [cNome,  setCNome]  = useState(""); const [cEmail, setCEmail] = useState("");
+  const [cCltAba, setCCltAba] = useState("simulacao"); // simulacao | operacoes
+  const [cltFila, setCltFila] = useState([]); // fila ao vivo
+  const [cltSearch, setCltSearch] = useState("");
+  const [cltPopup, setCltPopup]   = useState(false);  // popup gerar consentimento
+  const [cltStep,  setCltStep]    = useState(1);  // 1=form, 2=assinar
+  const [cltFornecSel, setCltFornecSel] = useState("QI"); // QI | celcoin
+  const [cltFilaLoading, setCltFilaLoading] = useState(false);
   const [cTel,   setCTel]   = useState(""); const [cNasc,  setCNasc]  = useState(""); const [cSexo,  setCSexo]  = useState("Masculino");
   const [cParcelas,setCParcelas]=useState("12"); const [cValor, setCValor] = useState("5000");
   const [cBusy,  setCBusy]  = useState(false); const [cErr,   setCErr]   = useState(""); const [cPreSim,setCPreSim]=useState(null);
@@ -20817,11 +20989,13 @@ function ApisBancosPage({ currentUser, contacts, onLoteSimFim }) {
             {banco?.id==="v8"?"V8 DIGITAL":banco?.nome}
           </h1>
         </div>
-        {/* Sub-tabs por banco */}
-        <div style={{ display:"flex", gap:0 }}>
-          {banco?.subs.includes("fgts")    && tabBtn(abaSim==="fgts",    "📋 FGTS",                  ()=>setAbaSim("fgts"),    banco?.cor)}
-          {banco?.subs.includes("credito") && tabBtn(abaSim==="credito", "💼 Crédito do Trabalhador", ()=>setAbaSim("credito"), banco?.cor)}
-        </div>
+        {/* Sub-tabs por banco — só para bancos que não têm navegação própria (não Prata) */}
+        {bancoSel!=="prata" && (
+          <div style={{ display:"flex", gap:0 }}>
+            {banco?.subs.includes("fgts")    && tabBtn(abaSim==="fgts",    "📋 FGTS",                  ()=>setAbaSim("fgts"),    banco?.cor)}
+            {banco?.subs.includes("credito") && tabBtn(abaSim==="credito", "💼 Crédito do Trabalhador", ()=>setAbaSim("credito"), banco?.cor)}
+          </div>
+        )}
       </div>
 
       {/* Conteúdo */}
