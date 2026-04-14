@@ -17129,28 +17129,50 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       if(!cfgList.length) throw new Error("Nenhuma tabela de taxa disponível na API.");
 
       const cfgsToRun = cfgIdOnly ? cfgList.filter(c=>c.id===cfgIdOnly) : cfgList;
-      const margem = parcelaOverride ? parseFloat(parcelaOverride) : parseFloat(termo.availableMarginValue)||0;
-      const melhores = {};
 
-      // ⚡ PARALELO — todas as combinações cfg × parcela ao mesmo tempo
+      // Tenta buscar margem atualizada se o termo não tiver
+      let margem = parcelaOverride ? parseFloat(parcelaOverride) : parseFloat(termo.availableMarginValue)||0;
+      if (!margem && !parcelaOverride) {
+        try {
+          const end=new Date().toISOString();
+          const start=new Date(Date.now()-45*86400000).toISOString();
+          const fresh = await apiFetch(`/private-consignment/consult?search=${(termo.documentNumber||termo.cpf||"").replace(/\D/g,"")}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
+          const freshItem = (fresh?.data||[]).find(x=>x.id===termo.id)||(fresh?.data||[])[0];
+          if (freshItem) margem = parseFloat(freshItem.availableMarginValue)||0;
+        } catch {}
+      }
+
+      const melhores = {};
+      // Valores a tentar quando não há margem conhecida
+      const VALORES_FALLBACK = margem > 0 ? [margem] : [500, 1000, 2000];
+
+      // ⚡ Simula todas as combinações cfg × parcela × valor
       await Promise.all(cfgsToRun.map(async (cfg) => {
-        const tasks = PARCELAS_PADRAO.map(async (np) => {
-          const body = {
-            consult_id: termo.id,
-            config_id: cfg.id,
-            number_of_installments: np,
-            provider: "QI",
-            ...(margem > 0
-              ? { installment_face_value: margem }
-              : { disbursed_amount: 1000 }
-            ),
-          };
-          const sim = await apiFetch("/private-consignment/simulation","POST",body);
-          if(sim && typeof sim === "object") return { np, sim, cfg };
-          return null;
-        });
+        const tasks = [];
+        for (const valor of VALORES_FALLBACK) {
+          for (const np of PARCELAS_PADRAO) {
+            tasks.push((async () => {
+              try {
+                const body = {
+                  consult_id: termo.id,
+                  config_id: cfg.id,
+                  number_of_installments: np,
+                  provider: "QI",
+                  ...(margem > 0
+                    ? { installment_face_value: margem }
+                    : { disbursed_amount: valor }
+                  ),
+                };
+                const sim = await apiFetch("/private-consignment/simulation","POST",body);
+                if(sim && typeof sim === "object" && sim.id) return { np, sim, cfg };
+              } catch(e) {
+                if(e.message?.includes("expirada")||e.message?.includes("401")) throw e;
+              }
+              return null;
+            })());
+          }
+        }
         const results = await Promise.allSettled(tasks);
-        // Verifica se algum erro é de sessão expirada
         for(const r of results) {
           if(r.status==="rejected" && (r.reason?.message?.includes("expirada")||r.reason?.message?.includes("401"))) throw r.reason;
         }
@@ -17159,7 +17181,24 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       }));
 
       if(!Object.keys(melhores).length) {
-        throw new Error("⚠️ Simulação indisponível no momento. Tente novamente em alguns segundos ou verifique o saldo disponível do cliente.");
+        // Tenta com qualquer valor de disbursed_amount antes de desistir
+        try {
+          const fallbackBody = {
+            consult_id: termo.id,
+            config_id: cfgsToRun[0]?.id,
+            number_of_installments: 12,
+            provider: "QI",
+            disbursed_amount: 1000,
+          };
+          const fallbackSim = await apiFetch("/private-consignment/simulation","POST",fallbackBody);
+          if(fallbackSim?.id) {
+            melhores[cfgsToRun[0].id] = { cfg:cfgsToRun[0], resultados:[{np:12,sim:fallbackSim,cfg:cfgsToRun[0]}] };
+          }
+        } catch {}
+      }
+
+      if(!Object.keys(melhores).length) {
+        throw new Error("Não foi possível simular: verifique se o termo está ativo no banco V8 e tente novamente.");
       }
       setSimConfigs(melhores);
       setSimConfigSel(cfgList[0]?.id);
