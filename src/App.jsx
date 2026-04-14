@@ -17006,37 +17006,50 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         ? new Date(termosDataInicio).toISOString()
         : new Date(Date.now()-7*86400000).toISOString();
 
-      // ── Fase 1: Mostra cache COMPLETO imediatamente (todos os clientes) ──
+      // ── Fase 1: Mostra cache imediatamente (ordem preservada do banco) ──
       const cacheAtual = (() => {
-        try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
+        try {
+          const raw = JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]");
+          return raw.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+        } catch { return []; }
       })();
       if (cacheAtual.length > 0 && !forceRefresh) {
-        // Mostra tudo do cache sem esperar API — mais recente primeiro
-      setTermos([...cacheAtual]); // ordem do banco preservada
+        setTermos([...cacheAtual]);
         setTermosPage(pg);
         setLoading(false);
       } else {
         setLoading(true);
       }
 
-      // ── Fase 2: Busca API para atualizar status e pegar novos ──────
+      // ── Fase 2: Busca API — ordem do banco é autoritativa ──────────
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
         "GET",null,2,{skipRateLimit:true}
       );
+      // A API retorna em ordem de chegada (mais recente primeiro)
       const pg1 = (r1?.data||[]).map(mapLink);
       const totalApiPages = r1?.pages?.totalPages||r1?.totalPages||1;
 
-      // Persiste merge + atualiza UI com lista completa ordenada
-      const lista1 = persistirTermos(pg1);
-      setTermos([...lista1]); // ordem do banco preservada
+      // Monta lista: pg1 (ordem do banco) + cache antigo não incluído no pg1
+      const pg1Ids = new Set(pg1.map(x=>x.id));
+      const cacheAntigo = cacheAtual.filter(x=>!pg1Ids.has(x.id));
+      // Atualiza status dos itens do cache que vieram na pg1
+      const cacheAtualizado = cacheAntigo.map(c=>{
+        const fresh = pg1.find(x=>x.id===c.id);
+        return fresh ? {...c,...fresh,link:c.link||fresh.link} : c;
+      });
+      const listaOrdenada = [...pg1, ...cacheAtualizado];
+      
+      // Persiste e exibe
+      persistirTermos(pg1);
+      setTermos(listaOrdenada);
       setTermosPage(pg);
       setLoading(false);
 
-      // ── Fase 3: Páginas extras em background (sem travar UI) ───────
+      // ── Fase 3: Páginas extras em background ───────────────────────
       if (totalApiPages > 1) {
         (async () => {
-          const buffer = [...pg1];
+          let allFromApi = [...pg1];
           for (let p=2; p<=totalApiPages; p++) {
             await new Promise(r=>setTimeout(r,600));
             try {
@@ -17045,11 +17058,14 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                 "GET",null,2,{skipRateLimit:true}
               );
               const items=(rp?.data||[]).map(mapLink);
-              items.forEach(n=>{if(!buffer.find(x=>x.id===n.id))buffer.push(n);});
+              items.forEach(n=>{if(!allFromApi.find(x=>x.id===n.id))allFromApi.push(n);});
             } catch {}
           }
-          const listaFinal = persistirTermos(buffer);
-          setTermos([...listaFinal]); // ordem do banco preservada
+          // Salva no cache mas exibe na ordem da API
+          persistirTermos(allFromApi);
+          const apiIds = new Set(allFromApi.map(x=>x.id));
+          const resto = cacheAtualizado.filter(x=>!apiIds.has(x.id));
+          setTermos([...allFromApi, ...resto]);
           localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
         })();
       } else {
@@ -17240,29 +17256,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
         setTermos(prev => {
           const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
-          const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
-          let changed = false;
-          novosApi.forEach(n => {
-            const local = byId[n.id];
-            const link = n.consent_url||n.url||n.link||`https://app.v8sistema.com/termos-de-autorizacao/${n.id}`;
-            if (!local) {
-              byId[n.id] = {...n, link};
+          // novosApi está em ordem do banco (mais recente primeiro)
+          // Estratégia: novos itens vão para o topo; existentes são atualizados no lugar
+          const prevIds = new Set(prev.map(x=>x.id));
+          const novosNovos = novosApi.filter(n=>!prevIds.has(n.id)); // itens nunca vistos
+          
+          let changed = novosNovos.length > 0;
+          const updated = prev.map(item => {
+            const fresh = novosApi.find(n=>n.id===item.id);
+            if (!fresh) return item;
+            const idx_n=STATUS_ORD.indexOf(fresh.status), idx_l=STATUS_ORD.indexOf(item.status||"");
+            const margemMudou = fresh.availableMarginValue != null && fresh.availableMarginValue !== item.availableMarginValue;
+            if(idx_n >= idx_l || margemMudou) {
               changed = true;
-            } else {
-              const idx_n=STATUS_ORD.indexOf(n.status), idx_l=STATUS_ORD.indexOf(local.status||"");
-              const margemMudou = n.availableMarginValue != null && n.availableMarginValue !== local.availableMarginValue;
-              if(idx_n >= idx_l || margemMudou) {
-                byId[n.id]={...local,...n, link:local.link||link};
-                changed=true;
-              }
+              return {...item,...fresh,link:item.link||fresh.link};
             }
+            return item;
           });
+          
           if (!changed) return prev;
-          const lista=Object.values(byId).sort((a,b)=>{
-              const ta=new Date(a.createdAt||a.created_at||0).getTime();
-              const tb=new Date(b.createdAt||b.created_at||0).getTime();
-              return tb-ta;
-            });
+          // Novos itens ficam no topo (ordem do banco), existentes mantêm posição
+          const lista = [...novosNovos, ...updated];
           try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
           return lista;
         });
