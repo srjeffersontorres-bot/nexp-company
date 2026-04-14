@@ -19380,7 +19380,11 @@ function PrataDigitalTab({ currentUser }) {
   const [cltFornecSel, setCltFornecSel] = useState("QI"); // QI | celcoin
   const [cltFilaLoading, setCltFilaLoading] = useState(false);
   const [cltStatusFilter, setCltStatusFilter] = useState(null);
-  const [cTel,   setCTel]   = useState(""); const [cNasc,  setCNasc]  = useState(""); const [cSexo,  setCSexo]  = useState("Masculino");
+  const [cTel,   setCTel]   = useState("");
+  // eslint-disable-next-line no-unused-vars
+  const [cNasc,  setCNasc]  = useState("");
+  // eslint-disable-next-line no-unused-vars
+  const [cSexo,  setCSexo]  = useState("Masculino");
   const [cSim,    setCSim]    = useState(null);
   const [cSBusy,  setCSBusy]  = useState(false);
   // eslint-disable-next-line no-unused-vars
@@ -19418,7 +19422,6 @@ function PrataDigitalTab({ currentUser }) {
     if (!valid) return;
     setCltFilaLoading(true);
     try {
-      const fPath = cFornec==="QI" ? "qitech" : "celcoin";
       const cPath = cFornec==="QI" ? "qi-sociedade" : "celcoin";
       // Busca histórico dos últimos 30 dias
       const end30 = new Date().toISOString().split("T")[0];
