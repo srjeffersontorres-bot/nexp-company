@@ -16595,11 +16595,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const [loteCLTItems, setLoteCLTItems] = useState([]);
   const [loteCLTRunning, setLoteCLTRunning] = useState(false);
   const loteCLTAbort = useRef(false);
-  const [loteCLTApenasMode, setLoteCLTApenasMode] = useState(false); // modo só CPF
   const [termoLoading, setTermoLoading] = useState(false);
   // eslint-disable-next-line no-unused-vars
   const [termoStep, setTermoStep] = useState("form");
   const [termosSearch, setTermosSearch] = useState("");
+  // eslint-disable-next-line no-unused-vars
   const [termosDataInicio, setTermosDataInicio] = useState(""); // data inicio do filtro (YYYY-MM-DD)
   const [termosFiltroStatus, setTermosFiltroStatus] = useState("Todos");
 
@@ -16728,7 +16728,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const _autoGerarTermo = async (cpfLimpo, dados) => {
     setErr(""); setTermoLoading(true);
     try {
-      let tel=(dados.telefone||"").replace(/\D/g,"");
+      const tel=(dados.telefone||"").replace(/\D/g,"");
       // Fallbacks genéricos — nunca bloqueia por falta de dados
       if(!dados.dataNasc) dados = {...dados, dataNasc:"1990-01-01"};
       if(!dados.email)    dados = {...dados, email:`nexp.cliente${cpfLimpo}@gmail.com`};
@@ -16996,22 +16996,24 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
 
     try {
       const end = new Date().toISOString();
-      // Sem limite de data — busca TODOS os registros do banco desde o início
-      const startPeriodo = "2020-01-01T00:00:00.000Z";
+      const startPeriodo = termosDataInicio
+        ? new Date(termosDataInicio).toISOString()
+        : new Date(Date.now()-7*86400000).toISOString();
 
-      // ── Fase 1: Mostra cache imediatamente enquanto busca API ──
+      // ── Fase 1: Mostra cache COMPLETO imediatamente (todos os clientes) ──
       const cacheAtual = (() => {
         try { return JSON.parse(localStorage.getItem("nexp_clt_termos_cache")||"[]"); } catch { return []; }
       })();
       if (cacheAtual.length > 0 && !forceRefresh) {
-        setTermos([...cacheAtual]);
+        // Mostra tudo do cache sem esperar API — mais recente primeiro
+      setTermos([...cacheAtual]); // ordem do banco preservada
         setTermosPage(pg);
         setLoading(false);
       } else {
         setLoading(true);
       }
 
-      // ── Fase 2: Busca página 1 e descobre total de páginas ──────
+      // ── Fase 2: Busca API para atualizar status e pegar novos ──────
       const r1 = await apiFetch(
         `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
         "GET",null,2,{skipRateLimit:true}
@@ -17019,33 +17021,29 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const pg1 = (r1?.data||[]).map(mapLink);
       const totalApiPages = r1?.pages?.totalPages||r1?.totalPages||1;
 
-      // Atualiza UI com o que chegou da pág 1
+      // Persiste merge + atualiza UI com lista completa ordenada
       const lista1 = persistirTermos(pg1);
-      setTermos([...lista1]);
+      setTermos([...lista1]); // ordem do banco preservada
       setTermosPage(pg);
       setLoading(false);
 
-      // ── Fase 3: Busca TODAS as páginas restantes em paralelo ──────
+      // ── Fase 3: Páginas extras em background (sem travar UI) ───────
       if (totalApiPages > 1) {
         (async () => {
-          const extras = await Promise.allSettled(
-            Array.from({length: totalApiPages-1}, (_,i) =>
-              apiFetch(
-                `/private-consignment/consult?page=${i+2}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
-                "GET",null,2,{skipRateLimit:true}
-              )
-            )
-          );
           const buffer = [...pg1];
-          extras.forEach(r => {
-            if (r.status==="fulfilled") {
-              (r.value?.data||[]).map(mapLink).forEach(n=>{
-                if(!buffer.find(x=>x.id===n.id)) buffer.push(n);
-              });
-            }
-          });
+          for (let p=2; p<=totalApiPages; p++) {
+            await new Promise(r=>setTimeout(r,600));
+            try {
+              const rp = await apiFetch(
+                `/private-consignment/consult?page=${p}&limit=50&provider=QI&startDate=${startPeriodo}&endDate=${end}`,
+                "GET",null,2,{skipRateLimit:true}
+              );
+              const items=(rp?.data||[]).map(mapLink);
+              items.forEach(n=>{if(!buffer.find(x=>x.id===n.id))buffer.push(n);});
+            } catch {}
+          }
           const listaFinal = persistirTermos(buffer);
-          setTermos([...listaFinal]);
+          setTermos([...listaFinal]); // ordem do banco preservada
           localStorage.setItem("nexp_clt_termos_lastfull",String(Date.now()));
         })();
       } else {
@@ -17204,92 +17202,67 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     setOpsLoading(true);
     try {
       const end=new Date().toISOString();
-      const start="2020-01-01T00:00:00.000Z"; // todos os registros
+      const start=new Date(Date.now()-30*86400000).toISOString();
       const params=new URLSearchParams({startDate:start,endDate:end,limit:"50",page:"1",provider:"QI"});
       if(opsSearch) params.set("search",opsSearch);
       const r=await apiFetch(`/private-consignment/operation?${params}`);
-      const pg1 = Array.isArray(r)?r:(r?.data||[]);
-      const totalPages = r?.pages?.totalPages||r?.totalPages||1;
-      let todos = [...pg1];
-      // Busca páginas restantes em paralelo
-      if(totalPages>1){
-        const extras=await Promise.allSettled(
-          Array.from({length:totalPages-1},(_,i)=>{
-            const p2=new URLSearchParams({startDate:start,endDate:end,limit:"50",page:String(i+2),provider:"QI"});
-            if(opsSearch) p2.set("search",opsSearch);
-            return apiFetch(`/private-consignment/operation?${p2}`);
-          })
-        );
-        extras.forEach(r=>{
-          if(r.status==="fulfilled") todos=[...todos,...(Array.isArray(r.value)?r.value:(r.value?.data||[]))];
-        });
-      }
-      setOps(todos);
+      setOps(Array.isArray(r)?r:(r?.data||[]));
     } catch(e) { setErr(e.message); }
     setOpsLoading(false);
   };
   useEffect(()=>{ if(aba==="clientes"&&isTokenValid) buscarOps(); },[aba,isTokenValid]); // eslint-disable-line
   useEffect(()=>{ if(aba==="termo"&&isTokenValid) buscarTermos(1); },[aba,isTokenValid]); // eslint-disable-line
 
-  // Polling em tempo real: atualiza pendentes + captura novos criados no banco
+  // Polling agressivo: busca TODOS os itens do banco a cada 2s
+  // Novos contratos aparecem em ~1-2s, status atualiza em ~2s
   useEffect(()=>{
     if(!isTokenValid) return;
-    
-    let lastCheck = Date.now() - 3600000; // eslint-disable-line no-unused-vars
 
-    const mergeTermos = (prev, novosApi) => {
-      const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
-      const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
-      let changed = false;
-      novosApi.forEach(n => {
-        const local = byId[n.id];
-        const link = n.consent_url||n.url||n.link||`https://app.v8sistema.com/termos-de-autorizacao/${n.id}`;
-        if (!local) { byId[n.id]={...n,link}; changed=true; }
-        else {
-          const idx_n=STATUS_ORD.indexOf(n.status), idx_l=STATUS_ORD.indexOf(local.status||"");
-          const margemMudou = n.availableMarginValue!=null && n.availableMarginValue!==local.availableMarginValue;
-          if(idx_n>=idx_l||margemMudou){ byId[n.id]={...local,...n,link:local.link||link}; changed=true; }
-        }
-      });
-      if(!changed) return prev;
-      const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-      try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
-      return lista;
-    };
+    let rodando = true; // flag para cancelar loop quando componente desmonta
 
-    const iv = setInterval(async()=>{
-      const agora = new Date().toISOString();
-      lastCheck = Date.now();
+    const sincronizar = async () => {
+      if (!rodando) return;
       try {
-        // Busca TODOS os registros do banco — sem filtro de data
-        const startAll = "2020-01-01T00:00:00.000Z";
-        const r1 = await apiFetch(
-          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${startAll}&endDate=${agora}`,
+        const agora = new Date().toISOString();
+        const start7d = new Date(Date.now()-7*86400000).toISOString();
+        const r = await apiFetch(
+          `/private-consignment/consult?page=1&limit=50&provider=QI&startDate=${start7d}&endDate=${agora}`,
           "GET",null,2,{skipRateLimit:true}
         );
-        const totalPages = r1?.pages?.totalPages||r1?.totalPages||1;
-        let todos = (r1?.data||[]).map(mapLink);
+        const novosApi = (r?.data||[]).map(mapLink);
+        if (!novosApi.length) return;
 
-        // Busca todas as páginas restantes em paralelo
-        if (totalPages > 1) {
-          const extras = await Promise.allSettled(
-            Array.from({length:totalPages-1},(_,i)=>
-              apiFetch(
-                `/private-consignment/consult?page=${i+2}&limit=50&provider=QI&startDate=${startAll}&endDate=${agora}`,
-                "GET",null,2,{skipRateLimit:true}
-              )
-            )
-          );
-          extras.forEach(r=>{
-            if(r.status==="fulfilled") todos=[...todos,...(r.value?.data||[]).map(mapLink)];
+        setTermos(prev => {
+          const STATUS_ORD=["WAITING_CONSENT","CONSENT_APPROVED","WAITING_CONSULT","WAITING_CREDIT_ANALYSIS","SUCCESS","FAILED","REJECTED"];
+          const byId = Object.fromEntries(prev.map(x=>[x.id,x]));
+          let changed = false;
+          novosApi.forEach(n => {
+            const local = byId[n.id];
+            const link = n.consent_url||n.url||n.link||`https://app.v8sistema.com/termos-de-autorizacao/${n.id}`;
+            if (!local) {
+              byId[n.id] = {...n, link};
+              changed = true;
+            } else {
+              const idx_n=STATUS_ORD.indexOf(n.status), idx_l=STATUS_ORD.indexOf(local.status||"");
+              const margemMudou = n.availableMarginValue != null && n.availableMarginValue !== local.availableMarginValue;
+              if(idx_n >= idx_l || margemMudou) {
+                byId[n.id]={...local,...n, link:local.link||link};
+                changed=true;
+              }
+            }
           });
-        }
-        if(!todos.length) return;
-        setTermos(prev => mergeTermos(prev, todos));
+          if (!changed) return prev;
+          const lista=Object.values(byId).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+          try { localStorage.setItem("nexp_clt_termos_cache",JSON.stringify(lista.slice(0,5000))); } catch {}
+          return lista;
+        });
       } catch {} // nunca bloqueia
-    }, 10000); // a cada 10s — busca tudo do banco
+    };
 
-    return () => clearInterval(iv);
+    // Roda imediatamente e depois a cada 2s
+    sincronizar();
+    const iv = setInterval(sincronizar, 2000);
+    return () => { rodando = false; clearInterval(iv); };
   },[isTokenValid]); // eslint-disable-line
   // Pre-load configs immediately on mount
   useEffect(()=>{
@@ -17410,7 +17383,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
     <div style={{padding:"4px 0"}}>
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${C.b1}`,marginBottom:20}}>
-        {[["termo","⚡ Simulação"],["clientes","📡 Operações"]].map(([id,label])=>(
+        {[["termo","⚡ Simulação"],["clientes","📡 Operações"],["margem_lote","📊 Margem em Lote"]].map(([id,label])=>(
           <button key={id} onClick={()=>setAba(id)}
             style={{background:"transparent",border:"none",cursor:"pointer",padding:"9px 16px",fontSize:13,
               fontWeight:aba===id?700:400,color:aba===id?C.atxt:C.tm,
@@ -17437,15 +17410,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               </button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
-              {/* CPF com auto-preenchimento */}
+              {/* CPF com busca */}
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>CPF *</label>
-                <div style={{position:"relative"}}>
+                <div style={{display:"flex",gap:6}}>
                   <input value={termoForm.cpf}
                     onChange={e=>{
                       const fmt=applyCPFMask(e.target.value);
                       const raw=fmt.replace(/\D/g,"");
-                      setTermoForm(p=>({...p,cpf:fmt,nome:"",email:"",telefone:"",dataNasc:"",genero:"male"}));
+                      setTermoForm(p=>({...p,cpf:fmt}));
                       setTermoAutoPreenchido(false);
                       if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
@@ -17454,7 +17427,7 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const pasted=(e.clipboardData||window.clipboardData).getData("text");
                       const fmt=applyCPFMask(pasted);
                       const raw=fmt.replace(/\D/g,"");
-                      setTermoForm(p=>({...p,cpf:fmt,nome:"",email:"",telefone:"",dataNasc:"",genero:"male"}));
+                      setTermoForm(p=>({...p,cpf:fmt}));
                       setTermoAutoPreenchido(false);
                       if(raw.length===11) buscarContatoTermoCpf(raw);
                     }}
@@ -17462,17 +17435,12 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                       const raw=(e.target.value||"").replace(/\D/g,"");
                       if(raw.length>=11) buscarContatoTermoCpf(raw);
                     }}
-                    placeholder="000.000.000-00"
-                    style={{...S.input,width:"100%",borderColor:termoAutoPreenchido?"#34D39966":termoBuscando?"#FBBF2466":undefined,paddingRight:32}}/>
-                  {termoBuscando&&(
-                    <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>⏳</span>
-                  )}
-                  {termoAutoPreenchido&&!termoBuscando&&(
-                    <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>✅</span>
-                  )}
+                    placeholder="000.000.000-00" style={{...S.input,flex:1,borderColor:termoAutoPreenchido?"#34D39966":undefined}}/>
+                  <button onClick={()=>buscarContatoTermoCpf((termoForm.cpf||"").replace(/\D/g,"").padStart(11,"0"))} disabled={termoBuscando} style={{background:C.abg,color:termoBuscando?"#FBBF24":C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"0 12px",cursor:"pointer",flexShrink:0}}>
+                    {termoBuscando?"⏳":"🔍"}
+                  </button>
                 </div>
-                {termoBuscando&&<div style={{color:"#FBBF24",fontSize:10,marginTop:3}}>🔍 Buscando dados via cruzamento automático...</div>}
-                {termoAutoPreenchido&&!termoBuscando&&<div style={{color:"#34D399",fontSize:10,marginTop:3}}>✓ Dados preenchidos automaticamente via cruzamento</div>}
+                {termoAutoPreenchido&&<div style={{color:"#34D399",fontSize:10,marginTop:3}}>✓ Dados encontrados e preenchidos automaticamente</div>}
               </div>
               <div>
                 <label style={{color:C.tm,fontSize:11,display:"block",marginBottom:4}}>Nome completo *</label>
@@ -17528,78 +17496,49 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           {/* Lote CLT */}
           {showLoteCLT&&(
             <div style={{...S.card,padding:"16px 18px",marginBottom:16,border:`1px solid #3B6EF533`}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
                 <div style={{color:"#60A5FA",fontSize:12,fontWeight:700}}>⚡ Lote — Gerar Termos em Massa</div>
-                <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <div style={{display:"flex",background:C.deep,borderRadius:8,padding:2,gap:2}}>
-                    <button onClick={()=>setLoteCLTApenasMode(false)}
-                      style={{background:!loteCLTApenasMode?"rgba(79,142,247,0.25)":"transparent",color:!loteCLTApenasMode?"#60A5FA":C.td,border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
-                      📋 Completo
-                    </button>
-                    <button onClick={()=>setLoteCLTApenasMode(true)}
-                      style={{background:loteCLTApenasMode?"rgba(52,211,153,0.25)":"transparent",color:loteCLTApenasMode?"#34D399":C.td,border:"none",borderRadius:6,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
-                      🔢 Só CPF
-                    </button>
-                  </div>
-                  {!loteCLTApenasMode&&(
-                    <label style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                      📎 Importar planilha
-                      <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={async e=>{
-                        const file=e.target.files?.[0]; if(!file)return;
-                        const ext=file.name.split(".").pop().toLowerCase();
-                        try {
-                          let rows=[];
-                          if(ext==="csv"){
-                            const txt=await file.text();
-                            const sep=txt.includes(";")?";":",";
-                            rows=txt.split(String.fromCharCode(10)).map(l=>l.split(sep).map(c=>c.replace(/^"|"$/g,"").trim())).filter(r=>r[0]);
-                            if(rows[0]&&rows[0][0].toLowerCase().includes("cpf")) rows.shift();
-                          } else {
-                            const {read,utils}=await import("https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs");
-                            const ab=await file.arrayBuffer();
-                            const wb=read(ab,{type:"array"});
-                            const ws=wb.Sheets[wb.SheetNames[0]];
-                            const data=utils.sheet_to_json(ws,{header:1,defval:""});
-                            rows=data.filter((r,i)=>i>0||!String(r[0]).toLowerCase().includes("cpf"));
-                            if(rows[0]&&String(rows[0][0]).toLowerCase().includes("cpf")) rows.shift();
-                          }
-                          const linhasImport=rows.filter(r=>r[0]).map(r=>[r[0],r[1]||"",r[2]||"",r[3]||"",r[4]||""].join(",")).join(String.fromCharCode(10));
-                          if(window._cltCpfTextarea) window._cltCpfTextarea.value=(window._cltCpfTextarea.value?window._cltCpfTextarea.value+String.fromCharCode(10):"")+linhasImport;
-                          setLoteCLTCpfs(p=>(p?p+String.fromCharCode(10):"")+linhasImport);
-                        }catch(err){setErr("Erro ao ler planilha: "+err.message);}
-                        e.target.value="";
-                      }}/>
-                    </label>
-                  )}
-                </div>
+                <label style={{background:"rgba(52,211,153,0.12)",color:"#34D399",border:"1px solid rgba(52,211,153,0.3)",borderRadius:7,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  📎 Importar planilha
+                  <input type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={async e=>{
+                    const file=e.target.files?.[0]; if(!file)return;
+                    const ext=file.name.split(".").pop().toLowerCase();
+                    try {
+                      let rows=[];
+                      if(ext==="csv"){
+                        const txt=await file.text();
+                        const sep=txt.includes(";")?";":",";
+                        rows=txt.split(String.fromCharCode(10)).map(l=>l.split(sep).map(c=>c.replace(/^"|"$/g,"").trim())).filter(r=>r[0]);
+                        if(rows[0]&&rows[0][0].toLowerCase().includes("cpf")) rows.shift();
+                      } else {
+                        const {read,utils}=await import("https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs");
+                        const ab=await file.arrayBuffer();
+                        const wb=read(ab,{type:"array"});
+                        const ws=wb.Sheets[wb.SheetNames[0]];
+                        const data=utils.sheet_to_json(ws,{header:1,defval:""});
+                        rows=data.filter((r,i)=>i>0||!String(r[0]).toLowerCase().includes("cpf"));
+                        if(rows[0]&&String(rows[0][0]).toLowerCase().includes("cpf")) rows.shift();
+                      }
+                      const linhasImport=rows.filter(r=>r[0]).map(r=>[r[0],r[1]||"",r[2]||"",r[3]||"",r[4]||""].join(",")).join(String.fromCharCode(10));
+                      if(window._cltCpfTextarea) window._cltCpfTextarea.value=(window._cltCpfTextarea.value?window._cltCpfTextarea.value+String.fromCharCode(10):"")+linhasImport;
+                      setLoteCLTCpfs(p=>(p?p+String.fromCharCode(10):"")+linhasImport);
+                    }catch(err){setErr("Erro ao ler planilha: "+err.message);}
+                    e.target.value="";
+                  }}/>
+                </label>
               </div>
-              {loteCLTApenasMode?(
-                <div style={{marginBottom:10}}>
-                  <div style={{color:"#34D399",fontSize:10,marginBottom:6,lineHeight:1.6,background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:7,padding:"6px 10px"}}>
-                    🔢 <b>Modo Apenas CPF</b> — Cole um CPF por linha. Os demais dados serão preenchidos automaticamente via cruzamento com a V8 Digital.
-                  </div>
-                  <textarea
-                    ref={el => { if(el) window._cltCpfTextarea = el; }}
-                    defaultValue={loteCLTCpfs}
-                    onBlur={e=>setLoteCLTCpfs(e.target.value)}
-                    placeholder={"12345678901\n98765432100\n11122233344\n55566677788"}
-                    style={{...S.input,height:120,resize:"vertical",fontFamily:"monospace",fontSize:13,marginBottom:10,letterSpacing:"0.05em"}}/>
-                </div>
-              ):(
-                <div style={{marginBottom:10}}>
-                  <div style={{color:C.td,fontSize:10,marginBottom:6,lineHeight:1.6}}>
-                    Formatos aceitos (um por linha):<br/>
-                    • Completo: <code style={{color:"#60A5FA"}}>CPF, Nome, Email, Nascimento, Telefone</code><br/>
-                    • Planilha xlsx/csv: A=CPF B=Nome C=Email D=Nascimento E=Telefone
-                  </div>
-                  <textarea
-                    ref={el => { if(el) window._cltCpfTextarea = el; }}
-                    defaultValue={loteCLTCpfs}
-                    onBlur={e=>setLoteCLTCpfs(e.target.value)}
-                    placeholder={"12345678901, João Silva, joao@email.com, 1990-01-15, 84999999999\n98765432100, Maria Santos, , 1985-03-20, 11988887777"}
-                    style={{...S.input,height:100,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
-                </div>
-              )}
+              <div style={{color:C.td,fontSize:10,marginBottom:6,lineHeight:1.6}}>
+                Formatos aceitos (um por linha):<br/>
+                • Só CPF: <code style={{color:"#60A5FA"}}>12345678901</code><br/>
+                • Completo: <code style={{color:"#60A5FA"}}>CPF, Nome, Email, Nascimento, Telefone</code><br/>
+                • Planilha xlsx/csv: A=CPF B=Nome C=Email D=Nascimento E=Telefone
+              </div>
+              <textarea
+                ref={el => { if(el) window._cltCpfTextarea = el; }}
+                defaultValue={loteCLTCpfs}
+                onBlur={e=>setLoteCLTCpfs(e.target.value)}
+                placeholder={"12345678901\n12345678901, João Silva, joao@email.com, 1990-01-15, 84999999999\n98765432100, Maria Santos, , 1985-03-20, 11988887777"}
+                style={{...S.input,height:100,resize:"vertical",fontFamily:"monospace",fontSize:11,marginBottom:10}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <button onClick={async()=>{
                   const rawVal = window._cltCpfTextarea ? window._cltCpfTextarea.value : loteCLTCpfs;
@@ -17779,16 +17718,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
-                        📄 Consultas CLT
-                      </div>
-                      {termos.length>0&&(
-                        <span style={{color:C.td,fontWeight:400,fontSize:11}}>
-                          · {termos.length} registros
-                          <span style={{color:"#34D399",fontSize:9,marginLeft:6,verticalAlign:"middle",animation:"pulse 2s infinite"}}>● AO VIVO</span>
-                        </span>
-                      )}
+                    <div style={{color:C.ts,fontSize:13,fontWeight:700}}>
+                      📄 Consultas CLT
+                      {termos.length>0&&<span style={{color:C.td,fontWeight:400,fontSize:11,marginLeft:8}}>
+                        · {termos.length} registros{termos.length>=50?" (carregando mais...)":""}
+                      </span>}
+                    </div>
+                    {/* Filtro por data inicial */}
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:C.td,fontSize:11,whiteSpace:"nowrap"}}>De:</span>
+                      <input
+                        type="date"
+                        value={termosDataInicio}
+                        onChange={e=>setTermosDataInicio(e.target.value)}
+                        style={{...S.input,fontSize:11,padding:"4px 8px",cursor:"pointer",width:130}}
+                      />
+                      <button onClick={()=>buscarTermos(1,true)} disabled={loading}
+                        style={{background:C.atxt+"22",color:C.atxt,border:`1px solid ${C.atxt}44`,borderRadius:7,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                        🔍 Filtrar
+                      </button>
+                      {termosDataInicio&&<button onClick={()=>{setTermosDataInicio("");setTimeout(()=>buscarTermos(1,true),50);}}
+                        style={{background:"transparent",color:C.td,border:"none",fontSize:11,cursor:"pointer"}}>✕</button>}
                     </div>
                   </div>
                   <input
@@ -17807,7 +17757,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
                     style={{background:"rgba(239,68,68,0.08)",color:"#F87171",border:"1px solid #EF444422",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:termos.length===0?"not-allowed":"pointer",opacity:termos.length===0?0.4:1}}>
                     🗑 Limpar
                   </button>
-
+                  <button onClick={()=>buscarTermos(termosPage, true)} disabled={loading}
+                    style={{background:C.abg,color:C.atxt,border:`1px solid ${C.atxt}33`,borderRadius:8,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}
+                    title="Forçar atualização completa">
+                    {loading?"⏳":"🔄"}
+                  </button>
                 </div>
               </div>
               {/* Filtro por status */}
@@ -18220,31 +18174,6 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
             </div>
 
             <div style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:18}}>
-
-              {/* ── Proposta / Tabela / Seguro ── */}
-              {(()=>{
-                // Detecta se tem seguro pelo slug/nome da tabela ou campo direto
-                const tabSlug = opsDetalhe.configSlug||opsDetalhe.config_slug||opsDetalhe.tableSlug||opsDetalhe.configName||opsDetalhe.tableName||opsDetalhe.table_name||opsDetalhe.planName||"";
-                const temSeguro = /seguro|insurance|com.seg/i.test(tabSlug) || opsDetalhe.hasInsurance===true || opsDetalhe.insurance===true || opsDetalhe.withInsurance===true;
-                const semSeguro = /sem.seg|no.ins/i.test(tabSlug) || opsDetalhe.hasInsurance===false || opsDetalhe.insurance===false || opsDetalhe.withInsurance===false;
-                const seguroLabel = temSeguro ? "Com Seguro ✅" : semSeguro ? "Sem Seguro ❌" : "—";
-                const seguroCor = temSeguro ? "#34D399" : semSeguro ? "#F87171" : C.td;
-                if(!tabSlug && seguroLabel==="—") return null;
-                return (
-                  <div style={{background:"rgba(79,142,247,0.07)",border:"1px solid rgba(79,142,247,0.2)",borderRadius:12,padding:"12px 16px",display:"flex",gap:16,flexWrap:"wrap",alignItems:"center"}}>
-                    {tabSlug&&(
-                      <div>
-                        <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:3}}>📋 Tabela Selecionada</div>
-                        <div style={{color:"#C084FC",fontWeight:700,fontSize:13}}>{tabSlug}</div>
-                      </div>
-                    )}
-                    <div>
-                      <div style={{color:"rgba(255,255,255,0.35)",fontSize:10,marginBottom:3}}>🛡 Seguro</div>
-                      <div style={{color:seguroCor,fontWeight:700,fontSize:13}}>{seguroLabel}</div>
-                    </div>
-                  </div>
-                );
-              })()}
 
               {/* ── Financeiro ── */}
               <div>
