@@ -16728,12 +16728,11 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
   const _autoGerarTermo = async (cpfLimpo, dados) => {
     setErr(""); setTermoLoading(true);
     try {
-      const tel=(dados.telefone||"").replace(/\D/g,"");
       // Fallbacks genéricos — nunca bloqueia por falta de dados
       if(!dados.dataNasc) dados = {...dados, dataNasc:"1990-01-01"};
       if(!dados.email)    dados = {...dados, email:`nexp.cliente${cpfLimpo}@gmail.com`};
-      if(tel.length<10)   tel = "11999999999";
       if(!dados.nome)     dados = {...dados, nome:`Cliente ${cpfLimpo.slice(-4)}`};
+      const tel = ((dados.telefone||"").replace(/\D/g,"")||"11999999999");
       const body={
         borrowerDocumentNumber:cpfLimpo,
         gender:dados.genero||"male",
