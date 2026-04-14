@@ -17205,6 +17205,9 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const prazos = PARCELAS_PADRAO;
       const melhores = {};
 
+      // margemSimulacao: usa margem real ou 500 como valor de teste
+      const margemSimulacao = margem > 0 ? margem : 500;
+
       // Igual ao padrão de operacoes que funciona — QI + Celcoin em paralelo
       for (const cfg of cfgsToRun) {
         const resultados = [];
