@@ -19379,6 +19379,7 @@ function PrataDigitalTab({ currentUser }) {
   const [cltStep,  setCltStep]    = useState(1);  // 1=form, 2=assinar
   const [cltFornecSel, setCltFornecSel] = useState("QI"); // QI | celcoin
   const [cltFilaLoading, setCltFilaLoading] = useState(false);
+  const [cltStatusFilter, setCltStatusFilter] = useState(null);
   const [cTel,   setCTel]   = useState(""); const [cNasc,  setCNasc]  = useState(""); const [cSexo,  setCSexo]  = useState("Masculino");
   const [cSim,    setCSim]    = useState(null);
   const [cSBusy,  setCSBusy]  = useState(false);
@@ -19648,6 +19649,7 @@ function PrataDigitalTab({ currentUser }) {
               </div>
 
               {/* Filtros de status */}
+              {/* Status filter — state managed at component level */}
               {(() => {
                 const statusOpts=[
                   ["Todos",null,"#94A3B8"],
@@ -19658,7 +19660,6 @@ function PrataDigitalTab({ currentUser }) {
                   ["❌ Falhou","FAILED","#F87171"],
                   ["🚫 Rejeitado","REJECTED","#EF4444"],
                 ];
-                const [cltStatusFilter, setCltStatusFilter] = React.useState(null);
                 return (
                   <div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
@@ -19948,6 +19949,7 @@ function HubCreditoTab({ currentUser, onLoteSimFim }) {
 
   // CLT individual
   const [cCpf,   setCCpf]   = useState(""); const [cNome,  setCNome]  = useState(""); const [cEmail, setCEmail] = useState("");
+  const [cTel,    setCTel]    = useState(""); const [cNasc,  setCNasc]  = useState(""); const [cSexo,  setCSexo]  = useState("M");
   const [cParcelas,setCParcelas]=useState("12"); const [cValor, setCValor] = useState("5000");
   const [cBusy,  setCBusy]  = useState(false); const [cErr,   setCErr]   = useState(""); const [cPreSim,setCPreSim]=useState(null);
   const [cPollMsg,setCPollMsg]=useState(""); const [cSim,  setCSim]   = useState(null); const [cSBusy, setCSBusy] = useState(false);
