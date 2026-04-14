@@ -17191,20 +17191,27 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
       const cfgsToRun = cfgIdOnly ? cfgList.filter(c=>c.id===cfgIdOnly) : cfgList;
 
       // Tenta buscar margem atualizada se o termo não tiver
-      let margem = parcelaOverride ? parseFloat(parcelaOverride) : parseFloat(termo.availableMarginValue)||0;
+      // Extrai margem de múltiplos campos possíveis do V8
+      let margem = parcelaOverride
+        ? parseFloat(parcelaOverride)
+        : parseFloat(termo.availableMarginValue||termo.disbursedIssueAmount||termo.issueAmount||termo.disbursement_amount||0)||0;
+
       if (!margem && !parcelaOverride) {
         try {
           const end=new Date().toISOString();
           const start=new Date(Date.now()-45*86400000).toISOString();
-          const fresh = await apiFetch(`/private-consignment/consult?search=${(termo.documentNumber||termo.cpf||"").replace(/\D/g,"")}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`);
-          const freshItem = (fresh?.data||[]).find(x=>x.id===termo.id)||(fresh?.data||[])[0];
-          if (freshItem) margem = parseFloat(freshItem.availableMarginValue)||0;
+          const cpfBusca = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
+          if (cpfBusca) {
+            const fresh = await apiFetch(`/private-consignment/consult?search=${cpfBusca}&page=1&limit=5&provider=QI&startDate=${start}&endDate=${end}`,"GET",null,2,{skipRateLimit:true});
+            const freshItem = (fresh?.data||[]).find(x=>x.id===termo.id)||(fresh?.data||[])[0];
+            if (freshItem) margem = parseFloat(freshItem.availableMarginValue||freshItem.disbursedIssueAmount||0)||0;
+          }
         } catch {}
       }
 
       const melhores = {};
-      // Valores a tentar quando não há margem conhecida
-      const VALORES_FALLBACK = margem > 0 ? [margem] : [500, 1000, 2000];
+      // Tenta com a margem encontrada, ou com valores padrão crescentes
+      const VALORES_FALLBACK = margem > 0 ? [margem] : [200, 500, 1000, 2000, 5000];
 
       // ⚡ Simula todas as combinações cfg × parcela × valor
       await Promise.all(cfgsToRun.map(async (cfg) => {
@@ -17213,18 +17220,16 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
           for (const np of PARCELAS_PADRAO) {
             tasks.push((async () => {
               try {
+                const cpfT = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
                 const body = {
-                  consult_id: termo.id,
-                  config_id: cfg.id,
-                  number_of_installments: np,
+                  configId: cfg.id,
+                  documentNumber: cpfT,
+                  numberOfInstallments: np,
+                  requestedAmount: valor > 0 ? valor : 1000,
                   provider: "QI",
-                  ...(margem > 0
-                    ? { installment_face_value: margem }
-                    : { disbursed_amount: valor }
-                  ),
                 };
                 const sim = await apiFetch("/private-consignment/simulation","POST",body);
-                if(sim && typeof sim === "object" && sim.id) return { np, sim, cfg };
+                if(sim && (sim.disbursement_amount||sim.disbursed_issue_amount||sim.id||sim.totalValue)) return { np, sim, cfg };
               } catch(e) {
                 if(e.message?.includes("expirada")||e.message?.includes("401")) throw e;
               }
@@ -17245,13 +17250,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         for (const cfg of cfgsToRun) {
           for (const np of PARCELAS_PADRAO) {
             try {
+              const cpfFb = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
               const s = await apiFetch("/private-consignment/simulation","POST",{
-                consult_id: termo.id,
-                config_id: cfg.id,
-                number_of_installments: np,
+                configId: cfg.id,
+                documentNumber: cpfFb,
+                numberOfInstallments: np,
+                requestedAmount: margem > 0 ? margem : 1000,
                 provider: "QI",
               });
-              if(s?.id||s?.totalValue||s?.installmentValue) {
+              if(s?.disbursement_amount||s?.disbursed_issue_amount||s?.id||s?.totalValue||s?.installmentValue) {
                 if(!melhores[cfg.id]) melhores[cfg.id]={cfg,resultados:[]};
                 melhores[cfg.id].resultados.push({np,sim:s,cfg});
               }
@@ -17265,14 +17272,15 @@ function CreditoTrabalhadorTab({ currentUser, contacts }) {
         // Fallback 2: tenta com provider=celcoin
         for (const cfg of cfgsToRun.slice(0,1)) {
           try {
+            const cpfFb2 = (termo.documentNumber||termo.cpf||termo.borrowerDocumentNumber||"").replace(/\D/g,"");
             const s = await apiFetch("/private-consignment/simulation","POST",{
-              consult_id: termo.id,
-              config_id: cfg.id,
-              number_of_installments: 12,
+              configId: cfg.id,
+              documentNumber: cpfFb2,
+              numberOfInstallments: 12,
+              requestedAmount: margem > 0 ? margem : 1000,
               provider: "celcoin",
-              ...(margem>0?{installment_face_value:margem}:{disbursed_amount:1000}),
             });
-            if(s?.id||s?.totalValue||s?.installmentValue) {
+            if(s?.disbursement_amount||s?.disbursed_issue_amount||s?.id||s?.totalValue||s?.installmentValue) {
               melhores[cfg.id]={cfg,resultados:[{np:12,sim:s,cfg}]};
             }
           } catch {}
